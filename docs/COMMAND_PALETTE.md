@@ -21,10 +21,17 @@ pub trait Action: Send + Sync {
     fn category(&self) -> ActionCategory {
         ActionCategory::General
     }
-    fn glyph(&self) -> &'static str {
-        ""
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("", "")
     }
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()>;
+
+    fn name_dynamic(&self, _app: &App) -> String {
+        self.name().to_string()
+    }
+    fn description_dynamic(&self, _app: &App) -> String {
+        self.description().to_string()
+    }
 }
 ```
 
@@ -33,91 +40,52 @@ pub trait Action: Send + Sync {
 | `id()` | Unique identifier string (e.g. `"note.encrypt"`) |
 | `name()` | Human-readable name for the palette |
 | `description()` | Short help text shown in palette |
-| `category()` | Grouping (Notes, Import, Append, Views, Settings) |
+| `category()` | Grouping (General, Notes, Import, Append, Views, Settings) |
+| `glyph()` | `(&'static str, &'static str)` — Nerd Font + Unicode pair, selected by `IconMode` |
 | `execute()` | Perform the action, mutating `App` state |
 
 ---
 
 ## Registration
 
-Actions are registered in a static lazy vector in `src/actions/mod.rs`:
-
-```rust
-pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
-    vec![
-        Box::new(encrypt::EncryptNoteAction),
-        Box::new(decrypt::DecryptNoteAction),
-        Box::new(OpenGraphAction),
-        Box::new(content_tree::OpenContentTreeAction),
-        Box::new(OpenBackupAction),
-        Box::new(CreateDrawAction),
-        Box::new(CreateCanvasAction),
-        Box::new(ocr::OcrPasteAction),
-        Box::new(SwitchThemeAction),
-        Box::new(OpenSetupWizardAction),
-        Box::new(SwitchKeybindPresetAction),
-        Box::new(ToggleExternalEditorAction),
-        Box::new(ToggleLayoutAction),
-        Box::new(settings::ToggleLayoutEditModeAction),
-        Box::new(settings::TogglePreviewPaneAction),
-        Box::new(settings::TogglePreviewWrapAction),
-        Box::new(settings::ToggleCalendarAction),
-        Box::new(settings::ToggleLineNumbersAction),
-        Box::new(settings::ToggleConfirmDeleteAction),
-        Box::new(settings::TogglePinnedOnTopAction),
-        Box::new(settings::ToggleConfirmQuitAction),
-        Box::new(settings::TogglePreviewEncryptionAction),
-        Box::new(settings::CycleSortAction),
-        Box::new(settings::ToggleShowHiddenFilesAction),
-        Box::new(settings::ToggleShowAllFilesAction),
-        Box::new(settings::ToggleTabIconsOnlyAction),
-        Box::new(settings::SetWordGoalAction),
-        Box::new(settings::ToggleFoldersFirstAction),
-        Box::new(settings::SetNoteGoalAction),
-        Box::new(settings::CycleIconModeAction),
-        Box::new(settings::CycleHintBarStyleAction),
-        Box::new(import::ImportAction { source: ImportSource::File, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::File, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Csv, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Csv, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Json, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Json, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Url, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Url, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Clipboard, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Clipboard, target: ImportTarget::AppendCurrent }),
-    ]
-});
-```
+Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. The current registry contains 65 actions. Add an action there after implementing `Action`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
 
 Action metadata is cached separately:
 
 ```rust
-pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
-    ACTIONS.iter().map(|a| ActionInfo {
-        id: a.id().into_owned(),
-        name: a.name().into_owned(),
-        description: a.description().into_owned(),
-        category: a.category(),
-        glyph: a.glyph().to_string(),
-    }).collect()
-});
+pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
+    let icon_mode = app.config.ui.icon_mode;
+    ACTIONS
+        .iter()
+        .map(|a| {
+            let (nerd, unicode) = a.glyph();
+            ActionInfo {
+                id: a.id().to_string(),
+                name: a.name_dynamic(app),
+                description: a.description_dynamic(app),
+                category: a.category(),
+                glyph: crate::ui::get_icon(nerd, unicode, icon_mode).to_string(),
+            }
+        })
+        .collect()
+}
 ```
 
 
 ## Available Actions
 
-Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently 39 actions).
+Actions are grouped by category:
 
-| Category | Example Actions |
+| Category | Shipped actions |
 |---|---|
-| **Notes** | Encrypt, Decrypt, Content Tree |
-| **Views** | Graph, Draw, Canvas, Backup, Open Setup Wizard |
-| **Settings** | Theme, Keybind Preset, Layout Toggle, External Editor Toggle, Preview Toggle, Sort Cycle, Calendar Toggle, Show All Files, Folders First, Word/Note Goal, Icon Mode, Hint Bar Style |
-| **Import** | File/CSV/JSON/URL/Clipboard → New Note |
-| **Append** | File/CSV/JSON/URL/Clipboard → Append to Current, OCR Paste |
+| **General** | Insert date, OCR paste, paste image, insert image from file, rasterize |
+| **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info |
+| **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
+| **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note |
+| **Views** | Graph, draw, canvas, backup, setup wizard |
+| **Settings** | Theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
-**Note:** Import and URL actions require `markitdown` (pip install markitdown) or `pandoc` installed. URL import also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
+File-format conversion can require external tools; URL import requires `curl`. CSV and JSON conversions are handled in Rust.
 
 ## Execution
 
@@ -131,6 +99,8 @@ pub fn execute_action(
         if action.id() == action_id {
             return action.execute(app, context_note_id);
         }
+    }
+    anyhow::bail!("Action not found: {action_id}")
 }
 ```
 
@@ -150,7 +120,7 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ├─────────────────────────────────────────────┤
 │   Encrypt Note               Encrypt..      │
 │   Decrypt Note               Decrypt..      │
-│   Content Tree               Headers..      │
+│   Outline               Headers..      │
 │   Open Graph View            Switch..       │
 │   Create Drawing             Create..       │
 │   Create Canvas Map          Create..       │
@@ -219,9 +189,9 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
        fn category(&self) -> ActionCategory {
            ActionCategory::General
        }
-       fn glyph(&self) -> &'static str {
-           "\u{f059}" // question-circle
-       }
+        fn glyph(&self) -> (&'static str, &'static str) {
+            ("\u{f059}", "\u{2753}") // question-circle
+        }
        fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
            // your logic here
            Ok(())

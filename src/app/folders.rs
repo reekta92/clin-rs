@@ -1,7 +1,6 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 
 impl App {
     pub fn collapse_selected_folder(&mut self) {
@@ -65,6 +64,7 @@ impl App {
                     self.list.visual_index = idx;
                 }
             }
+            VisualItem::Subnote { .. } => {}
         }
     }
 
@@ -103,12 +103,17 @@ impl App {
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
                 self.open_selected();
             }
+            VisualItem::Subnote { .. } => {}
         }
     }
 
     pub(crate) fn open_folder_picker(&mut self, mode: FolderPickerMode, hide_paths: &[String]) {
         let Ok(mut folders) = self.storage.list_folders(self.list.show_hidden_files) else {
             self.set_temporary_status_static("Failed to list folders");
+            self.messages.push(
+                "Failed to list folders".to_string(),
+                crate::app::messages::MessageSeverity::Warning,
+            );
             return;
         };
         // Protection layer: a selected source folder and ALL its descendants are
@@ -121,9 +126,7 @@ impl App {
         });
         let mut all_folders = vec![String::new()]; // "" = vault root, always present and selectable
         all_folders.extend(folders);
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Search folders...");
+        let input = crate::ui::make_popup_textarea(&self.app_theme, "Search folders...");
         self.popups.active = Some(crate::popups::ActivePopup::FolderPicker(FolderPicker {
             mode,
             filtered_folders: all_folders.clone(),
@@ -131,6 +134,8 @@ impl App {
             selected: 0,
             input,
             focus: FolderPickerFocus::Search,
+            scroll_offset: 0,
+            last_scroll: None,
         }));
     }
 
@@ -145,9 +150,12 @@ impl App {
 
             match &popup.mode {
                 FolderPopupMode::Create { parent_path } => {
-                    if Self::is_virtual_pinned_path(parent_path) {
+                    if Self::is_virtual_pinned_path(parent_path)
+                        || Self::is_virtual_subnotes_path(parent_path)
+                        || Self::is_subnotes_parent_grid_path(parent_path)
+                    {
                         self.set_temporary_status_static(
-                            "Cannot create folder inside virtual Pinned",
+                            "Cannot create folder inside virtual Subnotes",
                         );
                         return;
                     }
@@ -159,25 +167,26 @@ impl App {
                     if let Err(e) = self.storage.create_folder(&full_path) {
                         self.set_temporary_status(&format!("Failed to create folder: {e}"));
                     } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder created");
                     }
                 }
                 FolderPopupMode::Rename { old_path } => {
-                    if Self::is_virtual_pinned_path(old_path) {
-                        self.set_temporary_status_static("Cannot rename virtual Pinned folder");
+                    if Self::is_virtual_pinned_path(old_path)
+                        || Self::is_virtual_subnotes_path(old_path)
+                        || Self::is_subnotes_parent_grid_path(old_path)
+                    {
+                        self.set_temporary_status_static("Cannot rename virtual Subnotes folder");
                         return;
                     }
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
                         self.set_temporary_status(&format!("Failed to rename folder: {e}"));
+                        self.messages.push(
+                            format!("Failed to rename folder: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder renamed");
                     }
                 }
@@ -205,8 +214,11 @@ impl App {
         if let Some(VisualItem::Folder { path, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            if Self::is_virtual_pinned_path(path) {
-                self.set_temporary_status_static("Cannot move virtual Pinned folder");
+            if Self::is_virtual_pinned_path(path)
+                || Self::is_virtual_subnotes_path(path)
+                || Self::is_subnotes_parent_grid_path(path)
+            {
+                self.set_temporary_status_static("Cannot move virtual Subnotes folder");
                 return;
             }
             let folder_path = path.clone();
@@ -235,9 +247,12 @@ impl App {
                     if path.is_empty() {
                         continue;
                     } // never move/delete vault root
-                    if Self::is_virtual_pinned_path(path) {
+                    if Self::is_virtual_pinned_path(path)
+                        || Self::is_virtual_subnotes_path(path)
+                        || Self::is_subnotes_parent_grid_path(path)
+                    {
                         continue;
-                    } // never touch virtual Pinned
+                    } // never touch virtual folders
                     folder_paths.push(path.clone());
                 }
                 _ => {}
@@ -302,7 +317,7 @@ impl App {
         if self.list.visual_index >= self.list.visual_list.len()
             && !self.list.visual_list.is_empty()
         {
-            self.list.visual_index = self.list.visual_list.len() - 1;
+            self.list.visual_index = self.list.visual_list.len().saturating_sub(1);
         } else if self.list.visual_list.is_empty() {
             self.list.visual_index = 0;
         }
@@ -310,10 +325,7 @@ impl App {
 
     /// Shared post move/copy cleanup.
     fn finish_bulk_list_op(&mut self) {
-        self.list.folder_cache = None;
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         self.clamp_visual_index();
         self.list.selected_indices.clear();
         self.list.list_mode = ListMode::Normal;
@@ -383,20 +395,14 @@ impl App {
                     if let Err(e) = self.storage.move_note(&note_id, target_folder) {
                         self.set_temporary_status(&format!("Failed to move note: {e}"));
                     } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Note moved");
                     }
                 }
                 FolderPickerMode::CopyNote { note_id } => {
                     match self.storage.duplicate_note(&note_id, target_folder) {
                         Ok(_) => {
-                            self.list.folder_cache = None;
-                            if let Err(e) = self.refresh_notes() {
-                                self.set_temporary_status(&format!("Refresh failed: {e}"));
-                            }
+                            self.request_notes_reconcile();
                             self.set_temporary_status_static("Note copied");
                         }
                         Err(e) => {
@@ -423,10 +429,7 @@ impl App {
                         if self.list.folder_expanded.remove(&folder_path) {
                             self.list.folder_expanded.insert(new_path);
                         }
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder moved");
                     }
                 }
@@ -560,17 +563,7 @@ impl App {
     }
 
     pub fn expand_all_folders(&mut self) {
-        let folders = if let Some(cache) = &self.list.folder_cache {
-            cache.clone()
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders.clone());
-            folders
-        };
-
+        let folders = self.catalog_folders.clone();
         for path in folders {
             self.list.folder_expanded.insert(path);
         }
@@ -578,6 +571,33 @@ impl App {
         self.list
             .folder_expanded
             .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+        // Subnotes root
+        self.list
+            .folder_expanded
+            .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
+        // Smart folders: insert all possible virtual paths. refresh_visual_list
+        // filters out ones with zero matches, so no harm in inserting extras.
+        if self.config.list.smart_folders_enabled {
+            self.list.folder_expanded.insert("@today".to_string());
+            self.list.folder_expanded.insert("@week".to_string());
+            self.list.folder_expanded.insert("@untagged".to_string());
+            self.list.folder_expanded.insert("@tagged".to_string());
+            for rule in &self.config.list.custom_smart_folders {
+                self.list
+                    .folder_expanded
+                    .insert(format!("@custom:{}", rule.name));
+            }
+            // Tag-level smart folders — each tag gets its own virtual path
+            let mut seen_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for note in &self.notes {
+                for tag in &note.tags {
+                    if seen_tags.insert(tag.clone()) {
+                        self.list.folder_expanded.insert(format!("@tag:{tag}"));
+                    }
+                }
+            }
+        }
+        self.list.visual_index = 0;
         self.refresh_visual_list();
         self.request_preview_update();
         self.persist_folder_state();
@@ -591,16 +611,7 @@ impl App {
     }
 
     pub fn expand_folders_to_depth(&mut self, level: usize) {
-        let folders = if let Some(cache) = &self.list.folder_cache {
-            cache.clone()
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders.clone());
-            folders
-        };
+        let folders = self.catalog_folders.clone();
 
         for path in folders {
             let depth = if path.is_empty() {
@@ -616,6 +627,29 @@ impl App {
         self.list
             .folder_expanded
             .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+        // Virtual folders for subnotes and smart folders
+        self.list
+            .folder_expanded
+            .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
+        if self.config.list.smart_folders_enabled {
+            self.list.folder_expanded.insert("@today".to_string());
+            self.list.folder_expanded.insert("@week".to_string());
+            self.list.folder_expanded.insert("@untagged".to_string());
+            self.list.folder_expanded.insert("@tagged".to_string());
+            for rule in &self.config.list.custom_smart_folders {
+                self.list
+                    .folder_expanded
+                    .insert(format!("@custom:{}", rule.name));
+            }
+            let mut seen_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for note in &self.notes {
+                for tag in &note.tags {
+                    if seen_tags.insert(tag.clone()) {
+                        self.list.folder_expanded.insert(format!("@tag:{tag}"));
+                    }
+                }
+            }
+        }
     }
     pub fn toggle_pin_folder(&mut self, path: String) {
         if path.is_empty() || path == crate::app::VIRTUAL_PINNED_PATH {

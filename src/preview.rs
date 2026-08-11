@@ -49,9 +49,7 @@ pub fn draw_preview_pane(
         frame.render_widget(lock_para, rect);
     } else {
         match content {
-            Some(PreviewContent::Markdown(renderer))
-                if !renderer.is_pending() && renderer.pages_built() =>
-            {
+            Some(PreviewContent::Markdown(renderer)) if renderer.document().is_some() => {
                 if renderer.is_content_empty() {
                     let placeholder = Paragraph::new(Line::from(vec![Span::styled(
                         "(empty note)",
@@ -65,16 +63,22 @@ pub fn draw_preview_pane(
                             .padding(Padding::new(2, 2, 1, 1)),
                     );
                     frame.render_widget(placeholder, rect);
-                } else if let Some(page_grid) = renderer.current_page_grid() {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid)
-                        .scroll_offset(scroll_offset)
-                        .block(
-                            Block::default()
-                                .style(theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                    frame.render_widget(snapshot, rect);
+                } else if let Some(doc) = renderer.document() {
+                    let block = Block::default()
+                        .style(theme.preview_bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1));
+                    let inner = block.inner(rect);
+                    frame.render_widget(block, rect);
+
+                    let page = renderer.current_page_range();
+                    let start = page
+                        .start
+                        .saturating_add(scroll_offset as usize)
+                        .min(page.end);
+                    let widget_range = start..page.end;
+                    let widget = crate::markdown::MarkdownWidget::new(doc, widget_range);
+                    frame.render_widget(widget, inner);
                     if renderer.total_pages() > 1 {
                         let indicator = format!(
                             " {}/{} ",
@@ -106,7 +110,9 @@ pub fn draw_preview_pane(
                     );
                 frame.render_widget(loading, rect);
             }
-            Some(PreviewContent::CanvasGrid(grid) | PreviewContent::DrawGrid(grid)) => {
+            Some(
+                PreviewContent::CanvasGrid { grid, .. } | PreviewContent::DrawGrid { grid, .. },
+            ) => {
                 let snapshot = crate::snapshot::RenderedSnapshot::new(grid)
                     .scroll_offset(scroll_offset)
                     .block(
@@ -116,6 +122,88 @@ pub fn draw_preview_pane(
                             .padding(Padding::new(2, 2, 1, 1)),
                     );
                 frame.render_widget(snapshot, rect);
+            }
+            Some(PreviewContent::Image(_)) => {
+                let loading = Paragraph::new("Image loading...")
+                    .style(Style::default().fg(theme.muted))
+                    .block(
+                        Block::default()
+                            .style(theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(loading, rect);
+            }
+
+            Some(PreviewContent::SubnoteGraph { .. }) => {
+                // Handled directly in draw_list_view; this arm is never reached.
+                let placeholder = Paragraph::new("Graph preview...")
+                    .style(theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(placeholder, rect);
+            }
+            Some(PreviewContent::FolderGraph { .. }) => {
+                // Handled directly in draw_list_view; this arm is never reached.
+                let placeholder = Paragraph::new("Graph preview...")
+                    .style(theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(placeholder, rect);
+            }
+            Some(PreviewContent::SmartFolderInfo {
+                kind: _,
+                label,
+                note_count,
+                conditions,
+            }) => {
+                let mut lines: Vec<Line> = Vec::new();
+                // Header
+                let icon = crate::ui::get_icon("\u{f0e7}", "\u{26a1}", icon_mode);
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!(" {icon} "),
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        label.as_str(),
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(""));
+                // Conditions
+                for cond in conditions {
+                    lines.push(Line::from(vec![Span::styled(
+                        format!("  \u{2022} {cond}"),
+                        Style::default().fg(theme.fg),
+                    )]));
+                }
+                lines.push(Line::from(""));
+                // Note count
+                let suffix = if *note_count == 1 { "note" } else { "notes" };
+                lines.push(Line::from(vec![Span::styled(
+                    format!("  {note_count} {suffix} match this folder"),
+                    Style::default().fg(theme.muted),
+                )]));
+                let para = Paragraph::new(lines).style(theme.preview_bg_style()).block(
+                    Block::default()
+                        .style(theme.preview_bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1)),
+                );
+                frame.render_widget(para, rect);
             }
             None => {
                 let placeholder = Paragraph::new("Select a note to preview")

@@ -1,5 +1,5 @@
 use crate::keybinds::{CanvasAction, Keybinds};
-use crate::pinstar::state::{PinstarMenuType, PinstarState};
+use crate::pinstar::state::{PinstarMenuType, PinstarState, PinstarTextField};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::{Input, TextArea};
@@ -8,6 +8,7 @@ pub fn handle_pinstar_mouse(
     state: &mut PinstarState,
     mouse: MouseEvent,
     area: ratatui::layout::Rect,
+    app: &mut crate::app::App,
 ) -> bool {
     let mut area = area;
     area.height = area.height.saturating_sub(1);
@@ -35,14 +36,18 @@ pub fn handle_pinstar_mouse(
         MouseEventKind::Down(MouseButton::Right) => {
             if state.resizing_node_id.is_some() {
                 state.resizing_node_id = None;
+                state.is_dragging_resize_handle = false;
                 let _ = state.save();
+                state.sync_to_raw_editor();
                 return true;
             }
 
-            if let Some(editor_area) = editor_area
-                && crate::events::contains_cell(editor_area, mouse.column, mouse.row)
+            if editor_area
+                .is_some_and(|rect| crate::events::contains_cell(rect, mouse.column, mouse.row))
+                || state
+                    .floating_editor_rect
+                    .is_some_and(|rect| crate::events::contains_cell(rect, mouse.column, mouse.row))
             {
-                state.open_editor_context_menu(mouse.column, mouse.row);
                 return true;
             }
 
@@ -56,10 +61,12 @@ pub fn handle_pinstar_mouse(
             true
         }
         MouseEventKind::Up(MouseButton::Middle) => {
+            state.is_panning = false;
             state.last_mouse_pos = None;
             true
         }
         MouseEventKind::Drag(MouseButton::Middle) => {
+            state.is_panning = true;
             if let Some((lx, ly)) = state.last_mouse_pos {
                 let dx = mouse.column as f64 - lx as f64;
                 let dy = mouse.row as f64 - ly as f64;
@@ -107,26 +114,46 @@ pub fn handle_pinstar_mouse(
                 return true;
             }
 
+            if let Some(floating_area) = state.floating_editor_rect
+                && let Some(editor) = &mut state.floating_editor
+                && crate::events::contains_cell(floating_area, mouse.column, mouse.row)
+            {
+                let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(editor);
+                crate::events::move_textarea_cursor_to_mouse(
+                    editor,
+                    floating_area,
+                    mouse.column,
+                    mouse.row,
+                    scroll_row,
+                    scroll_col,
+                );
+                state.mouse_selection.begin(editor);
+                state.text_selection_target = Some(PinstarTextField::Floating);
+                return true;
+            }
+
             if let Some(editor_area) = editor_area {
                 if crate::events::contains_cell(editor_area, mouse.column, mouse.row) {
                     state.editor_focus = true;
                     let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
-                    let gutter_width = digits + 1;
+                    let gutter_width = digits + 2;
                     let body_inner = ratatui::layout::Rect::new(
                         editor_area.x + gutter_width,
                         editor_area.y + 1,
-                        editor_area.width.saturating_sub(gutter_width),
+                        editor_area.width.saturating_sub(gutter_width + 1),
                         editor_area.height.saturating_sub(1),
                     );
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&state.raw_editor);
                     crate::events::move_textarea_cursor_to_mouse(
                         &mut state.raw_editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
+                        sr,
+                        sc,
                     );
-                    state.raw_editor.start_selection();
-                    state.mouse_selecting = true;
-                    state.mouse_dragged = false;
+                    state.mouse_selection.begin(&mut state.raw_editor);
+                    state.text_selection_target = Some(PinstarTextField::Raw);
                     return true;
                 } else {
                     state.editor_focus = false;
@@ -180,6 +207,7 @@ pub fn handle_pinstar_mouse(
                 if hit_node != prev_selected {
                     state.selected_node_id = prev_selected;
                     state.toggle_editor();
+                    state.sync_to_raw_editor();
                     state.selected_node_id = hit_node.clone();
 
                     if hit_node.is_none() {
@@ -200,6 +228,7 @@ pub fn handle_pinstar_mouse(
 
             if is_double_click && hit_node.is_some() {
                 state.toggle_editor();
+                state.sync_to_raw_editor();
                 state.last_click = None;
             } else if hit_node.is_some() {
                 state.drag_start_pos = Some((cx, cy));
@@ -213,40 +242,74 @@ pub fn handle_pinstar_mouse(
             true
         }
         MouseEventKind::Up(MouseButton::Left) => {
-            if state.mouse_selecting && !state.mouse_dragged {
-                state.raw_editor.cancel_selection();
+            state.is_panning = false;
+            state.is_dragging_resize_handle = false;
+            let notice = match state.text_selection_target.take() {
+                Some(PinstarTextField::Raw) => state.mouse_selection.finish(&mut state.raw_editor),
+                Some(PinstarTextField::Floating) => state
+                    .floating_editor
+                    .as_mut()
+                    .and_then(|editor| state.mouse_selection.finish(editor)),
+                None => None,
+            };
+            if let Some(notice) = notice {
+                app.set_temporary_status(notice);
             }
-            state.mouse_selecting = false;
-            state.mouse_dragged = false;
 
             if state.drag_start_pos.is_some() {
                 state.drag_start_pos = None;
                 state.drag_captured_nodes.clear();
                 let _ = state.save();
+                state.sync_to_raw_editor();
             }
             state.last_mouse_pos = None;
             true
         }
         MouseEventKind::Drag(MouseButton::Left) => {
-            if state.mouse_selecting {
-                state.mouse_dragged = true;
-                if let Some(editor_area) = editor_area {
-                    let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
-                    let gutter_width = digits + 1;
-                    let body_inner = ratatui::layout::Rect::new(
-                        editor_area.x + gutter_width,
-                        editor_area.y + 1,
-                        editor_area.width.saturating_sub(gutter_width),
-                        editor_area.height.saturating_sub(1),
-                    );
-                    crate::events::move_textarea_cursor_to_mouse(
-                        &mut state.raw_editor,
-                        body_inner,
-                        mouse.column,
-                        mouse.row,
-                    );
-                    return true;
+            if state.mouse_selection.active {
+                state.mouse_selection.mark_drag();
+                match state.text_selection_target {
+                    Some(PinstarTextField::Raw) => {
+                        if let Some(editor_area) = editor_area {
+                            let digits =
+                                state.raw_editor.lines().len().max(1).to_string().len() as u16;
+                            let gutter_width = digits + 2;
+                            let body_inner = ratatui::layout::Rect::new(
+                                editor_area.x + gutter_width,
+                                editor_area.y + 1,
+                                editor_area.width.saturating_sub(gutter_width + 1),
+                                editor_area.height.saturating_sub(1),
+                            );
+                            let (scroll_row, scroll_col) =
+                                crate::ui::get_textarea_scroll(&state.raw_editor);
+                            crate::events::move_textarea_cursor_to_mouse(
+                                &mut state.raw_editor,
+                                body_inner,
+                                mouse.column,
+                                mouse.row,
+                                scroll_row,
+                                scroll_col,
+                            );
+                        }
+                    }
+                    Some(PinstarTextField::Floating) => {
+                        if let (Some(editor_area), Some(editor)) =
+                            (state.floating_editor_rect, state.floating_editor.as_mut())
+                        {
+                            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(editor);
+                            crate::events::move_textarea_cursor_to_mouse(
+                                editor,
+                                editor_area,
+                                mouse.column,
+                                mouse.row,
+                                scroll_row,
+                                scroll_col,
+                            );
+                        }
+                    }
+                    None => {}
                 }
+                return true;
             }
 
             if state.resizing_node_id.is_some()
@@ -256,6 +319,7 @@ pub fn handle_pinstar_mouse(
                 let dh = mouse.row as f64 - ly as f64;
                 state.resize_selected_node(dw / state.zoom, dh / state.zoom);
                 state.last_mouse_pos = Some((mouse.column, mouse.row));
+                state.sync_to_raw_editor();
                 return true;
             }
 
@@ -265,8 +329,12 @@ pub fn handle_pinstar_mouse(
                 let dy = cy - last_pos.1;
                 state.move_selected_node(dx, dy);
                 state.drag_start_pos = Some((cx, cy));
+                if state.show_editor_pane {
+                    state.sync_to_raw_editor();
+                }
                 true
             } else if let Some((lx, ly)) = state.last_mouse_pos {
+                state.is_panning = true;
                 let dx = mouse.column as f64 - lx as f64;
                 let dy = mouse.row as f64 - ly as f64;
                 state.pan(-dx, -dy);
@@ -303,36 +371,13 @@ fn execute_menu_action(
     menu_x: u16,
     menu_y: u16,
 ) {
-    if menu_type == PinstarMenuType::Editor {
-        match selected_index {
-            0 => {
-                state.raw_editor.copy();
-            }
-            1 => {
-                state.raw_editor.cut();
-                let _ = state.sync_from_raw_editor();
-            }
-            2 => {
-                state.raw_editor.paste();
-                let _ = state.sync_from_raw_editor();
-            }
-            3 => {
-                state.raw_editor.select_all();
-            }
-            _ => {}
-        }
-        return;
-    }
-
     if menu_type == PinstarMenuType::ColorPicker {
-        match selected_index {
-            0 => state.set_node_color(None),
-            1 => state.set_node_color(Some("#ff5252".to_string())),
-            2 => state.set_node_color(Some("#4caf50".to_string())),
-            3 => state.set_node_color(Some("#ffeb3b".to_string())),
-            4 => state.set_node_color(Some("#00bcd4".to_string())),
-            _ => {}
+        if selected_index == 0 {
+            state.set_node_color(None);
+        } else if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE.get(selected_index - 1) {
+            state.set_node_color(Some(entry.1.to_string()));
         }
+        state.sync_to_raw_editor();
         return;
     }
 
@@ -343,30 +388,41 @@ fn execute_menu_action(
             0 => state.start_connection(),
             1 => state.start_delete_connection(),
             2 => {
-                let mut textarea = TextArea::from(vec![id.clone()]);
+                let current_title = state
+                    .data
+                    .nodes
+                    .iter()
+                    .find(|n| n.id() == id)
+                    .and_then(|n| n.title())
+                    .unwrap_or("")
+                    .to_string();
+                let mut textarea = TextArea::from(vec![current_title]);
                 textarea.set_cursor_line_style(ratatui::style::Style::default());
                 textarea.set_block(
                     ratatui::widgets::Block::default()
                         .borders(ratatui::widgets::Borders::ALL)
-                        .title(" Rename Node (ID) - Enter to confirm, Esc to cancel "),
+                        .title(" Rename Node - Enter to confirm, Esc to cancel "),
                 );
                 state.rename_popup = Some(textarea);
             }
             3 => state.start_resize(),
             4 => {
-                let items = vec![
-                    "Default".to_string(),
-                    "Red".to_string(),
-                    "Green".to_string(),
-                    "Yellow".to_string(),
-                    "Blue".to_string(),
-                ];
+                let mut items = vec!["Default".to_string()];
+                for (name, _, _) in crate::pinstar::COLOR_PICKER_PALETTE {
+                    let capitalized = name
+                        .chars()
+                        .next()
+                        .unwrap_or(' ')
+                        .to_uppercase()
+                        .to_string()
+                        + &name[1..];
+                    items.push(capitalized);
+                }
                 state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
                     x: menu_x,
                     y: menu_y,
                     selected: 0,
                     items,
-
                     menu_type: PinstarMenuType::ColorPicker,
                 });
             }
@@ -380,7 +436,6 @@ fn execute_menu_action(
                     .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
                 state.selected_node_id = None;
                 let _ = state.save();
-                state.sync_to_raw_editor();
             }
             _ => {}
         }
@@ -388,9 +443,11 @@ fn execute_menu_action(
         match selected_index {
             0 => state.add_text_node(state.context_menu_pos.0, state.context_menu_pos.1),
             1 => state.add_group(state.context_menu_pos.0, state.context_menu_pos.1),
+            2 => state.add_image_node(state.context_menu_pos.0, state.context_menu_pos.1),
             _ => {}
         }
     }
+    state.sync_to_raw_editor();
 }
 
 pub fn handle_pinstar_event(
@@ -399,8 +456,9 @@ pub fn handle_pinstar_event(
     running: &mut bool,
     area: ratatui::layout::Rect,
     keybinds: &Keybinds,
-    config: &crate::config::ClinConfig,
+    app: &mut crate::app::App,
 ) -> bool {
+    let config = &app.config;
     if let Some(textarea) = &mut state.rename_popup {
         state.seq_matcher.clear();
         match key.code {
@@ -434,7 +492,7 @@ pub fn handle_pinstar_event(
                 menu.selected = menu.selected.saturating_sub(1);
             }
             _ if keybinds.matches_canvas(CanvasAction::MenuDown, &key) => {
-                if menu.selected < menu.items.len() - 1 {
+                if menu.selected + 1 < menu.items.len() {
                     menu.selected += 1;
                 }
             }
@@ -498,6 +556,7 @@ pub fn handle_pinstar_event(
                 || keybinds.matches_canvas(CanvasAction::CancelResize, &key) =>
             {
                 state.resizing_node_id = None;
+                state.is_dragging_resize_handle = false;
                 let _ = state.save();
                 return true;
             }
@@ -507,18 +566,13 @@ pub fn handle_pinstar_event(
 
     if state.editor_focus {
         state.seq_matcher.clear();
-        match key.code {
-            _ if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) => {
-                state.editor_focus = false;
+        if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) {
+            state.editor_focus = false;
+        } else {
+            if !apply_text_shortcuts(keybinds, &mut state.raw_editor, key) {
+                state.raw_editor.input(Input::from(key));
             }
-            _ if keybinds.matches_canvas(CanvasAction::EditorSyncRaw, &key) => {
-                let _ = state.sync_from_raw_editor();
-            }
-            _ => {
-                if !apply_text_shortcuts(keybinds, &mut state.raw_editor, key) {
-                    state.raw_editor.input(Input::from(key));
-                }
-            }
+            let _ = state.sync_from_raw_editor();
         }
         return true;
     }

@@ -1,16 +1,19 @@
 use crate::keybinds::{GraphAction, Keybinds};
 use std::collections::{HashMap, HashSet};
 
+use crate::app::ViewMode;
 use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
 
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
 };
 use crate::graf::graph::GraphState;
+use crate::graf::spatial::SpatialGrid;
 use crate::graf::viewport::Viewport;
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
@@ -27,8 +30,19 @@ fn link_count_color(count: usize, max_count: usize, colors: &[Color]) -> Color {
     if max_count == 0 {
         return colors.first().copied().unwrap_or(Color::Gray);
     }
-    let idx = (count as f64 / max_count as f64 * (colors.len() - 1) as f64) as usize;
+    let idx = (count as f64 / max_count as f64 * colors.len().saturating_sub(1) as f64) as usize;
     colors.get(idx).copied().unwrap_or(Color::Gray)
+}
+
+/// Level-of-detail tier determined by visible node count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LodTier {
+    /// ≤200 visible nodes: full detail (shapes, colors, tag orbits, labels).
+    Full,
+    /// 201–1000 visible: shapes + colors, no orbits, selected labels only.
+    Medium,
+    /// >1000 visible: single-pixel dots, no edges, no labels.
+    Minimal,
 }
 
 #[derive(Clone)]
@@ -88,6 +102,7 @@ pub struct NodeRenderData {
     pub radius: f64,
     pub extra_tag_colors: Vec<Color>,
     pub is_selected: bool,
+    pub is_hovered: bool,
     pub selection_ring_color: Color,
     pub shape: NodeShape,
 }
@@ -194,6 +209,19 @@ fn draw_outlined_shape(
 impl Shape for GraphNodesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
         for node in self.nodes {
+            // Draw hover highlight ring (if hovered and not selected)
+            if node.is_hovered && !node.is_selected {
+                let hover_radius = node.radius + 1.0;
+                draw_outlined_shape(
+                    painter,
+                    node.x,
+                    node.y,
+                    hover_radius,
+                    node.shape,
+                    Color::White,
+                );
+            }
+
             draw_outlined_shape(painter, node.x, node.y, node.radius, node.shape, node.color);
 
             let indicator_radius = 1.2;
@@ -236,9 +264,9 @@ impl Shape for GraphNodesShape<'_> {
 
 #[derive(Clone)]
 pub struct LabelData {
+    pub node_idx: NodeIndex,
     pub x: f64,
     pub y: f64,
-    pub text: String,
 }
 
 pub struct FeatureFlags {
@@ -262,6 +290,12 @@ pub struct RenderCache {
     pub minimap_grid: Vec<Option<Color>>,
 
     pub topology_dirty: bool,
+    pub minimap_dirty: bool,
+
+    pub visible_nodes: HashSet<NodeIndex>,
+    pub selected_neighbors: HashSet<NodeIndex>,
+    pub label_texts: HashMap<NodeIndex, String>,
+    pub cached_label_max_length: usize,
 }
 
 impl Default for RenderCache {
@@ -283,6 +317,11 @@ impl RenderCache {
             labels: Vec::new(),
             minimap_grid: Vec::new(),
             topology_dirty: true,
+            minimap_dirty: true,
+            visible_nodes: HashSet::new(),
+            selected_neighbors: HashSet::new(),
+            label_texts: HashMap::new(),
+            cached_label_max_length: usize::MAX,
         }
     }
 
@@ -377,6 +416,14 @@ impl RenderCache {
         };
 
         self.topology_dirty = false;
+        self.label_texts.clear();
+        for idx in graph.node_indices() {
+            let node = &graph[idx];
+            let truncated =
+                crate::graf::util::truncate(&node.data.title, config.graf.visual.label_max_length);
+            self.label_texts.insert(idx, truncated);
+        }
+        self.cached_label_max_length = config.graf.visual.label_max_length;
     }
 
     pub fn fill_edges(
@@ -384,21 +431,38 @@ impl RenderCache {
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         edge_color: Color,
+        tier: LodTier,
     ) {
         self.edges.clear();
+
+        if tier == LodTier::Minimal {
+            // No edges at minimal LOD
+            return;
+        }
+
+        let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
+            // Skip edge if neither endpoint is visible
+            if !self.visible_nodes.contains(&edge.source()) {
+                self.visible_nodes.contains(&edge.target());
+            }
+
             let src = &graph[edge.source()];
             let tgt = &graph[edge.target()];
-            let color = match config.graf.visual.edge_color_mode {
-                EdgeColorMode::Source => *self
-                    .node_own_color
-                    .get(&edge.source())
-                    .unwrap_or(&edge_color),
-                EdgeColorMode::Target => *self
-                    .node_own_color
-                    .get(&edge.target())
-                    .unwrap_or(&edge_color),
-                EdgeColorMode::Uniform => edge_color,
+            let color = if uniform_edges {
+                edge_color
+            } else {
+                match config.graf.visual.edge_color_mode {
+                    EdgeColorMode::Source => *self
+                        .node_own_color
+                        .get(&edge.source())
+                        .unwrap_or(&edge_color),
+                    EdgeColorMode::Target => *self
+                        .node_own_color
+                        .get(&edge.target())
+                        .unwrap_or(&edge_color),
+                    EdgeColorMode::Uniform => edge_color,
+                }
             };
             self.edges.push(EdgeData {
                 x1: src.location.x as f64,
@@ -406,20 +470,47 @@ impl RenderCache {
                 x2: tgt.location.x as f64,
                 y2: tgt.location.y as f64,
                 color,
-                thickness: config.graf.visual.edge_thickness,
+                thickness: if uniform_edges {
+                    1
+                } else {
+                    config.graf.visual.edge_thickness
+                },
             });
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn fill_nodes(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
         selection_ring_color: Color,
-    ) {
+        hovered_node: Option<NodeIndex>,
+        spatial_grid: &SpatialGrid,
+        x_bounds: [f64; 2],
+        y_bounds: [f64; 2],
+    ) -> LodTier {
         self.nodes.clear();
-        for idx in graph.node_indices() {
+        self.visible_nodes.clear();
+
+        spatial_grid.for_each_in_rect(x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1], |idx| {
+            self.visible_nodes.insert(idx);
+        });
+
+        // Always include selected node even if off-screen
+        if let Some(sel) = selected_node {
+            self.visible_nodes.insert(sel);
+        }
+
+        // Determine LOD tier from visible node count
+        let tier = match self.visible_nodes.len() {
+            0..=200 => LodTier::Full,
+            201..=1000 => LodTier::Medium,
+            _ => LodTier::Minimal,
+        };
+
+        for &idx in &self.visible_nodes {
             let node = &graph[idx];
             let primary_color = self
                 .node_own_color
@@ -438,75 +529,154 @@ impl RenderCache {
                     }
                 }
             };
-            let extra_tag_colors: Vec<Color> = if node.data.tags.is_empty() {
-                Vec::new()
-            } else {
-                node.data
-                    .tags
-                    .iter()
-                    .skip(1)
-                    .filter_map(|tag| self.tag_colors.get(tag).copied())
-                    .collect()
-            };
-            self.nodes.push(NodeRenderData {
-                x: node.location.x as f64,
-                y: node.location.y as f64,
-                color: primary_color,
-                radius,
-                extra_tag_colors,
-                is_selected: selected_node == Some(idx),
-                selection_ring_color,
-                shape: config.graf.visual.node_shape,
-            });
-        }
-    }
 
+            let is_selected = selected_node == Some(idx);
+            let is_hovered = hovered_node == Some(idx) && !is_selected;
+
+            match tier {
+                LodTier::Full => {
+                    let extra_tag_colors: Vec<Color> = if node.data.tags.is_empty() {
+                        Vec::new()
+                    } else {
+                        node.data
+                            .tags
+                            .iter()
+                            .skip(1)
+                            .filter_map(|tag| self.tag_colors.get(tag).copied())
+                            .collect()
+                    };
+                    self.nodes.push(NodeRenderData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64,
+                        color: primary_color,
+                        radius,
+                        extra_tag_colors,
+                        is_selected,
+                        is_hovered,
+                        selection_ring_color,
+                        shape: config.graf.visual.node_shape,
+                    });
+                }
+                LodTier::Medium => {
+                    // No tag orbits, only selected node gets hover ring
+                    self.nodes.push(NodeRenderData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64,
+                        color: primary_color,
+                        radius,
+                        extra_tag_colors: Vec::new(),
+                        is_selected,
+                        is_hovered: false,
+                        selection_ring_color,
+                        shape: config.graf.visual.node_shape,
+                    });
+                }
+                LodTier::Minimal => {
+                    // Single-pixel dots, forced Circle shape
+                    self.nodes.push(NodeRenderData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64,
+                        color: primary_color,
+                        radius: 1.0,
+                        extra_tag_colors: Vec::new(),
+                        is_selected,
+                        is_hovered: false,
+                        selection_ring_color,
+                        shape: NodeShape::Circle,
+                    });
+                }
+            }
+        }
+
+        tier
+    }
     pub fn fill_labels(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
+        min_offset_y: f64,
+        tier: LodTier,
     ) {
         self.labels.clear();
+
+        if self.cached_label_max_length != config.graf.visual.label_max_length {
+            self.label_texts.clear();
+            for idx in graph.node_indices() {
+                let node = &graph[idx];
+                let truncated = crate::graf::util::truncate(
+                    &node.data.title,
+                    config.graf.visual.label_max_length,
+                );
+                self.label_texts.insert(idx, truncated);
+            }
+            self.cached_label_max_length = config.graf.visual.label_max_length;
+        }
+
+        match tier {
+            LodTier::Minimal => return,
+            LodTier::Medium => {
+                if let Some(sel) = selected_node
+                    && self.visible_nodes.contains(&sel)
+                {
+                    let node = &graph[sel];
+                    let radius = self.nodes.get(sel.index()).map(|n| n.radius).unwrap_or(2.0);
+                    self.labels.push(LabelData {
+                        node_idx: sel,
+                        x: node.location.x as f64,
+                        y: node.location.y as f64
+                            + radius
+                            + config.graf.visual.label_offset.max(min_offset_y),
+                    });
+                }
+                return;
+            }
+            LodTier::Full => {}
+        }
+
+        self.selected_neighbors.clear();
+        if let Some(sel) = selected_node
+            && config.graf.visual.label_mode == LabelMode::Neighbors
+        {
+            for edge in graph.edges(sel) {
+                if edge.target() != sel {
+                    self.selected_neighbors.insert(edge.target());
+                }
+                if edge.source() != sel {
+                    self.selected_neighbors.insert(edge.source());
+                }
+            }
+        }
+
         let should_show = |idx: NodeIndex| -> bool {
             match config.graf.visual.label_mode {
                 LabelMode::Selected => selected_node == Some(idx),
                 LabelMode::Neighbors => {
-                    if selected_node == Some(idx) {
-                        return true;
-                    }
-                    if let Some(sel) = selected_node {
-                        for edge in graph.edges(sel) {
-                            if edge.target() == idx || edge.source() == idx {
-                                return true;
-                            }
-                        }
-                    }
-                    false
+                    selected_node == Some(idx) || self.selected_neighbors.contains(&idx)
                 }
                 LabelMode::All => true,
                 LabelMode::None => false,
             }
         };
 
-        for idx in graph.node_indices() {
+        for &idx in &self.visible_nodes {
             if !should_show(idx) {
                 continue;
             }
             let node = &graph[idx];
             let radius = self.nodes.get(idx.index()).map(|n| n.radius).unwrap_or(2.0);
             self.labels.push(LabelData {
+                node_idx: idx,
                 x: node.location.x as f64,
-                y: node.location.y as f64 + radius + config.graf.visual.label_offset,
-                text: crate::graf::util::truncate(
-                    &node.data.title,
-                    config.graf.visual.label_max_length,
-                ),
+                y: node.location.y as f64
+                    + radius
+                    + config.graf.visual.label_offset.max(min_offset_y),
             });
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_graph_view(
     frame: &mut ratatui::Frame,
     area: Rect,
@@ -516,8 +686,13 @@ pub fn draw_graph_view(
     app_theme: &crate::app_theme::AppThemeColors,
     keybinds: &Keybinds,
     pending: Option<&str>,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let aspect = area.width as f64 / area.height as f64;
+    let mut canvas_area = area;
+    if flags.show_status_bar {
+        canvas_area.height = canvas_area.height.saturating_sub(1);
+    }
+    let aspect = canvas_area.width as f64 / canvas_area.height as f64;
     let viewport = &state.viewport;
     let colors = config.theme_colors();
     let graph = state.simulation.get_graph();
@@ -528,21 +703,39 @@ pub fn draw_graph_view(
         cache.rebuild_topology(graph, config, &colors, flags.show_legend);
     }
 
-    cache.fill_edges(graph, config, colors.edge_color);
-    cache.fill_nodes(
+    // Compute hovered node from mouse_pos
+    let hovered_node = mouse_pos.and_then(|(col, row)| {
+        let (wx, wy) = viewport.screen_to_world(col, row, canvas_area);
+        viewport.hit_test(wx, wy, state)
+    });
+
+    let x_bounds = viewport.x_bounds(aspect);
+    let y_bounds = viewport.y_bounds(aspect);
+
+    let tier = cache.fill_nodes(
         graph,
         config,
         state.selected_node,
         colors.selected_indicator_color,
+        hovered_node,
+        &state.spatial_grid,
+        x_bounds,
+        y_bounds,
     );
-    cache.fill_labels(graph, config, state.selected_node);
-
-    let edges = cache.edges.clone();
-    let nodes = cache.nodes.clone();
-    let labels = cache.labels.clone();
-
-    let x_bounds = viewport.x_bounds(aspect);
-    let y_bounds = viewport.y_bounds(aspect);
+    cache.fill_edges(graph, config, colors.edge_color, tier);
+    let cell_world_height =
+        (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
+    cache.fill_labels(
+        graph,
+        config,
+        state.selected_node,
+        cell_world_height * 1.5,
+        tier,
+    );
+    let edges_ref = &cache.edges;
+    let nodes_ref = &cache.nodes;
+    let labels_ref = &cache.labels;
+    let label_texts_ref = &cache.label_texts;
 
     let block = ratatui::widgets::Block::default().style(
         ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)),
@@ -566,20 +759,22 @@ pub fn draw_graph_view(
                     config.graf.visual.grid_divisions,
                 );
             }
-            ctx.draw(&GraphEdgesShape { edges: &edges });
+            ctx.draw(&GraphEdgesShape { edges: edges_ref });
             ctx.layer();
-            ctx.draw(&GraphNodesShape { nodes: &nodes });
+            ctx.draw(&GraphNodesShape { nodes: nodes_ref });
             ctx.layer();
-            for label in &labels {
-                let span = ratatui::text::Span::styled(
-                    label.text.clone(),
-                    ratatui::style::Style::default().fg(colors.label_color),
-                );
-                ctx.print(label.x, label.y, span);
+            for label in labels_ref {
+                if let Some(text) = label_texts_ref.get(&label.node_idx) {
+                    let span = ratatui::text::Span::styled(
+                        text.clone(),
+                        ratatui::style::Style::default().fg(colors.label_color),
+                    );
+                    ctx.print(label.x, label.y, span);
+                }
             }
         });
 
-    frame.render_widget(canvas, area);
+    frame.render_widget(canvas, canvas_area);
 
     if flags.show_legend
         && let Some(ref items) = cache.legend_data
@@ -592,15 +787,18 @@ pub fn draw_graph_view(
         let legend_width = (max_len + 4) as u16;
         let legend_height = (items.len() as u16).min(10) + 2;
         let (legend_x, legend_y) = match LegendPosition::BottomRight {
-            LegendPosition::TopLeft => (area.x, area.y),
-            LegendPosition::TopRight => (area.x + area.width.saturating_sub(legend_width), area.y),
+            LegendPosition::TopLeft => (canvas_area.x, canvas_area.y),
+            LegendPosition::TopRight => (
+                canvas_area.x + canvas_area.width.saturating_sub(legend_width),
+                canvas_area.y,
+            ),
             LegendPosition::BottomLeft => (
-                area.x,
-                area.y + area.height.saturating_sub(legend_height + 1),
+                canvas_area.x,
+                canvas_area.y + canvas_area.height.saturating_sub(legend_height + 1),
             ),
             LegendPosition::BottomRight => (
-                area.x + area.width.saturating_sub(legend_width),
-                area.y + area.height.saturating_sub(legend_height + 1),
+                canvas_area.x + canvas_area.width.saturating_sub(legend_width),
+                canvas_area.y + canvas_area.height.saturating_sub(legend_height + 1),
             ),
         };
         let legend_area =
@@ -652,22 +850,37 @@ pub fn draw_graph_view(
             ),
             (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
             (keybinds.display_graph(GraphAction::AutoFit), "fit"),
-            (keybinds.display_graph(GraphAction::Quit), "quit"),
+            (keybinds.graph_keys_display(GraphAction::Quit), "quit"),
+            (
+                format!("F1/{}", keybinds.graph_keys_display(GraphAction::Help)),
+                "help",
+            ),
+            ("F2".to_string(), "keybinds"),
         ];
         let hint_line = crate::ui::format_keybind_hints(app_theme, &hints_items);
-        crate::ui::draw_status_bar(
-            frame,
-            status_area,
-            app_theme,
-            None,
-            hint_line,
-            None,
-            pending,
-        );
+        let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
+        ctx.area = Some(status_area);
+        ctx.graph = Some(state);
+        ctx.hints = Some(hint_line.spans);
+        if let Some(p) = pending {
+            ctx.pending = Some(vec![Span::styled(
+                format!("{} ", p),
+                Style::default()
+                    .fg(app_theme.highlight_fg)
+                    .bg(app_theme.accent),
+            )]);
+        }
+
+        let (left_line, right_line) =
+            crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Graph, app_theme);
+        crate::ui::draw_status_bar(frame, status_area, app_theme, left_line, right_line);
     }
 
     if flags.show_minimap {
-        let minimap_area = compute_minimap_area(area, config);
+        let minimap_area = compute_minimap_area(canvas_area, config);
+
+        // Mark dirty when physics is active (positions may change)
+        cache.minimap_dirty = cache.minimap_dirty || !state.is_settled;
 
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(
@@ -681,57 +894,13 @@ pub fn draw_graph_view(
                 colors: &colors,
             },
             &mut minimap_grid,
+            cache.minimap_dirty,
         );
 
         cache.minimap_grid = minimap_grid;
+        cache.minimap_dirty = false;
     }
 }
-
-pub fn compute_status_string(state: &GraphState, area: Rect) -> String {
-    let aspect = area.width as f64 / area.height as f64;
-    let viewport = &state.viewport;
-    let graph = state.simulation.get_graph();
-
-    let x_bounds = viewport.x_bounds(aspect);
-    let y_bounds = viewport.y_bounds(aspect);
-
-    let node_count = graph.node_count();
-    let edge_count = graph.edge_count();
-
-    let selected_info = state
-        .selected_node
-        .and_then(|idx| graph.node_weight(idx))
-        .map(|n| n.data.title.clone());
-
-    let (viewport_size_pct, viewport_ratio) = {
-        let (gx_min, gx_max, gy_min, gy_max) = state.graph_bounds;
-        let graph_w = gx_max - gx_min;
-        let graph_h = gy_max - gy_min;
-        let vp_w = x_bounds[1] - x_bounds[0];
-        let vp_h = y_bounds[1] - y_bounds[0];
-        let graph_area = graph_w * graph_h;
-        let vp_area = vp_w * vp_h;
-        let size_pct = if graph_area > 0.0 {
-            (vp_area / graph_area * 100.0).clamp(0.0, 100.0)
-        } else {
-            100.0
-        };
-        let range = graph_w.max(graph_h).max(1.0) * 1.4;
-        let full_zoom = 200.0 / range;
-        let ratio = viewport.zoom / full_zoom;
-        (size_pct, ratio)
-    };
-
-    format!(
-        "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x   ",
-        node_count,
-        edge_count,
-        selected_info.as_deref().unwrap_or("none"),
-        viewport_size_pct.clamp(0.0, 100.0),
-        viewport_ratio
-    )
-}
-
 fn draw_grid(
     ctx: &mut ratatui::widgets::canvas::Context,
     x: [f64; 2],
@@ -821,12 +990,12 @@ struct MinimapParams<'a> {
     node_colors: &'a HashMap<NodeIndex, Color>,
     colors: &'a crate::config::ThemeColors,
 }
-
 fn draw_minimap(
     frame: &mut ratatui::Frame,
     area: Rect,
     params: MinimapParams<'_>,
     grid: &mut Vec<Option<Color>>,
+    dirty: bool,
 ) {
     let (wx_min, wx_max, wy_min, wy_max) = params.graph_bounds;
     let aspect = area.width as f64 / area.height as f64;
@@ -872,18 +1041,21 @@ fn draw_minimap(
         row.clamp(0, (ih as isize) - 1) as usize
     };
 
+    // Only rebuild the pixel grid when dirty (physics changed positions)
     let grid_size = sub_h * iw;
-    grid.resize(grid_size, None);
-    grid.fill(None);
+    if dirty || grid.len() != grid_size {
+        grid.resize(grid_size, None);
+        grid.fill(None);
 
-    for idx in params.graph.node_indices() {
-        let node = &params.graph[idx];
-        let nx = node.location.x as f64;
-        let ny = node.location.y as f64;
-        let col = world_to_col(nx);
-        let sub_row = world_to_subrow(ny);
-        let color = params.node_colors.get(&idx).copied().unwrap_or(Color::Gray);
-        grid[sub_row * iw + col] = Some(color);
+        for idx in params.graph.node_indices() {
+            let node = &params.graph[idx];
+            let nx = node.location.x as f64;
+            let ny = node.location.y as f64;
+            let col = world_to_col(nx);
+            let sub_row = world_to_subrow(ny);
+            let color = params.node_colors.get(&idx).copied().unwrap_or(Color::Gray);
+            grid[sub_row * iw + col] = Some(color);
+        }
     }
 
     let buf = frame.buffer_mut();
@@ -991,5 +1163,163 @@ fn draw_minimap(
             cell.set_symbol(sym);
             cell.set_style(vp_style);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ClinConfig;
+    use crate::graf::graph::GraphNodeData;
+    use crate::graf::spatial::SpatialGrid;
+    use fdg_sim::{ForceGraph, ForceGraphHelper};
+
+    fn setup_spatial_grid(graph: &ForceGraph<GraphNodeData, ()>) -> SpatialGrid {
+        let mut grid = SpatialGrid::new(100.0);
+        grid.rebuild(graph);
+        grid
+    }
+
+    // Generous bounds covering all nodes in test graphs
+    const TEST_X_BOUNDS: [f64; 2] = [-1000.0, 1000.0];
+    const TEST_Y_BOUNDS: [f64; 2] = [-1000.0, 1000.0];
+
+    #[test]
+    fn test_fill_labels() {
+        let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
+
+        let n1_data = GraphNodeData {
+            note_id: "1".to_string(),
+            title: "Node 1".to_string(),
+            tags: vec![],
+            link_count: 0,
+            folder: "".to_string(),
+        };
+        let n2_data = GraphNodeData {
+            note_id: "2".to_string(),
+            title: "Node 2".to_string(),
+            tags: vec![],
+            link_count: 0,
+            folder: "".to_string(),
+        };
+        let n3_data = GraphNodeData {
+            note_id: "3".to_string(),
+            title: "Node 3".to_string(),
+            tags: vec![],
+            link_count: 0,
+            folder: "".to_string(),
+        };
+
+        let idx1 = graph.add_force_node("Node 1", n1_data);
+        let idx2 = graph.add_force_node("Node 2", n2_data);
+        let _idx3 = graph.add_force_node("Node 3", n3_data);
+
+        // Add edge: idx1 - idx2 (idx3 is isolated)
+        graph.add_edge(idx1, idx2, ());
+
+        let mut cache = RenderCache::new();
+        let mut config = ClinConfig::default();
+        let grid = setup_spatial_grid(&graph);
+
+        // 1. LabelMode::None
+        config.graf.visual.label_mode = crate::config::LabelMode::None;
+        let _tier = cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        assert!(cache.labels.is_empty());
+
+        // 2. LabelMode::All
+        config.graf.visual.label_mode = crate::config::LabelMode::All;
+        let _tier = cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        assert_eq!(cache.labels.len(), 3);
+
+        // 3. LabelMode::Selected
+        config.graf.visual.label_mode = crate::config::LabelMode::Selected;
+        let _tier = cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        assert_eq!(cache.labels.len(), 1);
+        assert_eq!(
+            cache.label_texts.get(&cache.labels[0].node_idx).unwrap(),
+            "Node 1"
+        );
+
+        // 4. LabelMode::Neighbors
+        config.graf.visual.label_mode = crate::config::LabelMode::Neighbors;
+        let _tier = cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        // Node 1 (selected) and Node 2 (neighbor) should have labels. Node 3 (distant) should not.
+        assert_eq!(cache.labels.len(), 2);
+        let mut names: Vec<String> = cache
+            .labels
+            .iter()
+            .map(|l| cache.label_texts.get(&l.node_idx).unwrap().clone())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["Node 1".to_string(), "Node 2".to_string()]);
+
+        // 5. Test min_offset_y parameter
+        let _tier = cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
+        );
+        config.graf.visual.label_mode = crate::config::LabelMode::Selected;
+        cache.fill_labels(&graph, &config, Some(idx1), 10.0, _tier);
+        assert_eq!(cache.labels.len(), 1);
+        let label = &cache.labels[0];
+        let node_y = graph[idx1].location.y as f64;
+        let radius = cache
+            .nodes
+            .get(idx1.index())
+            .map(|n| n.radius)
+            .unwrap_or(2.0);
+        // The default label_offset is 4.0, but min_offset_y is 10.0. The actual offset should be 10.0.
+        assert_eq!(label.y, node_y + radius + 10.0);
+
+        cache.fill_labels(&graph, &config, Some(idx1), 1.0, _tier);
+        let label = &cache.labels[0];
+        // The default label_offset is 4.0, which is larger than min_offset_y of 1.0. The actual offset should be 4.0.
+        assert_eq!(label.y, node_y + radius + 4.0);
     }
 }

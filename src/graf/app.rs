@@ -1,4 +1,43 @@
-use anyhow::Context;
+#[derive(Default)]
+struct CanvasFpsSampler {
+    window_started_at: Option<std::time::Instant>,
+    frames_in_window: u32,
+    published_fps: Option<f64>,
+}
+
+impl CanvasFpsSampler {
+    fn record_frame(&mut self, now: std::time::Instant) {
+        match self.window_started_at {
+            None => {
+                self.window_started_at = Some(now);
+                self.frames_in_window = 0;
+            }
+            Some(start) => {
+                self.frames_in_window += 1;
+                let elapsed = now.duration_since(start);
+                if elapsed >= std::time::Duration::from_millis(500) {
+                    let elapsed_secs = elapsed.as_secs_f64();
+                    if elapsed_secs > 0.0 {
+                        self.published_fps = Some(self.frames_in_window as f64 / elapsed_secs);
+                    }
+                    self.window_started_at = Some(now);
+                    self.frames_in_window = 0;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PreviewRequestKey {
+    note_id: String,
+    width: u16,
+    height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+}
+
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -18,12 +57,9 @@ pub struct GrafAppState {
     pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
     pub graph_mouse_state: GraphMouseState,
     pub storage: Storage,
+    pub notes: Vec<crate::storage::NoteSummary>,
     pub config_errors: Vec<String>,
-    pub search_active: bool,
-    pub search_query: String,
-    pub search_results: Vec<(NodeIndex, String)>,
-    pub search_selected: usize,
-    pub search_cursor: usize,
+    pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
     pub show_legend: bool,
     pub show_grid: bool,
@@ -33,9 +69,19 @@ pub struct GrafAppState {
     pub preview_enabled: bool,
     pub preview_content: Option<PreviewContent>,
     pub preview_note_id: Option<String>,
+    pub last_preview_pane_width: u16,
+    pub last_preview_pane_height: u16,
+    pub preview_scale: f64,
+    preview_request_key: Option<PreviewRequestKey>,
+    pub pending_markdown_resize: Option<(u16, std::time::Instant)>,
     pub app_theme: crate::app_theme::AppThemeColors,
+    pub preview_offset_x: f64,
+    pub preview_offset_y: f64,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
+    pub mouse_pos: Option<(u16, u16)>,
+    pub preview_drag_last_pos: Option<(u16, u16)>,
+    canvas_fps_sampler: CanvasFpsSampler,
 }
 
 impl Drop for GrafAppState {
@@ -48,27 +94,24 @@ impl GrafAppState {
     pub fn new(
         config: &ClinConfig,
         storage: Storage,
+        summaries: Vec<crate::storage::NoteSummary>,
         config_errors: Vec<String>,
         keybinds: Keybinds,
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> anyhow::Result<Self> {
-        let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
+        let graph_state = crate::graf::graph::GraphState::new(&summaries, config)?;
         let state = Arc::new(RwLock::new(graph_state));
-        let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-        crate::graf::physics::start_physics(state.clone(), config, kill_rx);
+        let graph_kill_tx = crate::graf::physics::start_physics(state.clone(), config);
 
         Ok(Self {
             graph_state: Some(state),
-            graph_kill_tx: Some(kill_tx),
+            graph_kill_tx,
             graph_mouse_state: GraphMouseState::default(),
             storage,
+            notes: summaries,
 
             config_errors,
-            search_active: false,
-            search_query: String::new(),
-            search_results: Vec::new(),
-            search_selected: 0,
-            search_cursor: 0,
+            search_popup: None,
             show_minimap: config.graf.visual.show_minimap,
             show_legend: config.graf.visual.show_legend,
             show_grid: config.graf.visual.show_grid,
@@ -78,24 +121,40 @@ impl GrafAppState {
             preview_enabled: config.graf.preview_enabled,
             preview_content: None,
             preview_note_id: None,
-            app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
+            last_preview_pane_width: 0,
+            last_preview_pane_height: 0,
+            preview_scale: 1.0,
+            preview_offset_x: 0.0,
+            preview_offset_y: 0.0,
+            preview_request_key: None,
+            pending_markdown_resize: None,
+            app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui, &mut Vec::new()),
             keybinds,
             seq_matcher,
+            preview_drag_last_pos: None,
+            mouse_pos: None,
+            canvas_fps_sampler: CanvasFpsSampler::default(),
         })
+    }
+
+    pub fn canvas_fps(&self) -> Option<f64> {
+        self.canvas_fps_sampler.published_fps
+    }
+
+    pub fn record_frame(&mut self, now: std::time::Instant) {
+        self.canvas_fps_sampler.record_frame(now);
     }
 
     pub fn refresh_simulation(&mut self, config: &ClinConfig) {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
-        if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.storage, config) {
+        if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.notes, config) {
             let state = Arc::new(RwLock::new(graph_state));
-            let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-            crate::graf::physics::start_physics(state.clone(), config, kill_rx);
+            let graph_kill_tx = crate::graf::physics::start_physics(state.clone(), config);
             self.graph_state = Some(state);
-            self.graph_kill_tx = Some(kill_tx);
-            self.search_results.clear();
-            self.search_selected = 0;
+            self.graph_kill_tx = graph_kill_tx;
+            self.search_popup = None;
         }
     }
 
@@ -106,27 +165,28 @@ impl GrafAppState {
         self.graph_state = None;
     }
 
-    pub fn poll_renderers(&mut self) -> bool {
-        if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content {
-            if renderer.poll() {
-                if !renderer.pages_built() {
-                    let visible = 34u16;
-                    renderer.build_pages(visible, self.app_theme.preview_bg());
-                }
-                true
-            } else {
-                false
-            }
-        } else {
-            false
+    pub fn poll_renderers(&mut self, config: &ClinConfig) -> bool {
+        let mut updated = false;
+
+        if let Some((_, inst)) = self.pending_markdown_resize
+            && inst.elapsed() >= std::time::Duration::from_millis(50)
+        {
+            self.pending_markdown_resize = None;
+            self.update_preview(config, None);
+            updated = true;
         }
+
+        if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content
+            && renderer.poll()
+        {
+            updated = true;
+        }
+
+        updated
     }
 
-    pub fn sync_preview(&mut self, config: &ClinConfig) {
-        if !self.preview_enabled {
-            return;
-        }
-        let selected_note_id = if let Some(gs) = &self.graph_state {
+    fn build_preview_key(&self) -> Option<PreviewRequestKey> {
+        let note_id = if let Some(gs) = &self.graph_state {
             let guard = gs.read();
             if let Some(idx) = guard.selected_node {
                 guard
@@ -139,28 +199,63 @@ impl GrafAppState {
             }
         } else {
             None
+        }?;
+
+        let is_draw = note_id.ends_with(".draw");
+        let is_canvas = note_id.ends_with(".canvas");
+        let width = if is_draw || is_canvas {
+            self.last_preview_pane_width
+        } else {
+            self.last_preview_pane_width.saturating_sub(2).max(40)
         };
 
-        if selected_note_id != self.preview_note_id {
-            self.preview_note_id = selected_note_id;
-            self.update_preview(config);
+        Some(PreviewRequestKey {
+            note_id,
+            width,
+            height: self.last_preview_pane_height,
+            scale: self.preview_scale,
+            offset_x: self.preview_offset_x,
+            offset_y: self.preview_offset_y,
+        })
+    }
+
+    pub fn sync_preview(&mut self, config: &ClinConfig) {
+        if !self.preview_enabled {
+            self.preview_content = None;
+            self.preview_note_id = None;
+            self.preview_request_key = None;
+            return;
+        }
+
+        let new_key = self.build_preview_key();
+
+        if new_key.is_none() {
+            self.preview_content = None;
+            self.preview_note_id = None;
+            self.preview_request_key = None;
+            return;
+        }
+
+        if new_key != self.preview_request_key {
+            let Some(key) = new_key else {
+                return;
+            };
+            let old_width = self.preview_request_key.as_ref().map(|k| k.width);
+            self.preview_note_id = Some(key.note_id.clone());
+            self.preview_request_key = Some(key);
+            self.update_preview(config, old_width);
         }
     }
 
-    pub fn update_preview(&mut self, config: &ClinConfig) {
-        if !self.preview_enabled {
-            self.preview_content = None;
-            return;
-        }
-
-        let Some(id) = self.preview_note_id.clone() else {
+    pub fn update_preview(&mut self, config: &ClinConfig, old_width: Option<u16>) {
+        let Some(key) = self.preview_request_key.clone() else {
             self.preview_content = None;
             return;
         };
 
-        let is_draw = id.ends_with(".draw");
-        let is_canvas = id.ends_with(".canvas");
-        let is_clin = id.ends_with(".clin");
+        let is_draw = key.note_id.ends_with(".draw");
+        let is_canvas = key.note_id.ends_with(".canvas");
+        let is_clin = key.note_id.ends_with(".clin");
 
         if config.list.preview_encryption && is_clin {
             self.preview_content = None;
@@ -168,14 +263,25 @@ impl GrafAppState {
         }
 
         if is_draw {
-            let path = self.storage.note_path(&id);
+            let path = self.storage.note_path(&key.note_id);
             match std::fs::read_to_string(path) {
                 Ok(content) => {
                     match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
                         Ok(data) => {
-                            let grid =
-                                crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
-                            self.preview_content = Some(PreviewContent::DrawGrid(grid));
+                            let grid = crate::snapshot::render_draw_snapshot_with_size(
+                                &data,
+                                &self.app_theme,
+                                config.ui.icon_mode,
+                                key.width,
+                                key.height,
+                                key.scale,
+                                key.offset_x,
+                                key.offset_y,
+                            );
+                            self.preview_content = Some(PreviewContent::DrawGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -190,14 +296,25 @@ impl GrafAppState {
         }
 
         if is_canvas {
-            let path = self.storage.note_path(&id);
+            let path = self.storage.note_path(&key.note_id);
             match std::fs::read_to_string(path) {
                 Ok(content) => {
                     match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
                         Ok(data) => {
-                            let grid =
-                                crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
-                            self.preview_content = Some(PreviewContent::CanvasGrid(grid));
+                            let grid = crate::snapshot::render_canvas_snapshot(
+                                &data,
+                                &self.app_theme,
+                                config.ui.icon_mode,
+                                key.width,
+                                key.height,
+                                key.scale,
+                                key.offset_x,
+                                key.offset_y,
+                            );
+                            self.preview_content = Some(PreviewContent::CanvasGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -211,11 +328,43 @@ impl GrafAppState {
             return;
         }
 
-        if let Ok(note) = self.storage.load_note(&id) {
-            let width = 80u16.saturating_sub(2).max(40);
-            let mut renderer = MarkdownRenderer::new(width);
+        if let Ok(note) = self.storage.load_note(&key.note_id) {
+            let mut renderer = match self.preview_content.take() {
+                Some(PreviewContent::Markdown(r)) => *r,
+                _ => MarkdownRenderer::new(),
+            };
             let opts = crate::markdown::MdRenderOpts::from_config(config);
-            renderer.render_with(&note.content, width, &self.app_theme, &opts);
+            let height = key.height;
+            let viewport = crate::markdown::RenderViewport {
+                start: renderer.visible_start(),
+                height: height as usize,
+            };
+
+            let content_changed = renderer.is_changed(&note.content, &self.app_theme, &opts);
+            let mut should_render = false;
+            if content_changed || renderer.document().is_none() {
+                should_render = true;
+            } else if let Some(old_w) = old_width {
+                if old_w == key.width {
+                    renderer.set_viewport(viewport.start, viewport.height);
+                } else {
+                    let now = std::time::Instant::now();
+                    if let Some((w, _)) = self.pending_markdown_resize {
+                        if w != key.width {
+                            self.pending_markdown_resize = Some((key.width, now));
+                        }
+                    } else {
+                        self.pending_markdown_resize = Some((key.width, now));
+                    }
+                }
+            } else {
+                should_render = true;
+            }
+
+            if should_render {
+                renderer.render_with(&note.content, key.width, &self.app_theme, &opts, viewport);
+                self.pending_markdown_resize = None;
+            }
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
         } else {
             self.preview_content = None;
@@ -232,7 +381,7 @@ pub enum EventAction {
 impl GrafAppState {
     pub fn overlay_update(&mut self, config: &mut crate::config::ClinConfig) {
         self.sync_preview(config);
-        let _ = self.poll_renderers();
+        let _ = self.poll_renderers(config);
     }
 }
 
@@ -241,28 +390,19 @@ impl crate::overlay::OverlayView for GrafAppState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        theme: &crate::app_theme::AppThemeColors,
-        config: &crate::config::ClinConfig,
-        app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
-        let outer = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([
-                ratatui::layout::Constraint::Length(1),
-                ratatui::layout::Constraint::Min(0),
-            ])
-            .split(area);
-        crate::graf::ui::draw_ui(frame, self, config, outer[1], outer[0], theme, app_status);
+        crate::graf::ui::draw_ui(frame, self, &app.config, area, &app.app_theme);
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
-        terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
+        app: &mut crate::app::App,
+        term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, config, &keybinds, terminal)? {
+        if let Some(action) = handle_event(event, self, &app.config, &keybinds, term_area)? {
             match action {
                 EventAction::Quit => {
                     self.shutdown();
@@ -288,11 +428,11 @@ fn handle_event(
     app_state: &mut GrafAppState,
     config: &crate::config::ClinConfig,
     keybinds: &Keybinds,
-    terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+    term_area: ratatui::layout::Rect,
 ) -> anyhow::Result<Option<EventAction>> {
     match ev {
         crossterm::event::Event::Key(key) => {
-            if app_state.search_active {
+            if app_state.search_popup.is_some() {
                 app_state.seq_matcher.clear();
                 handle_search_keys(app_state, key, config, keybinds);
                 return Ok(None);
@@ -321,7 +461,6 @@ fn handle_event(
                     _ => {}
                 }
             }
-
             if let Some(graph_state) = &app_state.graph_state
                 && let Some(action) = crate::graf::input::handle_graph_keys(
                     graph_state,
@@ -338,7 +477,10 @@ fn handle_event(
                         return Ok(Some(EventAction::OpenHelp));
                     }
                     GraphInputAction::ToggleSearch => {
-                        app_state.search_active = true;
+                        app_state.search_popup = Some(crate::ui::quick_search::QuickSearch::new(
+                            "Search",
+                            &app_state.app_theme,
+                        ));
                         return Ok(None);
                     }
                     GraphInputAction::ToggleMinimap => {
@@ -374,6 +516,7 @@ fn handle_event(
                         } else {
                             app_state.preview_content = None;
                             app_state.preview_note_id = None;
+                            app_state.preview_request_key = None;
                         }
                         return Ok(None);
                     }
@@ -382,12 +525,63 @@ fn handle_event(
             Ok(None)
         }
         crossterm::event::Event::Mouse(mouse_event) => {
-            if app_state.search_active {
+            app_state.mouse_pos = Some((mouse_event.column, mouse_event.row));
+            if let Some(graph_state) = &app_state.graph_state {
+                graph_state.write().mouse_pos = Some((mouse_event.column, mouse_event.row));
+            }
+            if let Some(popup) = &mut app_state.search_popup {
+                let max_visible = config.graf.search.max_visible;
+                let full_area = term_area;
+                let outer = ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Vertical)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(1),
+                        ratatui::layout::Constraint::Min(0),
+                    ])
+                    .split(full_area);
+                let content_area = outer[1];
+                if let Some(action) = crate::ui::quick_search::handle_quick_search_mouse(
+                    popup,
+                    mouse_event,
+                    content_area,
+                    max_visible,
+                    config.ui.icon_mode,
+                ) {
+                    match action {
+                        crate::ui::quick_search::QuickSearchAction::Submit => {
+                            if let Some(&(idx, _)) = popup.results.get(popup.selected) {
+                                let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
+                                    let guard = graph_state.read();
+                                    let graph = guard.simulation.get_graph();
+                                    if let Some(node) = graph.node_weight(idx) {
+                                        (node.location.x as f64, node.location.y as f64)
+                                    } else {
+                                        (0.0, 0.0)
+                                    }
+                                } else {
+                                    (0.0, 0.0)
+                                };
+                                if let Some(graph_state) = &app_state.graph_state {
+                                    let mut guard = graph_state.write();
+                                    guard.selected_node = Some(idx);
+                                    guard.viewport.center_on_node(nx as f32, ny as f32);
+                                }
+                            }
+                            app_state.search_popup = None;
+                        }
+                        crate::ui::quick_search::QuickSearchAction::Cancel => {
+                            app_state.search_popup = None;
+                        }
+                        crate::ui::quick_search::QuickSearchAction::Edited => {
+                            run_search(app_state, config);
+                        }
+                        crate::ui::quick_search::QuickSearchAction::Navigated => {}
+                    }
+                }
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
-                let size = terminal.size().context("failed to get terminal size")?;
-                let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let full_area = term_area;
                 let outer = ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([
@@ -449,22 +643,18 @@ fn handle_search_keys(
     config: &crate::config::ClinConfig,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    use crossterm::event::{KeyCode, KeyModifiers};
-
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-
-    if crate::events::is_cancel_popup(keybinds, &key, true) {
-        app_state.search_active = false;
-        app_state.search_query.clear();
-        app_state.search_results.clear();
-        app_state.search_selected = 0;
-        app_state.search_cursor = 0;
-        return;
-    }
-    match key.code {
-        KeyCode::Enter => {
-            if let Some(&(idx, _)) = app_state.search_results.get(app_state.search_selected) {
+    let popup = match &mut app_state.search_popup {
+        Some(popup) => popup,
+        None => return,
+    };
+    match crate::ui::quick_search::handle_quick_search_keys(
+        popup,
+        key,
+        keybinds,
+        config.graf.search.max_visible,
+    ) {
+        crate::ui::quick_search::QuickSearchAction::Submit => {
+            if let Some(&(idx, _)) = popup.results.get(popup.selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
                     let guard = graph_state.read();
                     let graph = guard.simulation.get_graph();
@@ -482,144 +672,159 @@ fn handle_search_keys(
                     guard.viewport.center_on_node(nx as f32, ny as f32);
                 }
             }
-            app_state.search_active = false;
-            app_state.search_query.clear();
-            app_state.search_results.clear();
-            app_state.search_selected = 0;
-            app_state.search_cursor = 0;
+            app_state.search_popup = None;
         }
-        KeyCode::Up => {
-            if app_state.search_selected > 0 {
-                app_state.search_selected -= 1;
-            }
+        crate::ui::quick_search::QuickSearchAction::Cancel => {
+            app_state.search_popup = None;
         }
-        KeyCode::Down => {
-            if !app_state.search_results.is_empty()
-                && app_state.search_selected < app_state.search_results.len() - 1
-            {
-                app_state.search_selected += 1;
-            }
-        }
-        KeyCode::BackTab | KeyCode::Tab if shift => {
-            if !app_state.search_results.is_empty() {
-                app_state.search_selected = app_state
-                    .search_selected
-                    .checked_sub(1)
-                    .unwrap_or(app_state.search_results.len() - 1);
-            }
-        }
-        KeyCode::Tab => {
-            if !app_state.search_results.is_empty() {
-                app_state.search_selected =
-                    (app_state.search_selected + 1) % app_state.search_results.len();
-            }
-        }
-        KeyCode::Backspace => {
-            if app_state.search_cursor > 0 {
-                let prev = app_state.search_query[..app_state.search_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                app_state
-                    .search_query
-                    .replace_range(prev..app_state.search_cursor, "");
-                app_state.search_cursor = prev;
-                run_search(app_state, config);
-            }
-        }
-        KeyCode::Delete => {
-            if app_state.search_cursor < app_state.search_query.len() {
-                let next = app_state.search_query[app_state.search_cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| app_state.search_cursor + i)
-                    .unwrap_or(app_state.search_query.len());
-                app_state
-                    .search_query
-                    .replace_range(app_state.search_cursor..next, "");
-                run_search(app_state, config);
-            }
-        }
-        KeyCode::Left => {
-            if app_state.search_cursor > 0 {
-                app_state.search_cursor = app_state.search_query[..app_state.search_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-            }
-        }
-        KeyCode::Right => {
-            if app_state.search_cursor < app_state.search_query.len() {
-                app_state.search_cursor = app_state.search_query[app_state.search_cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| app_state.search_cursor + i)
-                    .unwrap_or(app_state.search_query.len());
-            }
-        }
-        KeyCode::Home => {
-            app_state.search_cursor = 0;
-        }
-        KeyCode::End => {
-            app_state.search_cursor = app_state.search_query.len();
-        }
-        KeyCode::Char('h') if ctrl => {
-            delete_word_back(app_state);
+        crate::ui::quick_search::QuickSearchAction::Edited => {
             run_search(app_state, config);
-        }
-        KeyCode::Char('w') if ctrl => {
-            delete_word_back(app_state);
-            run_search(app_state, config);
-        }
-        KeyCode::Char('u') if ctrl => {
-            app_state.search_query.clear();
-            app_state.search_cursor = 0;
-            run_search(app_state, config);
-        }
-        KeyCode::Char('a') if ctrl => {
-            app_state.search_cursor = 0;
-        }
-        KeyCode::Char('e') if ctrl => {
-            app_state.search_cursor = app_state.search_query.len();
-        }
-        KeyCode::Char(c) if !ctrl => {
-            const MAX_SEARCH_LEN: usize = 256;
-            if app_state.search_query.len() < MAX_SEARCH_LEN {
-                app_state.search_query.insert(app_state.search_cursor, c);
-                app_state.search_cursor += c.len_utf8();
-                run_search(app_state, config);
-            }
         }
         _ => {}
     }
 }
 
-fn delete_word_back(app_state: &mut GrafAppState) {
-    if app_state.search_cursor == 0 {
-        return;
-    }
-    let query = &app_state.search_query[..app_state.search_cursor];
-    let trimmed = query.trim_end_matches(|c: char| c.is_whitespace());
-    let cut_to = trimmed
-        .rfind(|c: char| c.is_whitespace())
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    app_state
-        .search_query
-        .replace_range(cut_to..app_state.search_cursor, "");
-    app_state.search_cursor = cut_to;
-}
-
 fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) {
+    let popup = match &mut app_state.search_popup {
+        Some(popup) => popup,
+        None => return,
+    };
+    let query = popup.query();
     if let Some(graph_state) = &app_state.graph_state {
         let guard = graph_state.read();
-        app_state.search_results = crate::graf::graph::search_nodes(
+        popup.results = crate::graf::graph::search_nodes(
             &guard.simulation,
-            &app_state.search_query,
+            &query,
             config.graf.search.max_results,
         );
     }
-    app_state.search_selected = 0;
+    popup.selected = 0;
+    popup.scroll_offset = 0;
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn test_canvas_fps_sampler_deterministic() {
+        let mut sampler = CanvasFpsSampler::default();
+
+        let t0 = Instant::now();
+        sampler.record_frame(t0);
+        assert_eq!(sampler.published_fps, None);
+        assert_eq!(sampler.frames_in_window, 0);
+
+        let t1 = t0 + Duration::from_millis(100);
+        sampler.record_frame(t1);
+        let t2 = t0 + Duration::from_millis(200);
+        sampler.record_frame(t2);
+        let t3 = t0 + Duration::from_millis(300);
+        sampler.record_frame(t3);
+        let t4 = t0 + Duration::from_millis(400);
+        sampler.record_frame(t4);
+        assert_eq!(sampler.published_fps, None);
+        assert_eq!(sampler.frames_in_window, 4);
+
+        let t5 = t0 + Duration::from_millis(500);
+        sampler.record_frame(t5);
+        assert_eq!(sampler.published_fps, Some(10.0));
+        assert_eq!(sampler.frames_in_window, 0);
+        assert_eq!(sampler.window_started_at, Some(t5));
+
+        let t6 = t5 + Duration::from_millis(100);
+        sampler.record_frame(t6);
+        assert_eq!(sampler.published_fps, Some(10.0));
+        assert_eq!(sampler.frames_in_window, 1);
+    }
+
+    #[test]
+    fn test_sync_preview_request_key_identity() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let notes_dir = temp_dir.path().join("notes");
+        let config_dir = temp_dir.path().join("config");
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(notes_dir.join("a.md"), "content a").unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir,
+            notes_dir,
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        std::fs::create_dir_all(&storage.data_dir).unwrap();
+        std::fs::create_dir_all(&storage.templates_dir).unwrap();
+
+        let mut config = crate::config::ClinConfig::default();
+        config.graf.filter.show_orphan = true;
+        let keybinds = crate::keybinds::Keybinds::default();
+        let seq_matcher = crate::keybinds::KeyMatcher::new();
+
+        let mut app_state = GrafAppState::new(
+            &config,
+            storage,
+            vec![crate::storage::NoteSummary {
+                id: "a.md".to_string(),
+                title: "a".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            }],
+            vec![],
+            keybinds,
+            seq_matcher,
+        )
+        .unwrap();
+
+        let gs_ref = app_state.graph_state.as_ref().unwrap();
+        let node_idx = {
+            let guard = gs_ref.read();
+            guard.simulation.get_graph().node_indices().next().unwrap()
+        };
+
+        gs_ref.write().selected_node = Some(node_idx);
+        app_state.preview_enabled = true;
+        app_state.last_preview_pane_width = 100;
+        app_state.last_preview_pane_height = 40;
+
+        app_state.sync_preview(&config);
+        assert!(app_state.preview_request_key.is_some());
+        let original_key = app_state.preview_request_key.clone().unwrap();
+        assert_eq!(original_key.note_id, "a.md");
+        assert_eq!(original_key.width, 98);
+
+        app_state.sync_preview(&config);
+        assert_eq!(
+            app_state.preview_request_key.as_ref().unwrap(),
+            &original_key
+        );
+
+        app_state.last_preview_pane_width = 80;
+        app_state.sync_preview(&config);
+        let new_key = app_state.preview_request_key.clone().unwrap();
+        assert_ne!(new_key, original_key);
+        assert_eq!(new_key.width, 78);
+
+        let note_path = app_state.storage.note_path("a.md");
+        let _ = std::fs::remove_file(note_path);
+
+        app_state.last_preview_pane_width = 60;
+        app_state.sync_preview(&config);
+        assert!(app_state.preview_request_key.is_some());
+        assert!(app_state.preview_content.is_none());
+
+        let key_after_fail = app_state.preview_request_key.clone().unwrap();
+
+        app_state.sync_preview(&config);
+        assert_eq!(
+            app_state.preview_request_key.as_ref().unwrap(),
+            &key_after_fail
+        );
+    }
 }

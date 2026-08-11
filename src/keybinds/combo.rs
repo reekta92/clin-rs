@@ -17,22 +17,47 @@ pub struct KeyCombo {
 impl KeyStroke {
     /// Returns true if this single keystroke matches the given event.
     ///
-    /// Per crossterm conventions, uppercase `Char` keys are sent with
-    /// `KeyModifiers::NONE` — the capitalization itself signals that
-    /// shift was held.  We strip `SHIFT` from both sides when the
-    /// bound code is an uppercase letter, matching real terminal input.
+    /// Per crossterm conventions, uppercase `Char` keys can encode Shift in
+    /// the character itself. Match ASCII letters case-insensitively when
+    /// Shift is present, while preserving Shift for Ctrl+Shift shortcuts.
     pub fn matches_event(&self, event: &KeyEvent) -> bool {
-        if self.code != event.code {
+        // Canonicalize terminal-variant Ctrl+Backspace encodings.
+        let event_code = if event.modifiers.contains(KeyModifiers::CONTROL) {
+            match event.code {
+                KeyCode::Char('\x08') | KeyCode::Char('\x7f') => KeyCode::Backspace,
+                c => c,
+            }
+        } else {
+            event.code
+        };
+        let codes_match = self.code == event_code
+            || matches!(
+                (self.code, event_code),
+                (KeyCode::Char(a), KeyCode::Char(b))
+                    if a.is_ascii_alphabetic()
+                        && b.is_ascii_alphabetic()
+                        && a.eq_ignore_ascii_case(&b)
+                        && (event.modifiers.contains(KeyModifiers::SHIFT) || b.is_uppercase())
+            );
+        if !codes_match {
             return false;
         }
         let self_mods = match self.code {
             KeyCode::BackTab => self.modifiers & !KeyModifiers::SHIFT,
-            KeyCode::Char(c) if c.is_uppercase() => self.modifiers & !KeyModifiers::SHIFT,
+            KeyCode::Char(c)
+                if c.is_uppercase() && !self.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.modifiers & !KeyModifiers::SHIFT
+            }
             _ => self.modifiers,
         };
         let event_mods = match event.code {
             KeyCode::BackTab => event.modifiers & !KeyModifiers::SHIFT,
-            KeyCode::Char(c) if c.is_uppercase() => event.modifiers & !KeyModifiers::SHIFT,
+            KeyCode::Char(c)
+                if c.is_uppercase() && !event.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                event.modifiers & !KeyModifiers::SHIFT
+            }
             _ => event.modifiers,
         };
         self_mods == event_mods
@@ -110,8 +135,20 @@ impl KeyCombo {
                 }
             }
         }
-
-        let code = parse_key_code(key_part)?;
+        let mut code = parse_key_code(key_part)?;
+        // crossterm delivers Shift+<letter> as an uppercase Char whose SHIFT
+        // modifier is stripped by `matches_event` (capitalization signals
+        // shift). Canonicalize lowercase Char + SHIFT (sole modifier) to
+        // uppercase so a parsed "Shift+j" binding is byte-identical to the
+        // `KeyCombo::shift(KeyCode::Char('J'))` helper used by defaults and
+        // matches real terminal input. CTRL+SHIFT and other combos are left
+        // untouched to preserve existing `ctrl_shift(...)` helper semantics.
+        if modifiers == KeyModifiers::SHIFT
+            && let KeyCode::Char(c) = code
+            && c.is_ascii_lowercase()
+        {
+            code = KeyCode::Char(c.to_ascii_uppercase());
+        }
         Some(KeyStroke { code, modifiers })
     }
 
@@ -121,7 +158,11 @@ impl KeyCombo {
         if s.is_empty() {
             return None;
         }
-        let tokens: Vec<&str> = s.split_ascii_whitespace().collect();
+        // Trim whitespace around '+' within a single stroke so "Shift + j"
+        // collapses to "Shift+j" before whitespace is used to split multi-key
+        // sequences ("g g", "Ctrl+x Ctrl+s").
+        let collapsed: String = s.split('+').map(|p| p.trim()).collect::<Vec<_>>().join("+");
+        let tokens: Vec<&str> = collapsed.split_ascii_whitespace().collect();
         if tokens.is_empty() {
             return None;
         }
@@ -201,6 +242,15 @@ impl KeyCombo {
         }
     }
 
+    /// Persistence form: every sequence stroke is separated by one ASCII space.
+    pub(crate) fn to_config_string(&self) -> String {
+        self.keys
+            .iter()
+            .map(Self::stroke_to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// Legacy single-key fast-path match.
     /// Returns `true` if this is a length-1 combo whose key matches the event.
     /// Multi-key combos always return `false` here; use `KeyMatcher::resolve` for sequences.
@@ -272,5 +322,64 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
         KeyCode::Char(' ') => Cow::Borrowed("Space"),
         KeyCode::Char(c) => Cow::Owned(c.to_string()),
         _ => Cow::Borrowed("?"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    /// Ctrl+Backspace delivered as Char('\x08')+CONTROL should match Backspace+CONTROL.
+    #[test]
+    fn ctrl_backspace_via_0x08() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        let event = KeyEvent::new(KeyCode::Char('\x08'), KeyModifiers::CONTROL);
+        assert!(stroke.matches_event(&event));
+    }
+
+    /// Ctrl+Backspace delivered as Char('\x7f')+CONTROL should match Backspace+CONTROL.
+    #[test]
+    fn ctrl_backspace_via_0x7f() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        let event = KeyEvent::new(KeyCode::Char('\x7f'), KeyModifiers::CONTROL);
+        assert!(stroke.matches_event(&event));
+    }
+
+    /// Plain Char('\x08') without CONTROL must NOT match — normal typing of that char works.
+    #[test]
+    fn plain_0x08_does_not_match_backspace() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        let event = KeyEvent::new(KeyCode::Char('\x08'), KeyModifiers::NONE);
+        assert!(!stroke.matches_event(&event));
+    }
+
+    /// Plain Backspace (delete char) still works when no CONTROL modifier.
+    #[test]
+    fn plain_backspace_still_matches() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::NONE,
+        };
+        let event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+        assert!(stroke.matches_event(&event));
+    }
+
+    #[test]
+    fn config_string_round_trips_sequences() {
+        for value in ["g g", "g e", "d d", "g G", "Ctrl+x Ctrl+s"] {
+            let combo = KeyCombo::parse(value).unwrap();
+            assert_eq!(combo.to_config_string(), value);
+            assert_eq!(KeyCombo::parse(&combo.to_config_string()), Some(combo));
+        }
     }
 }

@@ -1,4 +1,6 @@
-use crate::backup::state::{BackupInputMode, BackupSection, BackupState, SettingsField};
+use crate::backup::state::{
+    BackupInputMode, BackupSection, BackupState, BackupTextField, SettingsField,
+};
 use crate::config::ClinConfig;
 use crate::keybinds::{BackupAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
@@ -99,7 +101,7 @@ fn handle_normal_input(
                         if state.selected_section == BackupSection::History {
                             if !state.commits.is_empty() {
                                 state.selected_commit_index = if state.selected_commit_index == 0 {
-                                    state.commits.len() - 1
+                                    state.commits.len().saturating_sub(1)
                                 } else {
                                     state.selected_commit_index - 1
                                 };
@@ -107,7 +109,7 @@ fn handle_normal_input(
                             }
                         } else if !state.selectable_files.is_empty() {
                             state.selected_index = if state.selected_index == 0 {
-                                state.selectable_files.len() - 1
+                                state.selectable_files.len().saturating_sub(1)
                             } else {
                                 state.selected_index - 1
                             };
@@ -121,9 +123,9 @@ fn handle_normal_input(
                     let n = count.unwrap_or(1) as usize;
                     for _ in 0..n {
                         state.diff_scroll = state.diff_scroll.saturating_add(10);
-                        let max = state
-                            .diff_lines
-                            .len()
+                        // +2 for the 2-line header (File:/Commit: line + blank)
+                        // rendered in draw_diff_pane ahead of diff_lines
+                        let max = (state.diff_lines.len() + 2)
                             .saturating_sub(state.last_diff_height as usize);
                         state.diff_scroll = state.diff_scroll.min(max as u16);
                     }
@@ -320,6 +322,64 @@ fn handle_settings_field_input(
     InputResult::None
 }
 
+fn handle_text_selection_mouse(
+    input: &mut TextArea<'static>,
+    input_area: Rect,
+    field: BackupTextField,
+    selection: &mut Option<(BackupTextField, crate::text_edit::MouseTextSelection)>,
+    event: MouseEvent,
+) -> (bool, Option<&'static str>) {
+    match event.kind {
+        MouseEventKind::Down(MouseButton::Left)
+            if crate::events::contains_cell(input_area, event.column, event.row) =>
+        {
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(input);
+            crate::events::move_textarea_cursor_to_mouse(
+                input,
+                input_area,
+                event.column,
+                event.row,
+                scroll_row,
+                scroll_col,
+            );
+            let mut lifecycle = crate::text_edit::MouseTextSelection::default();
+            lifecycle.begin(input);
+            *selection = Some((field, lifecycle));
+            (true, None)
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            let Some((active_field, lifecycle)) = selection.as_mut() else {
+                return (false, None);
+            };
+            if *active_field != field || !lifecycle.active {
+                return (false, None);
+            }
+            lifecycle.mark_drag();
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(input);
+            crate::events::move_textarea_cursor_to_mouse(
+                input,
+                input_area,
+                event.column,
+                event.row,
+                scroll_row,
+                scroll_col,
+            );
+            (true, None)
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            let Some((active_field, mut lifecycle)) = selection.take() else {
+                return (false, None);
+            };
+            if active_field != field {
+                *selection = Some((active_field, lifecycle));
+                return (false, None);
+            }
+            (true, lifecycle.finish(input))
+        }
+        _ => (false, None),
+    }
+}
+
 pub fn handle_mouse(
     state: &mut BackupState,
     event: MouseEvent,
@@ -330,16 +390,82 @@ pub fn handle_mouse(
     }
 
     if state.input_mode == BackupInputMode::EditCommitMessage
-        && let MouseEventKind::Down(MouseButton::Left) = event.kind
         && let Some(area) = state.last_area
     {
         let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area);
-        if !crate::events::contains_cell(popup_area, event.column, event.row) {
+        if event.kind == MouseEventKind::Down(MouseButton::Left)
+            && !crate::events::contains_cell(popup_area, event.column, event.row)
+        {
             state.input_mode = BackupInputMode::Normal;
+            state.mouse_selection = None;
+            return InputResult::None;
+        }
+
+        let content = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area)[0];
+        let textarea_area = ratatui::widgets::Block::default()
+            .borders(ratatui::widgets::Borders::ALL)
+            .inner(content)
+            .inner(ratatui::layout::Margin {
+                vertical: 0,
+                horizontal: 1,
+            });
+        let (handled, notice) = handle_text_selection_mouse(
+            &mut state.commit_textarea,
+            textarea_area,
+            BackupTextField::CommitMessage,
+            &mut state.mouse_selection,
+            event,
+        );
+        if handled {
+            if let Some(notice) = notice {
+                state.status_message = Some(notice.into());
+            }
             return InputResult::None;
         }
     }
 
+    // --- Scrollbar handling for content list ---
+    if state.input_mode == BackupInputMode::Normal
+        && let Some(meta) = state.last_content_scroll
+    {
+        let max_pos = meta.content_len.saturating_sub(1);
+        let frac = match state.selected_section {
+            BackupSection::Status => state.selected_index as f32 / max_pos.max(1) as f32,
+            BackupSection::History => state.selected_commit_index as f32 / max_pos.max(1) as f32,
+        };
+        if let Some(new_frac) =
+            crate::ui::scrollbar::handle_scrollbar_mouse(&event, meta, frac, &mut state.scroll_drag)
+        {
+            let pos = (new_frac * max_pos as f32).round() as usize;
+            match state.selected_section {
+                BackupSection::Status => state.selected_index = pos.min(max_pos),
+                BackupSection::History => state.selected_commit_index = pos.min(max_pos),
+            }
+            return InputResult::None;
+        }
+    }
+
+    // --- Scrollbar handling for diff pane ---
+    if state.input_mode == BackupInputMode::Normal
+        && let Some(meta) = state.last_diff_scroll
+        && let Some(diff_area) = state.last_diff_area
+        && crate::events::contains_cell(diff_area, event.column, event.row)
+    {
+        let max_pos = meta.content_len.saturating_sub(meta.viewport_len);
+        let frac = (state.diff_scroll as f32) / max_pos.max(1) as f32;
+        if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+            &event,
+            meta,
+            frac,
+            &mut state.diff_scroll_drag,
+        ) {
+            state.diff_scroll = (new_frac * max_pos as f32).round() as u16;
+            return InputResult::None;
+        }
+    }
     if let MouseEventKind::Down(MouseButton::Left) = event.kind {
         let x = event.column;
         let y = event.row;
@@ -384,22 +510,28 @@ pub fn handle_mouse(
             if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {
                 if state.selected_section == BackupSection::Status {
-                    let line_idx = y.saturating_sub(area.y).saturating_sub(1) as usize
-                        + state.list_state.offset();
+                    let visual = y.saturating_sub(area.y + 1) as usize;
+                    let line_idx = visual + state.list_state.offset();
                     if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
                         state.selected_index = file_idx;
                         state.selected_file = Some(state.selectable_files[file_idx].clone());
                         state.load_selected_diff();
                     }
-                } else if state.selected_section == BackupSection::History {
-                    let line_idx = y.saturating_sub(area.y).saturating_sub(1) as usize
-                        + state.history_list_state.offset();
-                    if line_idx > 0 {
-                        let commit_idx = line_idx - 1;
-                        if commit_idx < state.commits.len() {
-                            state.selected_commit_index = commit_idx;
-                            state.load_commit_diff();
-                        }
+                }
+                if state.selected_section == BackupSection::History
+                    && let Some(line_idx) = crate::ui::list_index_at(
+                        y,
+                        area.y + 1,
+                        1,
+                        state.history_list_state.offset(),
+                        state.commits.len() + 1,
+                    )
+                    && line_idx > 0
+                {
+                    let commit_idx = line_idx - 1;
+                    if commit_idx < state.commits.len() {
+                        state.selected_commit_index = commit_idx;
+                        state.load_commit_diff();
                     }
                 }
             }
@@ -416,13 +548,17 @@ pub fn handle_mouse(
             if event.column < area.x + list_width {
                 if is_history {
                     if !state.commits.is_empty() {
-                        state.selected_commit_index =
-                            (state.selected_commit_index + 1).min(state.commits.len() - 1);
+                        state.selected_commit_index = state
+                            .selected_commit_index
+                            .saturating_add(1)
+                            .min(state.commits.len().saturating_sub(1));
                         state.load_commit_diff();
                     }
                 } else if !state.selectable_files.is_empty() {
-                    state.selected_index =
-                        (state.selected_index + 1).min(state.selectable_files.len() - 1);
+                    state.selected_index = state
+                        .selected_index
+                        .saturating_add(1)
+                        .min(state.selectable_files.len().saturating_sub(1));
                     state.selected_file =
                         Some(state.selectable_files[state.selected_index].clone());
                     state.load_selected_diff();
@@ -479,10 +615,7 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     {
         state.settings_open = false;
         state.input_mode = BackupInputMode::Normal;
-        return InputResult::None;
-    }
-
-    if event.kind != MouseEventKind::Down(MouseButton::Left) {
+        state.mouse_selection = None;
         return InputResult::None;
     }
 
@@ -512,6 +645,48 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
             Constraint::Min(0),
         ])
         .split(inner_content);
+
+    let remote_url_area = ratatui::widgets::Block::default()
+        .borders(ratatui::widgets::Borders::ALL)
+        .inner(chunks[4]);
+    let (handled, notice) = handle_text_selection_mouse(
+        &mut state.settings.remote_url,
+        remote_url_area,
+        BackupTextField::RemoteUrl,
+        &mut state.mouse_selection,
+        event,
+    );
+    if handled {
+        if let Some(notice) = notice {
+            state.status_message = Some(notice.into());
+        }
+        state.settings.focused_field = SettingsField::RemoteUrl;
+        state.input_mode = BackupInputMode::EditSettingsField;
+        return InputResult::None;
+    }
+
+    let remote_name_area = ratatui::widgets::Block::default()
+        .borders(ratatui::widgets::Borders::ALL)
+        .inner(chunks[5]);
+    let (handled, notice) = handle_text_selection_mouse(
+        &mut state.settings.remote_name,
+        remote_name_area,
+        BackupTextField::RemoteName,
+        &mut state.mouse_selection,
+        event,
+    );
+    if handled {
+        if let Some(notice) = notice {
+            state.status_message = Some(notice.into());
+        }
+        state.settings.focused_field = SettingsField::RemoteName;
+        state.input_mode = BackupInputMode::EditSettingsField;
+        return InputResult::None;
+    }
+
+    if event.kind != MouseEventKind::Down(MouseButton::Left) {
+        return InputResult::None;
+    }
 
     let fields: &[(usize, SettingsField)] = &[
         (0, SettingsField::Enabled),

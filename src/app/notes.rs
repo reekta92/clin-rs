@@ -1,81 +1,255 @@
 use super::*;
+use crate::editor_document::EditorDocument;
 use crate::fsutil::SecretTempFile;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::storage::Note;
 use crate::templates::Template;
 use anyhow::{Context, Result};
-use ratatui_textarea::TextArea;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
 impl App {
-    pub fn refresh_notes(&mut self) -> Result<()> {
-        self.load_cancel.store(true, Ordering::Release);
-
-        let ids = self
-            .storage
-            .list_note_ids(self.list.show_hidden_files, self.list.show_all_files)?;
-        let mut summaries = Vec::new();
-
-        for id in &ids {
-            let mt = self.storage.note_mtime_millis(id);
-            if self.summary_mtime.get(id) == Some(&mt)
-                && let Some(s) = self.summary_cache.get(id)
-            {
-                summaries.push(s.clone());
-                continue;
-            }
-            if let Ok(summary) = self.storage.load_note_summary(id) {
-                self.summary_cache.insert(id.clone(), summary.clone());
-                self.summary_mtime.insert(id.clone(), mt);
-                summaries.push(summary);
-            }
-        }
-
-        let id_set: HashSet<&String> = ids.iter().collect();
-        self.summary_cache.retain(|k, _| id_set.contains(k));
-        self.summary_mtime.retain(|k, _| id_set.contains(k));
-
-        self.notes = summaries;
-        self.sort_notes();
-        self.refresh_visual_list();
-        self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
-
-        Ok(())
+    pub fn request_notes_reconcile(&mut self) {
+        let generation_num = self.catalog_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let cmd = crate::app::catalog::CatalogCommand::Reconcile {
+            generation: generation_num,
+            show_hidden: self.list.show_hidden_files,
+            show_all: self.list.show_all_files,
+        };
+        self.send_catalog_cmd(cmd);
     }
 
-    /// Update only one note's summary after an in-place edit, reusing the existing
-    /// summary_cache for every other note. Avoids the full per-note stat loop in
-    /// refresh_notes. `prev_id` is the id before the edit; it may differ from `id`
-    /// when the note was renamed because of a title change (save_note renames).
+    pub(crate) fn send_catalog_cmd(&mut self, cmd: crate::app::catalog::CatalogCommand) {
+        let _ = self.catalog_cmd_tx.try_send(cmd).inspect_err(|e| {
+            if matches!(e, std::sync::mpsc::TrySendError::Disconnected(_)) {
+                self.messages.push(
+                    "Catalog worker disconnected; note list will not refresh".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+            }
+        });
+    }
+
+    pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
+        let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+        let cmd = crate::app::catalog::CatalogCommand::Paths {
+            generation: generation_num,
+            changes,
+        };
+        self.send_catalog_cmd(cmd);
+    }
+
+    pub fn handle_catalog_event(&mut self, event: crate::app::catalog::CatalogEvent) {
+        use crate::app::catalog::CatalogEvent;
+        let cur_gen = self.catalog_generation.load(Ordering::SeqCst);
+        match event {
+            CatalogEvent::Started { generation, total } => {
+                if generation == cur_gen {
+                    self.catalog_status = Some(format!("Validating notes… 0/{total}"));
+                    self.set_default_status();
+                }
+            }
+            CatalogEvent::Delta {
+                generation,
+                upserts,
+                removed,
+                folders,
+                processed,
+                total,
+            } => {
+                if generation == cur_gen {
+                    self.catalog_status = Some(format!("Validating notes… {processed}/{total}"));
+
+                    let mut data_changed = false;
+                    if let Some(f) = folders
+                        && self.catalog_folders != f
+                    {
+                        self.catalog_folders = f;
+                        data_changed = true;
+                    }
+
+                    if !upserts.is_empty() || !removed.is_empty() {
+                        data_changed = true;
+                        let removed_set: HashSet<&str> =
+                            removed.iter().map(|s| s.as_str()).collect();
+                        self.notes.retain(|n| !removed_set.contains(n.id.as_str()));
+                        for r in &removed {
+                            self.note_stamps.remove(r);
+                        }
+
+                        let upsert_map: HashMap<String, (NoteSummary, crate::storage::FileStamp)> =
+                            upserts
+                                .into_iter()
+                                .map(|(s, st)| (s.id.clone(), (s, st)))
+                                .collect();
+
+                        for (id, (summary, stamp)) in upsert_map {
+                            if let Some(pos) = self.notes.iter().position(|n| n.id == id) {
+                                self.notes[pos] = summary;
+                            } else {
+                                self.notes.push(summary);
+                            }
+                            self.note_stamps.insert(id, stamp);
+                        }
+                    }
+
+                    if data_changed {
+                        self.sort_notes();
+                        self.refresh_visual_list();
+                        self.refresh_subnotes_view_cache();
+                        self.notes_revision += 1;
+                    }
+
+                    self.set_default_status();
+                }
+            }
+            CatalogEvent::Finished {
+                generation,
+                complete,
+                warnings,
+            } => {
+                if generation == cur_gen {
+                    if complete {
+                        self.initial_load_done = true;
+                        self.catalog_status = None;
+                        if self
+                            .list
+                            .sections
+                            .contains(&crate::config::NotesSection::Graf)
+                        {
+                            self.ensure_graph_preview();
+                        }
+                        if !warnings.is_empty() {
+                            self.set_temporary_status(&format!(
+                                "Notes loaded with {} warning(s)",
+                                warnings.len()
+                            ));
+                            let push_count = warnings.len().min(10);
+                            for w in warnings.iter().take(push_count) {
+                                self.messages.push(
+                                    w.clone(),
+                                    crate::app::messages::MessageSeverity::Warning,
+                                );
+                            }
+                            if warnings.len() > 10 {
+                                self.messages.push(
+                                    format!("…and {} more scan warning(s)", warnings.len() - 10),
+                                    crate::app::messages::MessageSeverity::Warning,
+                                );
+                            }
+                        } else {
+                            self.set_default_status();
+                        }
+                    } else {
+                        self.initial_load_done = false;
+                        self.catalog_status =
+                            Some("Notes validation incomplete; Refresh to retry".to_string());
+                        if let Some(w) = warnings.first() {
+                            self.set_temporary_status(w);
+                        } else {
+                            self.set_default_status();
+                        }
+                    }
+                }
+            }
+            CatalogEvent::Failed {
+                generation,
+                message,
+            } => {
+                if generation == cur_gen {
+                    self.catalog_status = Some(format!("Notes validation failed: {message}"));
+                    self.messages.push(
+                        format!("Notes validation failed: {message}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                    self.set_default_status();
+                }
+            }
+        }
+    }
+
+    pub fn refresh_subnotes_view_cache(&mut self) {
+        self.subnotes_view_cache = self.storage.get_all_subnotes().unwrap_or_default();
+        self.subnotes_view_cache_sig = self.notes.len() * 31
+            + self
+                .subnotes_view_cache
+                .iter()
+                .map(|(_, v)| v.len())
+                .sum::<usize>();
+    }
+
     pub fn refresh_note_single(&mut self, prev_id: Option<&str>, id: &str) {
-        // 1. Handle rename: drop the old id from every view.
         if let Some(old) = prev_id
             && old != id
         {
-            self.summary_cache.remove(old);
-            self.summary_mtime.remove(old);
             self.notes.retain(|n| n.id != old);
+            self.note_stamps.remove(old);
         }
-        // 2. Reload this one note's summary + mtime, replace in notes.
-        if let Ok(summary) = self.storage.load_note_summary(id) {
-            let mt = self.storage.note_mtime_millis(id);
-            self.summary_cache.insert(id.to_string(), summary.clone());
-            self.summary_mtime.insert(id.to_string(), mt);
-            self.notes.retain(|n| n.id != id);
-            self.notes.push(summary);
+
+        let note_path = self.storage.note_path(id);
+        if let Ok(meta) = std::fs::metadata(&note_path) {
+            let modified_nanos = meta.modified().ok().and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_nanos())
+            });
+            let stamp = crate::storage::FileStamp {
+                modified_nanos,
+                len: meta.len(),
+            };
+            let entry = crate::storage::NoteFileEntry {
+                id: id.to_string(),
+                stamp,
+            };
+            match self.storage.load_note_summary_from_entry(&entry) {
+                Ok(summary) => {
+                    self.notes.retain(|n| n.id != id);
+                    self.notes.push(summary.clone());
+                    self.note_stamps.insert(id.to_string(), stamp);
+                    self.sort_notes();
+                    self.notes_revision += 1;
+
+                    let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                    self.send_catalog_cmd(crate::app::catalog::CatalogCommand::PutKnown {
+                        generation: generation_num,
+                        summary,
+                        stamp,
+                        old_id: prev_id.map(|s| s.to_string()),
+                    });
+                }
+                Err(e) => {
+                    self.messages.push(
+                        format!("Failed to read note '{id}': {e}. Removed from list."),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                    self.notes.retain(|n| n.id != id);
+                    self.note_stamps.remove(id);
+                    self.sort_notes();
+                    self.notes_revision += 1;
+
+                    let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                    self.send_catalog_cmd(crate::app::catalog::CatalogCommand::RemoveKnown {
+                        generation: generation_num,
+                        id: id.to_string(),
+                    });
+                }
+            }
         } else {
-            // Note vanished (e.g. deleted out of band): ensure it is gone.
             self.notes.retain(|n| n.id != id);
-            self.summary_cache.remove(id);
-            self.summary_mtime.remove(id);
+            self.note_stamps.remove(id);
+            self.sort_notes();
+            self.notes_revision += 1;
+
+            let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+            self.send_catalog_cmd(crate::app::catalog::CatalogCommand::RemoveKnown {
+                generation: generation_num,
+                id: id.to_string(),
+            });
         }
-        // 3. Folders are unchanged for a same-folder title rename, so keep
-        //    folder_cache as-is (list_folders rescan is the only other FS cost in
-        //    refresh_visual_list; skipping it is the point).
-        self.sort_notes();
+
         self.refresh_visual_list();
+        self.refresh_subnotes_view_cache();
     }
 
     pub(crate) fn sort_notes(&mut self) {
@@ -117,10 +291,11 @@ impl App {
                 .unwrap_or_default(),
             Some(VisualItem::CreateNew { path, .. }) => path.clone(),
             Some(VisualItem::SmartFolder { .. }) => String::new(),
+            Some(VisualItem::Subnote { .. }) => String::new(),
             None => String::new(),
         };
 
-        let current = if Self::is_virtual_pinned_path(&current) {
+        let current = if Self::is_virtual_path(&current) {
             String::new()
         } else {
             current
@@ -212,6 +387,15 @@ impl App {
                     self.open_note_at_line(&id, None);
                 }
             }
+            VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => {
+                let pid = parent_id.clone();
+                let idx = *subnote_idx;
+                self.open_subnotes_popup_for(&pid, Some(idx));
+            }
         }
     }
 
@@ -224,14 +408,21 @@ impl App {
                 self.app_theme.highlight_fg,
                 self.app_theme.highlight_bg,
             );
-            let mut editor = text_area_from_content(&note.content);
+            let mut body = EditorDocument::from_text(&note.content);
             if let Some(l) = line_number {
-                editor.move_cursor(ratatui_textarea::CursorMove::Jump(
+                body.move_cursor(ratatui_textarea::CursorMove::Jump(
                     l.saturating_sub(1) as u16,
                     0,
                 ));
             }
-            self.editor.editor = editor;
+            self.editor.body = body;
+            self.apply_editor_prefs();
+            self.rebuild_outline();
+            self.editor.links = self.compute_links();
+            // Clone image infrastructure into the editor so markdown images
+            // can be decoded and rendered in the preview pane.
+            self.editor.image_picker = self.image_picker.clone();
+            self.editor.image_decode_tx = self.image_decode_tx.clone();
             self.mode = ViewMode::Edit;
 
             if self.editor.editor_preview_enabled {
@@ -247,7 +438,8 @@ impl App {
 
     pub fn open_note_in_external_editor(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
-            let temp_dir = std::env::temp_dir();
+            let temp_dir = std::env::temp_dir().join("clin");
+            let _ = std::fs::create_dir_all(&temp_dir);
             let temp_id = uuid::Uuid::new_v4().to_string();
             let temp_file_path = temp_dir.join(format!("clin_{temp_id}.md"));
 
@@ -324,25 +516,45 @@ impl App {
                             };
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
                                 self.set_temporary_status(&format!("Failed to save note: {e}"));
+                                self.messages.push(
+                                    format!("Failed to save note: {e}"),
+                                    crate::app::messages::MessageSeverity::Warning,
+                                );
                             } else {
                                 self.enqueue_backup(format!("auto: {}", updated_note.title));
                                 self.set_temporary_status_static("Note saved");
-                                self.list.folder_cache = None;
-                                if let Err(e) = self.refresh_notes() {
-                                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                                }
+                                self.refresh_note_single(None, note_id);
 
-                                let progress = self.get_current_goals_progress();
-                                progress.words_written += diff;
-                                progress.notes_modified.insert(note_id.to_string());
-                                let progress_clone = progress.clone();
-                                self.save_goals_progress(&progress_clone);
+                                let vault_identity =
+                                    crate::local_state::vault_identity_path(&self.storage.data_dir)
+                                        .map(|p| p.to_string_lossy().into_owned())
+                                        .unwrap_or_else(|_| {
+                                            self.storage.data_dir.to_string_lossy().into_owned()
+                                        });
+                                let progress = {
+                                    let progress = self.get_current_goals_progress();
+                                    progress.words_written += diff;
+                                    progress.notes_modified.insert(crate::goals::TrackedNote {
+                                        vault: vault_identity,
+                                        note_id: note_id.to_string(),
+                                    });
+                                    progress.clone()
+                                };
+                                if let Err(error) = self.save_goals_progress(&progress) {
+                                    self.set_temporary_status(&format!(
+                                        "Failed to save local state: {error}"
+                                    ));
+                                }
                             }
                         } else {
                             self.set_temporary_status_static("No changes made in external editor.");
                         }
                     } else {
                         self.set_temporary_status_static("Failed to read from temp file.");
+                        self.messages.push(
+                            "Failed to read from temp file.".to_string(),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     }
                 }
                 Ok(status) => {
@@ -358,6 +570,10 @@ impl App {
             }
         } else {
             self.set_temporary_status_static("Failed to load note for external editor!");
+            self.messages.push(
+                "Failed to load note for external editor!".to_string(),
+                crate::app::messages::MessageSeverity::Warning,
+            );
         }
     }
 
@@ -395,7 +611,7 @@ impl App {
 
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -410,12 +626,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if let Ok(saved_id) = self.storage.save_note(&id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", new_note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+            match self.storage.save_note(&id, &new_note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", new_note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
                 }
-                self.open_note_in_external_editor(&saved_id, None);
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -429,18 +651,8 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = TextArea::from(content.lines());
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
+        self.editor.body = EditorDocument::from_text(&content);
+        self.apply_editor_prefs();
         self.set_default_status();
     }
 
@@ -448,7 +660,7 @@ impl App {
         let rendered = template.render();
 
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -462,12 +674,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", new_note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+            match self.storage.save_note(&new_id, &new_note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", new_note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
                 }
-                self.open_note_in_external_editor(&saved_id, None);
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -481,19 +699,8 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&rendered.content);
-
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
+        self.editor.body = EditorDocument::from_text(&rendered.content);
+        self.apply_editor_prefs();
 
         self.set_default_status();
     }
@@ -507,7 +714,7 @@ impl App {
         let rendered = template.render();
 
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -518,12 +725,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", new_note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+            match self.storage.save_note(&new_id, &new_note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", new_note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
                 }
-                self.open_note_in_external_editor(&saved_id, None);
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -537,19 +750,8 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&rendered.content);
-
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
+        self.editor.body = EditorDocument::from_text(&rendered.content);
+        self.apply_editor_prefs();
 
         self.set_default_status();
     }
@@ -563,14 +765,16 @@ impl App {
             self.editor.template_edit_path = None;
             self.editor.title_editor =
                 make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
-            self.editor.editor = TextArea::default();
+            self.editor.body = EditorDocument::default();
+            self.apply_editor_prefs();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
             if return_to == ViewMode::Graph && self.graph_state.is_none() {
                 match crate::graf::app::GrafAppState::new(
                     &self.config,
                     self.storage.clone(),
-                    vec![],
+                    self.notes.clone(),
+                    self.config_errors.clone(),
                     self.keybinds.clone(),
                     self.seq_matcher.clone(),
                 ) {
@@ -579,6 +783,10 @@ impl App {
                     }
                     Err(e) => {
                         self.set_temporary_status(&format!("Failed to rebuild graph: {e}"));
+                        self.messages.push(
+                            format!("Failed to rebuild graph: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                         self.mode = ViewMode::List;
                         return;
                     }
@@ -597,13 +805,14 @@ impl App {
         self.editor.template_edit_path = None;
         self.editor.title_editor =
             make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
-        self.editor.editor = TextArea::default();
+        self.editor.body = EditorDocument::default();
+        self.apply_editor_prefs();
         self.popups.confirm = None;
         self.editor.md_preview_renderer = None;
         if let Some(id) = new_id {
             self.refresh_note_single(prev_id, id);
-        } else if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        } else {
+            self.request_notes_reconcile();
         }
 
         self.set_default_status();
@@ -615,18 +824,16 @@ impl App {
         } else {
             self.get_current_folder_context()
         };
-        if Self::is_virtual_pinned_path(&parent_path) {
-            self.set_temporary_status_static("Cannot create folder inside virtual Pinned");
+        if Self::is_virtual_path(&parent_path) {
+            self.set_temporary_status_static("Cannot create folder inside a virtual folder");
             return;
         }
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         let title = if parent_path.is_empty() {
             "Create Folder - Esc to cancel, Enter to save".to_string()
         } else {
             format!("Create Folder in '{parent_path}' - Esc to cancel, Enter to save")
         };
-        input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -647,14 +854,12 @@ impl App {
                 self.set_temporary_status_static("Cannot rename Vault root");
                 return;
             }
-            if Self::is_virtual_pinned_path(path) {
-                self.set_temporary_status_static("Cannot rename virtual Pinned folder");
+            if Self::is_virtual_path(path) {
+                self.set_temporary_status_static("Cannot rename virtual folder");
                 return;
             }
-            let mut input = TextArea::default();
-            input.set_cursor_line_style(ratatui::style::Style::default());
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
             input.insert_str(path);
-            input.set_style(self.app_theme.bg_style());
             input.set_block(
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
@@ -673,32 +878,8 @@ impl App {
     }
 
     pub fn open_selected_note_location(&mut self) {
-        if self.list.visual_index >= self.list.visual_list.len() {
-            self.set_temporary_status_static("No note selected for location");
-            return;
-        }
-
-        let summary_idx = match &self.list.visual_list[self.list.visual_index] {
-            VisualItem::Note { summary_idx, .. } => *summary_idx,
-            _ => {
-                self.set_temporary_status_static("Selected item is not a note");
-                return;
-            }
-        };
-
-        let Some(note) = self.notes.get(summary_idx) else {
-            self.set_temporary_status_static("No note selected for location");
-            return;
-        };
-
-        let note_path = self.storage.note_path(&note.id);
-        let Some(parent) = note_path.parent() else {
-            self.set_temporary_status_static("Could not determine note directory");
-            return;
-        };
-
-        match open_in_file_manager(parent) {
-            Ok(()) => self.set_temporary_status_static("Opened note file location"),
+        match open_in_file_manager(&self.storage.notes_dir) {
+            Ok(()) => self.set_temporary_status_static("Opened vault location"),
             Err(err) => self.set_temporary_status(&format!("Open location failed: {err:#}")),
         }
     }
@@ -721,6 +902,22 @@ impl App {
             self.set_temporary_status_static("Cannot open encrypted notes. Decrypt first.");
             return;
         }
+        let ext = std::path::Path::new(note_id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if ext != "md" && ext != "txt" {
+            let path = self.storage.note_path(note_id);
+            match crate::ui::open_with_default_application(&path) {
+                Ok(()) => {
+                    self.status =
+                        Cow::Owned(format!("Opened in default application: {}", path.display()))
+                }
+                Err(e) => self.set_temporary_status(&format!("Failed to open file: {e}")),
+            }
+            return;
+        }
+
         self.return_mode = Some(ViewMode::Graph);
         if self.editor.external_editor_enabled {
             self.open_note_in_external_editor(note_id, None);
@@ -730,7 +927,8 @@ impl App {
                 match crate::graf::app::GrafAppState::new(
                     &self.config,
                     self.storage.clone(),
-                    vec![],
+                    self.notes.clone(),
+                    self.config_errors.clone(),
                     self.keybinds.clone(),
                     self.seq_matcher.clone(),
                 ) {
@@ -739,6 +937,10 @@ impl App {
                     }
                     Err(_) => {
                         self.set_temporary_status_static("Failed to rebuild graph view");
+                        self.messages.push(
+                            "Failed to rebuild graph view".to_string(),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     }
                 }
             }
@@ -750,7 +952,7 @@ impl App {
 
     pub fn begin_create_select_format(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            if Self::is_virtual_pinned_path(&self.list.grid_folder) {
+            if Self::is_virtual_path(&self.list.grid_folder) {
                 String::new()
             } else {
                 self.list.grid_folder.clone()
@@ -781,14 +983,12 @@ impl App {
     }
 
     pub fn begin_create_text_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -802,14 +1002,12 @@ impl App {
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -859,16 +1057,16 @@ impl App {
                         format!("{}/{}.draw", popup.folder, title)
                     };
                     self.return_mode = Some(self.mode);
-
                     self.mode = ViewMode::Draw;
                     self.editor.editing_id = Some(canvas_id.clone());
-                    self.draw_state = Some(crate::draw::app::DrawAppState::new(
+                    let state = crate::draw::app::DrawAppState::new(
                         self.storage.clone(),
                         Some(canvas_id),
                         self.app_theme.clone(),
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
-                    ));
+                    );
+                    self.draw_state = Some(state);
                 }
                 crate::popups::NoteFormat::Canvas => {
                     if title.is_empty() {
@@ -896,14 +1094,18 @@ impl App {
                         }
                     }
                     self.return_mode = Some(self.mode);
-
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
-                    if let Ok(state) = crate::pinstar::state::PinstarState::load(
+                    if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
                         &path,
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     ) {
+                        state.image_cache = crate::image_render::cache::ImageCache::new(
+                            self.config.image.cache_size,
+                        );
+                        state.image_picker = self.image_picker.clone();
+                        state.image_decode_tx = self.image_decode_tx.clone();
                         self.canvas_state = Some(state);
                     }
                     self.set_default_status();
@@ -932,7 +1134,7 @@ impl App {
                 note.updated_at = now_unix_secs();
                 self.storage.save_note(id, &note)?;
                 self.enqueue_backup(format!("auto: {}", note.title));
-                self.refresh_notes()?;
+                self.refresh_note_single(None, id);
                 self.set_temporary_status_static("Content appended");
             }
         }
@@ -940,7 +1142,7 @@ impl App {
     }
 
     pub fn start_note_with_content(&mut self, folder: String, title: String, content: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
@@ -958,12 +1160,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: vec![],
             };
-            if let Ok(saved_id) = self.storage.save_note(&new_id, &note) {
-                self.enqueue_backup(format!("auto: {}", note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+            match self.storage.save_note(&new_id, &note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
                 }
-                self.open_note_in_external_editor(&saved_id, None);
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -976,31 +1184,18 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&content);
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
+        self.editor.body = EditorDocument::from_text(&content);
+        self.apply_editor_prefs();
         self.set_default_status();
     }
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            let summary_idx = *summary_idx;
-            let id = self.notes[summary_idx].id.clone();
-            let note = &self.notes[summary_idx];
-            let mut input = TextArea::default();
-            input.set_cursor_line_style(ratatui::style::Style::default());
+            let id = self.notes[*summary_idx].id.clone();
+            let note = &self.notes[*summary_idx];
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
             input.insert_str(&note.title);
-            input.set_style(self.app_theme.bg_style());
             input.set_block(
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
@@ -1026,13 +1221,15 @@ impl App {
             }
             match self.storage.rename_note(&popup.note_id, new_title) {
                 Ok(_) => {
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
-                    }
+                    self.request_notes_reconcile();
                     self.set_temporary_status_static("Note renamed");
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to rename: {e}"));
+                    self.messages.push(
+                        format!("Failed to rename: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 }
             }
         }
@@ -1048,6 +1245,33 @@ impl App {
             self.set_temporary_status_static("Select a note to duplicate");
         }
     }
+    pub fn open_subnotes_popup_for(&mut self, parent_id: &str, preselect: Option<usize>) {
+        let subnotes = self.storage.get_subnotes(parent_id).unwrap_or_default();
+
+        let mut title_input = crate::ui::make_popup_textarea(&self.app_theme, "");
+        let mut content_input = crate::ui::make_popup_textarea(&self.app_theme, "");
+
+        let selected = preselect.unwrap_or(0).min(subnotes.len().saturating_sub(1));
+        if !subnotes.is_empty() && selected < subnotes.len() {
+            title_input.insert_str(&subnotes[selected].title);
+            content_input.insert_str(&subnotes[selected].content);
+        }
+
+        let popup = crate::popups::SubnotesPopup {
+            parent_id: parent_id.to_string(),
+            subnotes,
+            selected,
+            focus: crate::popups::SubnotesFocus::List,
+            scroll_offset: 0,
+            title_input,
+            content_input,
+            is_dirty: false,
+            last_scroll: None,
+        };
+
+        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(Box::new(popup)));
+    }
+
     pub fn open_subnotes_popup(&mut self) {
         let parent_id = match self.get_selected_note_id() {
             Some(id) => id,
@@ -1056,33 +1280,7 @@ impl App {
                 return;
             }
         };
-
-        let subnotes = self.storage.get_subnotes(&parent_id).unwrap_or_default();
-
-        let mut title_input = TextArea::default();
-        title_input.set_cursor_line_style(ratatui::style::Style::default());
-        title_input.set_style(self.app_theme.bg_style());
-
-        let mut content_input = TextArea::default();
-        content_input.set_cursor_line_style(ratatui::style::Style::default());
-        content_input.set_style(self.app_theme.bg_style());
-
-        if !subnotes.is_empty() {
-            title_input.insert_str(&subnotes[0].title);
-            content_input.insert_str(&subnotes[0].content);
-        }
-
-        let popup = crate::popups::SubnotesPopup {
-            parent_id,
-            subnotes,
-            selected: 0,
-            focus: crate::popups::SubnotesFocus::List,
-            title_input,
-            content_input,
-            is_dirty: false,
-        };
-
-        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(Box::new(popup)));
+        self.open_subnotes_popup_for(&parent_id, None);
     }
 
     pub fn close_subnotes_popup(&mut self) {
@@ -1093,6 +1291,7 @@ impl App {
                 self.set_temporary_status(&format!("Failed to save sub-notes: {e}"));
             }
             self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
+            self.refresh_subnotes_view_cache();
         }
         self.popups.active = None;
     }
@@ -1124,7 +1323,8 @@ impl App {
         }
 
         let subnote = &popup.subnotes[cur_idx];
-        let temp_dir = std::env::temp_dir();
+        let temp_dir = std::env::temp_dir().join("clin");
+        let _ = std::fs::create_dir_all(&temp_dir);
         let temp_id = uuid::Uuid::new_v4().to_string();
         let temp_file_path = temp_dir.join(format!("clin_subnote_{temp_id}.md"));
 
@@ -1190,11 +1390,7 @@ impl App {
                         popup.subnotes[cur_idx].updated_at = now_unix_secs();
                         popup.is_dirty = true;
 
-                        popup.content_input = TextArea::default();
-                        popup
-                            .content_input
-                            .set_cursor_line_style(ratatui::style::Style::default());
-                        popup.content_input.set_style(self.app_theme.bg_style());
+                        popup.content_input = crate::ui::make_popup_textarea(&self.app_theme, "");
                         popup.content_input.insert_str(&new_content);
 
                         self.set_temporary_status_static("Sub-note saved");
@@ -1203,6 +1399,10 @@ impl App {
                     }
                 } else {
                     self.set_temporary_status_static("Failed to read from temp file.");
+                    self.messages.push(
+                        "Failed to read from temp file.".to_string(),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 }
             }
             Ok(status) => {

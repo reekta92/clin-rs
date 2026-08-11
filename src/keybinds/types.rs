@@ -1,6 +1,18 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ListAction {
     MoveUp,
@@ -13,6 +25,7 @@ pub enum ListAction {
     Help,
     OpenLocation,
     CycleFocus,
+    ReverseCycleFocus,
     Confirm,
     Cancel,
     ToggleExternalEditor,
@@ -23,6 +36,7 @@ pub enum ListAction {
     MoveNote,
     MoveToParent,
     ManageTags,
+    RemoveTagsFromSelected,
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,
@@ -39,7 +53,7 @@ pub enum ListAction {
     OpenTrash,
     TogglePreview,
     TogglePreviewFullscreen,
-    TogglePreviewWrap,
+    ToggleWrap,
     PreviewPageUp,
     PreviewPageDown,
     ToggleCalendar,
@@ -57,12 +71,24 @@ pub enum ListAction {
     ShowInfo,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum EditAction {
-    Quit,
     Back,
     CycleFocus,
+    InsertTab,
 
     SelectAll,
     Copy,
@@ -76,13 +102,33 @@ pub enum EditAction {
     MoveToBottom,
     ToggleMarkdownPreview,
     TogglePreviewFullscreen,
-    TogglePreviewWrap,
+    ToggleWrap,
     PreviewPageUp,
     PreviewPageDown,
     ManageSubnotes,
+    PasteImage,
+    InsertImageFromFile,
+    Find,
+    InsertDate,
+    ToggleOutline,
+    ToggleLinks,
+    PreviewLink,
+    GoToLine,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum HelpAction {
     Close,
@@ -91,9 +137,22 @@ pub enum HelpAction {
     NextTab,
     PrevTab,
     Search,
+    Reroll,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphAction {
     Quit,
@@ -116,7 +175,19 @@ pub enum GraphAction {
     TogglePreview,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum DrawAction {
     Quit,
@@ -134,7 +205,19 @@ pub enum DrawAction {
     ToggleGrid,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasAction {
     Quit,
@@ -167,7 +250,19 @@ pub enum CanvasAction {
     EditorSyncRaw,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupAction {
     Back,
@@ -195,9 +290,21 @@ pub enum BackupAction {
     StageAll,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
-pub enum ContentTreeAction {
+pub enum OutlineAction {
     MoveUp,
     MoveDown,
     ToggleCollapse,
@@ -208,7 +315,19 @@ pub enum ContentTreeAction {
     Help,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SetupAction {
     Up,

@@ -28,6 +28,8 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>) -> Result<()> 
         let f = File::open(&tmp).context("failed to open temp file for syncing")?;
         f.sync_all().context("failed to sync temp file")?;
     }
+    #[cfg(not(unix))]
+    let _ = mode;
 
     fs::rename(&tmp, path).with_context(|| {
         format!(
@@ -62,7 +64,9 @@ pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()>
 pub fn cleanup_orphaned_temp_files() {
     const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
     let now = std::time::SystemTime::now();
-    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+    let clin_temp = std::env::temp_dir().join("clin");
+    let _ = std::fs::create_dir_all(&clin_temp);
+    let Ok(entries) = std::fs::read_dir(&clin_temp) else {
         return;
     };
     for entry in entries.flatten() {
@@ -104,6 +108,14 @@ impl Drop for SecretTempFile {
     }
 }
 
+/// Remove a file, returning `true` if it existed.
+pub fn remove_file_if_exists(path: &Path) -> std::io::Result<bool> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

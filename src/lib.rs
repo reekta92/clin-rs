@@ -7,56 +7,72 @@ pub mod cli;
 pub mod config;
 pub mod console;
 pub mod constants;
-pub mod content_tree;
 pub mod draw;
 pub mod editor;
+pub(crate) mod editor_document;
+pub(crate) mod editor_session;
+pub mod event_source;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
 pub mod graf;
+pub mod host;
+pub mod image_render;
 pub mod keybinds;
 pub mod list_view;
+pub mod local_state;
 pub mod markdown;
 pub mod migration;
+pub mod note_index;
+pub mod outline;
 pub mod overlay;
 pub mod palette;
+pub mod paths;
+#[cfg(test)]
+pub mod perf_tests;
 pub mod pinstar;
 pub mod popups;
 pub mod preview;
 pub mod sanitize;
+pub mod session;
 pub mod setup;
 pub mod snapshot;
+pub mod statusline;
 pub mod templates;
 pub mod text_edit;
 
-use crate::cli::{Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
+use crate::cli::{
+    CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd,
+};
 use crate::config::ClinConfig;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::overlay::OverlayView;
 use clap::{CommandFactory, FromArgMatches};
 
-use std::borrow::Cow;
 use std::fs;
-use std::io::{self, Stdout, Write};
+use std::io::{self, Write};
 use std::process;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Duration;
 use uuid::Uuid;
 
 use mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
-static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
-static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
+pub(crate) static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> =
+    LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+pub(crate) static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
+pub(crate) static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 
 use anyhow::{Context, Result};
 use crossterm::event::{
-    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEventKind, KeyModifiers,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
+    KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -82,6 +98,7 @@ pub fn run() -> Result<()> {
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
+            PopKeyboardEnhancementFlags,
             crossterm::cursor::Show,
         );
         prev(panic_info);
@@ -107,36 +124,20 @@ pub fn run() -> Result<()> {
         Some(Command::Keybinds { action }) => run_keybinds(action),
         Some(Command::Templates { action }) => run_templates(action),
         Some(Command::Config { action }) => run_config(action),
+        Some(Command::Cache { action }) => run_cache(action),
     }
 }
 fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
-    // MUST check before Storage::init — Storage::init -> ClinConfig::load creates config.toml.
-    let first_run = crate::config::ClinConfig::config_path()
-        .map(|p| !p.exists())
-        .unwrap_or(false);
-    let storage = Storage::init()?;
-    let mut app = App::new_deferred(storage)?;
-    if first_run || force_setup {
-        app.open_setup_view();
-    }
-    if let Some(title) = open_title
-        && !app.open_note_by_title(&title)
-    {
-        eprintln!(
-            "{}",
-            console::error(&format!("No note found with title: {title}"))
-        );
-        process::exit(1);
-    }
+    let mut app = crate::session::bootstrap_app(open_title, force_setup)?;
     run_tui_session(&mut app)
 }
 
 fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
-            let storage = Storage::init()?;
-            let mut app = App::new(storage)?;
-            app.refresh_notes()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let app = App::new(storage)?;
             for (index, note) in app.notes.iter().enumerate() {
                 println!(
                     "{} {}",
@@ -152,7 +153,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             no_tui,
             title,
         } => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let mut app = App::new(storage)?;
 
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
@@ -212,15 +214,15 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             }
 
             app.editor.editing_id = Some(saved_id.clone());
-            app.refresh_notes()?;
+            app.refresh_note_single(None, &saved_id);
             app.load_and_open_note(&saved_id, None);
             run_tui_session(&mut app)
         }
         NotesCmd::Open { title } => launch_tui(Some(title), false),
         NotesCmd::Cat { title } => {
-            let storage = Storage::init()?;
-            let mut app = App::new(storage)?;
-            app.refresh_notes()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let app = App::new(storage)?;
             let id = app
                 .notes
                 .iter()
@@ -247,7 +249,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             }
         }
         NotesCmd::Quick { content, title } => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let mut storage = storage?;
 
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
@@ -271,9 +274,9 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             use fuzzy_matcher::FuzzyMatcher;
             use fuzzy_matcher::skim::SkimMatcherV2;
 
-            let storage = Storage::init()?;
-            let mut app = App::new(storage)?;
-            app.refresh_notes()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let app = App::new(storage)?;
             let matcher = SkimMatcherV2::default();
             let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
             for note in &app.notes {
@@ -316,7 +319,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
 fn run_storage(action: StorageCmd) -> Result<()> {
     match action {
         StorageCmd::Show => {
-            let bootstrap = ClinConfig::load()?;
+            let bootstrap = ClinConfig::load().0?;
             let effective = bootstrap.effective_storage_path()?;
             println!(
                 "{} {}",
@@ -331,7 +334,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Set { path } => {
-            let mut bootstrap = ClinConfig::load()?;
+            let mut bootstrap = ClinConfig::load().0?;
             let path = crate::config::expand_path(&path.to_string_lossy());
             let old_path = bootstrap.effective_storage_path()?;
 
@@ -342,8 +345,16 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             fs::create_dir_all(&path)
                 .with_context(|| format!("failed to create directory: {}", path.display()))?;
 
-            if old_path.exists() && old_path != path {
-                bootstrap.set_previous_storage_path(old_path);
+            // Record storage migration in state.json (not in config.toml)
+            if old_path.exists()
+                && old_path != path
+                && let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+            {
+                let _ = crate::local_state::record_storage_migration(
+                    &paths.state_path(),
+                    &old_path,
+                    &path,
+                );
             }
 
             bootstrap.set_storage_path(path.clone());
@@ -354,7 +365,11 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 console::success(&format!("Storage path set to: {}", console::path(&path)))
             );
 
-            if bootstrap.core.previous_storage_path.is_some() {
+            // Check for migration hint
+            if let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+                && let Ok(state) = crate::local_state::LocalState::load(&paths.state_path())
+                && state.storage_migration.is_some()
+            {
                 println!();
                 println!(
                     "{}",
@@ -365,10 +380,23 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Reset => {
-            let mut bootstrap = ClinConfig::load()?;
+            let mut bootstrap = ClinConfig::load().0?;
+            let old_path = bootstrap.effective_storage_path()?;
+            let default = ClinConfig::default_storage_path()?;
+
+            // Record migration before resetting
+            if old_path != default
+                && let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+            {
+                let _ = crate::local_state::record_storage_migration(
+                    &paths.state_path(),
+                    &old_path,
+                    &default,
+                );
+            }
+
             bootstrap.reset_storage_path();
             bootstrap.save()?;
-            let default = ClinConfig::default_storage_path()?;
             println!(
                 "{}",
                 console::success(&format!(
@@ -379,12 +407,70 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Migrate => {
-            let mut bootstrap = ClinConfig::load()?;
+            let bootstrap = ClinConfig::load().0?;
             let to = bootstrap.effective_storage_path()?;
 
-            let from = match bootstrap.core.previous_storage_path.clone() {
-                Some(path) if path.exists() && path.is_dir() => path,
-                _ => {
+            // Read storage migration from state.json
+            let from = if let Ok(paths) =
+                crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+            {
+                if let Ok(state) = crate::local_state::LocalState::load(&paths.state_path()) {
+                    if let Some(ref m) = state.storage_migration {
+                        let prev = m.previous_path.clone();
+                        if prev.exists() && prev.is_dir() {
+                            prev
+                        } else {
+                            let default = ClinConfig::default_storage_path()?;
+                            if default.exists() && default.is_dir() && default != to {
+                                println!(
+                                    "{}",
+                                    console::info("Recorded previous path does not exist.")
+                                );
+                                println!(
+                                    "Found data at default location: {}",
+                                    console::path(&default)
+                                );
+                                print!("{}", console::warning("Migrate from there? [y/N]: "));
+                                io::stdout().flush()?;
+
+                                let mut input = String::new();
+                                io::stdin().read_line(&mut input)?;
+                                if !input.trim().eq_ignore_ascii_case("y") {
+                                    println!("{}", console::warning("Migration cancelled."));
+                                    return Ok(());
+                                }
+                                default
+                            } else {
+                                anyhow::bail!(
+                                    "No previous storage location found. Nothing to migrate."
+                                );
+                            }
+                        }
+                    } else {
+                        let default = ClinConfig::default_storage_path()?;
+                        if default.exists() && default.is_dir() && default != to {
+                            println!("{}", console::info("No previous storage path recorded."));
+                            println!(
+                                "Found data at default location: {}",
+                                console::path(&default)
+                            );
+                            print!("{}", console::warning("Migrate from there? [y/N]: "));
+                            io::stdout().flush()?;
+
+                            let mut input = String::new();
+                            io::stdin().read_line(&mut input)?;
+                            if !input.trim().eq_ignore_ascii_case("y") {
+                                println!("{}", console::warning("Migration cancelled."));
+                                return Ok(());
+                            }
+                            default
+                        } else {
+                            anyhow::bail!(
+                                "No previous storage location found. Nothing to migrate."
+                            );
+                        }
+                    }
+                } else {
                     let default = ClinConfig::default_storage_path()?;
                     if default.exists() && default.is_dir() && default != to {
                         println!("{}", console::info("No previous storage path recorded."));
@@ -405,6 +491,27 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                     } else {
                         anyhow::bail!("No previous storage location found. Nothing to migrate.");
                     }
+                }
+            } else {
+                let default = ClinConfig::default_storage_path()?;
+                if default.exists() && default.is_dir() && default != to {
+                    println!("{}", console::info("No previous storage path recorded."));
+                    println!(
+                        "Found data at default location: {}",
+                        console::path(&default)
+                    );
+                    print!("{}", console::warning("Migrate from there? [y/N]: "));
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+                    if !input.trim().eq_ignore_ascii_case("y") {
+                        println!("{}", console::warning("Migration cancelled."));
+                        return Ok(());
+                    }
+                    default
+                } else {
+                    anyhow::bail!("No previous storage location found. Nothing to migrate.");
                 }
             };
 
@@ -462,7 +569,6 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                         conflict_action,
                     )?
                 } else {
-                    // Clin-native source: full directory copy
                     migration::migrate_directory_with_conflict(
                         &notes_src,
                         &notes_dst,
@@ -486,8 +592,14 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 skipped_count += s;
             }
 
-            bootstrap.clear_previous_storage_path();
-            bootstrap.save()?;
+            // Clear storage migration record after successful migration
+            if let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?) {
+                let state_path = paths.state_path();
+                let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                    s.storage_migration = None;
+                    Ok(())
+                });
+            }
 
             println!();
             println!("{}", console::success("Migration complete!"));
@@ -518,8 +630,9 @@ fn run_storage(action: StorageCmd) -> Result<()> {
 fn run_keybinds(action: KeybindsCmd) -> Result<()> {
     match action {
         KeybindsCmd::Show => {
-            let storage = Storage::init()?;
-            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let config = crate::config::ClinConfig::load().0.unwrap_or_default();
             println!(
                 "{}",
                 storage
@@ -529,16 +642,20 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
             Ok(())
         }
         KeybindsCmd::Export => {
-            let storage = Storage::init()?;
-            let keybinds = storage.load_keybinds();
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let config = crate::config::ClinConfig::load().0.unwrap_or_default();
+            let preset = config.core.keybind_preset;
+            let (keybinds, _warnings) = storage.load_keybinds_with_preset(preset);
             let toml = keybinds.to_toml();
             let content = toml::to_string_pretty(&toml)?;
             println!("{content}");
             Ok(())
         }
         KeybindsCmd::Reset => {
-            let storage = Storage::init()?;
-            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let config = crate::config::ClinConfig::load().0.unwrap_or_default();
             let preset = config.core.keybind_preset;
             let keybinds = preset.base_keybinds();
             storage.save_keybinds_for_preset(&keybinds, preset)?;
@@ -556,7 +673,8 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
 fn run_templates(action: TemplatesCmd) -> Result<()> {
     match action {
         TemplatesCmd::List => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let template_manager = storage.template_manager();
             let templates = template_manager.list()?;
 
@@ -589,7 +707,8 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
             Ok(())
         }
         TemplatesCmd::Init => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let template_manager = storage.template_manager();
             template_manager.create_examples()?;
             println!(
@@ -637,11 +756,7 @@ fn run_config(action: ConfigCmd) -> Result<()> {
             Ok(())
         }
         ConfigCmd::Reset => {
-            let path = ClinConfig::config_path()?;
-            if path.exists() {
-                fs::remove_file(&path).context("failed to remove configuration file")?;
-            }
-            let _ = ClinConfig::load()?;
+            let _ = ClinConfig::reset()?;
             println!(
                 "{}",
                 console::success("Configuration reset to default values.")
@@ -649,6 +764,220 @@ fn run_config(action: ConfigCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn run_cache(action: CacheCmd) -> Result<()> {
+    match action {
+        CacheCmd::Reset => {
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
+            let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
+            let digest = crate::paths::vault_cache_digest(&vault_id);
+            let scoped_cache = app_paths.scoped_summary_cache_path(&digest);
+
+            let mut cache_locations = vec![scoped_cache, app_paths.summary_cache_path()];
+            cache_locations.push(app_paths.config_root_cache_path());
+            let default_root = app_paths.default_config_root_cache_path();
+            if !cache_locations.contains(&default_root) {
+                cache_locations.push(default_root);
+            }
+
+            let mut any_removed = false;
+            for path in &cache_locations {
+                if crate::fsutil::remove_file_if_exists(path).with_context(|| {
+                    format!("failed to remove note-summary cache: {}", path.display())
+                })? {
+                    any_removed = true;
+                    println!(
+                        "{}",
+                        console::success(&format!(
+                            "Note-summary cache cleared: {}",
+                            console::path(path)
+                        ))
+                    );
+                }
+            }
+
+            if !any_removed {
+                println!(
+                    "{}",
+                    console::info(&format!(
+                        "Note-summary cache already empty: {}",
+                        console::path(&cache_locations[0])
+                    ))
+                );
+            }
+            Ok(())
+        }
+    }
+}
+fn process_watcher_events(app: &mut App) {
+    let Some(ref rx) = app.fs_event_rx else {
+        return;
+    };
+    let overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
+
+    let mut events = Vec::new();
+    while let Ok(evt) = rx.try_recv() {
+        events.push(evt);
+    }
+
+    if overflow {
+        app.request_notes_reconcile();
+        app.watcher_window_start = None;
+        return;
+    }
+
+    if events.is_empty() && app.watcher_window_start.is_none() {
+        return;
+    }
+
+    if app.watcher_window_start.is_none() {
+        if let Some(first) = events.first() {
+            app.watcher_window_start = Some(first.observed_at);
+        } else {
+            app.watcher_window_start = Some(Instant::now());
+        }
+    }
+
+    let Some(window_start) = app.watcher_window_start else {
+        return;
+    };
+    if Instant::now() < window_start + Duration::from_millis(250) {
+        return;
+    }
+
+    app.watcher_window_start = None;
+
+    let mut changes_map: HashMap<String, crate::app::catalog::PathChange> = HashMap::new();
+    let mut needs_full_reconcile = false;
+
+    'events_loop: for watched in events {
+        use notify::EventKind;
+        use notify::event::{ModifyKind, RenameMode};
+
+        let ev = watched.event;
+        if ev.paths.is_empty() {
+            needs_full_reconcile = true;
+            break 'events_loop;
+        }
+
+        match ev.kind {
+            EventKind::Access(_) => continue,
+            EventKind::Create(_)
+            | EventKind::Modify(ModifyKind::Data(_))
+            | EventKind::Modify(ModifyKind::Metadata(_)) => {
+                for path in &ev.paths {
+                    if path.is_dir() {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                    if let Ok(rel) = path.strip_prefix(&app.storage.notes_dir) {
+                        if let Some(rel_str) = rel.to_str() {
+                            let norm_id = rel_str.replace('\\', "/");
+                            changes_map.insert(
+                                norm_id.clone(),
+                                crate::app::catalog::PathChange::Upsert(norm_id),
+                            );
+                        } else {
+                            needs_full_reconcile = true;
+                            break 'events_loop;
+                        }
+                    } else {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                }
+            }
+            EventKind::Remove(_) => {
+                for path in &ev.paths {
+                    if let Ok(rel) = path.strip_prefix(&app.storage.notes_dir) {
+                        if let Some(rel_str) = rel.to_str() {
+                            let norm_id = rel_str.replace('\\', "/");
+                            changes_map.insert(
+                                norm_id.clone(),
+                                crate::app::catalog::PathChange::Remove(norm_id),
+                            );
+                        } else {
+                            needs_full_reconcile = true;
+                            break 'events_loop;
+                        }
+                    } else {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                }
+            }
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)) if ev.paths.len() == 2 => {
+                let old_p = &ev.paths[0];
+                let new_p = &ev.paths[1];
+                if let (Ok(rel_old), Ok(rel_new)) = (
+                    old_p.strip_prefix(&app.storage.notes_dir),
+                    new_p.strip_prefix(&app.storage.notes_dir),
+                ) {
+                    if let (Some(old_str), Some(new_str)) = (rel_old.to_str(), rel_new.to_str()) {
+                        let old_norm = old_str.replace('\\', "/");
+                        let new_norm = new_str.replace('\\', "/");
+                        changes_map.insert(
+                            old_norm.clone(),
+                            crate::app::catalog::PathChange::Remove(old_norm),
+                        );
+                        changes_map.insert(
+                            new_norm.clone(),
+                            crate::app::catalog::PathChange::Upsert(new_norm),
+                        );
+                    } else {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                } else {
+                    needs_full_reconcile = true;
+                    break 'events_loop;
+                }
+            }
+            _ => {
+                needs_full_reconcile = true;
+                break 'events_loop;
+            }
+        }
+        if needs_full_reconcile || changes_map.len() > 512 {
+            needs_full_reconcile = true;
+            break;
+        }
+    }
+
+    if needs_full_reconcile || changes_map.len() > 512 {
+        app.request_notes_reconcile();
+    } else if !changes_map.is_empty() {
+        let changes: Vec<_> = changes_map.into_values().collect();
+        app.send_catalog_paths(changes);
+    }
+}
+
+fn perform_orderly_catalog_shutdown(app: &mut App) {
+    app.catalog_generation.fetch_add(1, Ordering::SeqCst);
+    while app.catalog_event_rx.try_recv().is_ok() {}
+
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(0);
+    let deadline = Instant::now() + Duration::from_millis(500);
+
+    while Instant::now() < deadline {
+        if app
+            .catalog_cmd_tx
+            .try_send(crate::app::catalog::CatalogCommand::Flush {
+                ack: ack_tx.clone(),
+            })
+            .is_ok()
+            && ack_rx.recv_timeout(Duration::from_millis(100)).is_ok()
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = app
+        .catalog_cmd_tx
+        .try_send(crate::app::catalog::CatalogCommand::Shutdown);
 }
 struct TerminalGuard;
 
@@ -661,10 +990,16 @@ impl TerminalGuard {
                 stdout,
                 EnterAlternateScreen,
                 EnableMouseCapture,
-                EnableBracketedPaste
+                EnableBracketedPaste,
+                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
             )
         } else {
-            execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)
+            execute!(
+                stdout,
+                EnterAlternateScreen,
+                EnableBracketedPaste,
+                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+            )
         };
         if let Err(e) = entered {
             disable_raw_mode().ok(); // guard won't be built; clean up raw mode ourselves
@@ -682,6 +1017,7 @@ impl Drop for TerminalGuard {
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
+            PopKeyboardEnhancementFlags,
             crossterm::cursor::Show,
         );
     }
@@ -696,228 +1032,250 @@ pub fn force_quit() -> ! {
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::event::DisableMouseCapture,
         crossterm::event::DisableBracketedPaste,
+        crossterm::event::PopKeyboardEnhancementFlags,
         crossterm::cursor::Show,
     );
     std::process::exit(130);
 }
 
 fn run_tui_session(app: &mut App) -> Result<()> {
-    // Clean up any orphaned plaintext temp files from a prior crashed session.
-    crate::fsutil::cleanup_orphaned_temp_files();
-
-    let register_signal = |sig: std::os::raw::c_int| {
-        // SAFETY: signal_hook::low_level::register is async-signal-safe.
-        // The closure only performs atomic stores and fetch-adds, which are
-        // safe operations within a signal handler.
-        let _ = unsafe {
-            signal_hook::low_level::register(sig, || {
-                SHOULD_EXIT.store(true, Ordering::Release);
-                if SIGNAL_COUNT.fetch_add(1, Ordering::SeqCst) >= 1 {
-                    FORCE_QUIT.store(true, Ordering::Release);
-                }
-            })
+    loop {
+        let guard = crate::session::start_session(app);
+        let result = {
+            let _terminal_guard = TerminalGuard::enter(app.mouse_enabled)?;
+            let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
+            let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
+            app.image_picker = if app.config.image.enabled {
+                Some(
+                    ratatui_image::picker::Picker::from_query_stdio()
+                        .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
+                )
+            } else {
+                None
+            };
+            let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
+            let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
+            let result = std::panic::catch_unwind(move || {
+                run_app(
+                    *terminal_safe,
+                    *app_safe,
+                    &mut crate::event_source::CrosstermEventSource,
+                )
+            });
+            if app.mode == ViewMode::Edit {
+                app.autosave();
+            }
+            result
         };
-    };
-    register_signal(signal_hook::consts::SIGINT);
-    register_signal(signal_hook::consts::SIGTERM);
-    #[cfg(unix)]
-    {
-        register_signal(signal_hook::consts::SIGHUP);
-        register_signal(signal_hook::consts::SIGQUIT);
-    }
 
-    // Spawn the background backup worker before entering the terminal.
-    let (tx, done_rx) =
-        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
-
-    app.backup_tx = Some(tx);
-
-    // Initialize the optional file system watcher for auto-refreshing the
-    // notes list when external editors or sync tools modify files.
-    // Uses raw `notify` (not `notify-debouncer-mini`) so we can manually
-    // filter out `Access` events, preventing an infinite refresh loop caused
-    // by the app reading its own files during `refresh_notes()`.
-    let _watcher = if app.config.core.auto_refresh {
-        use notify::{EventKind, RecursiveMode, Watcher};
-        let (tx, rx) = std::sync::mpsc::channel();
-        app.fs_event_rx = Some(rx);
-        let notes_path = app.storage.notes_dir.clone();
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(event) = res {
-                // Prevent infinite loop: ignore Access events triggered by our
-                // own `refresh_notes()` reads.
-                if matches!(event.kind, EventKind::Access(_)) {
-                    return;
-                }
-                // Performance: aggressively filter out .git and temp lock files.
-                let has_relevant_events = event.paths.iter().any(|p| {
-                    let path_str = p.to_string_lossy();
-                    !path_str.contains("/.git/") && !path_str.ends_with(".clin")
-                });
-                if has_relevant_events {
-                    let _ = tx.send(()); // Non-blocking send
-                }
+        let rebootstrap = app.setup_rebootstrap.take();
+        if let Some(request) = rebootstrap {
+            crate::session::finish_session_for_rebootstrap(app, guard)?;
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => return Err(error),
+                Err(error) => std::panic::resume_unwind(error),
             }
-        })
-        .ok();
-
-        if let Some(ref mut w) = watcher {
-            let _ = w.watch(&notes_path, RecursiveMode::Recursive);
-        }
-        watcher
-    } else {
-        None
-    };
-
-    // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
-    // screen) is dropped — restoring the terminal — BEFORE any blocking
-    // quit-time backup. Any later signal/SIGKILL during the flush then leaves
-    // the terminal clean.
-    let result = {
-        let _guard = TerminalGuard::enter(app.mouse_enabled)?;
-        let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
-        let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
-
-        let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
-        let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
-        let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
-        if app.mode == ViewMode::Edit {
-            app.autosave();
-        }
-        res
-    }; // _guard dropped here: raw mode off, alt screen left
-
-    let signal_exit = SHOULD_EXIT.load(Ordering::Acquire);
-
-    if signal_exit {
-        // Don't join: the worker may be mid-commit. libgit2 commits are atomic
-        // (HEAD updated last), so killing the thread cannot corrupt the repo.
-        drop(app.backup_tx.take());
-    } else if app.config.backup.enabled && app.config.backup.backup_on_quit {
-        println!("Backing up…");
-        let _ = app.backup_tx.as_ref().map(|tx| {
-            tx.send(crate::backup::worker::BackupJob::Flush(
-                "auto: backup on quit".into(),
-            ))
-        });
-        drop(app.backup_tx.take());
-        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-        let timed_out = loop {
-            if FORCE_QUIT.load(Ordering::Acquire) {
-                break true;
-            }
-            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
-                Ok(()) => break false,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break true,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if std::time::Instant::now() >= deadline {
-                        break true;
+            let rebuilt = (|| -> Result<App> {
+                let fresh = App::new_deferred(request.storage.clone())?;
+                if request.previous_path.exists() && request.previous_path != request.selected_path
+                {
+                    let paths = crate::paths::AppPaths::discover(
+                        crate::config::ClinConfig::config_path()?,
+                    )?;
+                    crate::local_state::record_storage_migration(
+                        &paths.state_path(),
+                        &request.previous_path,
+                        &request.selected_path,
+                    )?;
+                }
+                Ok(fresh)
+            })();
+            let mut fresh = match rebuilt {
+                Ok(fresh) => fresh,
+                Err(error) => {
+                    request.previous_config.save().with_context(|| {
+                        format!(
+                            "failed to restore previous config after vault switch error: {error}"
+                        )
+                    })?;
+                    let (storage, _) =
+                        crate::storage::Storage::init_with_config(&request.previous_config);
+                    let storage = storage.with_context(|| {
+                        format!(
+                            "failed to restore previous vault after vault switch error: {error}"
+                        )
+                    })?;
+                    let mut restored = App::new_deferred(storage).with_context(|| {
+                        format!("failed to reopen previous vault after vault switch error: {error}")
+                    })?;
+                    restored.open_setup_view();
+                    if let Some(state) = restored.setup_state.as_mut() {
+                        state.vault_path = request.selected_path.clone();
                     }
+                    restored.set_temporary_status(&format!(
+                        "Failed to switch vault; restored previous vault: {error}"
+                    ));
+                    *app = restored;
+                    continue;
                 }
+            };
+            for warning in request.warnings {
+                fresh
+                    .messages
+                    .push(warning, crate::app::messages::MessageSeverity::Warning);
             }
-        };
-        if timed_out {
-            eprintln!("Backup still running in background; exiting.");
-        } else {
-            println!("Done.");
+            let _ = fresh.storage.template_manager().create_examples();
+            fresh.set_temporary_status_static("Setup complete");
+            *app = fresh;
+            continue;
         }
-        if let Some(msg) = app.backup_status.lock().take() {
-            eprintln!("Backup warning: {msg}");
+        crate::session::finish_session(app, guard)?;
+        match result {
+            Ok(result) => return result,
+            Err(error) => std::panic::resume_unwind(error),
         }
-    } else {
-        drop(app.backup_tx.take());
-        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-        loop {
-            if FORCE_QUIT.load(Ordering::Acquire) {
-                break;
-            }
-            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if std::time::Instant::now() >= deadline {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    match result {
-        Ok(r) => r,
-        Err(err) => std::panic::resume_unwind(err),
     }
 }
 
-fn run_app(
-    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
+/// Drain mouse events already sitting in the crossterm queue and feed each to the
+/// overlay view, collapsing a burst of drag events into one later render.
+/// Called only after the loop has already dispatched a `Drag` event, so during an
+/// active pan the queue contains only further `Drag`/`Up` mouse events.
+/// Non-mouse events break the loop (vanishingly rare during an active drag; the
+/// single read event is dropped rather than re-queued because crossterm cannot
+/// push back). Results from drained events are discarded — a mouse Drag/Up never
+fn drain_queued_mouse_events<V: OverlayView, S: crate::event_source::EventSource>(
+    view: &mut V,
     app: &mut App,
+    term_area: Rect,
+    events: &mut S,
 ) -> Result<()> {
-    let mut focus = EditFocus::Body;
-    let mut mouse_selecting = false;
-    let mut mouse_dragged = false;
+    while events.poll(Duration::ZERO)? {
+        match events.read()? {
+            ev @ Event::Mouse(_) => {
+                let _ = view.overlay_handle_event(ev, app, term_area)?;
+            }
+            _ => break,
+        }
+    }
+    Ok(())
+}
 
-    // Start background note load for deferred startup
-    let load_rx = if !app.initial_load_done && app.notes.is_empty() {
-        Some(app.start_background_load())
-    } else {
-        None
-    };
-    let mut last_fs_refresh = std::time::Instant::now()
-        .checked_sub(std::time::Duration::from_secs(1))
-        .expect("1s ago is always valid from just-created now");
-    let mut pending_fs_refresh = false;
+pub fn run_app<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+    terminal: &mut ratatui::Terminal<B>,
+    app: &mut crate::app::App,
+    events: &mut S,
+) -> Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
+    run_app_with_hook(terminal, app, events, &mut |_| false)
+}
+
+/// `pre_draw_hook` runs every loop iteration before the draw phase.
+/// record_frame/fps/dirty-flag bookkeeping still runs.
+pub fn run_app_with_hook<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+    terminal: &mut ratatui::Terminal<B>,
+    app: &mut crate::app::App,
+    events: &mut S,
+    pre_draw_hook: &mut dyn FnMut(&mut crate::app::App) -> bool,
+) -> Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
+    if app.config.core.syntax_highlighting {
+        let code_theme = std::sync::Arc::from(app.config.core.code_theme.as_str());
+        crate::markdown::prewarm_syntax_assets(code_theme);
+    }
+
+    let mut focus = EditFocus::Body;
+    let mut list_dirty = true;
+    let mut graph_dirty = true;
+    let mut prev_mode = app.mode;
 
     while !app.should_quit {
-        // Check for external SIGINT/SIGTERM
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;
         }
-
-        // Drain background load batches (non-blocking)
-        if let Some(ref rx) = load_rx
-            && !app.initial_load_done
-        {
-            let mut did_work = false;
-            while let Ok(batch) = rx.try_recv() {
-                did_work = true;
-                app.merge_loaded(batch);
-            }
-            if did_work {
-                app.needs_full_redraw = true;
-            }
+        if app.mode == ViewMode::Edit {
+            crate::editor_session::run_editor_session(terminal, app, events, pre_draw_hook)?;
+            prev_mode = app.mode;
+            continue;
+        }
+        let msgs_before = app.messages.messages.len();
+        while let Ok(msg) = app.message_rx.try_recv() {
+            app.messages.push(msg.text, msg.severity);
+        }
+        if app.messages.messages.len() != msgs_before {
+            list_dirty = true;
+            graph_dirty = true;
+        }
+        if app.messages.tick_expirations() {
+            list_dirty = true;
+            graph_dirty = true;
         }
 
-        // Drain file system watcher signals (non-blocking)
-        // Multiple rapid signals collapse into a single refresh per frame.
-        if let Some(rx) = &app.fs_event_rx {
-            // Drain the entire channel queue so multiple rapid signals collapse
-            while rx.try_recv().is_ok() {
-                pending_fs_refresh = true;
+        if app.mode != prev_mode {
+            match app.mode {
+                ViewMode::List => list_dirty = true,
+                ViewMode::Graph => graph_dirty = true,
+                _ => {}
             }
-
-            // Throttle the heavy refresh to max 1 per 250ms to guarantee zero lag
-            // even during massive `git pull` checkouts
-            if pending_fs_refresh && last_fs_refresh.elapsed().as_millis() > 250 {
-                pending_fs_refresh = false;
-                last_fs_refresh = std::time::Instant::now();
-
-                app.list.folder_cache = None; // Invalidate folder cache so new/deleted folders appear
-                if let Err(e) = app.refresh_notes() {
-                    app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
-                }
-            }
+            prev_mode = app.mode;
         }
 
-        app.tick_status();
+        while let Ok(evt) = app.catalog_event_rx.try_recv() {
+            app.handle_catalog_event(evt);
+            if app.mode == ViewMode::List {
+                list_dirty = true;
+            }
+        }
+        app.handle_search_events();
+        process_watcher_events(app);
+
+        if app.tick_status() {
+            if app.mode == ViewMode::List {
+                list_dirty = true;
+            } else if app.mode == ViewMode::Graph {
+                graph_dirty = true;
+            }
+        }
         let failed = app.backup_status.lock().take();
         if let Some(msg) = failed {
             app.set_temporary_status(&format!("Backup failed: {msg}"));
+            if app.mode == ViewMode::List {
+                list_dirty = true;
+            }
+        }
+
+        if let Some(ref idx) = app.note_index
+            && let Some(expiry) = idx.min_membership_expiry
+            && crate::ui::now_unix_secs() >= expiry
+        {
+            app.rebuild_note_index();
+            if app.mode == ViewMode::List {
+                list_dirty = true;
+            }
         }
 
         if app.needs_full_redraw {
             terminal.clear()?;
             app.needs_full_redraw = false;
+            list_dirty = true;
+            graph_dirty = true;
+        }
+
+        if app.mode == ViewMode::List
+            && app
+                .list
+                .sections
+                .contains(&crate::config::NotesSection::Graf)
+            && app.graph_preview.is_some()
+            && app.graph_preview_steps < 100
+        {
+            list_dirty = true;
         }
 
         // Apply update ticks for continuous views before rendering
@@ -927,29 +1285,105 @@ fn run_app(
             graf.overlay_update(&mut app.config);
         }
 
-        if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
-            return Err(e.into());
+        let graph_active = app
+            .graph_state
+            .as_ref()
+            .and_then(|g| g.graph_state.as_ref())
+            .is_some_and(|s| {
+                let st = s.read();
+                !st.is_settled || st.physics_worker_active
+            });
+
+        let should_draw = if app.mode == ViewMode::List {
+            list_dirty
+        } else if app.mode == ViewMode::Graph {
+            graph_dirty || graph_active
+        } else {
+            true
+        };
+
+        let skip_draw = pre_draw_hook(app);
+
+        if should_draw {
+            if !skip_draw
+                && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
+            {
+                return Err(e.into());
+            }
+            let now = std::time::Instant::now();
+            if app.mode == ViewMode::Graph
+                && let Some(ref mut graph_state) = app.graph_state
+                && graph_state.config_errors.is_empty()
+            {
+                graph_state.record_frame(now);
+            }
+            let elapsed = now.duration_since(app.last_frame_time).as_secs_f64();
+            app.fps = app.fps * 0.9 + (1.0 / elapsed.max(0.001)) * 0.1;
+            app.last_frame_time = now;
+            if app.mode == ViewMode::List {
+                list_dirty = false;
+            }
+            if app.mode == ViewMode::Graph {
+                graph_dirty = false;
+            }
         }
 
-        let poll_timeout = if app.mode == ViewMode::Graph || app.mode == ViewMode::Draw {
+        let active_catalog = app.catalog_status.is_some();
+        let active_search = app.search_status.is_some() || app.search_debounce_deadline.is_some();
+
+        let poll_timeout = if app.mode == ViewMode::Graph {
+            let graph_idle = !graph_dirty && !graph_active;
+            if graph_idle {
+                Duration::from_millis(50)
+            } else {
+                Duration::from_millis(16)
+            }
+        } else if app.mode == ViewMode::Setup {
+            Duration::from_millis(250)
+        } else if app.mode == ViewMode::Draw {
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
-        } else if matches!(
-            app.list.preview_content,
-            Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
-        ) || app
-            .editor
-            .md_preview_renderer
-            .as_ref()
-            .is_some_and(|r| r.is_pending())
+        } else if active_catalog || active_search {
+            Duration::from_millis(32)
+        } else if app.is_first_cache_build
+            || matches!(
+                app.list.preview_content,
+                Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
+            )
+            || app
+                .editor
+                .md_preview_renderer
+                .as_ref()
+                .is_some_and(|r| r.is_pending())
         {
             Duration::from_millis(50)
         } else {
             Duration::from_millis(200)
         };
 
-        let need_redraw = app.poll_renderers();
+        let mut need_redraw = app.poll_renderers();
+
+        // Drain completed image decode jobs into local Vec to avoid borrow conflict
+        let decoded_results: Vec<anyhow::Result<crate::image_render::worker::DecodedImage>> =
+            match &app.image_decode_rx {
+                Some(rx) => std::iter::from_fn(|| rx.try_recv().ok()).collect(),
+                None => Vec::new(),
+            };
+        for res in decoded_results {
+            match res {
+                Ok(img) => {
+                    app.install_image(img);
+                }
+                Err(e) => {
+                    let text = format!("Image decode failed: {e}");
+                    app.set_temporary_status(&text);
+                    app.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
+            }
+            need_redraw = true;
+        }
 
         // Auto-backup check
         if let Some(interval_mins) = app.config.backup.auto_backup_interval {
@@ -964,399 +1398,485 @@ fn run_app(
             }
         }
 
-        if need_redraw && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
-        {
-            return Err(e.into());
+        if app.mode != ViewMode::List && need_redraw {
+            if !skip_draw
+                && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
+            {
+                return Err(e.into());
+            }
+            let now = std::time::Instant::now();
+            if app.mode == ViewMode::Graph
+                && let Some(ref mut graph_state) = app.graph_state
+                && graph_state.config_errors.is_empty()
+            {
+                graph_state.record_frame(now);
+            }
+        } else if app.mode == ViewMode::List && need_redraw {
+            list_dirty = true;
         }
 
-        if event::poll(poll_timeout).context("event poll failed")? {
-            match event::read().context("failed to read event")? {
-                // Global Ctrl+C — immediately kill process
-                Event::Key(key)
-                    if key.kind == KeyEventKind::Press
-                        && key.code == KeyCode::Char('c')
-                        && key.modifiers == KeyModifiers::CONTROL =>
+        if events.poll(poll_timeout).context("event poll failed")? {
+            list_dirty = true;
+            graph_dirty = true;
+            let size = terminal.size().context("failed to get terminal size")?;
+            let _area = Rect::new(0, 0, size.width, size.height);
+            let mut pending: Vec<crossterm::event::Event> = Vec::with_capacity(8);
+            pending.push(events.read().context("failed to read event")?);
+            while pending.len() < 64 && events.poll(Duration::ZERO)? {
+                pending.push(events.read()?);
+            }
+            let mut batch: Vec<crossterm::event::Event> = Vec::with_capacity(pending.len());
+            for ev in pending {
+                let is_moved = matches!(&ev, Event::Mouse(m)
+                    if m.kind == ratatui::crossterm::event::MouseEventKind::Moved);
+                if is_moved
+                    && batch.last().is_some_and(|e| {
+                        matches!(e, Event::Mouse(m)
+                            if m.kind == ratatui::crossterm::event::MouseEventKind::Moved)
+                    })
                 {
-                    crate::force_quit();
+                    if let Some(last) = batch.last_mut() {
+                        *last = ev;
+                    }
+                } else {
+                    batch.push(ev);
                 }
-                ev @ (Event::Key(_) | Event::Mouse(_)) => {
-                    // Global popups & palette get first chance to consume
+            }
+            for ev in batch {
+                dispatch_event(events, app, ev, &mut focus, terminal)?;
+            }
+        }
+    }
+    perform_orderly_catalog_shutdown(app);
+    Ok(())
+}
+
+fn dispatch_event<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+    events: &mut S,
+    app: &mut crate::app::App,
+    ev: crossterm::event::Event,
+    focus: &mut EditFocus,
+    terminal: &mut ratatui::Terminal<B>,
+) -> anyhow::Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
+    match ev {
+        // Global Ctrl+C — immediately signal exit
+        Event::Key(key)
+            if app.host.ctrl_c_quits()
+                && key.kind == KeyEventKind::Press
+                && key.code == KeyCode::Char('c')
+                && key.modifiers == KeyModifiers::CONTROL =>
+        {
+            crate::force_quit();
+        }
+        mut ev @ (Event::Key(_) | Event::Mouse(_)) => {
+            // Phase 1: coalesce Moved events — drain all queued Moved
+            let _coalesced = if let Event::Mouse(mouse_event) = &ev {
+                if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
+                    let mut last = *mouse_event;
+                    while events.poll(Duration::ZERO)? {
+                        match events.read()? {
+                            Event::Mouse(next)
+                                if next.kind
+                                    == ratatui::crossterm::event::MouseEventKind::Moved =>
+                            {
+                                last = next;
+                            }
+                            _ => break,
+                        }
+                    }
+                    app.mouse_pos = Some((last.column, last.row));
+                    Some(Event::Mouse(last))
+                } else {
+                    app.mouse_pos = Some((mouse_event.column, mouse_event.row));
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(ev2) = _coalesced {
+                ev = ev2;
+            }
+            let size = terminal.size().context("failed to get terminal size")?;
+            let area = Rect::new(0, 0, size.width, size.height);
+            if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
+                return Ok(());
+            }
+            if let Event::Mouse(ref mouse_event) = ev
+                && crate::events::handle_global_popup_mouse(app, mouse_event, area)
+            {
+                return Ok(());
+            }
+            match ev {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    let handled = match app.mode {
+                        ViewMode::List => handle_list_keys(app, key),
+                        ViewMode::Help => {
+                            handle_help_keys(app, key);
+                            false
+                        }
+                        // Edit events are consumed by `editor_session` before
+                        // generic dispatch resumes.
+                        ViewMode::Edit => false,
+                        ViewMode::Setup => {
+                            crate::events::handle_setup_keys(app, key);
+                            false
+                        }
+                        ViewMode::Graph => {
+                            if let Some(mut graf) = app.graph_state.take() {
+                                let res = graf.overlay_handle_event(Event::Key(key), app, area);
+                                app.graph_state = Some(graf);
+                                match res? {
+                                    crate::overlay::OverlayResult::NoteOpened(note_id) => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+                                        app.graph_state = None;
+                                        app.mode = ViewMode::List;
+
+                                        app.reload_theme();
+                                        app.open_note_from_graph(&note_id);
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::Exit => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+
+                                        app.graph_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Draw => {
+                            if let Some(mut draw) = app.draw_state.take() {
+                                let res = draw.overlay_handle_event(Event::Key(key), app, area);
+                                app.draw_state = Some(draw);
+                                match res? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.draw_state = None;
+                                        app.close_draw_view();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Canvas => {
+                            if let Some(mut canvas) = app.canvas_state.take() {
+                                let res = canvas.overlay_handle_event(Event::Key(key), app, area);
+                                app.canvas_state = Some(canvas);
+                                match res? {
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.close_canvas_view();
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Backup => {
+                            if let Some(mut backup) = app.backup_state.take() {
+                                let res = backup.overlay_handle_event(Event::Key(key), app, area);
+                                app.backup_state = Some(backup);
+                                match res? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.reload_config();
+                                        app.backup_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Outline => {
+                            if let Some(mut tree) = app.outline_state.take() {
+                                let res = tree.overlay_handle_event(Event::Key(key), app, area);
+                                app.outline_state = Some(tree);
+                                match res? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.outline_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    crate::overlay::OverlayResult::JumpToLine {
+                                        note_id: _,
+                                        line: _,
+                                    } => {
+                                        app.outline_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    };
+                    let _ = handled;
+                }
+                Event::Mouse(mouse_event) => {
                     let size = terminal.size().context("failed to get terminal size")?;
                     let area = Rect::new(0, 0, size.width, size.height);
-                    if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
-                        continue;
-                    }
-
-                    match ev {
-                        Event::Key(key) if key.kind == KeyEventKind::Press => {
-                            let handled = match app.mode {
-                                ViewMode::List => handle_list_keys(app, key),
-                                ViewMode::Help => {
-                                    handle_help_keys(app, key);
-                                    false
-                                }
-                                ViewMode::Edit => handle_edit_keys(app, key, &mut focus),
-                                ViewMode::Setup => {
-                                    crate::events::handle_setup_keys(app, key);
-                                    false
-                                }
-                                ViewMode::Graph => {
-                                    if let Some(graf) = &mut app.graph_state {
-                                        match graf.overlay_handle_event(
-                                            Event::Key(key),
-                                            terminal,
-                                            &mut app.config,
-                                        )? {
-                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-                                                app.graph_state = None;
-                                                app.mode = ViewMode::List;
-
-                                                app.reload_theme();
-                                                app.open_note_from_graph(&note_id);
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            crate::overlay::OverlayResult::Exit => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-
-                                                app.graph_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            _ => {}
+                    match app.mode {
+                        ViewMode::List => {
+                            handle_list_mouse(app, mouse_event, area);
+                            let is_drag = matches!(
+                                mouse_event.kind,
+                                ratatui::crossterm::event::MouseEventKind::Drag(_)
+                            );
+                            if is_drag {
+                                while events.poll(Duration::ZERO)? {
+                                    match events.read()? {
+                                        Event::Mouse(next_mouse) => {
+                                            app.mouse_pos =
+                                                Some((next_mouse.column, next_mouse.row));
+                                            handle_list_mouse(app, next_mouse, area);
                                         }
-                                        true
-                                    } else {
-                                        false
+                                        _ => break,
                                     }
-                                }
-                                ViewMode::Draw => {
-                                    if let Some(draw) = &mut app.draw_state {
-                                        match draw.overlay_handle_event(
-                                            Event::Key(key),
-                                            terminal,
-                                            &mut app.config,
-                                        )? {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.draw_state = None;
-                                                app.close_draw_view();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::Canvas => {
-                                    if let Some(canvas) = &mut app.canvas_state {
-                                        match canvas.overlay_handle_event(
-                                            Event::Key(key),
-                                            terminal,
-                                            &mut app.config,
-                                        )? {
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.close_canvas_view();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::Backup => {
-                                    if let Some(backup) = &mut app.backup_state {
-                                        let result = backup.overlay_handle_event(
-                                            Event::Key(key),
-                                            terminal,
-                                            &mut app.config,
-                                        )?;
-                                        match result {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.reload_config();
-                                                app.backup_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::ContentTree => {
-                                    if let Some(tree) = &mut app.content_tree_state {
-                                        let result = tree.overlay_handle_event(
-                                            Event::Key(key),
-                                            terminal,
-                                            &mut app.config,
-                                        )?;
-                                        match result {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.content_tree_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::JumpToLine {
-                                                note_id: _,
-                                                line: _,
-                                            } => {
-                                                app.content_tree_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                            };
-                            let _ = handled;
-                        }
-                        Event::Mouse(mouse_event) => {
-                            let size = terminal.size().context("failed to get terminal size")?;
-                            let area = Rect::new(0, 0, size.width, size.height);
-                            match app.mode {
-                                ViewMode::List => {
-                                    handle_list_mouse(app, mouse_event, area);
-                                }
-                                ViewMode::Edit => {
-                                    handle_edit_mouse(
-                                        app,
-                                        mouse_event,
-                                        area,
-                                        &mut focus,
-                                        &mut mouse_selecting,
-                                        &mut mouse_dragged,
-                                    );
-                                }
-                                ViewMode::Help => {
-                                    let tab_bar_y = area.y;
-                                    if mouse_event.kind
-                                        == ratatui::crossterm::event::MouseEventKind::Down(
-                                            ratatui::crossterm::event::MouseButton::Left,
-                                        )
-                                        && mouse_event.row == tab_bar_y
-                                    {
-                                        let tabs: Vec<(&str, Option<&str>)> =
-                                            crate::ui::help_tab_names(app.config.ui.icon_mode)
-                                                .iter()
-                                                .map(|&(l, g)| (l, Some(g)))
-                                                .collect();
-                                        let region = crate::ui::title_bar_tabs_region(area, "Help");
-                                        if let Some(i) = crate::ui::hit_test_tabs(
-                                            &tabs,
-                                            area.x,
-                                            area.width,
-                                            region.x,
-                                            mouse_event.column,
-                                            app.config.ui.tab_icons_only,
-                                            app.config.ui.icon_mode,
-                                        ) {
-                                            app.switch_help_tab(crate::app::HelpTab::from_index(i));
-                                        }
-                                    } else if mouse_event.kind
-                                        == ratatui::crossterm::event::MouseEventKind::ScrollUp
-                                    {
-                                        app.help_scroll = app.help_scroll.saturating_sub(3);
-                                    } else if mouse_event.kind
-                                        == ratatui::crossterm::event::MouseEventKind::ScrollDown
-                                    {
-                                        let max_scroll =
-                                            app.list.help_text_cache.as_ref().map_or(0, |rows| {
-                                                rows.len().saturating_sub(5) as u16
-                                            });
-                                        app.help_scroll =
-                                            app.help_scroll.saturating_add(3).min(max_scroll);
-                                    }
-                                }
-                                ViewMode::Graph => {
-                                    if let Some(graf) = &mut app.graph_state {
-                                        match graf.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            terminal,
-                                            &mut app.config,
-                                        )? {
-                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-                                                app.graph_state = None;
-                                                app.mode = ViewMode::List;
-
-                                                app.reload_theme();
-                                                app.open_note_from_graph(&note_id);
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            crate::overlay::OverlayResult::Exit => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-
-                                                app.graph_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                ViewMode::Draw => {
-                                    if let Some(draw) = &mut app.draw_state {
-                                        match draw.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            terminal,
-                                            &mut app.config,
-                                        )? {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.draw_state = None;
-                                                app.close_draw_view();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                                ViewMode::Canvas => {
-                                    if let Some(canvas) = &mut app.canvas_state {
-                                        let _ = canvas.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            terminal,
-                                            &mut app.config,
-                                        )?;
-                                    }
-                                }
-                                ViewMode::Backup => {
-                                    if let Some(backup) = &mut app.backup_state {
-                                        let _ = backup.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            terminal,
-                                            &mut app.config,
-                                        )?;
-                                    }
-                                }
-                                ViewMode::ContentTree => {
-                                    if let Some(tree) = &mut app.content_tree_state {
-                                        let _ = tree.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            terminal,
-                                            &mut app.config,
-                                        )?;
-                                    }
-                                }
-                                ViewMode::Setup => {
-                                    crate::events::handle_setup_mouse(app, mouse_event, area);
                                 }
                             }
                         }
-                        _ => {}
+                        // Edit events are consumed by `editor_session` before
+                        // generic dispatch resumes.
+                        ViewMode::Edit => {}
+                        ViewMode::Help => {
+                            handle_help_mouse(app, mouse_event, area);
+                        }
+                        ViewMode::Graph => {
+                            let mut is_drag = false;
+                            if let Some(mut graf) = app.graph_state.take() {
+                                is_drag = matches!(
+                                    mouse_event.kind,
+                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                );
+                                let result =
+                                    graf.overlay_handle_event(Event::Mouse(mouse_event), app, area);
+                                app.graph_state = Some(graf);
+                                match result? {
+                                    crate::overlay::OverlayResult::NoteOpened(note_id) => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+                                        app.graph_state = None;
+                                        app.mode = ViewMode::List;
+
+                                        app.reload_theme();
+                                        app.open_note_from_graph(&note_id);
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::Exit => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+
+                                        app.graph_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if is_drag && let Some(mut graf) = app.graph_state.take() {
+                                drain_queued_mouse_events(&mut graf, app, area, events)?;
+                                app.graph_state = Some(graf);
+                            }
+                        }
+                        ViewMode::Draw => {
+                            let mut coalesce = false;
+                            if let Some(mut draw) = app.draw_state.take() {
+                                coalesce = matches!(
+                                    mouse_event.kind,
+                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollDown
+                                );
+                                let result =
+                                    draw.overlay_handle_event(Event::Mouse(mouse_event), app, area);
+                                app.draw_state = Some(draw);
+                                match result? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.draw_state = None;
+                                        app.close_draw_view();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if coalesce && let Some(mut draw) = app.draw_state.take() {
+                                drain_queued_mouse_events(&mut draw, app, area, events)?;
+                                app.draw_state = Some(draw);
+                            }
+                        }
+                        ViewMode::Canvas => {
+                            let mut coalesce = false;
+                            if let Some(mut canvas) = app.canvas_state.take() {
+                                coalesce = matches!(
+                                    mouse_event.kind,
+                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollDown
+                                );
+                                let _ = canvas.overlay_handle_event(
+                                    Event::Mouse(mouse_event),
+                                    app,
+                                    area,
+                                )?;
+                                app.canvas_state = Some(canvas);
+                            }
+                            if coalesce && let Some(mut canvas) = app.canvas_state.take() {
+                                drain_queued_mouse_events(&mut canvas, app, area, events)?;
+                                app.canvas_state = Some(canvas);
+                            }
+                        }
+                        ViewMode::Backup => {
+                            if let Some(mut backup) = app.backup_state.take() {
+                                let _ = backup.overlay_handle_event(
+                                    Event::Mouse(mouse_event),
+                                    app,
+                                    area,
+                                )?;
+                                app.backup_state = Some(backup);
+                            }
+                        }
+                        ViewMode::Outline => {
+                            if let Some(mut tree) = app.outline_state.take() {
+                                let _ = tree.overlay_handle_event(
+                                    Event::Mouse(mouse_event),
+                                    app,
+                                    area,
+                                )?;
+                                app.outline_state = Some(tree);
+                            }
+                        }
+                        ViewMode::Setup => {
+                            crate::events::handle_setup_mouse(app, mouse_event, area);
+                        }
                     }
-                }
-                Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
-                    EditFocus::Title => {
-                        let normalized = data.replace(['\r', '\n'], " ");
-                        app.editor.title_editor.insert_str(normalized);
-                        app.status = Cow::Borrowed("Pasted title text");
-                        app.request_editor_preview_update();
-                    }
-                    EditFocus::Body => {
-                        app.editor.editor.insert_str(data);
-                        app.status = Cow::Borrowed("Pasted body text");
-                        app.request_editor_preview_update();
-                    }
-                },
-                Event::Resize(_, _) => {
-                    terminal.autoresize()?;
-                    app.needs_full_redraw = true;
                 }
                 _ => {}
             }
         }
+        Event::Paste(data) => {
+            if crate::events::handle_bracketed_paste(app, data, focus) {
+                app.set_temporary_status("Pasted from clipboard");
+            }
+        }
+        Event::Resize(_, _) => {}
+        _ => {}
+    }
+    if let Some(msg) = crate::text_edit::take_clipboard_notice() {
+        app.set_temporary_status(msg);
     }
     Ok(())
 }
 
 pub use constants::*;
+pub use event_source::{ChannelEventSource, CrosstermEventSource, EventSource};
+pub use host::{GuiHost, HostHooks, TuiHost};
+pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn list_dirty_draws_only_on_change() {
+        let storage = Storage {
+            data_dir: PathBuf::from("/tmp"),
+            config_dir: PathBuf::from("/tmp"),
+            notes_dir: PathBuf::from("/tmp"),
+            templates_dir: PathBuf::from("/tmp"),
+            key: [1u8; 32],
+            skip_dir_patterns: vec![],
+        };
+        let mut app = App::new(storage).unwrap();
+        app.mode = ViewMode::List;
+
+        let mut list_dirty = true;
+        let mut draw_count = 0;
+
+        for _tick in 0..5 {
+            let should_draw = if app.mode == ViewMode::List {
+                list_dirty
+            } else {
+                true
+            };
+
+            if should_draw {
+                draw_count += 1;
+                if app.mode == ViewMode::List {
+                    list_dirty = false;
+                }
+            }
+        }
+
+        assert_eq!(draw_count, 1);
+
+        app.set_temporary_status("New Status");
+        list_dirty = true;
+
+        if list_dirty {
+            draw_count += 1;
+        }
+
+        assert_eq!(draw_count, 2);
+    }
+}

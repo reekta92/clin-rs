@@ -1,6 +1,6 @@
 <div align="center">
 <img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
-
+ 
 # clin
 
 **A TUI reimagination of [Obsidian](https://obsidian.md/) — feature-packed note management in your terminal.**
@@ -14,7 +14,7 @@
 [![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
 [![Release](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![MSRV: 1.88.0](https://img.shields.io/badge/MSRV-1.88.0-orange.svg)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/)
+[![MSRV: 1.90.0](https://img.shields.io/badge/MSRV-1.90.0-orange.svg)](https://blog.rust-lang.org/2025/09/18/Rust-1.90.0/)
 [![GitHub release](https://img.shields.io/github/v/release/reekta92/clin-rs.svg?logo=github)](https://github.com/reekta92/clin-rs/releases)
 [![last commit](https://img.shields.io/github/last-commit/reekta92/clin-rs.svg)](https://github.com/reekta92/clin-rs/commits/main)
 
@@ -26,7 +26,7 @@
 ## About
 `clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a roughly 2-5 MB Rust binary with minimal resource use, while keeping the UI approachable.
 
-Drop an existing Obsidian vault into `clin` and it works out of the box. Image rendering, databases, and Obsidian plugins are not supported.
+Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering is supported via `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; enable with `[image] enabled = true`). Databases and Obsidian plugins are not supported.
 
 ## Screenshots
 
@@ -70,19 +70,23 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Image r
 
 ## Highlights
 
-- **Notes view** — folder tree, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews.
-- **Editor view** — built-in text editor with mouse support, line numbers, undo/redo, and **external editor** integration (VISUAL/EDITOR env or config). Markdown preview pane alongside editor.
+- **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews; auto-refresh on external file changes; show-info popup with word/char/header metrics.
+- **Editor view** — modal READ/EDIT modes, built-in find popup, soft-wrap toggle, sidebars with wikilink previews, mouse support, line numbers, undo/redo, editor context menu, external editor integration, insert-date action. See [EDITOR.md](docs/EDITOR.md).
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
-- **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
-- **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
-- **Content tree view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
+- **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group/image nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, mouse-drag panning, zoom-to-cursor, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
+- **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
+- **Outline view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
+- **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
+- **Subnotes** — encrypted virtual notes attached to any note, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
+- **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, draw, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
 - **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
-- **Custom themes** — drop-in TOML themes in `~/.config/clin/themes/`, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
+- **Custom themes** — drop-in TOML themes in the active configuration directory’s `themes/` subdirectory, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
+- **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
 
 - **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
-- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, **except for images**.
+- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, with image nodes supported as placeholder blocks.
 - **Templates** — TOML-based note templates with variable substitution (`{date}`, `{time}`, `{weekday}`, etc.). See [TEMPLATES.md](docs/TEMPLATES.md).
 - **Goals system** — daily word-count and note-count goals with in-app progress bars. Configurable via `[goals]` config section and command palette.
 - **Import & conversion** — import File/CSV/JSON/URL/Clipboard content as a new note or append to the current note. PDF, DOCX, HTML converted via external tools.
@@ -91,8 +95,8 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Image r
 
 ## Dependencies
 These are highly recommended for the best experience:
-- **A nerd font** — required for rendering **glyphs** which are highly used around the UI. **Jetbrains Mono Nerd Font** with **font size 14** is recommended.
-- **A modern terminal** — such as `kitty`, `ghostty` etc.
+- **A nerd font** — required for rendering **glyphs** which are highly used around the UI. `Jetbrains Mono Nerd Font` is highly recommended, see [nerd fonts.](https://www.nerdfonts.com/font-downloads)
+- **A modern terminal** — such as `kitty`, `ghostty`, `alacritty`, `foot` etc. preferably a terminal with **image protocol support**. **Note that some shortcuts might conflict with a specific terminals shortcuts** in that case you can either customize the shortcuts of the `clin` or your terminal to avoid conflicts.
 
 ---
 
@@ -285,7 +289,7 @@ cp -r /Volumes/clin/clin.app /Applications/
 hdiutil detach /Volumes/clin
 
 # Or using .tar.gz
-tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf clin-rs-aarch64-apple-darwin.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/
@@ -323,63 +327,43 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 
 | View | Purpose | Key Actions |
 |---|---|---|
-| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete |
+| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete; Subnotes grid + radial graph |
 | **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
 | **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
 | **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
 | **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
-| **Content Tree** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
+| **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
+| **Help** | In-app keybind + feature reference | Eight tabs (Notes/Editor/Graph/Draw/Canvas/Backup/Templates/About), search, popup accordion, preset-aware tips |
 
 | Feature | Description |
 |---|---|
 | **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph |
 | **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt, zero-knowledge |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
-| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, powerline/classic hint bar styles |
+| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, 13 hint-bar styles |
 | **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
 | **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
-| **Keybinds** | Fully customizable via keybinds.toml, with Helix/Vim/Emacs presets |
+| **Keybinds** | Fully customizable through active-preset keybind files, with Helix/Vim/Emacs presets |
 | **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
 
 ---
 
 ## Configuration
 
-`~/.config/clin/config.toml` -> main configuration file (includes theme, graph settings, etc.)
-`~/.config/clin/keybinds.toml` -> keybind configuration file
+Run `clin config show` to print the active configuration file path. Active-preset keybinds live at `<config-dir>/keybinds/<preset>.toml`.
 
 See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all available options and [keybind presets](docs/KEYBIND_PRESETS.md) for editor-style presets.
 
 ### config.toml example
 
 ```toml
-# General settings
+[core]
 storage_path = "/path/to/your/vault"
 mouse_enabled = true
 confirm_on_delete = true
 confirm_on_quit = false
-
-[list]
-preview_enabled = true
-preview_position = "right"
-preview_encryption = false
-show_date_in_list = true
-show_file_size = false
-date_format = "%Y-%m-%d"
-density = "comfortable"
-default_view = "grid"
-default_sort_field = "title"
-default_sort_order = "ascending"
-pinned_on_top = true
-calendar_enabled = true
-
-[editor]
-external_command = "nvim"
-external_enabled = false
-preview_enabled = false
-show_line_numbers = true
 
 [ui]
 theme = "tokyo_night"
@@ -388,6 +372,25 @@ show_status_bar = true
 icon_mode = "nerd"
 hint_bar_style = "classic"
 # accent = "#ff6600"
+
+[list]
+preview_enabled = true
+preview_position = "right"
+preview_encryption = false
+show_file_size = false
+date_format = "%Y-%m-%d"
+density = "comfortable"
+default_view = "grid"
+# default_sort_field = "title"
+# default_sort_order = "ascending"
+pinned_on_top = false
+calendar_enabled = true
+
+[editor]
+external_command = "nvim"
+external_enabled = false
+preview_enabled = false
+show_line_numbers = true
 ```
 
 
@@ -464,18 +467,22 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 - [Architecture](docs/ARCHITECTURE.md) — system overview, event loop, threading model
 - [List View](docs/LIST_VIEW.md) — notes list view: Grid/Tree layout, format chooser, preview pane
 
-- [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and keybinds.toml options
+- [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and preset keybind-file options
 - [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
 - [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
 - [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view
 - [Backup](docs/BACKUP.md) — Git-based backup dashboard: vault state, history, diff preview, automation
 
 - [Draw](docs/DRAW.md) — freehand drawing canvas
-- [Content Tree](docs/CONTENT_TREE.md) — nested outline navigation
+- [Outline](docs/OUTLINE.md) — nested outline navigation
+- [Editor](docs/EDITOR.md) — READ/EDIT modes, find, soft-wrap, sidebars, wikilink previews
 - [Encryption](docs/ENCRYPTION.md) — ChaCha20-Poly1305 per-note encryption
+- [Help](docs/HELP.md) — 3-pane help view: tabs, keybind index, tips, popup accordion
+- [Image Rendering](docs/IMAGE_RENDERING.md) — ratatui-image pixel rendering, protocols, [image] config
 - [Theme System](docs/THEME_SYSTEM.md) — built-in themes and customization
 - [Setup](docs/SETUP.md) — first-run setup wizard
 - [Command Palette](docs/COMMAND_PALETTE.md) — extensible action system
+- [Subnotes](docs/SUBNOTES.md) — encrypted attached notes, grid tab, radial graph, manager popup
 - [Templates](docs/TEMPLATES.md) — TOML-based note templates
 
 ## Stats

@@ -1,7 +1,7 @@
-use crate::content_tree::parse::TreeNode;
+use crate::outline::parse::TreeNode;
 use std::collections::HashSet;
 
-pub struct ContentTreeState {
+pub struct OutlineState {
     pub note_id: String,
     pub note_title: String,
     pub nodes: Vec<TreeNode>,
@@ -11,9 +11,14 @@ pub struct ContentTreeState {
     pub keybinds: crate::keybinds::Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
+    pub mouse_pos: Option<(u16, u16)>,
+    pub last_tree_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub tree_scroll_offset: usize,
+    pub tree_list_rect: ratatui::layout::Rect,
 }
 
-impl ContentTreeState {
+impl OutlineState {
     /// `load_error=true` variant for unloadable notes.
     pub fn error(
         note_id: String,
@@ -30,6 +35,11 @@ impl ContentTreeState {
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
+            mouse_pos: None,
+            last_tree_scroll: None,
+            scroll_drag: None,
+            tree_scroll_offset: 0,
+            tree_list_rect: ratatui::layout::Rect::default(),
         }
     }
 
@@ -40,10 +50,10 @@ impl ContentTreeState {
         keybinds: crate::keybinds::Keybinds,
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
-        let nodes = crate::content_tree::parse::parse_outline(title, content);
+        let nodes = crate::outline::parse::parse_outline(title, content);
         let mut expanded = HashSet::new();
         for (i, n) in nodes.iter().enumerate() {
-            if matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. }) {
+            if matches!(n.kind, crate::outline::parse::NodeKind::Header { .. }) {
                 expanded.insert(i); // default: all headers expanded
             }
         }
@@ -57,6 +67,11 @@ impl ContentTreeState {
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
+            mouse_pos: None,
+            last_tree_scroll: None,
+            scroll_drag: None,
+            tree_scroll_offset: 0,
+            tree_list_rect: ratatui::layout::Rect::default(),
         }
     }
 
@@ -88,7 +103,7 @@ impl ContentTreeState {
     pub fn is_header(&self, i: usize) -> bool {
         self.nodes
             .get(i)
-            .is_some_and(|n| matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. }))
+            .is_some_and(|n| matches!(n.kind, crate::outline::parse::NodeKind::Header { .. }))
     }
 
     pub fn move_up(&mut self) {
@@ -160,21 +175,36 @@ impl ContentTreeState {
             self.expanded.insert(0);
         }
     }
+
+    /// Mouse-wheel free-scroll by `delta` rows, keeping the selection visible.
+    /// No-op before the first render (`tree_list_rect` is zero-height then).
+    pub fn wheel_scroll(&mut self, delta: i32) {
+        let visible = self.visible_indices();
+        let len = visible.len();
+        let viewport = self.tree_list_rect.height as usize;
+        self.tree_scroll_offset =
+            crate::ui::scroll_viewport(self.tree_scroll_offset, delta, len, viewport);
+        if let Some(pos) = visible.iter().position(|&x| x == self.selected) {
+            let clamped =
+                crate::ui::clamp_selected_to_view(pos, self.tree_scroll_offset, len, viewport);
+            self.selected = visible[clamped];
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_content_tree_state() {
+    #[allow(dead_code)]
+    fn test_outline_state() {
         let content = "
 # H1
 Some intro.
 ## H2
 - Item 1
 ";
-        let mut state = ContentTreeState::new(
+        let mut state = OutlineState::new(
             "id".to_string(),
             "Title",
             content,

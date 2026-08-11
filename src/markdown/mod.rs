@@ -1,18 +1,27 @@
 mod builtin;
+mod cache;
+mod source_highlight;
 mod style;
+mod widget;
+mod worker;
 
-pub(crate) use builtin::{default_code_theme, render_builtin};
-pub(crate) use style::{MarkdownTheme, RenderLine};
+pub(crate) use builtin::default_code_theme;
+pub(crate) use source_highlight::SourceHighlighter;
+pub(crate) use style::{MarkdownTheme, RenderedDocument};
+pub(crate) use widget::MarkdownWidget;
+pub(crate) use worker::{RenderViewport, prewarm_syntax_assets};
 
-use ratatui::style::{Color, Style};
-
+use cache::RenderKey;
+use ratatui::layout::Rect;
+use std::ops::Range;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
+use worker::{RenderEvent, RenderJob, pack_viewport, unpack_viewport};
 
-/// Bundled render flags threaded into `render_builtin`. Replaces the prior
+/// Bundled render flags threaded into `render_layout`. Replaces the prior
 /// loose `(syntax_hl, wrap, icon_mode)` args.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct MdRenderOpts {
     pub syntax_hl: bool,
     pub wrap: bool,
@@ -52,229 +61,668 @@ impl MdRenderOpts {
     }
 }
 
-/// Renders markdown into a paged grid of `(char, Style)` cells.
-///
-/// Public API mirrors the previous `vt100` / glow-based implementation exactly,
-/// so all three consumers (list preview, editor split, graf preview) are untouched.
-///
-/// Internally uses **comrak** for GFM parsing and **syntect** for optional
-/// code-block syntax highlighting, all in a cancelable background thread.
-pub struct MarkdownRenderer {
-    pending: Option<mpsc::Receiver<Vec<RenderLine>>>,
-    lines: Vec<RenderLine>,
-    cancel_token: Arc<AtomicBool>,
-    pages: Vec<Vec<Vec<(char, Style)>>>,
-    current_page: usize,
-    total_pages: usize,
-    content_empty: bool,
+enum DocumentState {
+    Working(RenderedDocument),
+    Final(Arc<RenderedDocument>),
 }
 
+pub struct MarkdownRenderer {
+    document: Option<DocumentState>,
+    events: Option<mpsc::Receiver<RenderEvent>>,
+    current_key: Option<RenderKey>,
+    generation: u64,
+    cancel: Option<Arc<AtomicBool>>,
+    viewport: Arc<AtomicU64>,
+    current_page: usize,
+    page_height: usize,
+    scroll_offset: usize,
+    pending_source_anchor: Option<usize>,
+    pending: bool,
+}
+
+#[allow(clippy::missing_fields_in_debug)]
 impl std::fmt::Debug for MarkdownRenderer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MarkdownRenderer")
+            .field("generation", &self.generation)
+            .field("pending", &self.pending)
             .field("current_page", &self.current_page)
-            .field("total_pages", &self.total_pages)
-            .field("content_empty", &self.content_empty)
-            .finish_non_exhaustive()
+            .field("page_height", &self.page_height)
+            .field("scroll_offset", &self.scroll_offset)
+            .finish()
     }
 }
 
 impl Drop for MarkdownRenderer {
     fn drop(&mut self) {
-        self.cancel_token.store(true, Ordering::Relaxed);
+        if let Some(token) = &self.cancel {
+            token.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+impl Default for MarkdownRenderer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl MarkdownRenderer {
-    pub fn new(_cols: u16) -> Self {
+    pub fn new() -> Self {
         Self {
-            pending: None,
-            lines: Vec::new(),
-            cancel_token: Arc::new(AtomicBool::new(false)),
-            pages: Vec::new(),
+            document: None,
+            events: None,
+            current_key: None,
+            generation: 0,
+            cancel: None,
+            viewport: Arc::new(AtomicU64::new(0)),
             current_page: 0,
-            total_pages: 0,
-            content_empty: true,
+            page_height: 0,
+            scroll_offset: 0,
+            pending_source_anchor: None,
+            pending: false,
         }
     }
 
-    /// Minimal shim that renders with default theme + syntax highlighting +
-    /// wrapping enabled.  Kept for backwards compatibility and in-module tests.
-    pub fn render(&mut self, content: &str, cols: u16) {
-        self.render_with(
-            content,
-            cols,
-            &crate::app_theme::AppThemeColors::default(),
-            &MdRenderOpts::default(),
-        );
-    }
-
-    /// Render markdown content in a background thread.
-    ///
-    /// - `content` — raw markdown string
-    /// - `cols` — terminal column width
-    /// - `theme` — app colour palette (all render styles derive from it)
-    /// - `opts` — render options bundle (`MdRenderOpts`)
     pub(crate) fn render_with(
         &mut self,
         content: &str,
         cols: u16,
         theme: &crate::app_theme::AppThemeColors,
         opts: &MdRenderOpts,
+        viewport: RenderViewport,
     ) {
-        // Reset state
-        self.pages.clear();
-        self.current_page = 0;
-        self.total_pages = 0;
-        self.lines.clear();
-        self.content_empty = content.is_empty();
-
         if content.is_empty() {
-            self.pending = None;
+            if let Some(token) = self.cancel.take() {
+                token.store(true, Ordering::Relaxed);
+            }
+            self.events = None;
+            let empty_doc = RenderedDocument::new(Vec::new());
+            self.document = Some(DocumentState::Final(Arc::new(empty_doc)));
+            self.current_key = None;
+            self.pending = false;
             return;
         }
 
-        let cancel_token = Arc::clone(&self.cancel_token);
-        // Reset so a new render cancels an in-flight one
-        cancel_token.store(false, Ordering::Relaxed);
+        let next_key = RenderKey::new(
+            Arc::from(content),
+            cols,
+            MarkdownTheme::from_app_theme(theme),
+            opts.clone(),
+        );
 
-        let md_theme = MarkdownTheme::from_app_theme(theme);
-        let content_owned = content.to_owned();
-        let opts = opts.clone();
-        let (tx, rx) = mpsc::channel();
+        if let Some(ref cur) = self.current_key
+            && cur == &next_key
+        {
+            self.set_viewport(viewport.start, viewport.height);
+            return;
+        }
 
-        self.pending = Some(rx);
+        if let Some(token) = self.cancel.take() {
+            token.store(true, Ordering::Relaxed);
+        }
+        self.events = None;
+        self.generation = self.generation.wrapping_add(1);
 
-        std::thread::spawn(move || {
-            if cancel_token.load(Ordering::Relaxed) {
-                return;
+        let content_unchanged = self
+            .current_key
+            .as_ref()
+            .map(|k| k.content == next_key.content)
+            .unwrap_or(false);
+
+        if content_unchanged {
+            let top_visible = if self.page_height > 0 {
+                self.current_page * self.page_height
+            } else {
+                self.scroll_offset
+            };
+            let source_line = self.rendered_to_source_line(top_visible);
+            self.pending_source_anchor = Some(source_line);
+        } else {
+            self.document = None;
+            self.current_page = 0;
+            self.scroll_offset = 0;
+            self.pending_source_anchor = None;
+        }
+
+        self.current_key = Some(next_key.clone());
+        self.set_viewport(viewport.start, viewport.height);
+
+        if let Some(cached) = cache::get_document(&next_key) {
+            self.document = Some(DocumentState::Final(cached));
+
+            #[allow(clippy::manual_checked_ops)]
+            if let Some(src_line) = self.pending_source_anchor.take() {
+                let new_rendered = self.source_to_rendered_line(src_line);
+                if self.page_height > 0 {
+                    self.current_page = new_rendered / self.page_height;
+                } else {
+                    self.scroll_offset = new_rendered;
+                }
+                self.clamp_current_page();
             }
 
-            let lines =
-                builtin::render_builtin(&content_owned, cols, &md_theme, &opts, &cancel_token);
+            self.pending = false;
+            return;
+        }
 
-            let _ = tx.send(lines);
-        });
-    }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel = Some(Arc::clone(&cancel));
+        self.pending = true;
 
-    /// Poll the background renderer.  Returns `true` if lines were received
-    /// (ready for `build_pages`), `false` if still pending.
-    pub fn poll(&mut self) -> bool {
-        let rx = match &self.pending {
-            Some(rx) => rx,
-            None => return false,
+        let (tx, rx) = mpsc::sync_channel(16);
+        self.events = Some(rx);
+
+        let job = RenderJob {
+            generation: self.generation,
+            key: next_key,
+            viewport: Arc::clone(&self.viewport),
+            cancel,
+            tx,
         };
 
-        match rx.try_recv() {
-            Ok(lines) => {
-                self.lines = lines;
-                self.pending = None;
-                true
-            }
-            Err(mpsc::TryRecvError::Empty) => false,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.pending = None;
-                true
-            }
+        worker::submit(job);
+    }
+
+    pub fn set_viewport(&mut self, start: usize, height: usize) {
+        self.viewport
+            .store(pack_viewport(start, height), Ordering::Relaxed);
+    }
+
+    pub(crate) fn document(&self) -> Option<&RenderedDocument> {
+        match &self.document {
+            Some(DocumentState::Working(doc)) => Some(doc),
+            Some(DocumentState::Final(doc)) => Some(&**doc),
+            None => None,
         }
     }
 
     pub fn is_pending(&self) -> bool {
-        self.pending.is_some()
+        self.pending
     }
 
     pub fn is_content_empty(&self) -> bool {
-        self.content_empty
+        self.document()
+            .map(|d| d.is_content_empty())
+            .unwrap_or(true)
     }
 
-    pub fn pages_built(&self) -> bool {
-        !self.pages.is_empty() || self.content_empty
+    pub(crate) fn is_changed(
+        &self,
+        content: &str,
+        theme: &crate::app_theme::AppThemeColors,
+        opts: &MdRenderOpts,
+    ) -> bool {
+        self.current_key
+            .as_ref()
+            .map(|k| {
+                k.content.as_ref() != content
+                    || k.theme != MarkdownTheme::from_app_theme(theme)
+                    || &k.opts != opts
+            })
+            .unwrap_or(true)
     }
 
-    /// Build page chunks from the rendered lines.
-    ///
-    /// `theme_bg` is accepted for API compatibility but **ignored** — each cell
-    /// already carries its own background colour from the markdown theme.
-    pub fn build_pages(&mut self, visible_rows: u16, _theme_bg: Option<Color>) {
-        // Trim trailing lines that are entirely whitespace / empty
-        let last_non_empty = self
-            .lines
-            .iter()
-            .rposition(|l| l.cells.iter().any(|(c, _)| !c.is_whitespace()))
-            .unwrap_or(0);
-
-        let page_height = (visible_rows as usize).max(1);
-        self.pages = self.lines[..=last_non_empty]
-            .chunks(page_height)
-            .map(|chunk| chunk.iter().map(|l| l.cells.clone()).collect())
-            .collect();
-
-        self.total_pages = self.pages.len().max(1);
-        self.current_page = 0;
+    pub fn set_page_height(&mut self, rows: usize) {
+        self.page_height = rows;
+        self.clamp_current_page();
     }
 
-    pub fn current_page_grid(&self) -> Option<&Vec<Vec<(char, Style)>>> {
-        self.pages.get(self.current_page)
+    pub fn current_page_range(&self) -> Range<usize> {
+        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
+        if self.page_height == 0 {
+            return 0..len;
+        }
+        let pageable_len = self.pageable_length();
+        let page_h = self.page_height;
+        let start = self.current_page * page_h;
+        let end = (start + page_h).min(pageable_len);
+        start..end
+    }
+
+    pub fn visible_range(&self, height: usize) -> Range<usize> {
+        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
+        let start = self.scroll_offset.min(len);
+        let end = (start + height).min(len);
+        start..end
+    }
+
+    pub fn visible_start(&self) -> usize {
+        if self.page_height > 0 {
+            self.current_page * self.page_height
+        } else {
+            self.scroll_offset
+        }
+    }
+
+    pub fn total_pages(&self) -> usize {
+        if self.page_height == 0 {
+            return 1;
+        }
+        let pageable_len = self.pageable_length();
+        if pageable_len == 0 {
+            return 1;
+        }
+        let page_h = self.page_height;
+        pageable_len.div_ceil(page_h)
     }
 
     pub fn current_page(&self) -> usize {
         self.current_page
     }
 
-    pub fn total_pages(&self) -> usize {
-        self.total_pages
-    }
-
     pub fn next_page(&mut self) {
-        if self.total_pages > 0 && self.current_page < self.total_pages - 1 {
+        let tp = self.total_pages();
+        if tp > 0 && self.current_page < tp - 1 {
             self.current_page += 1;
+            self.update_viewport_for_current_page();
         }
     }
 
     pub fn prev_page(&mut self) {
-        self.current_page = self.current_page.saturating_sub(1);
+        if self.current_page > 0 {
+            self.current_page -= 1;
+            self.update_viewport_for_current_page();
+        }
+    }
+
+    pub fn next_page_wrap(&mut self) {
+        let tp = self.total_pages();
+        if tp <= 1 {
+            return;
+        }
+        if self.current_page < tp - 1 {
+            self.current_page += 1;
+        } else {
+            self.current_page = 0;
+        }
+        self.update_viewport_for_current_page();
+    }
+
+    pub fn prev_page_wrap(&mut self) {
+        let tp = self.total_pages();
+        if tp <= 1 {
+            return;
+        }
+        if self.current_page > 0 {
+            self.current_page -= 1;
+        } else {
+            self.current_page = tp - 1;
+        }
+        self.update_viewport_for_current_page();
+    }
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    /// Set the scroll offset directly, clamping to valid range.
+    pub fn set_scroll_offset(&mut self, offset: usize, visible_height: usize) {
+        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
+        let max = len.saturating_sub(visible_height);
+        self.scroll_offset = offset.min(max);
+        self.update_viewport_for_scroll();
+    }
+
+    pub fn scroll_up(&mut self, lines: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+        self.update_viewport_for_scroll();
+    }
+
+    pub fn scroll_down(&mut self, lines: usize, visible_height: usize) {
+        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
+        let max = len.saturating_sub(visible_height);
+        self.scroll_offset = (self.scroll_offset + lines).min(max);
+        self.update_viewport_for_scroll();
+    }
+
+    pub fn page_up(&mut self, visible_height: usize) {
+        self.scroll_up(visible_height);
+    }
+
+    pub fn page_down(&mut self, visible_height: usize) {
+        self.scroll_down(visible_height, visible_height);
+    }
+
+    pub fn scroll_top(&mut self) {
+        self.scroll_offset = 0;
+        self.update_viewport_for_scroll();
+    }
+
+    pub fn scroll_bottom(&mut self, visible_height: usize) {
+        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
+        self.scroll_offset = len.saturating_sub(visible_height);
+        self.update_viewport_for_scroll();
+    }
+
+    pub fn source_to_rendered_line(&self, source_line_0_based: usize) -> usize {
+        let comrak_line = source_line_0_based + 1;
+        let document = match self.document() {
+            Some(doc) => doc,
+            None => return 0,
+        };
+        document
+            .lines()
+            .iter()
+            .position(|l| l.source_line >= comrak_line)
+            .unwrap_or(0)
+    }
+
+    pub fn rendered_to_source_line(&self, rendered_line: usize) -> usize {
+        let document = match self.document() {
+            Some(doc) => doc,
+            None => return 0,
+        };
+        document
+            .lines()
+            .get(rendered_line)
+            .map(|l| l.source_line)
+            .unwrap_or(1)
+            .saturating_sub(1)
+    }
+
+    fn pageable_length(&self) -> usize {
+        self.document()
+            .and_then(|doc| doc.last_non_blank_line().map(|idx| idx + 1))
+            .unwrap_or(0)
+    }
+
+    fn clamp_current_page(&mut self) {
+        let tp = self.total_pages();
+        if self.current_page >= tp {
+            self.current_page = tp.saturating_sub(1);
+        }
+    }
+
+    fn update_viewport_for_current_page(&mut self) {
+        let range = self.current_page_range();
+        let start = range.start;
+        let height = self.page_height;
+        self.set_viewport(start, height);
+    }
+
+    fn update_viewport_for_scroll(&mut self) {
+        self.set_viewport(self.scroll_offset, 0);
+    }
+
+    pub fn poll(&mut self) -> bool {
+        let events: Vec<RenderEvent> = {
+            let Some(rx) = &self.events else {
+                return false;
+            };
+            let mut evts = Vec::new();
+            while let Ok(event) = rx.try_recv() {
+                evts.push(event);
+            }
+            evts
+        };
+
+        if events.is_empty() {
+            return false;
+        }
+
+        let mut redraw = false;
+        let mut completed = false;
+
+        for event in events {
+            match event {
+                RenderEvent::LayoutReady {
+                    generation,
+                    document,
+                } => {
+                    if generation != self.generation {
+                        continue;
+                    }
+
+                    #[allow(clippy::manual_checked_ops)]
+                    if let Some(src_line) = self.pending_source_anchor.take() {
+                        self.document = Some(DocumentState::Working(document));
+                        let new_rendered = self.source_to_rendered_line(src_line);
+                        if self.page_height > 0 {
+                            self.current_page = new_rendered / self.page_height;
+                        } else {
+                            self.scroll_offset = new_rendered;
+                        }
+                        self.clamp_current_page();
+                    } else {
+                        self.document = Some(DocumentState::Working(document));
+                        self.clamp_current_page();
+                    }
+
+                    redraw = true;
+                }
+                RenderEvent::CodeBlockReady {
+                    generation,
+                    line_range,
+                    lines,
+                } => {
+                    if generation != self.generation {
+                        continue;
+                    }
+
+                    if let Some(DocumentState::Working(ref mut doc)) = self.document {
+                        if line_range.start < doc.line_count()
+                            && line_range.end <= doc.line_count()
+                            && line_range.len() == lines.len()
+                        {
+                            let mut first_failure = None;
+                            for (idx, new_line) in lines.iter().enumerate() {
+                                let orig_line = &doc.lines()[line_range.start + idx];
+                                let orig_text: String =
+                                    orig_line.spans.iter().map(|s| s.text.as_str()).collect();
+                                let new_text: String =
+                                    new_line.spans.iter().map(|s| s.text.as_str()).collect();
+                                if orig_text != new_text
+                                    || orig_line.visual_width != new_line.visual_width
+                                    || orig_line.source_line != new_line.source_line
+                                    || new_line.image_url.is_some()
+                                {
+                                    first_failure = Some(idx);
+                                    break;
+                                }
+                            }
+                            if first_failure.is_some() {
+                                continue;
+                            }
+
+                            let doc_lines = doc.lines_mut();
+                            for (idx, new_line) in lines.into_iter().enumerate() {
+                                doc_lines[line_range.start + idx] = new_line;
+                            }
+
+                            let (vp_start, vp_height) =
+                                unpack_viewport(self.viewport.load(Ordering::Relaxed));
+                            let vp_end = vp_start.saturating_add(vp_height);
+                            let intersects = line_range.start < vp_end && line_range.end > vp_start;
+                            if intersects {
+                                redraw = true;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                }
+                RenderEvent::Complete { generation } => {
+                    if generation != self.generation {
+                        continue;
+                    }
+
+                    if let Some(DocumentState::Working(doc)) = self.document.take() {
+                        let shared = Arc::new(doc);
+                        if let Some(key) = &self.current_key {
+                            cache::insert_document(key.clone(), Arc::clone(&shared));
+                        }
+                        self.document = Some(DocumentState::Final(shared));
+                    }
+                    completed = true;
+                    self.pending = false;
+                    redraw = true;
+                }
+            }
+        }
+
+        if completed {
+            self.events = None;
+        }
+
+        redraw
     }
 }
+
+#[allow(dead_code)]
+pub(crate) fn hit_test_markdown(
+    document: &RenderedDocument,
+    inner: Rect,
+    line_offset: usize,
+    x: u16,
+    y: u16,
+) -> Option<(usize, usize)> {
+    if x < inner.x || x >= inner.right() || y < inner.y || y >= inner.bottom() {
+        return None;
+    }
+    let dy = (y - inner.y) as usize;
+    let global_line = line_offset.saturating_add(dy);
+    if global_line >= document.line_count() {
+        return None;
+    }
+    let dx = (x - inner.x) as usize;
+    let line = document.line(global_line)?;
+    let char_idx = line.char_index_at_visual_column(dx)?;
+    Some((global_line, char_idx))
+}
+
+#[cfg(test)]
+mod perf_tests;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app_theme::AppThemeColors;
+    use crate::markdown::style::{RenderLine, RenderedDocument, StyledSpan};
+    use crate::markdown::worker::RenderEvent;
+    use ratatui::style::{Modifier, Style};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::mpsc;
 
     #[test]
-    fn test_render_builtin_produces_lines() {
-        let content = "# Vault (Root)\n\n## Folders\n- Documents\n\n## Notes\n- hello\n";
-        let mut renderer = MarkdownRenderer::new(80);
-        let theme = AppThemeColors::default();
-        renderer.render_with(content, 80, &theme, &MdRenderOpts::default());
-        // Poll until done (thread runs synchronously here due to simple input)
-        let mut tries = 0;
-        let mut completed = false;
-        while renderer.is_pending() && tries < 50 {
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            if renderer.poll() {
-                completed = true;
-                break;
-            }
-            tries += 1;
-        }
-        assert!(
-            completed || !renderer.is_pending(),
-            "render should complete"
-        );
+    fn test_markdown_renderer_poll_code_block_ready_incompatible() {
+        let (tx, rx) = mpsc::sync_channel(1);
 
-        renderer.build_pages(30, theme.bg);
-        assert!(renderer.pages_built(), "pages should be built");
-        assert!(renderer.total_pages() >= 1, "at least one page");
-        assert!(!renderer.is_content_empty(), "content not empty");
+        let base_line = RenderLine {
+            spans: vec![StyledSpan {
+                text: "original code".to_string(),
+                style: Style::default(),
+            }],
+            visual_width: 13,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+
+        let mut renderer = MarkdownRenderer {
+            document: Some(DocumentState::Working(RenderedDocument::new(vec![
+                base_line,
+            ]))),
+            events: Some(rx),
+            current_key: None,
+            generation: 1,
+            cancel: None,
+            viewport: Arc::new(AtomicU64::new(0)),
+            current_page: 0,
+            page_height: 0,
+            scroll_offset: 0,
+            pending_source_anchor: None,
+            pending: true,
+        };
+
+        let incompatible_line = RenderLine {
+            spans: vec![StyledSpan {
+                text: "mismatched code".to_string(),
+                style: Style::default(),
+            }],
+            visual_width: 15,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+
+        tx.send(RenderEvent::CodeBlockReady {
+            generation: 1,
+            line_range: 0..1,
+            lines: vec![incompatible_line],
+        })
+        .unwrap();
+
+        let redraw = renderer.poll();
+        assert!(!redraw);
+
+        if let Some(DocumentState::Working(doc)) = &renderer.document {
+            assert_eq!(doc.line_count(), 1);
+            let spans = &doc.lines()[0].spans;
+            assert_eq!(spans[0].text, "original code");
+        } else {
+            panic!("Expected working document state");
+        }
     }
 
     #[test]
-    fn test_empty_input_returns_empty() {
-        let mut renderer = MarkdownRenderer::new(80);
-        let theme = AppThemeColors::default();
-        renderer.render_with("", 80, &theme, &MdRenderOpts::default());
-        assert!(renderer.is_content_empty());
-        assert!(!renderer.is_pending());
+    fn test_markdown_renderer_poll_code_block_ready_compatible() {
+        let (tx, rx) = mpsc::sync_channel(1);
+
+        let base_line = RenderLine {
+            spans: vec![StyledSpan {
+                text: "original code".to_string(),
+                style: Style::default(),
+            }],
+            visual_width: 13,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+
+        let mut renderer = MarkdownRenderer {
+            document: Some(DocumentState::Working(RenderedDocument::new(vec![
+                base_line,
+            ]))),
+            events: Some(rx),
+            current_key: None,
+            generation: 1,
+            cancel: None,
+            viewport: Arc::new(AtomicU64::new(pack_viewport(0, 10))),
+            current_page: 0,
+            page_height: 10,
+            scroll_offset: 0,
+            pending_source_anchor: None,
+            pending: true,
+        };
+
+        let compatible_line = RenderLine {
+            spans: vec![StyledSpan {
+                text: "original code".to_string(),
+                style: Style::default().add_modifier(Modifier::BOLD),
+            }],
+            visual_width: 13,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+
+        tx.send(RenderEvent::CodeBlockReady {
+            generation: 1,
+            line_range: 0..1,
+            lines: vec![compatible_line],
+        })
+        .unwrap();
+
+        let redraw = renderer.poll();
+        assert!(redraw);
+
+        if let Some(DocumentState::Working(doc)) = &renderer.document {
+            assert_eq!(doc.line_count(), 1);
+            let spans = &doc.lines()[0].spans;
+            assert_eq!(spans[0].text, "original code");
+            assert_ne!(spans[0].style, Style::default());
+        } else {
+            panic!("Expected working document state");
+        }
     }
 }

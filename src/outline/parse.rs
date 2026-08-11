@@ -211,13 +211,7 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
 }
 
 fn truncate(s: &str) -> String {
-    if s.chars().count() > 60 {
-        let mut truncated: String = s.chars().take(60).collect();
-        truncated.push('…');
-        truncated
-    } else {
-        s.to_string()
-    }
+    crate::ui::truncate_with_ellipsis(s, 60)
 }
 
 #[cfg(test)]

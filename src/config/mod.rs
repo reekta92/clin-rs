@@ -1,6 +1,7 @@
+use parking_lot::RwLock;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::{OnceLock, RwLock};
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
@@ -28,13 +29,30 @@ static CONFIG_PATH_OVERRIDE: RwLock<Option<PathBuf>> = RwLock::new(None);
 #[cfg(test)]
 pub(crate) static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+#[cfg(test)]
+pub struct ConfigTestGuard {
+    _lock: parking_lot::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl ConfigTestGuard {
+    pub fn lock() -> Self {
+        let lock = CONFIG_TEST_MUTEX.lock();
+        Self { _lock: lock }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ConfigTestGuard {
+    fn drop(&mut self) {
+        *CONFIG_PATH_OVERRIDE.write() = None;
+    }
+}
 /// Set (or reset) the config path override. Normally called once at startup
 /// from the parsed `--config` value. Tests may call it multiple times under
 /// [`CONFIG_TEST_MUTEX`].
 pub fn set_config_path_override(path: PathBuf) {
-    *CONFIG_PATH_OVERRIDE
-        .write()
-        .expect("config path lock poisoned") = Some(path);
+    *CONFIG_PATH_OVERRIDE.write() = Some(path);
 }
 
 static STORAGE_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -66,8 +84,26 @@ pub(crate) fn clin_config_dir() -> Result<PathBuf> {
         Ok(proj_dirs.config_dir().to_path_buf())
     }
 }
+/// Whether this process received a `--vault` override.
+pub(crate) fn has_storage_path_override() -> bool {
+    storage_path_override().is_some()
+}
 
 // ── ClinConfig impl ─────────────────────────────────────────────────────────
+
+fn write_config_file(config_path: &Path) -> Result<()> {
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).context("failed to create config directory")?;
+    }
+    let content = merge::default_config_content();
+    #[cfg(unix)]
+    crate::fsutil::atomic_write_with_mode(config_path, content.as_bytes(), 0o600)
+        .context("failed to write config file")?;
+    #[cfg(not(unix))]
+    crate::fsutil::atomic_write_str(config_path, &content)
+        .context("failed to write config file")?;
+    Ok(())
+}
 
 impl ClinConfig {
     /// Returns true if key sequences are enabled: either explicitly via config
@@ -85,11 +121,7 @@ impl ClinConfig {
     }
 
     pub fn config_path() -> Result<PathBuf> {
-        if let Some(p) = CONFIG_PATH_OVERRIDE
-            .read()
-            .expect("config path lock poisoned")
-            .as_ref()
-        {
+        if let Some(p) = CONFIG_PATH_OVERRIDE.read().as_ref() {
             return Ok(p.clone());
         }
         Ok(clin_config_dir()?.join("config.toml"))
@@ -101,7 +133,13 @@ impl ClinConfig {
         Ok(proj_dirs.data_local_dir().to_path_buf())
     }
 
-    pub fn load() -> Result<Self> {
+    pub fn load() -> (Result<Self>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let res = Self::load_inner(&mut warnings);
+        (res, warnings)
+    }
+
+    fn load_inner(warnings: &mut Vec<String>) -> Result<Self> {
         let config_path = Self::config_path()?;
 
         if !config_path.exists() {
@@ -153,21 +191,31 @@ impl ClinConfig {
                     config.graf.filter = graf_config.filter;
                     config.graf.search = graf_config.search;
                 }
-                let _ = fs::rename(&graf_path, graf_path.with_extension("toml.migrated"));
+                if let Err(e) = fs::rename(&graf_path, graf_path.with_extension("toml.migrated")) {
+                    warnings.push(format!("graf path migration rename failed: {e}"));
+                }
             }
 
-            let content = merge::default_config_content();
-            #[cfg(unix)]
-            crate::fsutil::atomic_write_with_mode(&config_path, content.as_bytes(), 0o600)
-                .context("failed to write config file")?;
-            #[cfg(not(unix))]
-            crate::fsutil::atomic_write_str(&config_path, &content)
-                .context("failed to write config file")?;
-
+            write_config_file(&config_path)?;
             return Ok(config);
         }
 
         let content = fs::read_to_string(&config_path).context("failed to read config")?;
+        // Check if the original config had hint_bar_style = "accent" (migration scan)
+        let had_accent = {
+            let mut found = false;
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("hint_bar_style")
+                    && let Some(rhs) = trimmed.split('=').nth(1)
+                    && rhs.trim().trim_matches('"').trim() == "accent"
+                {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
 
         // Phase E: Migration (visual.notes_layout -> default_view, and flat graf/list/editor keys to nested namespaces)
         let mut value: toml::Value =
@@ -241,6 +289,15 @@ impl ClinConfig {
             root.insert("default_view".to_string(), notes_layout);
             changed = true;
         }
+        // Migrate graf.filter.max_nodes -> graf.max_node
+        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut())
+            && let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut())
+            && let Some(max_nodes) = filter.remove("max_nodes")
+            && graf.get("max_node").is_none()
+        {
+            graf.insert("max_node".to_string(), max_nodes);
+            changed = true;
+        }
 
         let mut editor_table = toml::value::Table::new();
         if let Some(root) = value.as_table_mut() {
@@ -282,7 +339,6 @@ impl ClinConfig {
             ("date_format", "date_format"),
             ("list_density", "density"),
             ("show_file_size", "show_file_size"),
-            ("show_date_in_list", "show_date_in_list"),
             ("default_view", "default_view"),
             ("default_sort_field", "default_sort_field"),
             ("default_sort_order", "default_sort_order"),
@@ -338,6 +394,88 @@ impl ClinConfig {
                 root.insert("graf".to_string(), toml::Value::Table(graf_addons));
             }
         }
+
+        // State migration: extract machine state from config and persist to state.json.
+        let mut state_changed = false;
+        if let Some(root) = value.as_table_mut() {
+            // -- previous_storage_path -> state.json storage_migration --
+            let core_prev = root
+                .get_mut("core")
+                .and_then(|c| c.as_table_mut())
+                .and_then(|t| t.remove("previous_storage_path"));
+            if let Some(toml::Value::String(prev_path_str)) = &core_prev {
+                let prev_path = std::path::PathBuf::from(prev_path_str);
+                let target_path = match root
+                    .get("core")
+                    .and_then(|c| c.as_table())
+                    .and_then(|t| t.get("storage_path"))
+                {
+                    Some(toml::Value::String(p)) => crate::config::path::expand_path(p),
+                    _ => Self::default_storage_path()?,
+                };
+                if let Ok(paths) = crate::paths::AppPaths::discover(Self::config_path()?) {
+                    let state_path = paths.state_path();
+                    if let Err(e) = crate::local_state::LocalState::update(&state_path, |s| {
+                        if s.storage_migration.is_none() {
+                            s.storage_migration = Some(crate::local_state::StorageMigrationState {
+                                previous_path: prev_path,
+                                target_path,
+                            });
+                        }
+                        // Conflicting record: leave untouched
+                        Ok(())
+                    }) {
+                        warnings.push(format!("Failed to persist local state: {e}"));
+                    }
+                }
+                state_changed = true;
+            }
+
+            // -- expanded_folders -> state.json per-vault --
+            let list_expanded = root
+                .get_mut("list")
+                .and_then(|l| l.as_table_mut())
+                .and_then(|t| t.remove("expanded_folders"));
+            if let Some(toml::Value::Array(folders)) = &list_expanded {
+                let folder_set: std::collections::BTreeSet<String> = folders
+                    .iter()
+                    .filter_map(|v| match v {
+                        toml::Value::String(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if !folder_set.is_empty() {
+                    let storage_path = match root
+                        .get("core")
+                        .and_then(|c| c.as_table())
+                        .and_then(|t| t.get("storage_path"))
+                    {
+                        Some(toml::Value::String(p)) => crate::config::path::expand_path(p),
+                        _ => Self::default_storage_path()?,
+                    };
+                    if let Ok(vault_id) = crate::local_state::vault_identity_path(&storage_path) {
+                        let vault_key = vault_id.to_string_lossy().into_owned();
+                        if let Ok(paths) = crate::paths::AppPaths::discover(Self::config_path()?) {
+                            let state_path = paths.state_path();
+                            if let Err(e) =
+                                crate::local_state::LocalState::update(&state_path, |s| {
+                                    let vault = s.vaults.entry(vault_key).or_default();
+                                    if vault.expanded_folders.is_empty() {
+                                        vault.expanded_folders = folder_set.clone();
+                                    }
+                                    // Non-empty existing set: keep it (already have state)
+                                    Ok(())
+                                })
+                            {
+                                warnings.push(format!("Failed to persist local state: {e}"));
+                            }
+                        }
+                    }
+                }
+                state_changed = true;
+            }
+        }
+        changed = changed || state_changed;
         if changed {
             let migrated_content =
                 toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
@@ -345,11 +483,13 @@ impl ClinConfig {
             let mut config: ClinConfig =
                 toml::from_str(&migrated_content).context("failed to parse migrated config")?;
             config.normalize_sections();
+            config.accent_hint_migrated = had_accent;
             return Ok(config);
         }
 
         let mut config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
         config.normalize_sections();
+        config.accent_hint_migrated = had_accent;
         Ok(config)
     }
 
@@ -367,20 +507,21 @@ impl ClinConfig {
         } else {
             merge::default_config_content()
                 .parse::<toml_edit::DocumentMut>()
-                .expect("default config must be valid TOML")
+                .context("default config must be valid TOML")?
         };
 
         let self_toml_str = toml::to_string(self).context("failed to serialize config")?;
         let self_value: toml::Value =
-            toml::from_str(&self_toml_str).expect("serialized config must be valid TOML");
+            toml::from_str(&self_toml_str).context("serialized config must be valid TOML")?;
 
         if let toml::Value::Table(toml_tbl) = self_value {
             for (k, v) in toml_tbl {
                 if doc.contains_key(&k) {
-                    merge::merge_toml_value(
-                        doc.get_mut(&k).expect("key presence already checked"),
-                        &v,
-                    );
+                    if let Some(item) = doc.get_mut(&k) {
+                        merge::merge_toml_value(item, &v);
+                    } else {
+                        continue;
+                    }
                 } else {
                     doc.insert(&k, merge::toml_value_to_item(&v));
                 }
@@ -390,17 +531,26 @@ impl ClinConfig {
         crate::fsutil::atomic_write(&config_path, doc.to_string().as_bytes())?;
         Ok(())
     }
+    /// Atomically replace the effective config file with canonical defaults.
+    /// Local state, cache, keys, themes, keybinds, and vault content are retained.
+    pub fn reset() -> Result<Self> {
+        let config_path = Self::config_path()?;
+        write_config_file(&config_path)?;
+        let content = fs::read_to_string(&config_path).context("failed to read reset config")?;
+        let mut config: Self = toml::from_str(&content).context("failed to parse reset config")?;
+        config.normalize_sections();
+        Ok(config)
+    }
 
     pub fn effective_storage_path(&self) -> Result<PathBuf> {
-        if let Some(p) = storage_path_override() {
-            return Ok(p);
+        if let Some(path) = storage_path_override() {
+            return Ok(path);
         }
         match &self.core.storage_path {
             Some(path) => Ok(expand_path(&path.to_string_lossy())),
             None => Self::default_storage_path(),
         }
     }
-
     pub fn set_storage_path(&mut self, path: PathBuf) {
         self.core.storage_path = Some(path);
     }
@@ -413,16 +563,8 @@ impl ClinConfig {
         storage_path_override().is_some() || self.core.storage_path.is_some()
     }
 
-    pub fn set_previous_storage_path(&mut self, path: PathBuf) {
-        self.core.previous_storage_path = Some(path);
-    }
-
-    pub fn clear_previous_storage_path(&mut self) {
-        self.core.previous_storage_path = None;
-    }
-
     pub fn theme_colors(&self) -> ThemeColors {
-        let resolved = custom_themes::resolve_theme(&self.ui.theme);
+        let resolved = custom_themes::resolve_theme(&self.ui.theme, &mut Vec::new());
         let mut colors = match resolved {
             custom_themes::ResolvedTheme::Custom(file) => {
                 themes::custom_theme_colors(&file.graph, self.graf.visual.graph_background.clone())
@@ -516,8 +658,25 @@ impl ClinConfig {
         if self.list.sections.is_empty() {
             errs.push("list.sections is empty, will use defaults".to_string());
         }
+        let attachment_path = Path::new(&self.image.attachments_subdir);
+        let valid_attachments_subdir = !self.image.attachments_subdir.is_empty()
+            && attachment_path
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_)));
+        if !valid_attachments_subdir {
+            errs.push(
+                "image.attachments_subdir must be a non-empty relative path of normal components"
+                    .to_string(),
+            );
+        }
         errs
     }
+}
+
+pub fn vault_path_or_dot(config: &ClinConfig) -> PathBuf {
+    config
+        .effective_storage_path()
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -606,7 +765,7 @@ unknown_field = "ignore me"
         config.list.date_format = "%d/%m/%Y".to_string();
         config.list.density = ListDensity::Compact;
         config.list.show_file_size = true;
-        config.list.show_date_in_list = false;
+        config.list.inline_info = false;
         config.list.default_view = NotesLayout::Tree;
         config.list.calendar_enabled = false;
         config.backup.auto_backup_interval = Some(60);
@@ -618,7 +777,7 @@ unknown_field = "ignore me"
         assert_eq!(parsed.list.date_format, "%d/%m/%Y");
         assert_eq!(parsed.list.density, ListDensity::Compact);
         assert!(parsed.list.show_file_size);
-        assert!(!parsed.list.show_date_in_list);
+        assert!(!parsed.list.inline_info);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
         assert!(!parsed.list.calendar_enabled);
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
@@ -628,7 +787,6 @@ unknown_field = "ignore me"
     fn calendar_defaults_enabled_when_key_omitted() {
         // A [list] section that omits calendar_enabled must deserialize to true
         // (visible by default), matching #[serde(default = "default_true")].
-        // (Like preview_enabled/show_date_in_list, ListConfig's derived Default
         // yields false for bools — the on-disk/serde path is what users hit.)
         let cfg: ClinConfig = toml::from_str("[list]\npreview_enabled = false\n").unwrap();
         assert!(cfg.list.calendar_enabled);
@@ -819,6 +977,11 @@ show_status_bar = false
         assert!(config.list.calendar_enabled);
         // Sanity: a few other shipped defaults still hold.
         assert!(config.list.preview_enabled);
+        // [statusline] section is present but fields are commented → parsed as None.
+        assert!(
+            config.statusline.header_left.is_none(),
+            "statusline fields must be commented in default template (runtime defaults apply)"
+        );
     }
 
     #[test]
@@ -858,7 +1021,7 @@ show_status_bar = false
         }
 
         let merged_str = doc.to_string();
-        assert!(merged_str.contains("# Clin Configuration File"));
+        assert!(merged_str.contains("# Clin configuration"));
         assert!(merged_str.contains("# Enable mouse support (clicking, scrolling, panning)."));
         assert!(merged_str.contains("# Show the status bar at the bottom of the screen."));
         assert!(merged_str.contains("# Show background grid."));
@@ -870,13 +1033,13 @@ show_status_bar = false
 
     #[test]
     fn test_actual_save_preserves_comments() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 
         set_config_path_override(config_file_path.clone());
 
-        let mut config = ClinConfig::load().unwrap();
+        let mut config = ClinConfig::load().0.unwrap();
         assert!(config_file_path.exists());
 
         let initial_content = fs::read_to_string(&config_file_path).unwrap();
@@ -893,13 +1056,13 @@ show_status_bar = false
 
     #[test]
     fn test_save_config_with_custom_smart_folders() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 
         set_config_path_override(config_file_path.clone());
 
-        let mut config = ClinConfig::load().unwrap();
+        let mut config = ClinConfig::load().0.unwrap();
         assert!(config_file_path.exists());
 
         config.list.custom_smart_folders = vec![super::structs::CustomSmartFolder {
@@ -920,7 +1083,7 @@ show_status_bar = false
         assert!(saved_content.contains("updated_within_days = 5"));
 
         // Reload and verify parsed struct values
-        let reloaded = ClinConfig::load().unwrap();
+        let reloaded = ClinConfig::load().0.unwrap();
         assert_eq!(reloaded.list.custom_smart_folders.len(), 1);
         assert_eq!(reloaded.list.custom_smart_folders[0].name, "Work Projects");
         assert_eq!(reloaded.list.custom_smart_folders[0].tags, vec!["work"]);
@@ -940,13 +1103,13 @@ show_status_bar = false
 
     #[test]
     fn test_empty_custom_smart_folders_not_written() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 
         set_config_path_override(config_file_path.clone());
 
-        let mut config = ClinConfig::load().unwrap();
+        let mut config = ClinConfig::load().0.unwrap();
         assert!(config_file_path.exists());
 
         // Ensure custom_smart_folders is empty
@@ -1027,5 +1190,128 @@ sections = ["draw", "draw", "graf"]
         assert_eq!(config.list.sections.len(), 2);
         assert_eq!(config.list.sections[0], NotesSection::Draw);
         assert_eq!(config.list.sections[1], NotesSection::Graf);
+    }
+
+    #[test]
+    fn folder_graph_preview_defaults_off() {
+        // The Default derive sets bool to false, and serde default sets it to false.
+        let config: ClinConfig = toml::from_str("[list]\n").unwrap();
+        assert!(!config.list.folder_graph_preview);
+        // TOML round-trip preserves explicit true.
+        let toml_str = "[list]\nfolder_graph_preview = true\n";
+        let parsed: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert!(parsed.list.folder_graph_preview);
+
+        let serialized = toml::to_string(&parsed).unwrap();
+        let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
+        assert!(roundtripped.list.folder_graph_preview);
+    }
+
+    #[test]
+    fn skip_dirs_defaults_empty_and_roundtrips() {
+        let config: ClinConfig = toml::from_str("[list]\n").unwrap();
+        assert!(config.list.skip_dirs.is_empty());
+        let toml_str = "[list]\nskip_dirs = [\"attachments\", \"assets\"]\n";
+        let parsed: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(parsed.list.skip_dirs, vec!["attachments", "assets"]);
+        let serialized = toml::to_string(&parsed).unwrap();
+        let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(roundtripped.list.skip_dirs, vec!["attachments", "assets"]);
+    }
+
+    #[test]
+    fn test_default_config_content_roundtrip() {
+        // The default config template must parse and produce defaults matching Rust impl
+        let content = merge::default_config_content();
+        let parsed: ClinConfig = toml::from_str(content).unwrap();
+        let default = ClinConfig::default();
+
+        // Compare field-by-field (some fields have #[serde(skip)] or special comparison)
+        assert_eq!(parsed.core, default.core, "core config mismatch");
+        assert_eq!(parsed.ui, default.ui, "ui config mismatch");
+        assert_eq!(parsed.list, default.list, "list config mismatch");
+        assert_eq!(parsed.editor, default.editor, "editor config mismatch");
+        assert_eq!(parsed.graf, default.graf, "graf config mismatch");
+        assert_eq!(parsed.goals, default.goals, "goals config mismatch");
+        assert_eq!(parsed.image, default.image, "image config mismatch");
+        assert_eq!(parsed.backup, default.backup, "backup config mismatch");
+        assert_eq!(
+            parsed.statusline, default.statusline,
+            "statusline config mismatch"
+        );
+    }
+
+    #[test]
+    fn test_default_config_content_is_valid_toml() {
+        let content = merge::default_config_content();
+        // Must parse without errors
+        let value: toml::Value =
+            toml::from_str(content).expect("default_config_content must be valid TOML");
+        // Must contain all expected sections
+        let table = value.as_table().expect("must be a table");
+        for section in &[
+            "core",
+            "ui",
+            "list",
+            "editor",
+            "backup",
+            "graf",
+            "goals",
+            "image",
+            "statusline",
+        ] {
+            assert!(table.contains_key(*section), "missing section: {section}");
+        }
+    }
+
+    #[test]
+    fn test_list_config_default_matches_serde() {
+        // ListConfig::default() should produce the same as serde Default when parsing empty
+        let from_empty: ListConfig = toml::from_str("").unwrap();
+        let from_default = ListConfig::default();
+        assert_eq!(from_default, from_empty);
+    }
+    #[test]
+    fn test_max_node_default() {
+        let default_config = ClinConfig::default();
+        assert_eq!(default_config.graf.max_node, 500);
+
+        let parsed: ClinConfig = toml::from_str("[graf]").unwrap();
+        assert_eq!(parsed.graf.max_node, 500);
+    }
+
+    #[test]
+    fn test_max_node_migration() {
+        let toml_str = r#"
+[graf.filter]
+max_nodes = 42
+"#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut())
+            && let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut())
+            && let Some(max_nodes) = filter.remove("max_nodes")
+            && graf.get("max_node").is_none()
+        {
+            graf.insert("max_node".to_string(), max_nodes);
+        }
+        let parsed: ClinConfig = value.try_into().unwrap();
+        assert_eq!(parsed.graf.max_node, 42);
+    }
+
+    #[test]
+    fn test_hint_bar_style_roundtrip() {
+        for style in [HintBarStyle::Hexagon] {
+            let mut config = ClinConfig::default();
+            config.ui.hint_bar_style = style;
+
+            let toml_str = toml::to_string_pretty(&config).unwrap();
+            let parsed: ClinConfig = toml::from_str(&toml_str).unwrap();
+
+            assert_eq!(config.ui.hint_bar_style, parsed.ui.hint_bar_style);
+            assert_eq!(
+                parsed.ui.hint_bar_style.as_config_str(),
+                style.as_config_str()
+            );
+        }
     }
 }

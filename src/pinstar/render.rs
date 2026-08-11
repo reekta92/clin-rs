@@ -1,8 +1,35 @@
+use crate::app::ViewMode;
 use crate::app_theme::AppThemeColors;
+use crate::events::contains_cell;
 use crate::keybinds::CanvasAction;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
 
+#[allow(dead_code)]
+struct Proj {
+    is_group: bool,
+    pos: (f64, f64),  // canvas-space top-left
+    size: (f64, f64), // canvas-space size
+    sx: f64,
+    sy: f64,
+    sw: f64,
+    sh: f64,
+    scx: f64,
+    scy: f64,
+    on_screen: bool,
+}
+
+fn is_image_ext(path: &str) -> bool {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+    )
+}
 fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     match color_code {
         Some(s) if s.starts_with('#') => {
@@ -15,12 +42,22 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
                 theme.accent
             }
         }
-        Some("1") | Some("red") => Color::Rgb(255, 82, 82),
-        Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
-        Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),
-        Some("4") | Some("green") => Color::Rgb(76, 175, 80),
-        Some("5") | Some("cyan") => Color::Rgb(0, 188, 212),
-        Some("6") | Some("purple") => Color::Rgb(156, 39, 176),
+        Some(s) => {
+            if let Ok(idx) = s.parse::<usize>()
+                && idx >= 1
+                && idx <= crate::pinstar::COLOR_PICKER_PALETTE.len()
+            {
+                return crate::pinstar::COLOR_PICKER_PALETTE[idx - 1].2;
+            }
+            if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE
+                .iter()
+                .find(|e| e.0 == s)
+            {
+                entry.2
+            } else {
+                theme.accent
+            }
+        }
         _ => theme.accent,
     }
 }
@@ -28,10 +65,18 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,
-    theme: &AppThemeColors,
+    app: &mut crate::app::App,
     area: ratatui::layout::Rect,
+    mouse_pos: Option<(u16, u16)>,
 ) {
+    let theme_val = app.app_theme.clone();
+    let theme = &theme_val;
     let total_area = area;
+    let canvas_mouse_pos = if state.context_menu.is_some() {
+        None
+    } else {
+        mouse_pos
+    };
     let mut area = area;
     area.height = area.height.saturating_sub(1);
 
@@ -55,60 +100,63 @@ pub fn draw_pinstar_view(
             .borders(Borders::RIGHT)
             .border_style(Style::default().fg(editor_border_color))
             .title(" Source (JSON) ")
-            .style(theme.preview_bg_style());
+            .style(theme.bg_style());
 
-        let line_count = state.raw_editor.lines().len();
-        let cursor_row = state.raw_editor.cursor().0;
-        let scroll_row = crate::ui::get_textarea_scroll(&state.raw_editor).0;
-
-        let content_area = editor_area;
-        let digits = line_count.max(1).to_string().len() as u16;
-        let gutter_width = digits + 1;
-        let gutter_area = Rect::new(
-            content_area.x,
-            content_area.y,
-            gutter_width.min(content_area.width),
-            content_area.height,
-        );
-        let gutter = crate::ui::line_number_gutter(
-            line_count,
-            cursor_row,
-            scroll_row,
-            content_area.height,
+        crate::ui::render_textarea_with_theme(
+            frame,
+            &mut state.raw_editor,
+            editor_area,
             theme,
-            1,
+            state.editor_focus,
+            true,
+            editor_block,
+            theme.bg_style(),
         );
-        frame.render_widget(gutter, gutter_area);
-
-        let editor_rect = Rect::new(
-            content_area.x + gutter_area.width,
-            content_area.y,
-            content_area.width.saturating_sub(gutter_area.width),
-            content_area.height,
-        );
-
-        state.raw_editor.set_block(editor_block);
-        state.raw_editor.set_style(theme.preview_bg_style());
-        state
-            .raw_editor
-            .set_cursor_line_style(if state.editor_focus {
-                if let Some(bg) = theme.preview_bg() {
-                    Style::default().bg(bg)
-                } else {
-                    Style::default()
-                        .bg(theme.highlight_bg)
-                        .fg(theme.highlight_fg)
-                }
-            } else {
-                Style::default()
-            });
-        frame.render_widget(&state.raw_editor, editor_rect);
-
-        if state.editor_focus {
-            let cursor_bg = theme.preview_bg().unwrap_or(theme.highlight_bg);
-            crate::ui::fill_cursor_line_bg(frame, &state.raw_editor, editor_rect, cursor_bg);
-        }
     }
+
+    // Per-frame projection invariants (reused by grid, group, edge, node passes).
+    // Expression order is identical to the inline forms it replaces, so float
+    // results are bit-identical.
+    let origin_x = canvas_area.x as f64 + canvas_area.width as f64 / 2.0;
+    let origin_y = canvas_area.y as f64 + canvas_area.height as f64 / 2.0;
+    let z = state.zoom;
+    let vx = state.viewport_x;
+    let vy = state.viewport_y;
+    let view_left = canvas_area.left() as f64;
+    let view_right = canvas_area.right() as f64;
+    let view_top = canvas_area.top() as f64;
+    let view_bottom = canvas_area.bottom() as f64;
+
+    let proj: Vec<Proj> = state
+        .data
+        .nodes
+        .iter()
+        .map(|n| {
+            let (nx, ny) = n.pos();
+            let (nw, nh) = n.size();
+            let sx = (nx - vx) * z + origin_x;
+            let sy = (ny - vy) * z + origin_y;
+            let sw = nw * z;
+            let sh = nh * z;
+            Proj {
+                is_group: matches!(n, crate::pinstar::data::CanvasNode::Group(_)),
+                pos: (nx, ny),
+                size: (nw, nh),
+                sx,
+                sy,
+                sw,
+                sh,
+                scx: sx + sw / 2.0,
+                scy: sy + sh / 2.0,
+                on_screen: !(sx + sw < view_left
+                    || sx > view_right
+                    || sy + sh < view_top
+                    || sy > view_bottom),
+            }
+        })
+        .collect();
+
+    let config = &app.config;
 
     let canvas_border_color = if !state.editor_focus || !state.show_editor_pane {
         theme.accent
@@ -148,12 +196,8 @@ pub fn draw_pinstar_view(
         while cur_x <= end_x {
             let mut cur_y = start_y;
             while cur_y <= end_y {
-                let sx = (((cur_x - state.viewport_x) * state.zoom)
-                    + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0))
-                    .round() as i32;
-                let sy = (((cur_y - state.viewport_y) * state.zoom)
-                    + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0))
-                    .round() as i32;
+                let sx = (((cur_x - vx) * z) + origin_x).round() as i32;
+                let sy = (((cur_y - vy) * z) + origin_y).round() as i32;
 
                 if sx >= canvas_area.left() as i32
                     && sx < canvas_area.right() as i32
@@ -173,148 +217,163 @@ pub fn draw_pinstar_view(
         }
     }
 
-    for node in &state.data.nodes {
-        if let crate::pinstar::data::CanvasNode::Group(g) = node {
-            let (nx, ny) = node.pos();
-            let (nw, nh) = node.size();
+    for (idx, p) in proj.iter().enumerate() {
+        if !p.is_group {
+            continue;
+        }
+        if !p.on_screen {
+            continue;
+        }
+        let node = &state.data.nodes[idx];
+        let crate::pinstar::data::CanvasNode::Group(g) = node else {
+            continue;
+        };
 
-            let sx = ((nx - state.viewport_x) * state.zoom)
-                + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0);
-            let sy = ((ny - state.viewport_y) * state.zoom)
-                + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0);
-            let sw = nw * state.zoom;
-            let sh = nh * state.zoom;
+        let sx = p.sx;
+        let sy = p.sy;
+        let sw = p.sw;
+        let sh = p.sh;
 
-            if sx + sw < canvas_area.left() as f64
-                || sx > canvas_area.right() as f64
-                || sy + sh < canvas_area.top() as f64
-                || sy > canvas_area.bottom() as f64
-            {
-                continue;
-            }
+        let left = sx.max(view_left);
+        let top = sy.max(view_top);
+        let right = (sx + sw).min(view_right);
+        let bottom = (sy + sh).min(view_bottom);
+        if right <= left || bottom <= top {
+            continue;
+        }
+        let node_rect = Rect::new(
+            left as u16,
+            top as u16,
+            (right - left) as u16,
+            (bottom - top) as u16,
+        );
 
-            let left = sx.max(canvas_area.left() as f64);
-            let top = sy.max(canvas_area.top() as f64);
-            let right = (sx + sw).min(canvas_area.right() as f64);
-            let bottom = (sy + sh).min(canvas_area.bottom() as f64);
+        let is_selected = state.selected_node_id.as_deref() == Some(g.id.as_str());
+        let is_editing = is_selected && state.floating_editor.is_some();
+        let base_color = get_node_color(g.color.as_deref(), theme);
+        let border_color = if is_editing { theme.accent } else { base_color };
 
-            if right <= left || bottom <= top {
-                continue;
-            }
+        let mut label = g.label.as_deref().unwrap_or("Group").to_string();
+        if is_editing {
+            label = format!("[EDITING] {label}");
+        }
 
-            let node_rect = Rect::new(
-                left as u16,
-                top as u16,
-                (right - left) as u16,
-                (bottom - top) as u16,
-            );
+        let is_hovered = !is_selected
+            && canvas_mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+        let bg_style = if is_hovered {
+            theme.hover_style()
+        } else {
+            theme.bg_style()
+        };
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color))
+            .title(Span::styled(
+                label,
+                Style::default().fg(if is_editing { theme.accent } else { base_color }),
+            ))
+            .style(bg_style);
 
-            let is_selected = state.selected_node_id.as_ref() == Some(&g.id.to_string());
-            let is_editing = is_selected && state.floating_editor.is_some();
-            let base_color = get_node_color(g.color.as_deref(), theme);
-            let border_color = if is_editing { theme.accent } else { base_color };
-
-            let mut label = g.label.as_deref().unwrap_or("Group").to_string();
-            if is_editing {
-                label = format!("[EDITING] {label}");
-            }
-
-            let mut block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(border_color))
-                .title(Span::styled(
-                    label,
-                    Style::default().fg(if is_editing { theme.accent } else { base_color }),
-                ))
-                .style(theme.bg_style());
-
-            if is_selected && !is_editing {
-                block = block.border_set(ratatui::symbols::border::Set {
-                    top_left: "┌",
-                    top_right: "┐",
-                    bottom_left: "└",
-                    bottom_right: "┘",
-                    vertical_left: "┆",
-                    vertical_right: "┆",
-                    horizontal_top: "┄",
-                    horizontal_bottom: "┄",
-                });
+        if is_selected && !is_editing {
+            block = block.border_set(ratatui::symbols::border::Set {
+                top_left: "\u{250c}",
+                top_right: "\u{2510}",
+                bottom_left: "\u{2514}",
+                bottom_right: "\u{2518}",
+                vertical_left: "\u{2506}",
+                vertical_right: "\u{2506}",
+                horizontal_top: "\u{2504}",
+                horizontal_bottom: "\u{2504}",
+            });
+        } else {
+            block = block.border_type(if is_editing {
+                BorderType::Rounded
             } else {
-                block = block.border_type(if is_editing {
-                    BorderType::Rounded
-                } else {
-                    BorderType::Double
-                });
-            }
+                BorderType::Double
+            });
+        }
 
-            frame.render_widget(block, node_rect);
+        frame.render_widget(block, node_rect);
 
-            if is_selected {
-                let corner_style = Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD);
-                if node_rect.width > 0 && node_rect.height > 0 {
+        if is_selected {
+            let corner_style = Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD);
+            if node_rect.width > 0 && node_rect.height > 0 {
+                frame.render_widget(
+                    Paragraph::new("\u{21d8}").style(corner_style),
+                    Rect::new(node_rect.x, node_rect.y, 1, 1),
+                );
+                if node_rect.width > 1 {
                     frame.render_widget(
-                        Paragraph::new("⇘").style(corner_style),
-                        Rect::new(node_rect.x, node_rect.y, 1, 1),
+                        Paragraph::new("\u{21d9}").style(corner_style),
+                        Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1),
                     );
-                    if node_rect.width > 1 {
-                        frame.render_widget(
-                            Paragraph::new("⇙").style(corner_style),
-                            Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1),
-                        );
-                    }
-                    if node_rect.height > 1 {
-                        frame.render_widget(
-                            Paragraph::new("⇗").style(corner_style),
-                            Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1),
-                        );
-                    }
-                    if node_rect.width > 1 && node_rect.height > 1 {
-                        frame.render_widget(
-                            Paragraph::new("⇖").style(corner_style),
-                            Rect::new(
-                                node_rect.x + node_rect.width - 1,
-                                node_rect.y + node_rect.height - 1,
-                                1,
-                                1,
-                            ),
-                        );
-                    }
+                }
+                if node_rect.height > 1 {
+                    frame.render_widget(
+                        Paragraph::new("\u{21d7}").style(corner_style),
+                        Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1),
+                    );
+                }
+                if node_rect.width > 1 && node_rect.height > 1 {
+                    frame.render_widget(
+                        Paragraph::new("\u{21d6}").style(corner_style),
+                        Rect::new(
+                            node_rect.x + node_rect.width - 1,
+                            node_rect.y + node_rect.height - 1,
+                            1,
+                            1,
+                        ),
+                    );
                 }
             }
+        }
 
-            if state.resizing_node_id.as_ref() == Some(&g.id.to_string()) {
-                let handle_text = "[↘]";
-                let handle_style = Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD);
-                let handle_rect = Rect::new(
-                    (sx + sw - 3.0).max(0.0) as u16,
-                    (sy + sh - 1.0).max(0.0) as u16,
-                    3,
-                    1,
-                );
-                frame.render_widget(Paragraph::new(handle_text).style(handle_style), handle_rect);
-            }
+        if state.resizing_node_id.as_deref() == Some(g.id.as_str()) {
+            let handle_text = "[\u{2198}]";
+            let handle_style = Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD);
+            let handle_rect = Rect::new(
+                (sx + sw - 3.0).max(0.0) as u16,
+                (sy + sh - 1.0).max(0.0) as u16,
+                3,
+                1,
+            );
+            frame.render_widget(Paragraph::new(handle_text).style(handle_style), handle_rect);
         }
     }
 
-    for edge in &state.data.edges {
-        let from_node = state.data.nodes.iter().find(|n| n.id() == edge.from_node);
-        let to_node = state.data.nodes.iter().find(|n| n.id() == edge.to_node);
+    {
+        use std::collections::HashMap;
+        // Keys borrow state.data.nodes; map drops at end of this block,
+        // before the non-group pass takes &mut state.image_cache.
+        let id_index: HashMap<&str, usize> = state
+            .data
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id(), i))
+            .collect();
 
-        if let (Some(f), Some(t)) = (from_node, to_node) {
-            let (fx, fy) = f.pos();
-            let (fw, fh) = f.size();
-            let (tx, ty) = t.pos();
-            let (tw, th) = t.size();
+        for edge in &state.data.edges {
+            let Some(&ia) = id_index.get(edge.from_node.as_str()) else {
+                continue;
+            };
+            let Some(&ib) = id_index.get(edge.to_node.as_str()) else {
+                continue;
+            };
+            let pf = &proj[ia];
+            let pt = &proj[ib];
+
+            let (fx, fy, fw, fh) = (pf.pos.0, pf.pos.1, pf.size.0, pf.size.1);
+            let (tx, ty, tw, th) = (pt.pos.0, pt.pos.1, pt.size.0, pt.size.1);
 
             let scx = fx + fw / 2.0;
             let scy = fy + fh / 2.0;
             let tcx = tx + tw / 2.0;
             let tcy = ty + th / 2.0;
-
             let dx = tcx - scx;
             let dy = tcy - scy;
 
@@ -334,103 +393,73 @@ pub fn draw_pinstar_view(
                 (tcx, ty + th)
             };
 
-            let sfx = ((ax - state.viewport_x) * state.zoom)
-                + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0);
-            let sfy = ((ay - state.viewport_y) * state.zoom)
-                + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0);
-            let stx = ((bx - state.viewport_x) * state.zoom)
-                + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0);
-            let sty = ((by - state.viewport_y) * state.zoom)
-                + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0);
+            let sfx = (ax - vx) * z + origin_x;
+            let sfy = (ay - vy) * z + origin_y;
+            let stx = (bx - vx) * z + origin_x;
+            let sty = (by - vy) * z + origin_y;
+
+            // Cull edges whose screen bbox is entirely outside canvas
+            let min_x = sfx.min(stx);
+            let max_x = sfx.max(stx);
+            let min_y = sfy.min(sty);
+            let max_y = sfy.max(sty);
+            if max_x < view_left || min_x > view_right || max_y < view_top || min_y > view_bottom {
+                continue;
+            }
 
             let mut current_x = sfx;
             let mut current_y = sfy;
-            let target_x = stx;
-            let target_y = sty;
-
-            let dist = ((target_x - current_x).powi(2) + (target_y - current_y).powi(2)).sqrt();
+            let dist = ((stx - sfx).powi(2) + (sty - sfy).powi(2)).sqrt();
             let steps = (dist * 4.0) as usize;
-
             if steps > 0 {
-                let dx = (target_x - current_x) / steps as f64;
-                let dy = (target_y - current_y) / steps as f64;
-
+                let ddx = (stx - sfx) / steps as f64;
+                let ddy = (sty - sfy) / steps as f64;
                 for _ in 0..=steps {
-                    if current_x >= canvas_area.left() as f64
-                        && current_x < canvas_area.right() as f64
-                        && current_y >= canvas_area.top() as f64
-                        && current_y < canvas_area.bottom() as f64
+                    if current_x >= view_left
+                        && current_x < view_right
+                        && current_y >= view_top
+                        && current_y < view_bottom
                     {
                         let cell_x = current_x as u16;
                         let cell_y = current_y as u16;
-
                         let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
                         let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
-
-                        if let Some(cell) = frame.buffer_mut().cell_mut((cell_x, cell_y)) {
-                            let mut braille_char =
-                                cell.symbol().chars().next().unwrap_or('\u{2800}');
-                            if !('\u{2800}'..='\u{28FF}').contains(&braille_char) {
-                                braille_char = '\u{2800}';
-                            }
-
-                            let dot_bit = match (dot_x, dot_y) {
-                                (0, 0) => 0x01,
-                                (0, 1) => 0x02,
-                                (0, 2) => 0x04,
-                                (1, 0) => 0x08,
-                                (1, 1) => 0x10,
-                                (1, 2) => 0x20,
-                                (0, 3) => 0x40,
-                                (1, 3) => 0x80,
-                                _ => 0,
-                            };
-
-                            let new_code = (braille_char as u32 - 0x2800) | dot_bit;
-                            if let Some(c) = char::from_u32(0x2800 + new_code) {
-                                cell.set_char(c).set_fg(theme.muted);
-                            }
-                        }
+                        crate::ui::braille::set_braille_dot(
+                            frame.buffer_mut(),
+                            cell_x,
+                            cell_y,
+                            dot_x,
+                            dot_y,
+                            theme.muted,
+                        );
                     }
-                    current_x += dx;
-                    current_y += dy;
+                    current_x += ddx;
+                    current_y += ddy;
                 }
             }
         }
-    }
+    } // end edge-pass block
 
-    for node in &state.data.nodes {
-        if matches!(node, crate::pinstar::data::CanvasNode::Group(_)) {
+    for (idx, p) in proj.iter().enumerate() {
+        if p.is_group {
             continue;
         }
-
-        let (nx, ny) = node.pos();
-        let (nw, nh) = node.size();
-
-        let sx = ((nx - state.viewport_x) * state.zoom)
-            + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0);
-        let sy = ((ny - state.viewport_y) * state.zoom)
-            + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0);
-        let sw = nw * state.zoom;
-        let sh = nh * state.zoom;
-
-        if sx + sw < canvas_area.left() as f64
-            || sx > canvas_area.right() as f64
-            || sy + sh < canvas_area.top() as f64
-            || sy > canvas_area.bottom() as f64
-        {
+        if !p.on_screen {
             continue;
         }
+        let node = &state.data.nodes[idx];
+        let sx = p.sx;
+        let sy = p.sy;
+        let sw = p.sw;
+        let sh = p.sh;
 
-        let left = sx.max(canvas_area.left() as f64);
-        let top = sy.max(canvas_area.top() as f64);
-        let right = (sx + sw).min(canvas_area.right() as f64);
-        let bottom = (sy + sh).min(canvas_area.bottom() as f64);
-
+        let left = sx.max(view_left);
+        let top = sy.max(view_top);
+        let right = (sx + sw).min(view_right);
+        let bottom = (sy + sh).min(view_bottom);
         if right <= left || bottom <= top {
             continue;
         }
-
         let node_rect = Rect::new(
             left as u16,
             top as u16,
@@ -440,7 +469,7 @@ pub fn draw_pinstar_view(
 
         frame.render_widget(Clear, node_rect);
 
-        let is_selected = state.selected_node_id.as_ref() == Some(&node.id().to_string());
+        let is_selected = state.selected_node_id.as_deref() == Some(node.id());
         let is_editing = is_selected && state.floating_editor.is_some();
 
         let node_color_attr = match node {
@@ -458,26 +487,30 @@ pub fn draw_pinstar_view(
             border_type = BorderType::Double;
         }
 
-        let mut node_title = match node {
-            crate::pinstar::data::CanvasNode::File(n) => std::path::Path::new(&n.file)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(&n.file)
-                .to_string(),
-            crate::pinstar::data::CanvasNode::Link(n) => n.url.clone(),
-            _ => {
-                if is_generated_id(node.id()) {
-                    "".to_string()
-                } else {
-                    node.id().to_string()
-                }
-            }
+        let mut node_title = match node.title() {
+            Some(t) => t.to_string(),
+            None => match node {
+                crate::pinstar::data::CanvasNode::File(n) => std::path::Path::new(&n.file)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&n.file)
+                    .to_string(),
+                crate::pinstar::data::CanvasNode::Link(n) => n.url.clone(),
+                crate::pinstar::data::CanvasNode::Group(n) => n.label.clone().unwrap_or_default(),
+                crate::pinstar::data::CanvasNode::Text(_) => "".to_string(),
+            },
         };
 
         if is_editing {
             node_title = format!("[EDITING] {node_title}");
         }
-
+        let is_hovered = !is_selected
+            && canvas_mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+        let bg_style = if is_hovered {
+            theme.hover_style()
+        } else {
+            theme.bg_style()
+        };
         let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
@@ -485,28 +518,82 @@ pub fn draw_pinstar_view(
                 node_title,
                 Style::default().fg(if is_editing { theme.accent } else { base_color }),
             ))
-            .style(theme.bg_style());
+            .style(bg_style);
 
         if is_selected && !is_editing {
             block = block.border_set(ratatui::symbols::border::Set {
-                top_left: "┌",
-                top_right: "┐",
-                bottom_left: "└",
-                bottom_right: "┘",
-                vertical_left: "┆",
-                vertical_right: "┆",
-                horizontal_top: "┄",
-                horizontal_bottom: "┄",
+                top_left: "\u{250c}",
+                top_right: "\u{2510}",
+                bottom_left: "\u{2514}",
+                bottom_right: "\u{2518}",
+                vertical_left: "\u{2506}",
+                vertical_right: "\u{2506}",
+                horizontal_top: "\u{2504}",
+                horizontal_bottom: "\u{2504}",
             });
         } else {
             block = block.border_type(border_type);
         }
 
-        let text = Paragraph::new(node.text())
-            .block(block)
-            .style(Style::default().fg(theme.text))
-            .wrap(Wrap { trim: false });
-        frame.render_widget(text, node_rect);
+        let is_image_file = matches!(node, crate::pinstar::data::CanvasNode::File(n) if is_image_ext(&n.file))
+            && state.image_picker.is_some();
+
+        // Short-circuit: during transforms, skip pixel decode and render plain text
+        if state.is_view_transforming() {
+            let text = Paragraph::new(node.text())
+                .block(block)
+                .style(Style::default().fg(theme.text))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(text, node_rect);
+            continue;
+        }
+
+        // Render pixel image if available
+        if is_image_file {
+            let file_path = match node {
+                crate::pinstar::data::CanvasNode::File(n) => n.file.clone(),
+                _ => String::new(),
+            };
+            let picker = state.image_picker.as_ref().expect("checked above");
+            let key = crate::image_render::ImageKey {
+                path: std::path::PathBuf::from(&file_path),
+                mtime: 0,
+            };
+            if let Some(tx) = &state.image_decode_tx {
+                state.image_cache.request(key.clone(), 2048, tx, picker);
+            }
+            if let Some(proto) = state.image_cache.get_proto(&key)
+                && node_rect.width > 2
+                && node_rect.height > 2
+            {
+                let inner_area = Rect::new(
+                    node_rect.x + 1,
+                    node_rect.y + 1,
+                    node_rect.width.saturating_sub(2),
+                    node_rect.height.saturating_sub(2),
+                );
+                frame.render_widget(block, node_rect);
+                frame.render_stateful_widget(
+                    ratatui_image::StatefulImage::default()
+                        .resize(ratatui_image::Resize::Fit(None)),
+                    inner_area,
+                    proto,
+                );
+            } else {
+                // No proto yet: render placeholder
+                let text = Paragraph::new(node.text())
+                    .block(block)
+                    .style(Style::default().fg(theme.text))
+                    .wrap(Wrap { trim: false });
+                frame.render_widget(text, node_rect);
+            }
+        } else {
+            let text = Paragraph::new(node.text())
+                .block(block)
+                .style(Style::default().fg(theme.text))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(text, node_rect);
+        }
 
         if is_selected {
             let corner_style = Style::default()
@@ -514,24 +601,24 @@ pub fn draw_pinstar_view(
                 .add_modifier(Modifier::BOLD);
             if node_rect.width > 0 && node_rect.height > 0 {
                 frame.render_widget(
-                    Paragraph::new("⇘").style(corner_style),
+                    Paragraph::new("\u{21d8}").style(corner_style),
                     Rect::new(node_rect.x, node_rect.y, 1, 1),
                 );
                 if node_rect.width > 1 {
                     frame.render_widget(
-                        Paragraph::new("⇙").style(corner_style),
+                        Paragraph::new("\u{21d9}").style(corner_style),
                         Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1),
                     );
                 }
                 if node_rect.height > 1 {
                     frame.render_widget(
-                        Paragraph::new("⇗").style(corner_style),
+                        Paragraph::new("\u{21d7}").style(corner_style),
                         Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1),
                     );
                 }
                 if node_rect.width > 1 && node_rect.height > 1 {
                     frame.render_widget(
-                        Paragraph::new("⇖").style(corner_style),
+                        Paragraph::new("\u{21d6}").style(corner_style),
                         Rect::new(
                             node_rect.x + node_rect.width - 1,
                             node_rect.y + node_rect.height - 1,
@@ -543,8 +630,8 @@ pub fn draw_pinstar_view(
             }
         }
 
-        if state.resizing_node_id.as_ref() == Some(&node.id().to_string()) {
-            let handle_text = "[↘]";
+        if state.resizing_node_id.as_deref() == Some(node.id()) {
+            let handle_text = "[\u{2198}]";
             let handle_style = Style::default()
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD);
@@ -557,6 +644,7 @@ pub fn draw_pinstar_view(
             frame.render_widget(Paragraph::new(handle_text).style(handle_style), handle_rect);
         }
     }
+    state.floating_editor_rect = None;
 
     if let Some(editor) = &mut state.floating_editor
         && let Some(node_id) = &state.selected_node_id
@@ -565,12 +653,10 @@ pub fn draw_pinstar_view(
         let (nx, ny) = node.pos();
         let (nw, nh) = node.size();
 
-        let sx = ((nx - state.viewport_x) * state.zoom)
-            + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0);
-        let sy = ((ny - state.viewport_y) * state.zoom)
-            + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0);
-        let sw = nw * state.zoom;
-        let sh = nh * state.zoom;
+        let sx = ((nx - vx) * z) + origin_x;
+        let sy = ((ny - vy) * z) + origin_y;
+        let sw = nw * z;
+        let sh = nh * z;
 
         let left = sx.max(canvas_area.left() as f64);
         let top = sy.max(canvas_area.top() as f64);
@@ -592,6 +678,8 @@ pub fn draw_pinstar_view(
                     .style(theme.bg_style()),
             );
             editor.set_style(theme.bg_style());
+            state.floating_editor_rect =
+                Some(Block::default().borders(Borders::ALL).inner(editor_rect));
 
             frame.render_widget(Clear, editor_rect);
             frame.render_widget(&*editor, editor_rect);
@@ -641,7 +729,18 @@ pub fn draw_pinstar_view(
                 ),
                 "zoom",
             ),
-            (state.keybinds.display_canvas(CanvasAction::Quit), "back"),
+            (
+                state.keybinds.canvas_keys_display(CanvasAction::Quit),
+                "back",
+            ),
+            (
+                format!(
+                    "F1/{}",
+                    state.keybinds.canvas_keys_display(CanvasAction::Help)
+                ),
+                "help",
+            ),
+            ("F2".to_string(), "keybinds"),
         ];
         crate::ui::format_keybind_hints(theme, &hints_items)
     } else {
@@ -650,15 +749,20 @@ pub fn draw_pinstar_view(
             Style::default().fg(theme.muted),
         )])
     };
-    crate::ui::draw_status_bar(
-        frame,
-        hint_area,
-        theme,
-        None,
-        hint_line,
-        None,
-        state.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Canvas);
+    ctx.area = Some(hint_area);
+    ctx.canvas = Some(state);
+    ctx.hints = Some(hint_line.spans);
+    if let Some(p) = &state.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Canvas, theme);
+    crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 
     if let Some(menu) = &state.context_menu {
         let menu_width = menu
@@ -699,17 +803,39 @@ pub fn draw_pinstar_view(
                 .borders(Borders::NONE)
                 .style(theme.preview_bg_style()),
         );
-        frame.render_widget(list, menu_rect);
+        let list_state =
+            crate::ui::render_list_with_selection(frame, list, menu_rect, Some(menu.selected), 0);
+        crate::ui::paint_list_hover(
+            frame,
+            menu_rect,
+            &list_state,
+            menu.items.len(),
+            mouse_pos,
+            theme.hover_style(),
+        );
     }
 
     if let Some(textarea) = &mut state.rename_popup {
-        let hint_line = crate::ui::popup_hint_line(theme, "Enter confirm · Esc cancel");
+        let hints_items = &[
+            (
+                state
+                    .keybinds
+                    .display_canvas(crate::keybinds::CanvasAction::RenameConfirm),
+                "confirm",
+            ),
+            (
+                state
+                    .keybinds
+                    .display_canvas(crate::keybinds::CanvasAction::RenameCancel),
+                "cancel",
+            ),
+        ];
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "RENAME NODE",
             crate::ui::PopupSize::Prompt,
-            &hint_line,
+            crate::ui::PopupHints::Keybinds(hints_items),
             theme,
         );
 
@@ -725,15 +851,172 @@ pub fn draw_pinstar_view(
     }
 }
 
-fn is_generated_id(id: &str) -> bool {
-    if id.starts_with("node_") && id.len() <= 16 {
-        return true;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keybinds::KeyMatcher;
+    use crate::keybinds::Keybinds;
+    use crate::pinstar::state::PinstarState;
+    use ratatui::backend::TestBackend;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_draw_pinstar_view_with_editor() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.canvas");
+        {
+            let mut file = File::create(&path).unwrap();
+            file.write_all(b"{\"nodes\":[],\"edges\":[]}").unwrap();
+        }
+
+        let keybinds = Keybinds::default();
+        let seq_matcher = KeyMatcher::default();
+        let mut state = PinstarState::load(&path, keybinds, seq_matcher).unwrap();
+        state.show_editor_pane = true;
+        state.editor_focus = true;
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let data_dir = dir.path().join("data");
+        let config_dir = dir.path().join("config");
+        let notes_dir = dir.path().join("notes");
+        let templates_dir = dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        let mut app = crate::app::App::new(storage).unwrap();
+
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_pinstar_view(f, &mut state, &mut app, area, None);
+            })
+            .unwrap();
+
+        // Confirm we can also render with editor_focus = false
+        state.editor_focus = false;
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_pinstar_view(f, &mut state, &mut app, area, None);
+            })
+            .unwrap();
     }
-    if id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit()) {
-        return true;
+
+    #[test]
+    #[ignore = "performance test, run manually"]
+    fn pinstar_large_canvas_render_perf() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.canvas");
+
+        use crate::pinstar::data::{CanvasData, CanvasEdge, CanvasNode, TextNode};
+        let cols = 30usize;
+        let rows = 20usize;
+        let n = cols * rows; // 600
+        let nodes: Vec<CanvasNode> = (0..n)
+            .map(|i| {
+                let cx = (i % cols) as f64 * 136.0;
+                let cy = (i / cols) as f64 * 170.0;
+                CanvasNode::Text(TextNode {
+                    id: format!("n{i}"),
+                    x: cx,
+                    y: cy,
+                    width: 60.0,
+                    height: 40.0,
+                    text: format!("node {i}"),
+                    title: None,
+                    color: None,
+                })
+            })
+            .collect();
+        let edges: Vec<CanvasEdge> = (0..n)
+            .flat_map(|i| {
+                [1usize, 2, 3].into_iter().filter_map(move |o| {
+                    let to = (i + o) % n;
+                    if to == i {
+                        return None;
+                    }
+                    Some(CanvasEdge {
+                        id: format!("e{i}_{to}"),
+                        from_node: format!("n{i}"),
+                        from_side: Some("right".to_string()),
+                        to_node: format!("n{to}"),
+                        to_side: Some("left".to_string()),
+                        label: None,
+                        color: None,
+                    })
+                })
+            })
+            .collect();
+        let data = CanvasData { nodes, edges };
+
+        {
+            let content = serde_json::to_string(&data).unwrap();
+            std::fs::write(&path, content).unwrap();
+        }
+
+        let keybinds = crate::keybinds::Keybinds::default();
+        let seq_matcher = crate::keybinds::KeyMatcher::default();
+        let mut state =
+            crate::pinstar::state::PinstarState::load(&path, keybinds, seq_matcher).unwrap();
+        state.zoom = 0.05;
+        state.viewport_x = 2000.0;
+        state.viewport_y = 1700.0;
+
+        let data_dir = dir.path().join("data");
+        let config_dir = dir.path().join("config");
+        let notes_dir = dir.path().join("notes");
+        let templates_dir = dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        let mut app = crate::app::App::new(storage).unwrap();
+
+        let backend = ratatui::backend::TestBackend::new(200, 80);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+        // warm draw (fills any caches), then timed draw.
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                super::draw_pinstar_view(f, &mut state, &mut app, area, None);
+            })
+            .unwrap();
+        let t0 = std::time::Instant::now();
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                super::draw_pinstar_view(f, &mut state, &mut app, area, None);
+            })
+            .unwrap();
+        let elapsed = t0.elapsed();
+        eprintln!("pinstar {n}n/1800e draw: {:?}", elapsed);
+        // Budget placeholder: measured post-optimization baseline ~M ms; guard <= 2*M.
+        assert!(elapsed.as_millis() < 100, "draw too slow: {:?}", elapsed);
     }
-    if id.len() == 36 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        return true;
-    }
-    false
 }

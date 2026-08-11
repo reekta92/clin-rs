@@ -1,5 +1,5 @@
 //! Unified overlay contract for sub-view states (Graph, Draw, Canvas, Backup,
-//! ContentTree).
+//! Outline).
 //!
 //! Each sub-view state implements [`OverlayView`] and signals event outcomes
 //! via the shared [`OverlayResult`] enum. This replaces the per-view `XResult`
@@ -25,21 +25,18 @@ pub enum OverlayResult {
     OpenHelp(HelpTab),
     /// A note was opened from within the overlay (Graph only).
     NoteOpened(String),
-    /// Jump to a line in a note (ContentTree only).
+    /// Jump to a line in a note (Outline only).
     JumpToLine { note_id: String, line: usize },
 }
 
 /// Uniform contract for sub-view overlays.
 pub trait OverlayView {
-    /// Render the overlay into `area`. `app_status` is an optional one-line
-    /// status hint; views that draw their own title bar may surface it.
+    /// Render the overlay into `area`.
     fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        theme: &crate::app_theme::AppThemeColors,
-        config: &crate::config::ClinConfig,
-        app_status: Option<&str>,
+        app: &mut crate::app::App,
     );
 
     /// Handle one terminal event. Returns the outcome; never panics on
@@ -47,7 +44,7 @@ pub trait OverlayView {
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
-        terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
+        app: &mut crate::app::App,
+        term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<OverlayResult>;
 }

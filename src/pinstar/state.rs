@@ -14,6 +14,7 @@ pub struct PinstarState {
     pub raw_editor: TextArea<'static>,
     pub editor_focus: bool,
     pub last_mouse_pos: Option<(u16, u16)>,
+    pub mouse_pos: Option<(u16, u16)>,
     pub last_click: Option<(u16, u16, std::time::Instant)>,
     pub context_menu: Option<PinstarContextMenu>,
     pub context_menu_pos: (f64, f64),
@@ -26,20 +27,31 @@ pub struct PinstarState {
     pub rename_popup: Option<TextArea<'static>>,
     pub last_mouse_canvas_pos: Option<(f64, f64)>,
     pub drag_captured_nodes: std::collections::HashSet<String>,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
+    pub(crate) text_selection_target: Option<PinstarTextField>,
+    pub(crate) floating_editor_rect: Option<ratatui::layout::Rect>,
     pub show_grid: bool,
-    pub mouse_selecting: bool,
-    pub mouse_dragged: bool,
     pub help_requested: bool,
     pub footer_hint: String,
     pub keybinds: crate::keybinds::Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
+    pub image_cache: crate::image_render::cache::ImageCache,
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
+    pub is_panning: bool,
+    pub last_zoom_at: Option<std::time::Instant>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PinstarTextField {
+    Raw,
+    Floating,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PinstarMenuType {
     Canvas,
-    Editor,
     ColorPicker,
 }
 
@@ -59,9 +71,6 @@ impl PinstarState {
     ) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let data: CanvasData = serde_json::from_str(&content)?;
-        let mut raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
-        raw_editor.set_cursor_line_style(ratatui::style::Style::default());
-
         Ok(Self {
             path: path.to_path_buf(),
             data,
@@ -70,8 +79,9 @@ impl PinstarState {
             zoom: 0.1,
             selected_node_id: None,
             floating_editor: None,
-            raw_editor,
+            raw_editor: TextArea::from(content.lines().map(String::from).collect::<Vec<_>>()),
             editor_focus: false,
+            mouse_pos: None,
             last_mouse_pos: None,
             last_click: None,
             context_menu: None,
@@ -86,13 +96,19 @@ impl PinstarState {
             last_mouse_canvas_pos: None,
             drag_captured_nodes: std::collections::HashSet::new(),
             show_grid: true,
-            mouse_selecting: false,
-            mouse_dragged: false,
+            mouse_selection: crate::text_edit::MouseTextSelection::default(),
+            text_selection_target: None,
+            floating_editor_rect: None,
             help_requested: false,
             footer_hint: String::new(),
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
+            image_cache: crate::image_render::cache::ImageCache::new(32),
+            image_picker: None,
+            image_decode_tx: None,
+            is_panning: false,
+            last_zoom_at: None,
         })
     }
 
@@ -100,6 +116,23 @@ impl PinstarState {
         let content = serde_json::to_string_pretty(&self.data)?;
         crate::fsutil::atomic_write_str(&self.path, &content)?;
         Ok(())
+    }
+
+    /// Returns true while the view is undergoing continuous transforms
+    /// (pan, zoom, node resize, connection drawing). During these states
+    /// the pixel image render is suppressed to avoid churning the encode
+    /// worker; cheap placeholder text is shown instead.
+    pub fn is_view_transforming(&self) -> bool {
+        use crate::image_render::TRANSFORM_SETTLE;
+        self.resizing_node_id.is_some()
+            || self.is_dragging_resize_handle
+            || self.drag_start_pos.is_some()
+            || self.is_panning
+            || self.connection_source_id.is_some()
+            || self.deleting_connection_source_id.is_some()
+            || self
+                .last_zoom_at
+                .is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
     }
 
     pub fn sync_from_raw_editor(&mut self) -> Result<()> {
@@ -120,10 +153,19 @@ impl PinstarState {
                 .set_cursor_line_style(ratatui::style::Style::default());
         }
     }
-
     pub fn pan(&mut self, dx: f64, dy: f64) {
         self.viewport_x += dx / self.zoom;
         self.viewport_y += dy / self.zoom;
+    }
+
+    pub fn zoom_in(&mut self) {
+        self.zoom *= 1.1;
+        self.last_zoom_at = Some(std::time::Instant::now());
+    }
+
+    pub fn zoom_out(&mut self) {
+        self.zoom /= 1.1;
+        self.last_zoom_at = Some(std::time::Instant::now());
     }
 
     pub fn center_on_selected(&mut self) {
@@ -135,14 +177,6 @@ impl PinstarState {
             self.viewport_x = nx + nw / 2.0;
             self.viewport_y = ny + nh / 2.0;
         }
-    }
-
-    pub fn zoom_in(&mut self) {
-        self.zoom *= 1.1;
-    }
-
-    pub fn zoom_out(&mut self) {
-        self.zoom /= 1.1;
     }
 
     pub fn screen_to_canvas(&self, sx: u16, sy: u16, area: ratatui::layout::Rect) -> (f64, f64) {
@@ -276,7 +310,11 @@ impl PinstarState {
                 "Delete Node".to_string(),
             ]
         } else {
-            vec!["Add Text Node".to_string(), "Add Group".to_string()]
+            vec![
+                "Add Text Node".to_string(),
+                "Add Group".to_string(),
+                "Add Image Node".to_string(),
+            ]
         };
 
         self.context_menu_pos = (canvas_x, canvas_y);
@@ -286,23 +324,6 @@ impl PinstarState {
             selected: 0,
             items,
             menu_type: PinstarMenuType::Canvas,
-        });
-    }
-
-    pub fn open_editor_context_menu(&mut self, x: u16, y: u16) {
-        let items = vec![
-            "Copy".to_string(),
-            "Cut".to_string(),
-            "Paste".to_string(),
-            "Select All".to_string(),
-        ];
-
-        self.context_menu = Some(PinstarContextMenu {
-            x,
-            y,
-            selected: 0,
-            items,
-            menu_type: PinstarMenuType::Editor,
         });
     }
 
@@ -320,49 +341,23 @@ impl PinstarState {
         }
     }
 
-    pub fn rename_node(&mut self, new_id: String) {
-        if let Some(old_id) = self.selected_node_id.take() {
-            if old_id == new_id {
-                self.selected_node_id = Some(old_id);
-                return;
-            }
-            let final_id = if new_id.is_empty() {
-                uuid::Uuid::new_v4().to_string()
+    pub fn rename_node(&mut self, new_title: String) {
+        if let Some(node_id) = &self.selected_node_id {
+            let trimmed = new_title.trim().to_string();
+            let title = if trimmed.is_empty() {
+                None
             } else {
-                new_id
+                Some(trimmed)
             };
-            let new_id = final_id;
 
             for node in &mut self.data.nodes {
-                match node {
-                    crate::pinstar::data::CanvasNode::Text(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    crate::pinstar::data::CanvasNode::File(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    crate::pinstar::data::CanvasNode::Link(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    crate::pinstar::data::CanvasNode::Group(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    _ => {}
+                if node.id() == node_id {
+                    node.set_title(title.clone());
+                    break;
                 }
             }
 
-            for edge in &mut self.data.edges {
-                if edge.from_node == old_id {
-                    edge.from_node = new_id.clone();
-                }
-                if edge.to_node == old_id {
-                    edge.to_node = new_id.clone();
-                }
-            }
-
-            self.selected_node_id = Some(new_id);
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -373,7 +368,6 @@ impl PinstarState {
                 .edges
                 .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -391,7 +385,6 @@ impl PinstarState {
                 }
             }
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -405,13 +398,13 @@ impl PinstarState {
                 width: 200.0,
                 height: 100.0,
                 text: "".to_string(),
+                title: None,
                 color: None,
             },
         ));
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
-        self.sync_to_raw_editor();
     }
 
     pub fn add_group(&mut self, x: f64, y: f64) {
@@ -431,7 +424,28 @@ impl PinstarState {
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
-        self.sync_to_raw_editor();
+    }
+    pub fn add_image_node(&mut self, x: f64, y: f64) {
+        let path = match crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp") {
+            Ok(Some(p)) => p,
+            _ => return,
+        };
+        let id = format!("node_{}", &uuid::Uuid::new_v4().to_string()[..8]);
+        self.data.nodes.push(crate::pinstar::data::CanvasNode::File(
+            crate::pinstar::data::FileNode {
+                id: id.clone(),
+                x,
+                y,
+                width: 300.0,
+                height: 200.0,
+                file: path,
+                subpath: None,
+                title: None,
+                color: None,
+            },
+        ));
+        self.selected_node_id = Some(id.clone());
+        let _ = self.save();
     }
 
     pub fn start_connection(&mut self) {
@@ -462,7 +476,6 @@ impl PinstarState {
                     color: None,
                 });
                 let _ = self.save();
-                self.sync_to_raw_editor();
             }
         }
     }
@@ -475,7 +488,6 @@ impl PinstarState {
                 .edges
                 .retain(|e| !(e.from_node == source_id && e.to_node == target_id));
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -504,7 +516,6 @@ impl PinstarState {
                     break;
                 }
             }
-            self.sync_to_raw_editor();
         }
     }
 
@@ -562,7 +573,32 @@ impl PinstarState {
                     }
                 }
             }
-            self.sync_to_raw_editor();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canvas_context_menu_remains_available() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("canvas.json");
+        std::fs::write(&path, r#"{"nodes":[],"edges":[]}"#).unwrap();
+        let mut state = PinstarState::load(
+            &path,
+            crate::keybinds::Keybinds::default(),
+            crate::keybinds::KeyMatcher::new(),
+        )
+        .unwrap();
+
+        state.open_context_menu(4, 5, 0.0, 0.0);
+
+        assert!(matches!(
+            state.context_menu.as_ref().map(|menu| menu.menu_type),
+            Some(PinstarMenuType::Canvas)
+        ));
     }
 }

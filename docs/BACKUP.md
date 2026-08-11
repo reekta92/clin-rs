@@ -50,7 +50,7 @@ The Backup view includes a settings popup (`EditSettings`) for configuring autom
 
 ## Configuration
 
-Backup settings can be configured in your `clin.toml` under the `[backup]` section:
+Backup settings can be configured in your `config.toml` under the `[backup]` section:
 
 ```toml
 [backup]

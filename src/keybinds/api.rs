@@ -1,38 +1,95 @@
 use super::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, SetupAction,
+    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
+    KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction, SetupAction,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 // ── Generic keybind-section helpers ─────────────────────────────────────────
 
-fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone>(
+fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone + std::fmt::Debug>(
     into: &mut HashMap<A, Vec<KeyCombo>>,
-    from: &HashMap<A, Vec<String>>,
+    from: &BTreeMap<A, Vec<String>>,
+    warnings: &mut Vec<String>,
 ) {
     for (action, strs) in from {
-        let combos: Vec<KeyCombo> = strs.iter().filter_map(|s| KeyCombo::parse(s)).collect();
+        let mut combos = Vec::with_capacity(strs.len());
+        for s in strs {
+            match KeyCombo::parse(s) {
+                Some(c) => combos.push(c),
+                None => warnings.push(format!(
+                    "Keybind parse error: skipping invalid combo {:?} for action {:?}",
+                    s, action
+                )),
+            }
+        }
         if !combos.is_empty() {
             into.insert(action.clone(), combos);
         }
     }
 }
-
-fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone>(
+fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone + std::cmp::Ord>(
     from: &HashMap<A, Vec<KeyCombo>>,
-) -> HashMap<A, Vec<String>> {
+) -> BTreeMap<A, Vec<String>> {
     from.iter()
         .map(|(a, c)| {
             (
                 a.clone(),
-                c.iter().map(|k| k.to_display_string()).collect::<Vec<_>>(),
+                c.iter().map(KeyCombo::to_config_string).collect::<Vec<_>>(),
             )
         })
         .collect()
+}
+
+/// Repair compact sequences emitted by older shipped Helix/Vim preset files.
+pub(crate) fn repair_legacy_preset_sequences(
+    path: &Path,
+    preset: crate::config::KeybindPreset,
+) -> Result<bool> {
+    let replacements: &[(&str, &str, &str)] = match preset {
+        crate::config::KeybindPreset::Helix => &[
+            ("jump_to_top", "gg", "g g"),
+            ("jump_to_bottom", "ge", "g e"),
+        ],
+        crate::config::KeybindPreset::Vim => &[
+            ("delete", "dd", "d d"),
+            ("jump_to_top", "gg", "g g"),
+            ("jump_to_bottom", "gG", "g G"),
+        ],
+        _ => return Ok(false),
+    };
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error).context("failed to read keybind preset"),
+    };
+    let mut doc = raw
+        .parse::<toml_edit::DocumentMut>()
+        .context("failed to parse keybind preset")?;
+    let Some(list) = doc.get_mut("list").and_then(toml_edit::Item::as_table_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for &(action, old, new) in replacements {
+        let Some(values) = list.get_mut(action).and_then(toml_edit::Item::as_array_mut) else {
+            continue;
+        };
+        for value in values.iter_mut() {
+            if value.as_str() == Some(old) {
+                *value = toml_edit::Value::from(new);
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        crate::fsutil::atomic_write(path, doc.to_string().as_bytes())
+            .context("failed to write repaired keybind preset")?;
+    }
+    Ok(changed)
 }
 
 /// Emits the four parallel accessor families (`matches_*`, `*_keys_display`,
@@ -70,12 +127,41 @@ macro_rules! keybind_scope {
     };
 }
 
+macro_rules! keybind_resolve {
+    ($field:ident, $Action:ty, $resolve:ident, $counts:literal) => {
+        impl Keybinds {
+            pub fn $resolve(
+                &self,
+                m: &mut KeyMatcher,
+                event: KeyEvent,
+                seq: bool,
+                _counts: bool,
+            ) -> MatchOutcome<$Action> {
+                m.resolve(event, &self.$field, seq, $counts)
+            }
+        }
+    };
+}
+
+keybind_resolve!(edit, EditAction, resolve_edit, false);
+keybind_resolve!(help, HelpAction, resolve_help, false);
+keybind_resolve!(graph, GraphAction, resolve_graph, true);
+keybind_resolve!(draw, DrawAction, resolve_draw, true);
+keybind_resolve!(canvas, CanvasAction, resolve_canvas, true);
+keybind_resolve!(backup, BackupAction, resolve_backup, true);
+keybind_resolve!(outline, OutlineAction, resolve_outline, true);
+keybind_resolve!(setup, SetupAction, resolve_setup, false);
+
 impl Keybinds {
     pub fn load(path: &Path) -> Result<Self> {
-        Self::load_layered(path, Self::default())
+        Self::load_layered(path, Self::default(), &mut Vec::new())
     }
 
-    pub fn load_layered(path: &Path, base: Keybinds) -> Result<Keybinds> {
+    pub fn load_layered(
+        path: &Path,
+        base: Keybinds,
+        warnings: &mut Vec<String>,
+    ) -> Result<Keybinds> {
         let mut keybinds = base;
 
         if !path.exists() {
@@ -87,15 +173,15 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        merge_section(&mut keybinds.list, &toml.list);
-        merge_section(&mut keybinds.edit, &toml.edit);
-        merge_section(&mut keybinds.help, &toml.help);
-        merge_section(&mut keybinds.graph, &toml.graph);
-        merge_section(&mut keybinds.draw, &toml.draw);
-        merge_section(&mut keybinds.canvas, &toml.canvas);
-        merge_section(&mut keybinds.backup, &toml.backup);
-        merge_section(&mut keybinds.content_tree, &toml.content_tree);
-        merge_section(&mut keybinds.setup, &toml.setup);
+        merge_section(&mut keybinds.list, &toml.list, warnings);
+        merge_section(&mut keybinds.edit, &toml.edit, warnings);
+        merge_section(&mut keybinds.help, &toml.help, warnings);
+        merge_section(&mut keybinds.graph, &toml.graph, warnings);
+        merge_section(&mut keybinds.draw, &toml.draw, warnings);
+        merge_section(&mut keybinds.canvas, &toml.canvas, warnings);
+        merge_section(&mut keybinds.backup, &toml.backup, warnings);
+        merge_section(&mut keybinds.outline, &toml.outline, warnings);
+        merge_section(&mut keybinds.setup, &toml.setup, warnings);
         Ok(keybinds)
     }
 
@@ -121,7 +207,7 @@ impl Keybinds {
             draw: section_to_toml(&self.draw),
             canvas: section_to_toml(&self.canvas),
             backup: section_to_toml(&self.backup),
-            content_tree: section_to_toml(&self.content_tree),
+            outline: section_to_toml(&self.outline),
             setup: section_to_toml(&self.setup),
         }
     }
@@ -138,81 +224,6 @@ impl Keybinds {
         filtered.remove(&ListAction::Confirm);
         filtered.remove(&ListAction::Cancel);
         m.resolve(event, &filtered, seq, counts)
-    }
-    pub fn resolve_edit(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        _counts: bool,
-    ) -> MatchOutcome<EditAction> {
-        // Edit view never accepts count - digits are text input
-        m.resolve(event, self.bindings_for_edit(), seq, false)
-    }
-    pub fn resolve_help(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        _counts: bool,
-    ) -> MatchOutcome<HelpAction> {
-        // Help view never accepts count - digits are tab-switchers
-        m.resolve(event, self.bindings_for_help(), seq, false)
-    }
-    pub fn resolve_graph(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<GraphAction> {
-        m.resolve(event, self.bindings_for_graph(), seq, counts)
-    }
-    pub fn resolve_draw(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<DrawAction> {
-        m.resolve(event, self.bindings_for_draw(), seq, counts)
-    }
-    pub fn resolve_canvas(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<CanvasAction> {
-        m.resolve(event, self.bindings_for_canvas(), seq, counts)
-    }
-    pub fn resolve_backup(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<BackupAction> {
-        m.resolve(event, self.bindings_for_backup(), seq, counts)
-    }
-    pub fn resolve_content_tree(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<ContentTreeAction> {
-        m.resolve(event, self.bindings_for_content_tree(), seq, counts)
-    }
-
-    pub fn resolve_setup(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        _counts: bool,
-    ) -> MatchOutcome<SetupAction> {
-        m.resolve(event, self.bindings_for_setup(), seq, false)
     }
 
     /// Pick the best key combo to display in hint bars.
@@ -294,12 +305,12 @@ keybind_scope!(
     display_backup
 );
 keybind_scope!(
-    content_tree,
-    ContentTreeAction,
-    matches_content_tree,
-    content_tree_keys_display,
-    bindings_for_content_tree,
-    display_content_tree
+    outline,
+    OutlineAction,
+    matches_outline,
+    outline_keys_display,
+    bindings_for_outline,
+    display_outline
 );
 keybind_scope!(
     setup,
@@ -343,6 +354,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_parse_shift_plus_letter_canonicalizes() {
+        // lowercase + SHIFT (sole modifier) → uppercase Char + SHIFT,
+        // identical to KeyCombo::shift(KeyCode::Char('J')).
+        for input in ["Shift+j", "Shift+J", "shift+j", "Shift + j"] {
+            let combo = KeyCombo::parse(input).unwrap();
+            assert_eq!(combo.keys.len(), 1, "input {input:?}");
+            assert_eq!(combo.keys[0].code, KeyCode::Char('J'), "input {input:?}");
+            assert_eq!(
+                combo.keys[0].modifiers,
+                KeyModifiers::SHIFT,
+                "input {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_shift_plus_letter_matches_terminal() {
+        // crossterm sends Shift+j as Char('J') with NONE or SHIFT; both match.
+        let combo = KeyCombo::parse("Shift + j").unwrap();
+        assert!(combo.matches(&KeyEvent::new(KeyCode::Char('J'), KeyModifiers::NONE)));
+        assert!(combo.matches(&KeyEvent::new(KeyCode::Char('J'), KeyModifiers::SHIFT)));
+        // plain 'j' (no shift) MUST NOT trigger the Shift+j binding
+        assert!(!combo.matches(&KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn test_parse_spaces_around_plus_non_shift() {
+        // Spaces around '+' tolerated for non-SHIFT modifiers too.
+        let combo = KeyCombo::parse("Ctrl + q").unwrap();
+        assert_eq!(combo.keys[0].code, KeyCode::Char('q'));
+        assert_eq!(combo.keys[0].modifiers, KeyModifiers::CONTROL);
+    }
     #[test]
     fn test_parse_special_keys() {
         assert_eq!(
@@ -432,12 +476,12 @@ mod tests {
         assert!(!keybinds.draw.is_empty());
         assert!(!keybinds.canvas.is_empty());
         assert!(!keybinds.backup.is_empty());
-        assert!(!keybinds.content_tree.is_empty());
+        assert!(!keybinds.outline.is_empty());
 
         let toml = keybinds.to_toml();
         assert!(!toml.draw.is_empty());
         assert!(!toml.canvas.is_empty());
-        assert!(!toml.content_tree.is_empty());
+        assert!(!toml.outline.is_empty());
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("keybinds.toml");
         keybinds.save(&path).unwrap();
@@ -445,7 +489,7 @@ mod tests {
         assert_eq!(loaded_keybinds.draw, keybinds.draw);
         assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
         assert_eq!(loaded_keybinds.backup, keybinds.backup);
-        assert_eq!(loaded_keybinds.content_tree, keybinds.content_tree);
+        assert_eq!(loaded_keybinds.outline, keybinds.outline);
     }
 
     #[test]
@@ -788,7 +832,7 @@ mod tests {
 
     #[test]
     fn test_uses_sequences() {
-        assert!(!KeybindPreset::Default.uses_sequences());
+        assert!(KeybindPreset::Default.uses_sequences());
         assert!(KeybindPreset::Helix.uses_sequences());
         assert!(KeybindPreset::Vim.uses_sequences());
         assert!(KeybindPreset::Emacs.uses_sequences());
@@ -920,6 +964,7 @@ mod tests {
         let kb = crate::keybinds::Keybinds::load_layered(
             &path,
             crate::config::KeybindPreset::Vim.base_keybinds(),
+            &mut Vec::new(),
         )
         .unwrap_or_default();
         assert!(
@@ -930,6 +975,52 @@ mod tests {
                 .any(|c| c.to_display_string() == ": q")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn repair_legacy_preset_sequences_preserves_custom_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vim.toml");
+        std::fs::write(
+            &path,
+            "# keep me\n[list]\ndelete = [\"dd\", \"x\"]\njump_to_top = [\"gg\"]\njump_to_bottom = [\"gG\"]\ncustom = [\"z\"]\n",
+        )
+        .unwrap();
+        assert!(repair_legacy_preset_sequences(&path, crate::config::KeybindPreset::Vim).unwrap());
+        let repaired = std::fs::read_to_string(path).unwrap();
+        assert!(repaired.contains("# keep me"));
+        assert!(repaired.contains("delete = [\"d d\", \"x\"]"));
+        assert!(repaired.contains("jump_to_top = [\"g g\"]"));
+        assert!(repaired.contains("jump_to_bottom = [\"g G\"]"));
+        assert!(repaired.contains("custom = [\"z\"]"));
+    }
+
+    #[test]
+    fn all_presets_round_trip_without_warnings() {
+        for preset in [
+            crate::config::KeybindPreset::Default,
+            crate::config::KeybindPreset::Helix,
+            crate::config::KeybindPreset::Vim,
+            crate::config::KeybindPreset::Emacs,
+        ] {
+            let expected = preset.base_keybinds();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("preset.toml");
+            expected.save(&path).unwrap();
+            let mut warnings = Vec::new();
+            let loaded =
+                Keybinds::load_layered(&path, preset.base_keybinds(), &mut warnings).unwrap();
+            assert!(warnings.is_empty(), "{preset:?}: {warnings:?}");
+            assert_eq!(loaded.list, expected.list);
+            assert_eq!(loaded.edit, expected.edit);
+            assert_eq!(loaded.help, expected.help);
+            assert_eq!(loaded.graph, expected.graph);
+            assert_eq!(loaded.draw, expected.draw);
+            assert_eq!(loaded.canvas, expected.canvas);
+            assert_eq!(loaded.backup, expected.backup);
+            assert_eq!(loaded.outline, expected.outline);
+            assert_eq!(loaded.setup, expected.setup);
+        }
     }
 }
 
@@ -943,9 +1034,16 @@ fn test_display_picks_hint_key() {
     assert_eq!(kb.display_list(ListAction::Open), "Enter", "Open");
     assert_eq!(kb.display_list(ListAction::Help), "?", "Help");
     assert_eq!(kb.display_list(ListAction::Quit), "q", "Quit");
-    // Edit: Tab for CycleFocus, Esc for Back
-    assert_eq!(kb.display_edit(EditAction::CycleFocus), "Tab", "CycleFocus");
+    // Edit: Tab for InsertTab, Ctrl+t for CycleFocus, Esc for Back
+    assert_eq!(kb.display_edit(EditAction::InsertTab), "Tab", "InsertTab");
+    assert_eq!(
+        kb.display_edit(EditAction::CycleFocus),
+        "Ctrl+t",
+        "CycleFocus"
+    );
     assert_eq!(kb.display_edit(EditAction::Back), "Esc", "Back");
+    // Edit: F10 for ToggleWrap
+    assert_eq!(kb.display_edit(EditAction::ToggleWrap), "F10", "ToggleWrap");
     // Canvas: letter for nav, conventional for quit
     assert_eq!(
         kb.display_canvas(CanvasAction::MoveUp),
@@ -988,4 +1086,52 @@ fn test_matches_help_coverage_gap_closed() {
         matched,
         "matches_help should fire for a bound single-key Help action"
     );
+}
+
+#[test]
+fn test_macro_resolve_parity() {
+    use crossterm::event::KeyCode;
+    let kb = Keybinds::default();
+    let mut matcher = KeyMatcher::new();
+    let event = KeyEvent::new(KeyCode::Char('k'), crossterm::event::KeyModifiers::NONE);
+
+    // Edit
+    let outcome1 = kb.resolve_edit(&mut matcher, event, false, false);
+    let outcome2 = matcher.resolve(event, &kb.edit, false, false);
+    assert_eq!(outcome1, outcome2);
+
+    // Help
+    let outcome1 = kb.resolve_help(&mut matcher, event, false, false);
+    let outcome2 = matcher.resolve(event, &kb.help, false, false);
+    assert_eq!(outcome1, outcome2);
+
+    // Graph
+    let outcome1 = kb.resolve_graph(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.graph, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Draw
+    let outcome1 = kb.resolve_draw(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.draw, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Canvas
+    let outcome1 = kb.resolve_canvas(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.canvas, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Backup
+    let outcome1 = kb.resolve_backup(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.backup, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Outline
+    let outcome1 = kb.resolve_outline(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.outline, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Setup
+    let outcome1 = kb.resolve_setup(&mut matcher, event, false, false);
+    let outcome2 = matcher.resolve(event, &kb.setup, false, false);
+    assert_eq!(outcome1, outcome2);
 }

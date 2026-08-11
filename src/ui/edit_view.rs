@@ -1,226 +1,384 @@
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
-    PopupSize, centered_rect, draw_corner_watermark, draw_dim_vline, draw_status_bar,
-    draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints, get_preview_info,
-    get_textarea_scroll, line_number_gutter,
+    PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_status_bar,
+    draw_view_title_bar, format_keybind_hints, get_preview_info,
 };
-use crate::app::{App, EditFocus};
+use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
+use crate::outline::parse::NodeKind;
 
+/// Render the body editor widget with proper style, cursor, line numbers, and cursor-line fill.
+/// Called from both the preview and non-preview paths to eliminate a ~50‑line duplication.
+pub(crate) fn render_editor_widget(
+    frame: &mut Frame,
+    app: &mut App,
+    focus: EditFocus,
+    area: Rect,
+    custom_block: Option<Block<'static>>,
+    custom_style: Option<Style>,
+) {
+    let block = custom_block.unwrap_or_else(|| {
+        Block::default()
+            .style(app.app_theme.bg_style())
+            .borders(Borders::NONE)
+            .padding(Padding::new(0, 2, 1, 0))
+    });
+    let base_style = custom_style.unwrap_or_else(|| app.app_theme.bg_style());
+    super::render_editor_document_with_theme(
+        frame,
+        &mut app.editor.body,
+        area,
+        &app.app_theme,
+        focus == EditFocus::Body,
+        app.editor.show_line_numbers,
+        block,
+        base_style,
+    );
+    {
+        let (r, c) = super::refresh_editor_document_viewport(
+            &app.editor.body,
+            app.editor.body_viewport_row,
+            app.editor.body_viewport_col,
+            area,
+            app.editor.show_line_numbers,
+        );
+        app.editor.body_viewport_row = r;
+        app.editor.body_viewport_col = c;
+    }
+    if app
+        .editor
+        .find_popup
+        .as_ref()
+        .is_some_and(|p| !p.query().is_empty())
+    {
+        super::overlay_search_highlights(frame, app, area);
+    }
+}
+
+#[allow(clippy::collapsible_if)]
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
 
     let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(1), // header
+            Constraint::Min(0),    // body
+            Constraint::Length(1), // hint bar
         ])
         .split(area);
 
     let preview_info = get_preview_info(app);
-    draw_view_title_bar(
-        frame,
-        outer_chunks[0],
-        "Editor",
+    let note = crate::statusline::active_note(app, ViewMode::Edit);
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
+    ctx.area = Some(outer_chunks[0]);
+    ctx.note = note;
+    ctx.preview_info = preview_info.as_ref();
+    if let Some(pi) = &preview_info {
+        ctx.preview = Some(super::preview_spans(pi, &app.app_theme));
+    }
+
+    let (left_line, right_line) = crate::statusline::render_header(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::Edit,
         &app.app_theme,
-        preview_info,
-        Some(app.status.as_ref()),
-        None,
     );
+    let status_val = Some(app.status.as_ref());
+    let has_status = if let Some(st) = status_val {
+        !st.trim().is_empty() && st != "Ready"
+    } else {
+        false
+    };
+
+    if has_status {
+        draw_view_title_bar(
+            frame,
+            outer_chunks[0],
+            &app.app_theme,
+            left_line,
+            right_line,
+            status_val,
+            app.load_spinner_tick,
+        );
+        app.editor.header_title_rect = Rect::default();
+    } else {
+        let left_width = left_line.width() as u16;
+        let right_width = right_line.as_ref().map(|r| r.width() as u16).unwrap_or(0);
+        let title_str = get_title_text(&app.editor.title_editor).into_owned();
+        use unicode_width::UnicodeWidthStr;
+        let center_width = if title_str.is_empty() {
+            13u16
+        } else {
+            title_str.width() as u16
+        };
+        let remaining = outer_chunks[0]
+            .width
+            .saturating_sub(left_width + center_width);
+        let actual_right = right_width.min(remaining);
+
+        let header_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(left_width),
+                Constraint::Min(0),
+                Constraint::Length(actual_right),
+            ])
+            .split(outer_chunks[0]);
+
+        let left_area = header_chunks[0];
+        let center_area = header_chunks[1];
+        let right_area = header_chunks[2];
+
+        let theme = &app.app_theme;
+
+        if focus == EditFocus::Title {
+            // Render background/blank bar first
+            let background_bar = Paragraph::new("").style(theme.title_bar_bg_style());
+            frame.render_widget(background_bar, outer_chunks[0]);
+
+            // Render left and right bars on top of the background
+            let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
+            frame.render_widget(left_bar, left_area);
+
+            if let Some(r_text) = right_line {
+                let is_powerline = theme.hint_bar_style.has_filled_cells();
+                if is_powerline {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.hint_line_bg_style())
+                        .alignment(Alignment::Left);
+                    frame.render_widget(r_bar, right_area);
+                } else {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.title_bar_bg_style())
+                        .alignment(Alignment::Right);
+                    frame.render_widget(r_bar, right_area);
+                }
+            }
+
+            // Render TextArea centered relative to the screen width, clamped to left/right bars
+            let text_width = title_str.len() as u16;
+            let display_width = text_width.min(outer_chunks[0].width);
+            let raw_x_offset = (outer_chunks[0].width.saturating_sub(display_width)) / 2;
+            let start_x = (outer_chunks[0].x + raw_x_offset).max(left_area.right());
+            let end_x = right_area.x;
+            let title_rect =
+                Rect::new(start_x, outer_chunks[0].y, end_x.saturating_sub(start_x), 1);
+
+            app.editor
+                .title_editor
+                .set_style(theme.title_bar_bg_style().fg(theme.heading));
+            app.editor.title_editor.set_block(
+                Block::default()
+                    .style(theme.title_bar_bg_style())
+                    .borders(Borders::NONE),
+            );
+            app.editor
+                .title_editor
+                .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+            app.editor
+                .title_editor
+                .set_cursor_line_style(Style::default());
+            frame.render_widget(&app.editor.title_editor, title_rect);
+            {
+                let (r, c) = crate::ui::refresh_textarea_viewport(
+                    &app.editor.title_editor,
+                    app.editor.title_viewport_row,
+                    app.editor.title_viewport_col,
+                    title_rect,
+                    false,
+                );
+                app.editor.title_viewport_row = r;
+                app.editor.title_viewport_col = c;
+            }
+        } else {
+            // Render background + centered title Paragraph on outer_chunks[0]
+            let (span, style) = if title_str.is_empty() {
+                ("Untitled note", Style::default().fg(theme.muted))
+            } else {
+                (title_str.as_str(), Style::default().fg(theme.heading))
+            };
+            let center_paragraph = Paragraph::new(Line::from(vec![Span::styled(span, style)]))
+                .style(theme.title_bar_bg_style())
+                .alignment(Alignment::Center);
+            frame.render_widget(center_paragraph, outer_chunks[0]);
+
+            // Render left and right bars on top of the centered title
+            let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
+            frame.render_widget(left_bar, left_area);
+
+            if let Some(r_text) = right_line {
+                let is_powerline = theme.hint_bar_style.has_filled_cells();
+                if is_powerline {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.hint_line_bg_style())
+                        .alignment(Alignment::Left);
+                    frame.render_widget(r_bar, right_area);
+                } else {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.title_bar_bg_style())
+                        .alignment(Alignment::Right);
+                    frame.render_widget(r_bar, right_area);
+                }
+            }
+        }
+
+        app.editor.header_title_rect = center_area;
+    }
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
-    let (edit_area, preview_area_rect, splitter_area) = if app.preview_fullscreen {
+    let layout = crate::events::compute_edit_layout(
+        body_area,
+        app.preview_fullscreen,
+        app.editor.editor_preview_enabled,
+        app.editor.sidebar,
+        app.preview_position,
+    );
+
+    if app.preview_fullscreen {
         app.editor.last_preview_pane_width = body_area.width;
         app.editor.last_preview_pane_height = body_area.height;
-        (body_area, Some(body_area), None)
-    } else if app.editor.editor_preview_enabled {
-        let (constraints, main_idx, p_idx) = match app.preview_position {
-            crate::config::PreviewPosition::Left => (
-                [
-                    Constraint::Ratio(43, 100),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-                2,
-                0,
-            ),
-            crate::config::PreviewPosition::Right => (
-                [
-                    Constraint::Min(0),
-                    Constraint::Length(1),
-                    Constraint::Ratio(43, 100),
-                ],
-                0,
-                2,
-            ),
-        };
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(body_area);
-        app.editor.last_preview_pane_width = cols[p_idx].width;
-        app.editor.last_preview_pane_height = cols[p_idx].height;
-        (cols[main_idx], Some(cols[p_idx]), Some(cols[1]))
-    } else {
-        (body_area, None, None)
-    };
+    } else if app.editor.editor_preview_enabled
+        && app.editor.sidebar == EditSidebar::None
+        && let Some(p) = layout.preview
+    {
+        app.editor.last_preview_pane_width = p.width;
+        app.editor.last_preview_pane_height = p.height;
+    }
 
-    let inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(edit_area);
+    let sidebar_area = layout.sidebar;
+    let preview_area_rect = layout.preview;
+    let splitter_area = layout.splitter;
 
-    let title_area = inner_chunks[0];
-    let editor_container = inner_chunks[1];
+    let editor_container = layout.body;
 
+    app.editor.last_body_width = editor_container.width;
+    app.editor.last_body_height = editor_container.height;
+
+    if let Some(sb) = sidebar_area {
+        draw_sidebar_pane(frame, sb, app, focus);
+    }
     if !app.preview_fullscreen {
-        app.editor
-            .title_editor
-            .set_style(app.app_theme.title_bar_bg_style().fg(app.app_theme.heading));
-        app.editor.title_editor.set_block(
-            Block::default()
-                .style(app.app_theme.title_bar_bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(2, 1, 1, 1)),
-        );
-        app.editor
-            .title_editor
-            .set_cursor_style(if focus == EditFocus::Title {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            });
-        app.editor
-            .title_editor
-            .set_cursor_line_style(Style::default());
-        frame.render_widget(&app.editor.title_editor, title_area);
-
-        if get_title_text(&app.editor.title_editor).is_empty() {
-            let title_inner = Rect::new(
-                title_area.x + 3,
-                title_area.y + 1,
-                title_area.width.saturating_sub(4),
-                1,
+        render_editor_widget(frame, app, focus, editor_container, None, None);
+        if app.config.editor.edit_mode_highlight {
+            super::overlay_markdown_highlight(frame, app, editor_container);
+        }
+        // Scrollbar for editor body
+        if app.config.ui.scrollbars {
+            let content_len = app.editor.body.lines().len();
+            // The editor block uses Padding::new(0, 2, 1, 0), so the textarea
+            // renders height-1 rows. Match refresh_textarea_viewport
+            // (src/ui/mod.rs:1516), which derives visible rows from
+            // block.inner(area).
+            let viewport_len = editor_container.height.saturating_sub(1) as usize;
+            let area = editor_container;
+            let meta = crate::ui::scrollbar::ScrollbarMeta {
+                track: crate::ui::scrollbar::track_rect(area),
+                content_len,
+                viewport_len,
+            };
+            app.editor.last_scroll = Some(meta);
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                app.editor.body_viewport_row as usize,
+                content_len.saturating_sub(viewport_len),
+                &app.app_theme,
             );
-            let placeholder = Paragraph::new(Line::from(Span::styled(
-                "Untitled note",
-                Style::default().fg(app.app_theme.muted),
-            )));
-            frame.render_widget(placeholder, title_inner);
+        }
+    }
+
+    // Sync preview scroll with editor scroll
+    if let Some(renderer) = &mut app.editor.md_preview_renderer {
+        if renderer.document().is_some() {
+            if let Some(preview_area) = preview_area_rect {
+                let block = Block::default()
+                    .style(app.app_theme.preview_bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1));
+                let inner = block.inner(preview_area);
+
+                let rendered_start = if app.config.editor.soft_wrap {
+                    // With wrap ON: body_viewport_row is first visible screen line
+                    // Preview scroll_offset is also in rendered (screen) lines
+                    // Use directly for 1:1 visual line correspondence
+                    app.editor.body_viewport_row as usize
+                } else {
+                    // Wrap OFF: viewport row = source line, convert to rendered line
+                    let source_line = app.editor.body_viewport_row as usize;
+                    renderer.source_to_rendered_line(source_line)
+                };
+                renderer.set_scroll_offset(rendered_start, inner.height as usize);
+            }
         }
     }
 
     if let Some(preview_area_rect) = preview_area_rect {
-        let content_area = editor_container;
-
-        if !app.preview_fullscreen {
-            let line_count = app.editor.editor.lines().len();
-            let cursor_row = app.editor.editor.cursor().0;
-            let scroll_row = get_textarea_scroll(&app.editor.editor).0;
-
-            let editor_area = if app.editor.show_line_numbers {
-                let digits = line_count.max(1).to_string().len() as u16;
-                let gutter_width = digits + 1;
-                let gutter_area = Rect::new(
-                    content_area.x,
-                    content_area.y,
-                    gutter_width.min(content_area.width),
-                    content_area.height,
-                );
-                let gutter = line_number_gutter(
-                    line_count,
-                    cursor_row,
-                    scroll_row,
-                    content_area.height,
-                    &app.app_theme,
-                    0,
-                );
-                frame.render_widget(gutter, gutter_area);
-                Rect::new(
-                    content_area.x + gutter_area.width,
-                    content_area.y,
-                    content_area.width.saturating_sub(gutter_area.width),
-                    content_area.height,
-                )
-            } else {
-                content_area
-            };
-
-            app.editor.editor.set_block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
+        app.editor.markdown_inner_rect = None;
+        if let Some(renderer) = &app.editor.md_preview_renderer {
+            if let Some(doc) = renderer.document() {
+                let block = Block::default()
+                    .style(app.app_theme.preview_bg_style())
                     .borders(Borders::NONE)
-                    .padding(Padding::new(0, 2, 0, 0)),
-            );
-            app.editor.editor.set_style(app.app_theme.bg_style());
-            app.editor
-                .editor
-                .set_cursor_style(if focus == EditFocus::Body {
-                    Style::default().add_modifier(Modifier::REVERSED)
-                } else {
-                    Style::default()
-                });
-            app.editor
-                .editor
-                .set_cursor_line_style(if focus == EditFocus::Body {
-                    if let Some(bg) = app.app_theme.preview_bg() {
-                        Style::default().bg(bg)
-                    } else {
-                        Style::default()
-                            .bg(app.app_theme.highlight_bg)
-                            .fg(app.app_theme.highlight_fg)
-                    }
-                } else {
-                    Style::default()
-                });
-            frame.render_widget(&app.editor.editor, editor_area);
-            if focus == EditFocus::Body {
-                let cursor_bg = app
-                    .app_theme
-                    .preview_bg()
-                    .unwrap_or(app.app_theme.highlight_bg);
-                fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
-            }
-        }
+                    .padding(Padding::new(0, 2, 1, 1));
+                let inner = block.inner(preview_area_rect);
+                frame.render_widget(block, preview_area_rect);
+                app.editor.markdown_inner_rect = Some(inner);
 
-        match &app.editor.md_preview_renderer {
-            Some(renderer) if !renderer.is_pending() && renderer.pages_built() => {
-                if let Some(page_grid) = renderer.current_page_grid() {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid).block(
-                        Block::default()
-                            .style(app.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                    frame.render_widget(snapshot, preview_area_rect);
-                    if renderer.total_pages() > 1 {
-                        let indicator = format!(
-                            " {}/{} ",
-                            renderer.current_page() + 1,
-                            renderer.total_pages()
-                        );
-                        let ind_width = indicator.len() as u16;
-                        let ind_x = preview_area_rect.right().saturating_sub(ind_width + 2);
-                        let ind_y = preview_area_rect.bottom().saturating_sub(1);
-                        if ind_x >= preview_area_rect.x && ind_y >= preview_area_rect.y {
-                            let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
-                            let ind_widget = Paragraph::new(Span::styled(
-                                indicator,
-                                Style::default()
-                                    .fg(app.app_theme.muted)
-                                    .add_modifier(Modifier::DIM),
-                            ));
-                            frame.render_widget(ind_widget, ind_area);
+                let scroll = renderer.scroll_offset();
+                let widget_range = scroll..(scroll + inner.height as usize);
+                let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone());
+                frame.render_widget(widget, inner);
+
+                // Overlay images continuously
+                if let (Some(picker), Some(decode_tx)) =
+                    (&app.editor.image_picker, &app.editor.image_decode_tx)
+                {
+                    let col_width = inner.width;
+                    for (local_line_idx, url) in doc.image_slots(widget_range) {
+                        let resolved = app.storage.resolve_attachment(url);
+                        let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
+                        if !path.exists() {
+                            continue;
+                        }
+                        let key = crate::image_render::ImageKey { path, mtime: 0 };
+                        if app.editor.image_cache.get_proto(&key).is_none() {
+                            app.editor
+                                .image_cache
+                                .request(key.clone(), 2048, decode_tx, picker);
+                        }
+
+                        if let Some(proto) = app.editor.image_cache.get_proto(&key) {
+                            let row = inner.y + local_line_idx as u16;
+                            let max_h = app.config.image.preview_rows as u16;
+                            let img_rect = Rect::new(
+                                inner.x,
+                                row,
+                                col_width.min(inner.width),
+                                max_h.min(inner.bottom().saturating_sub(row)),
+                            );
+                            if img_rect.width > 1 && img_rect.height > 1 {
+                                frame.render_widget(ratatui::widgets::Clear, img_rect);
+                                frame.render_widget(
+                                    Block::default().style(app.app_theme.preview_bg_style()),
+                                    img_rect,
+                                );
+                                frame.render_stateful_widget(
+                                    ratatui_image::StatefulImage::default()
+                                        .resize(ratatui_image::Resize::Fit(None)),
+                                    img_rect,
+                                    proto,
+                                );
+                            }
                         }
                     }
                 }
-            }
-            Some(_) => {
+            } else {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
@@ -231,110 +389,46 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     );
                 frame.render_widget(loading, preview_area_rect);
             }
-            None => {
-                let placeholder = Paragraph::new("Press Ctrl+P to render preview")
-                    .style(app.app_theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(app.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(placeholder, preview_area_rect);
-            }
-        }
-    } else {
-        let line_count = app.editor.editor.lines().len();
-        let cursor_row = app.editor.editor.cursor().0;
-        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
-        let content_area = editor_container;
-
-        let editor_area = if app.editor.show_line_numbers {
-            let digits = line_count.max(1).to_string().len() as u16;
-            let gutter_width = digits + 1;
-            let gutter_area = Rect::new(
-                content_area.x,
-                content_area.y,
-                gutter_width.min(content_area.width),
-                content_area.height,
-            );
-            let gutter = line_number_gutter(
-                line_count,
-                cursor_row,
-                scroll_row,
-                content_area.height,
-                &app.app_theme,
-                0,
-            );
-            frame.render_widget(gutter, gutter_area);
-            Rect::new(
-                content_area.x + gutter_area.width,
-                content_area.y,
-                content_area.width.saturating_sub(gutter_area.width),
-                content_area.height,
-            )
-        } else {
-            content_area
-        };
-
-        app.editor.editor.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(0, 2, 0, 0)),
-        );
-        app.editor.editor.set_style(app.app_theme.bg_style());
-        app.editor
-            .editor
-            .set_cursor_style(if focus == EditFocus::Body {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            });
-        app.editor
-            .editor
-            .set_cursor_line_style(if focus == EditFocus::Body {
-                if let Some(bg) = app.app_theme.preview_bg() {
-                    Style::default().bg(bg)
-                } else {
-                    Style::default()
-                        .bg(app.app_theme.highlight_bg)
-                        .fg(app.app_theme.highlight_fg)
-                }
-            } else {
-                Style::default()
-            });
-        frame.render_widget(&app.editor.editor, editor_area);
-        if focus == EditFocus::Body {
-            let cursor_bg = app
-                .app_theme
-                .preview_bg()
-                .unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
         }
     }
-
     let kb = &app.keybinds;
     let hints_items = vec![
         (kb.display_edit(EditAction::CycleFocus), "focus"),
-        (kb.display_edit(EditAction::Back), "back"),
         (
             kb.display_edit(EditAction::ToggleMarkdownPreview),
             "preview",
         ),
+        (kb.display_edit(EditAction::ToggleOutline), "outline"),
+        (kb.display_edit(EditAction::ToggleLinks), "links"),
+        (kb.display_edit(EditAction::Find), "find"),
+        (kb.display_edit(EditAction::ToggleWrap), "wrap"),
+        (kb.edit_keys_display(EditAction::Back), "back"),
+        ("F1".to_string(), "help"),
+        ("F2".to_string(), "keybinds"),
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
     let hint = default_hints;
-    draw_status_bar(
-        frame,
-        hint_area,
+    let note = crate::statusline::active_note(app, ViewMode::Edit);
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
+    ctx.area = Some(hint_area);
+    ctx.note = note;
+    ctx.hints = Some(hint.spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) = crate::statusline::render_footer(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::Edit,
         &app.app_theme,
-        None,
-        hint,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
     );
-    draw_corner_watermark(frame, hint_area, app.app_theme.muted);
+    draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }
@@ -351,5 +445,222 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
+    }
+    if app.editor.link_preview {
+        draw_link_preview_popup(frame, area, app);
+    }
+    if let Some(popup) = &app.editor.find_popup {
+        let theme = &app.app_theme;
+        let max_visible = 10usize;
+        crate::ui::quick_search::draw_quick_search(
+            frame,
+            area,
+            popup,
+            theme,
+            max_visible,
+            |(_, display): &(usize, String),
+             is_selected,
+             theme: &crate::app_theme::AppThemeColors| {
+                let style = if is_selected {
+                    Style::default().fg(theme.fg)
+                } else {
+                    Style::default().fg(theme.highlight_fg)
+                };
+                let prefix = if is_selected { "▸ " } else { "  " };
+                Line::from(Span::styled(format!("{}{}", prefix, display), style))
+            },
+            app.config.ui.icon_mode,
+        );
+    }
+    // --- Go-to-line popup ---
+    if let Some(input) = &app.editor.go_to_line_input {
+        let theme = &app.app_theme;
+        let popup_area =
+            crate::ui::popups::centered_rect(crate::ui::PopupSize::Prompt, frame.area());
+        let text = if input.is_empty() { "Line #" } else { input };
+        let (title, hints) = ("GO TO LINE", &[("Enter", "jump"), ("Esc", "cancel")][..]);
+        let clear = Clear;
+        frame.render_widget(clear, popup_area);
+        let block = Block::default()
+            .title(format!(" {title} "))
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.highlight_fg))
+            .style(theme.bg_style());
+        frame.render_widget(&block, popup_area);
+        let inner = block.inner(popup_area);
+        let input_style = Style::default().fg(theme.highlight_fg).bg(theme.accent);
+        let paragraph = Paragraph::new(Span::styled(text.to_string(), input_style)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border)),
+        );
+        frame.render_widget(paragraph, inner);
+        // Render hints
+        if inner.height >= 1 {
+            let hint_y = inner.y + inner.height.saturating_sub(1);
+            let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
+            let hint_line = Line::from(
+                hints
+                    .iter()
+                    .flat_map(|(k, v)| {
+                        let key = Span::styled(
+                            format!(" {k} "),
+                            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+                        );
+                        let desc = Span::styled(format!(" {v} "), Style::default().fg(theme.text));
+                        [key, desc].into_iter()
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            frame.render_widget(hint_line, hint_area);
+        }
+    }
+}
+fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+    let theme = &app.app_theme;
+
+    // Fill the background of the sidebar area
+    frame.render_widget(Block::default().style(theme.preview_bg_style()), area);
+
+    let sb_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Top padding
+            Constraint::Length(1), // Title
+            Constraint::Length(1), // Spacer
+            Constraint::Min(0),    // List
+        ])
+        .split(area);
+
+    // Draw Title
+    let title_style = if focus == EditFocus::Sidebar {
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(theme.heading)
+            .add_modifier(Modifier::BOLD)
+    };
+
+    let (title, items) = match app.editor.sidebar {
+        EditSidebar::Outline => {
+            let title = format!("  OUTLINE ({})", app.editor.outline_nodes.len());
+            let items: Vec<ListItem> = app
+                .editor
+                .outline_nodes
+                .iter()
+                .map(|node| {
+                    let text = match &node.kind {
+                        NodeKind::Header { level, title } => {
+                            let indent = "  ".repeat((*level as usize).saturating_sub(1));
+                            let marker = if *level == 1 { "▸ " } else { "" };
+                            format!("{}{}{}", indent, marker, title)
+                        }
+                        _ => node.full_text().to_string(),
+                    };
+                    ListItem::new(text).style(Style::default().fg(theme.fg))
+                })
+                .collect();
+            (title, items)
+        }
+        EditSidebar::Links => {
+            let title = format!("  LINKS ({})", app.editor.links.len());
+            let items: Vec<ListItem> = app
+                .editor
+                .links
+                .iter()
+                .map(|item| {
+                    let text = if item.is_backlink {
+                        format!("←  {}", item.title)
+                    } else {
+                        format!("→  {}", item.title)
+                    };
+                    ListItem::new(text).style(Style::default().fg(theme.fg))
+                })
+                .collect();
+            (title, items)
+        }
+        EditSidebar::None => return,
+    };
+
+    let title_widget = Paragraph::new(title).style(title_style);
+    frame.render_widget(title_widget, sb_chunks[1]);
+
+    if items.is_empty() {
+        let empty_msg = match app.editor.sidebar {
+            EditSidebar::Outline => "  No headers",
+            EditSidebar::Links => "  No links",
+            EditSidebar::None => "",
+        };
+        let p = Paragraph::new(empty_msg).style(Style::default().fg(theme.muted));
+        frame.render_widget(p, sb_chunks[3]);
+    } else {
+        let mut state = crate::ui::list_state_selected(
+            Some(app.editor.sidebar_selected),
+            app.editor.sidebar_scroll_offset,
+        );
+
+        // Add left padding to the list rect to align items nicely
+        let list_area = Rect::new(
+            sb_chunks[3].x + 2,
+            sb_chunks[3].y,
+            sb_chunks[3].width.saturating_sub(2),
+            sb_chunks[3].height,
+        );
+
+        let item_count = items.len();
+        let list = List::new(items).block(Block::default()).highlight_style(
+            Style::default()
+                .bg(theme.highlight_bg)
+                .fg(theme.highlight_fg),
+        );
+        frame.render_stateful_widget(list, list_area, &mut state);
+        app.editor.sidebar_scroll_offset = state.offset();
+        app.editor.sidebar_list_rect = list_area;
+        crate::ui::paint_list_hover(
+            frame,
+            list_area,
+            &state,
+            item_count,
+            app.mouse_pos,
+            theme.hover_style(),
+        );
+    }
+}
+fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
+    let title = format!(
+        " Preview: {} ",
+        app.editor.link_preview_target.as_deref().unwrap_or("?")
+    );
+    let hints = PopupHints::Keybinds(&[("Esc".to_string(), "close")]);
+    let inner = draw_popup_frame(frame, area, &title, PopupSize::Large, hints, &app.app_theme);
+    if let Some(err) = &app.editor.link_preview_error {
+        let p = Paragraph::new(err.as_str())
+            .style(Style::default().fg(app.app_theme.destructive))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(p, inner);
+        return;
+    }
+    let Some(renderer) = &mut app.editor.link_preview_renderer else {
+        return;
+    };
+    renderer.set_page_height(inner.height as usize);
+    renderer.set_viewport(0, inner.height as usize);
+    if let Some(doc) = renderer.document() {
+        let padding_block = Block::default()
+            .style(app.app_theme.preview_bg_style())
+            .borders(Borders::NONE)
+            .padding(Padding::new(1, 1, 0, 0));
+        let padded_inner = padding_block.inner(inner);
+        frame.render_widget(padding_block, inner);
+
+        let range = renderer.current_page_range();
+        let widget = crate::markdown::MarkdownWidget::new(doc, range);
+        frame.render_widget(widget, padded_inner);
+    } else {
+        let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));
+        frame.render_widget(p, inner);
     }
 }

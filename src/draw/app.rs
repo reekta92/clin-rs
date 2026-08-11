@@ -22,7 +22,10 @@ pub struct DrawAppState {
     pub current_stroke: Option<crate::draw::state::Stroke>,
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
+    pub mouse_pos: Option<(u16, u16)>,
     pub text_editor: Option<(usize, TextArea<'static>)>,
+    pub text_editor_rect: Option<Rect>,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::draw::state::DrawShapeType,
     pub show_shape_selector: bool,
@@ -31,6 +34,7 @@ pub struct DrawAppState {
     pub keybinds: Keybinds,
     pub show_grid: bool,
     pub seq_matcher: crate::keybinds::KeyMatcher,
+    pub is_panning: bool,
 }
 
 impl DrawAppState {
@@ -61,16 +65,20 @@ impl DrawAppState {
             active_tool: crate::draw::state::DrawTool::Draw,
             current_stroke: None,
             last_area: Rect::default(),
+            mouse_pos: None,
             last_mouse_pos: None,
             text_editor: None,
+            text_editor_rect: None,
+            mouse_selection: crate::text_edit::MouseTextSelection::default(),
             theme,
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
-            show_grid: true,
             preview_element: None,
             keybinds,
+            show_grid: true,
             seq_matcher,
+            is_panning: false,
         }
     }
 
@@ -89,22 +97,20 @@ impl crate::overlay::OverlayView for DrawAppState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        _theme: &crate::app_theme::AppThemeColors,
-        _config: &crate::config::ClinConfig,
-        _app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
         self.last_area = area;
-        draw_canvas(frame, self, area, _config);
+        draw_canvas(frame, self, area, &app.config, self.mouse_pos);
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
-        _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
+        app: &mut crate::app::App,
+        _term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &keybinds, config)? {
+        if let Some(action) = handle_event(event, self, &keybinds, &app.config)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;

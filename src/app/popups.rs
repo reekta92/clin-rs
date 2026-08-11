@@ -1,28 +1,31 @@
 use super::*;
+use crate::editor_document::EditorDocument;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::templates::Template;
-use ratatui_textarea::TextArea;
 
 impl App {
     pub fn open_template_popup(&mut self) {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
-                let mut input = TextArea::default();
-                input.set_style(self.app_theme.bg_style());
-                input.set_cursor_line_style(Style::default());
-                input.set_placeholder_text("Search templates...");
+                let input = crate::ui::make_popup_textarea(&self.app_theme, "Search templates...");
                 self.popups.active = Some(crate::popups::ActivePopup::Template(TemplatePopup {
                     all_templates: templates.clone(),
                     filtered_templates: templates,
                     input,
                     selected: 0,
+                    scroll_offset: 0,
                     focus: crate::popups::TemplatePopupFocus::Search,
+                    last_scroll: None,
                 }));
             }
-            Err(_) => {
+            Err(e) => {
                 self.set_temporary_status_static("Failed to load templates");
+                self.messages.push(
+                    format!("Failed to load templates: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -33,7 +36,7 @@ impl App {
 
     pub fn select_template(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            if Self::is_virtual_pinned_path(&self.list.grid_folder) {
+            if Self::is_virtual_path(&self.list.grid_folder) {
                 String::new()
             } else {
                 self.list.grid_folder.clone()
@@ -45,10 +48,17 @@ impl App {
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             let template_manager = self.storage.template_manager();
-            if let Ok(template) = template_manager.load(&summary.filename) {
-                self.start_note_from_template(&template, folder);
-            } else {
-                self.set_temporary_status_static("Failed to load selected template");
+            match template_manager.load(&summary.filename) {
+                Ok(template) => {
+                    self.start_note_from_template(&template, folder);
+                }
+                Err(e) => {
+                    self.set_temporary_status_static("Failed to load selected template");
+                    self.messages.push(
+                        format!("Failed to load selected template: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                }
             }
         }
     }
@@ -99,18 +109,8 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&content);
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
+        self.editor.body = EditorDocument::from_text(&content);
+        self.apply_editor_prefs();
         self.set_temporary_status_static("Editing template (Esc to save and return)");
     }
 
@@ -193,7 +193,8 @@ impl App {
                         if popup.filtered_templates.is_empty() {
                             popup.selected = 0;
                         } else {
-                            popup.selected = selected.min(popup.filtered_templates.len() - 1);
+                            popup.selected =
+                                selected.min(popup.filtered_templates.len().saturating_sub(1));
                         }
                     }
                 }
@@ -320,6 +321,12 @@ template = """
                 "Quit".into(),
                 false,
             ),
+            ConfirmAction::RemoveAllTagsFromSelected => (
+                "Remove ALL tags from selected notes?".into(),
+                Some("This cannot be undone.".into()),
+                "Remove All".into(),
+                true,
+            ),
         };
 
         self.popups.confirm = Some(ConfirmPopup {
@@ -361,6 +368,9 @@ template = """
                 }
                 ConfirmAction::QuitApp => {
                     self.should_quit = true;
+                }
+                ConfirmAction::RemoveAllTagsFromSelected => {
+                    self.confirm_remove_all_tags();
                 }
             }
         }
@@ -421,10 +431,7 @@ template = """
                 .folder_expanded
                 .retain(|p| !p.starts_with(&format!("{path}/")));
         }
-        self.list.folder_cache = None;
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         self.clamp_visual_index();
         self.list.selected_indices.clear();
         self.list.list_mode = ListMode::Normal;
@@ -460,11 +467,10 @@ template = """
                 self.list.sort_order = SortOrder::Descending;
             }
         }
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.sort_notes();
+        self.refresh_visual_list();
 
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.default_sort_field = Some(self.list.sort_field);
             config.list.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
@@ -482,7 +488,7 @@ template = """
         themes.extend(crate::config::custom_themes::list_custom_themes());
         let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
 
-        let config = crate::config::ClinConfig::load().unwrap_or_default();
+        let config = crate::config::ClinConfig::load().0.unwrap_or_default();
         let current = config.ui.theme.clone();
 
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
@@ -497,8 +503,10 @@ template = """
             selected,
             is_custom,
             focus: ThemePopupFocus::ThemeList,
+            scroll_offset: 0,
             general_is_solid,
             graph_is_solid,
+            last_scroll: None,
         }));
     }
 
@@ -537,9 +545,8 @@ template = """
                 }
                 _ => {}
             }
-            if let Err(e) = self.refresh_notes() {
-                self.set_temporary_status(&format!("Refresh failed: {e}"));
-            }
+            self.sort_notes();
+            self.refresh_visual_list();
         }
     }
 
@@ -574,7 +581,7 @@ template = """
                 crate::config::IconMode::None => "Icon mode: None",
             };
             self.set_temporary_status_static(status);
-            if let Ok(mut config) = crate::config::ClinConfig::load() {
+            if let Ok(mut config) = crate::config::ClinConfig::load().0 {
                 config.ui.icon_mode = mode;
                 if let Err(e) = config.save() {
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -588,13 +595,7 @@ template = """
     }
 
     pub fn begin_hint_bar_style_selection(&mut self) {
-        let current_idx = match self.config.ui.hint_bar_style {
-            crate::config::HintBarStyle::Classic => 0,
-            crate::config::HintBarStyle::Accent => 1,
-            crate::config::HintBarStyle::PowerlineSharp => 2,
-            crate::config::HintBarStyle::PowerlineRounded => 3,
-            crate::config::HintBarStyle::PowerlineSlanted => 4,
-        };
+        let current_idx = self.config.ui.hint_bar_style.index();
         self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(
             crate::popups::HintBarStylePopup {
                 selected: current_idx,
@@ -604,28 +605,11 @@ template = """
 
     pub fn select_hint_bar_style(&mut self) {
         if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = self.popups.active.take() {
-            let style = match popup.selected {
-                0 => crate::config::HintBarStyle::Classic,
-                1 => crate::config::HintBarStyle::Accent,
-                2 => crate::config::HintBarStyle::PowerlineSharp,
-                3 => crate::config::HintBarStyle::PowerlineRounded,
-                _ => crate::config::HintBarStyle::PowerlineSlanted,
-            };
+            let style = crate::config::HintBarStyle::from_index(popup.selected);
             self.config.ui.hint_bar_style = style;
             self.app_theme.hint_bar_style = style;
-            let status = match style {
-                crate::config::HintBarStyle::Classic => "Hint bar style: Classic",
-                crate::config::HintBarStyle::Accent => "Hint bar style: Accent",
-                crate::config::HintBarStyle::PowerlineSharp => "Hint bar style: Powerline Sharp",
-                crate::config::HintBarStyle::PowerlineRounded => {
-                    "Hint bar style: Powerline Rounded"
-                }
-                crate::config::HintBarStyle::PowerlineSlanted => {
-                    "Hint bar style: Powerline Slanted"
-                }
-            };
-            self.set_temporary_status_static(status);
-            if let Ok(mut config) = crate::config::ClinConfig::load() {
+            self.set_temporary_status(&format!("Hint bar style: {}", style.name()));
+            if let Ok(mut config) = crate::config::ClinConfig::load().0 {
                 config.ui.hint_bar_style = style;
                 if let Err(e) = config.save() {
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -662,7 +646,7 @@ template = """
             self.config.core.keybind_preset = new;
             self.apply_keybind_preset(new);
             self.set_temporary_status(&format!("Keybind preset: {new}"));
-            if let Ok(mut c) = crate::config::ClinConfig::load() {
+            if let Ok(mut c) = crate::config::ClinConfig::load().0 {
                 c.core.keybind_preset = new;
                 let _ = c.save();
             }
@@ -675,7 +659,12 @@ template = """
     }
 
     pub fn apply_keybind_preset(&mut self, preset: crate::config::KeybindPreset) {
-        self.keybinds = self.storage.load_keybinds_with_preset(preset);
+        let (keybinds, warnings) = self.storage.load_keybinds_with_preset(preset);
+        self.keybinds = keybinds;
+        for w in warnings {
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         self.seq_matcher.clear();
     }
 
@@ -720,9 +709,8 @@ template = """
     }
 
     pub fn begin_set_word_goal(&mut self) {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Enter daily word goal (e.g. 500)");
+        let mut input =
+            crate::ui::make_popup_textarea(&self.app_theme, "Enter daily word goal (e.g. 500)");
         if self.config.goals.word_goal > 0 {
             input.insert_str(self.config.goals.word_goal.to_string());
         }
@@ -735,9 +723,8 @@ template = """
     }
 
     pub fn begin_set_note_goal(&mut self) {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Enter daily note goal (e.g. 3)");
+        let mut input =
+            crate::ui::make_popup_textarea(&self.app_theme, "Enter daily note goal (e.g. 3)");
         if self.config.goals.note_goal > 0 {
             input.insert_str(self.config.goals.note_goal.to_string());
         }
@@ -754,7 +741,7 @@ template = """
             let val_str = popup.input.lines().join("");
             match val_str.trim().parse::<usize>() {
                 Ok(val) => {
-                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
+                    let mut config = crate::config::ClinConfig::load().0.unwrap_or_default();
                     match popup.mode {
                         crate::popups::GoalsPopupMode::WordGoal => {
                             config.goals.word_goal = val;
@@ -767,10 +754,73 @@ template = """
                             self.set_temporary_status(&format!("Daily note goal set to {val}"));
                         }
                     }
-                    let _ = config.save();
+                    if let Err(e) = config.save() {
+                        self.messages.push(
+                            format!("Failed to save config: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
+                    }
                 }
                 Err(_) => {
                     self.set_temporary_status_static("Please enter a valid positive number.");
+                }
+            }
+        }
+    }
+
+    pub fn begin_setup_vault_selection(&mut self) {
+        let Some(state) = self.setup_state.as_ref() else {
+            return;
+        };
+        if state.vault_cli_override {
+            return;
+        }
+        let pending = state.vault_path.clone();
+        match crate::ui::pick_directory("Select vault directory") {
+            Ok(crate::ui::DirectoryPickerOutcome::Selected(path)) => {
+                self.select_setup_vault(path);
+            }
+            Ok(crate::ui::DirectoryPickerOutcome::Cancelled) => {}
+            Ok(crate::ui::DirectoryPickerOutcome::Unavailable) => {
+                self.open_setup_vault_input(
+                    pending,
+                    Some("Directory picker unavailable; enter an absolute vault path.".to_string()),
+                );
+            }
+            Err(error) => self
+                .open_setup_vault_input(pending, Some(format!("Directory picker failed: {error}"))),
+        }
+    }
+
+    pub fn open_setup_vault_input(&mut self, path: std::path::PathBuf, notice: Option<String>) {
+        if let Some(state) = self.setup_state.as_mut() {
+            state.vault_modal = Some(crate::setup::SetupVaultModal::PathInput {
+                input: ratatui_textarea::TextArea::from([path.display().to_string()]),
+                notice,
+            });
+            state.vault_error = None;
+        }
+    }
+
+    pub fn select_setup_vault(&mut self, path: std::path::PathBuf) {
+        match crate::setup::vault_requires_confirmation(&path) {
+            Ok(true) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.vault_modal =
+                        Some(crate::setup::SetupVaultModal::ConfirmNonEmpty { path });
+                }
+            }
+            Ok(false) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.vault_path = path;
+                    state.confirmed_nonempty_path = None;
+                    state.vault_modal = None;
+                    state.vault_error = None;
+                }
+            }
+            Err(error) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.vault_error = Some(error.to_string());
                 }
             }
         }
@@ -785,7 +835,7 @@ template = """
             };
 
             // 1. Theme
-            let name = crate::setup::SETUP_THEMES[state.theme];
+            let name = state.themes[state.theme].clone();
             if self.config.ui.theme != name {
                 self.config.ui.theme = name.to_string();
                 visuals_changed = true;
@@ -811,7 +861,12 @@ template = """
             };
             if self.config.core.keybind_preset != preset {
                 self.config.core.keybind_preset = preset;
-                self.keybinds = self.storage.load_keybinds_with_preset(preset);
+                let (kb, warnings) = self.storage.load_keybinds_with_preset(preset);
+                self.keybinds = kb;
+                for w in warnings {
+                    self.messages
+                        .push(w, crate::app::messages::MessageSeverity::Warning);
+                }
                 self.seq_matcher.clear();
                 visuals_changed = true;
             }
@@ -837,41 +892,115 @@ template = """
         }
     }
 
-    /// Finish: live-apply + persist + seed templates/welcome note + close.
+    /// Finish setup. A changed vault is initialized and committed for a clean
+    /// in-process session rebootstrap; unchanged setup keeps normal flow.
     pub fn finish_setup(&mut self) {
+        let previous_config = self.config.clone();
         self.apply_setup_live();
-        match self.config.save() {
-            Ok(()) => {
-                let _ = self.storage.template_manager().create_examples();
-                let _ = self.refresh_notes();
-                self.set_temporary_status_static("Setup complete");
-                self.setup_state = None;
-                self.mode = self
-                    .return_mode
-                    .take()
-                    .unwrap_or(crate::app::ViewMode::List);
+        let (selected_path, changed_vault, confirmed_path) = {
+            let Some(state) = self.setup_state.as_ref() else {
+                return;
+            };
+            let selected_path = state.vault_path.clone();
+            (
+                selected_path.clone(),
+                !state.vault_cli_override && selected_path != state.initial_vault_path,
+                state.confirmed_nonempty_path.clone(),
+            )
+        };
+        if !changed_vault {
+            match self.config.save() {
+                Ok(()) => {
+                    let _ = self.storage.template_manager().create_examples();
+                    self.request_notes_reconcile();
+                    self.set_temporary_status_static("Setup complete");
+                    self.setup_state = None;
+                    self.mode = self
+                        .return_mode
+                        .take()
+                        .unwrap_or(crate::app::ViewMode::List);
+                }
+                Err(error) => {
+                    self.set_temporary_status(&format!("Setup failed to save: {error}"));
+                    if let Some(state) = self.setup_state.as_mut() {
+                        state.confirm_exit = false;
+                    }
+                }
             }
-            Err(e) => {
-                // Keep the wizard open so the user can retry. Selections are
-                // preserved in setup_state; in-memory config already reflects them.
-                self.set_temporary_status(&format!("Setup failed to save: {e}"));
+            return;
+        }
+        match crate::setup::vault_requires_confirmation(&selected_path) {
+            Ok(true) if confirmed_path.as_ref() != Some(&selected_path) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.confirm_exit = false;
+                    state.vault_modal = Some(crate::setup::SetupVaultModal::ConfirmNonEmpty {
+                        path: selected_path,
+                    });
+                }
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                self.set_temporary_status(&format!("Failed to initialize vault: {error}"));
                 if let Some(state) = self.setup_state.as_mut() {
                     state.confirm_exit = false;
                 }
+                return;
             }
         }
+        if let Err(error) = std::fs::create_dir_all(&selected_path) {
+            self.set_temporary_status(&format!("Failed to initialize vault: {error}"));
+            if let Some(state) = self.setup_state.as_mut() {
+                state.confirm_exit = false;
+            }
+            return;
+        }
+        let mut candidate = self.config.clone();
+        candidate.core.storage_path = Some(selected_path.clone());
+        let (storage_result, warnings) = crate::storage::Storage::init_with_config(&candidate);
+        let storage = match storage_result {
+            Ok(storage) => storage,
+            Err(error) => {
+                self.set_temporary_status(&format!("Failed to initialize vault: {error}"));
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.confirm_exit = false;
+                }
+                return;
+            }
+        };
+        if let Err(error) = candidate.save() {
+            self.set_temporary_status(&format!("Setup failed to save: {error}"));
+            if let Some(state) = self.setup_state.as_mut() {
+                state.confirm_exit = false;
+            }
+            return;
+        }
+        self.config = candidate;
+        self.setup_rebootstrap = Some(crate::setup::SetupRebootstrapRequest {
+            storage,
+            warnings,
+            previous_config,
+            previous_path: self.storage.data_dir.clone(),
+            selected_path,
+        });
+        self.should_quit = true;
     }
 
     /// Discard wizard mutations: reload config + keybinds from disk, close wizard.
     pub fn abort_setup(&mut self) {
-        if let Ok(fresh) = crate::config::ClinConfig::load() {
+        if let Ok(fresh) = crate::config::ClinConfig::load().0 {
             self.config = fresh;
         }
         // Rebuild keybinds for the (now disk-truth) preset; clear any stale
         // in-flight sequence buffered against the old binding set.
-        self.keybinds = self
+        let (kb, warnings) = self
             .storage
             .load_keybinds_with_preset(self.config.core.keybind_preset);
+        self.keybinds = kb;
+        for w in warnings {
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         self.seq_matcher.clear();
         self.refresh_theme_from_config();
         self.set_temporary_status_static("Setup cancelled");

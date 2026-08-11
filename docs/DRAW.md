@@ -74,6 +74,8 @@ pub enum DrawTool {
 | **Text** | Click a location to place the text cursor. A floating `TextArea` editor opens for typing. Press `Esc` to close the editor. |
 | **Shape** | Opens a shape selector popup (Rect, Ellipse, Diamond, Line, Arrow). Click-drag-release creates the shape. A preview element follows the cursor during drag. |
 
+Freehand strokes are smoothed with a binomial filter before being committed to the canvas, reducing jitter from hand-drawn input. (Replaces the earlier DP + Chaikin smoothing pipeline.)
+
 ---
 
 ## Interaction Model
@@ -159,6 +161,7 @@ pub enum DrawTool {
 Rendering in `src/draw/render.rs`:
 
 - Uses ratatui's `Canvas` widget with Braille markers
+- Strokes are binomial-filtered at draw time for smoothing
 - Elements are drawn in order (Stroke → Shape → Text) with proper layering
 - Current stroke preview renders during active drawing
 - Shape preview renders during shape creation drag

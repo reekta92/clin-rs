@@ -190,12 +190,15 @@ impl Default for VisualConfig {
 pub struct PhysicsConfig {
     #[serde(default = "default_ideal_distance")]
     pub ideal_distance: f64,
+    #[serde(default)]
+    pub tick_rate: PhysicsTickRate,
 }
 
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
             ideal_distance: default_ideal_distance(),
+            tick_rate: PhysicsTickRate::default(),
         }
     }
 }
@@ -260,6 +263,9 @@ pub struct UiConfig {
     /// Icon display mode: Nerd Font, Unicode fallback, or None.
     #[serde(default)]
     pub icon_mode: IconMode,
+    /// Show mouse-draggable scrollbars on scrollable regions.
+    #[serde(default = "default_true")]
+    pub scrollbars: bool,
     #[serde(default)]
     pub hint_bar_style: HintBarStyle,
 }
@@ -282,6 +288,7 @@ impl Default for UiConfig {
             show_status_bar: default_true(),
             tab_icons_only: false,
             icon_mode: IconMode::default(),
+            scrollbars: default_true(),
             hint_bar_style: HintBarStyle::default(),
         }
     }
@@ -293,7 +300,7 @@ pub struct FilterConfig {
     #[serde(default)]
     pub exclude_tags: Vec<String>,
     #[serde(default)]
-    pub min_links: usize,
+    pub show_orphan: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -333,6 +340,28 @@ pub struct BackupConfig {
     pub auto_backup_interval: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ImageConfig {
+    pub enabled: bool,
+    pub max_dimension: u32,
+    pub cache_size: usize,
+    pub preview_rows: u8,
+    pub attachments_subdir: String,
+}
+
+impl Default for ImageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_dimension: 2048,
+            cache_size: 32,
+            preview_rows: 8,
+            attachments_subdir: "attachments".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomSmartFolder {
     pub name: String,
@@ -346,7 +375,7 @@ pub struct CustomSmartFolder {
     pub updated_within_days: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ListConfig {
     #[serde(default = "default_preview_enabled")]
@@ -355,11 +384,9 @@ pub struct ListConfig {
     pub preview_position: PreviewPosition,
     #[serde(default)]
     pub preview_encryption: bool,
-    #[serde(default = "default_true")]
-    pub show_date_in_list: bool,
     #[serde(default)]
     pub show_file_size: bool,
-    #[serde(default = "default_date_format")]
+    #[serde(default = "default_list_date_format")]
     pub date_format: String,
     #[serde(default)]
     pub density: ListDensity,
@@ -369,18 +396,24 @@ pub struct ListConfig {
     pub default_sort_field: Option<crate::app::SortField>,
     #[serde(default)]
     pub default_sort_order: Option<crate::app::SortOrder>,
+    #[serde(default = "default_true")]
+    pub inline_info: bool,
     #[serde(default)]
     pub pinned_on_top: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
     #[serde(default)]
     pub show_all_files: bool,
+    #[serde(default)]
+    pub skip_dirs: Vec<String>,
     #[serde(default = "default_true")]
     pub folders_first: bool,
     #[serde(default = "default_true")]
     pub calendar_enabled: bool,
     #[serde(default)]
     pub smart_folders_enabled: bool,
+    #[serde(default)]
+    pub folder_graph_preview: bool,
     #[serde(default)]
     pub pinned_folders: Vec<String>,
     #[serde(default = "default_preview_width_ratio")]
@@ -394,14 +427,44 @@ pub struct ListConfig {
     #[serde(default = "default_sections")]
     pub sections: Vec<NotesSection>,
     #[serde(default)]
-    pub expanded_folders: Vec<String>,
-    #[serde(default)]
     pub default_expand_depth: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_smart_folders: Vec<CustomSmartFolder>,
 }
+impl Default for ListConfig {
+    fn default() -> Self {
+        Self {
+            preview_enabled: default_preview_enabled(),
+            preview_position: PreviewPosition::default(),
+            preview_encryption: false,
+            show_file_size: false,
+            date_format: default_list_date_format(),
+            density: ListDensity::default(),
+            default_view: NotesLayout::default(),
+            default_sort_field: None,
+            default_sort_order: None,
+            inline_info: default_true(),
+            pinned_on_top: false,
+            show_hidden_files: false,
+            show_all_files: false,
+            skip_dirs: Vec::new(),
+            folders_first: default_true(),
+            calendar_enabled: default_true(),
+            calendar_position: CalendarPosition::default(),
+            week_start: WeekStart::default(),
+            smart_folders_enabled: false,
+            folder_graph_preview: false,
+            pinned_folders: Vec::new(),
+            preview_width_ratio: default_preview_width_ratio(),
+            calendar_height: default_calendar_height(),
+            sections: default_sections(),
+            default_expand_depth: None,
+            custom_smart_folders: Vec::new(),
+        }
+    }
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EditorConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -412,9 +475,34 @@ pub struct EditorConfig {
     pub preview_enabled: bool,
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
+    #[serde(default = "default_editor_date_format")]
+    pub date_format: String,
+    #[serde(default = "default_true")]
+    pub edit_mode_highlight: bool,
+    #[serde(default = "default_true")]
+    pub ghost_syntax: bool,
+    #[serde(default = "default_true")]
+    pub extended_markdown_features: bool,
+    pub soft_wrap: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+impl Default for EditorConfig {
+    fn default() -> Self {
+        Self {
+            external_command: None,
+            external_enabled: false,
+            preview_enabled: false,
+            show_line_numbers: true,
+            date_format: default_editor_date_format(),
+            edit_mode_highlight: true,
+            ghost_syntax: true,
+            extended_markdown_features: true,
+            soft_wrap: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GrafConfig {
     #[serde(default)]
@@ -429,14 +517,28 @@ pub struct GrafConfig {
     pub search: SearchConfig,
     #[serde(default)]
     pub preview_enabled: bool,
+    #[serde(default = "crate::config::defaults::default_max_node")]
+    pub max_node: usize,
+}
+
+impl Default for GrafConfig {
+    fn default() -> Self {
+        Self {
+            visual: VisualConfig::default(),
+            physics: PhysicsConfig::default(),
+            interaction: InteractionConfig::default(),
+            filter: FilterConfig::default(),
+            search: SearchConfig::default(),
+            preview_enabled: false,
+            max_node: crate::config::defaults::default_max_node(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct CoreConfig {
     pub storage_path: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_storage_path: Option<PathBuf>,
     #[serde(default = "default_true")]
     pub mouse_enabled: bool,
     #[serde(default)]
@@ -473,7 +575,6 @@ impl Default for CoreConfig {
     fn default() -> Self {
         Self {
             storage_path: None,
-            previous_storage_path: None,
             mouse_enabled: default_true(),
             default_folder: None,
             confirm_on_delete: default_true(),
@@ -482,8 +583,8 @@ impl Default for CoreConfig {
             keybind_preset: KeybindPreset::Default,
             enable_key_sequences: false,
             preview_expand_mode: crate::config::PreviewExpandMode::default(),
-            syntax_highlighting: default_true(),
             preview_command: None,
+            syntax_highlighting: default_true(),
             code_theme: default_code_theme(),
             code_line_numbers: default_true(),
             auto_refresh: default_true(),
@@ -514,6 +615,32 @@ impl Default for GoalsConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct StatuslineConfig {
+    pub header_left: Option<String>,
+    pub header_right: Option<String>,
+    pub footer_left: Option<String>,
+    pub footer_right: Option<String>,
+    pub list: Option<StatuslineOverride>,
+    pub edit: Option<StatuslineOverride>,
+    pub help: Option<StatuslineOverride>,
+    pub graph: Option<StatuslineOverride>,
+    pub draw: Option<StatuslineOverride>,
+    pub canvas: Option<StatuslineOverride>,
+    pub backup: Option<StatuslineOverride>,
+    pub outline: Option<StatuslineOverride>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct StatuslineOverride {
+    pub header_left: Option<String>,
+    pub header_right: Option<String>,
+    pub footer_left: Option<String>,
+    pub footer_right: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ClinConfig {
@@ -532,6 +659,11 @@ pub struct ClinConfig {
     pub graf: GrafConfig,
     #[serde(default)]
     pub goals: GoalsConfig,
+    pub image: ImageConfig,
+    #[serde(default)]
+    pub statusline: StatuslineConfig,
+    #[serde(skip)]
+    pub accent_hint_migrated: bool,
 }
 
 /// Graph data-viz colors (node/edge/label). Distinct from

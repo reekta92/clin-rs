@@ -45,6 +45,11 @@ impl App {
                     self.set_temporary_status_static("Cannot delete virtual Pinned folder");
                     return;
                 }
+                if Self::is_virtual_subnotes_path(path) || Self::is_subnotes_parent_grid_path(path)
+                {
+                    self.set_temporary_status_static("Cannot delete virtual Subnotes folder");
+                    return;
+                }
                 let path = path.clone();
                 if self.confirm_on_delete {
                     self.show_confirm(ConfirmAction::DeleteFolder { path });
@@ -61,21 +66,17 @@ impl App {
     pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.trash_note(&id) {
             Ok(()) => {
-                // Drop from in-memory caches without a full filesystem rescan.
-                self.summary_cache.remove(&id);
-                self.summary_mtime.remove(&id);
                 self.notes.retain(|n| n.id != id);
-                self.notes_with_subnotes =
-                    self.storage.get_notes_with_subnotes().unwrap_or_default();
-
+                self.note_stamps.remove(&id);
+                let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                self.send_catalog_cmd(crate::app::catalog::CatalogCommand::RemoveKnown {
+                    generation: generation_num,
+                    id: id.clone(),
+                });
                 self.sort_notes();
                 self.refresh_visual_list();
-
-                if self.list.visual_index >= self.list.visual_list.len()
-                    && !self.list.visual_list.is_empty()
-                {
-                    self.list.visual_index = self.list.visual_list.len() - 1;
-                }
+                self.notes_revision += 1;
+                self.clamp_visual_index();
                 self.set_temporary_status_static("Note moved to trash");
             }
             Err(err) => {
@@ -87,18 +88,11 @@ impl App {
     pub fn confirm_delete_folder(&mut self, path: String) {
         match self.storage.trash_folder(&path) {
             Ok(()) => {
-                self.list.folder_cache = None;
                 self.list
                     .folder_expanded
                     .retain(|p| p != &path && !p.starts_with(&format!("{path}/")));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
-                if self.list.visual_index >= self.list.visual_list.len()
-                    && !self.list.visual_list.is_empty()
-                {
-                    self.list.visual_index = self.list.visual_list.len() - 1;
-                }
+                self.request_notes_reconcile();
+                self.clamp_visual_index();
                 self.set_temporary_status_static("Folder moved to trash");
             }
             Err(e) => {
@@ -130,13 +124,14 @@ impl App {
                         self.set_temporary_status_static("Note restored");
                     }
                 }
-                self.list.folder_cache = None;
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.request_notes_reconcile();
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to restore: {e}"));
+                self.messages.push(
+                    format!("Failed to restore: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -167,6 +162,10 @@ impl App {
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to delete: {e}"));
+                self.messages.push(
+                    format!("Failed to delete: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -192,6 +191,10 @@ impl App {
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to empty trash: {e}"));
+                self.messages.push(
+                    format!("Failed to empty trash: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }

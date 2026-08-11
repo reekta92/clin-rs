@@ -8,3 +8,5 @@ graphify-out/
 result
 /result
 /.direnv/
+*-out/
+result/

@@ -1,7 +1,5 @@
 use super::*;
-use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 use std::collections::HashSet;
 
 impl App {
@@ -18,6 +16,60 @@ impl App {
     }
 
     pub fn begin_manage_tags(&mut self) {
+        let in_select_mode = self.list.list_mode == crate::list_view::ListMode::Select;
+
+        if in_select_mode && !self.list.selected_indices.is_empty() {
+            // Batch mode: apply tags to all selected notes
+            let batch_ids: Vec<String> = self
+                .list
+                .selected_indices
+                .iter()
+                .filter_map(|&idx| {
+                    if let Some(VisualItem::Note { summary_idx, .. }) =
+                        self.list.visual_list.get(idx)
+                    {
+                        Some(self.notes[*summary_idx].id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if batch_ids.is_empty() {
+                self.set_temporary_status_static("No taggable notes selected");
+                return;
+            }
+
+            // Seed input with tags from the focused note
+            let current_tags = if let Some(VisualItem::Note { summary_idx, .. }) =
+                self.list.visual_list.get(self.list.visual_index)
+            {
+                self.notes[*summary_idx].tags.clone()
+            } else {
+                Vec::new()
+            };
+
+            let all_tags = self.collect_live_tags();
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "Add tags...");
+            input.insert_str(current_tags.join(", "));
+
+            self.popups.active = Some(crate::popups::ActivePopup::Tag(TagPopup {
+                note_id: batch_ids.first().cloned().unwrap_or_default(),
+                batch_note_ids: Some(batch_ids),
+                input,
+                all_tags,
+                suggestions: Vec::new(),
+                suggestion_index: 0,
+                focus: crate::popups::TagPopupFocus::Input,
+                all_tags_selected: 0,
+                scroll_offset: 0,
+                last_scroll: None,
+            }));
+            self.update_tag_suggestions();
+            return;
+        }
+
+        // Single-note mode (existing behavior)
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
@@ -37,20 +89,20 @@ impl App {
             let current_tags = note.tags.clone();
             let all_tags = self.collect_live_tags();
 
-            let mut input = TextArea::default();
-            input.set_cursor_line_style(ratatui::style::Style::default());
-            input.set_style(self.app_theme.bg_style());
-            input.set_placeholder_text("Add tags...");
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "Add tags...");
             input.insert_str(current_tags.join(", "));
 
             self.popups.active = Some(crate::popups::ActivePopup::Tag(TagPopup {
                 note_id: note.id.clone(),
+                batch_note_ids: None,
                 input,
                 all_tags,
                 suggestions: Vec::new(),
                 suggestion_index: 0,
                 focus: crate::popups::TagPopupFocus::Input,
                 all_tags_selected: 0,
+                scroll_offset: 0,
+                last_scroll: None,
             }));
             self.update_tag_suggestions();
         } else {
@@ -61,12 +113,44 @@ impl App {
     pub fn confirm_manage_tags(&mut self) {
         if let Some(crate::popups::ActivePopup::Tag(popup)) = self.popups.active.take() {
             let text = popup.input.lines().join("");
+            let mut seen = std::collections::HashSet::new();
             let tags: Vec<String> = text
                 .split(',')
                 .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
+                .filter(|s| !s.is_empty() && seen.insert(s.clone()))
                 .collect();
 
+            if let Some(batch_ids) = popup.batch_note_ids {
+                // Batch mode: apply tags to all selected notes
+                let mut count = 0;
+                let mut failed = 0;
+                for note_id in &batch_ids {
+                    if let Ok(mut note) = self.storage.load_note(note_id) {
+                        note.tags = tags.clone();
+                        if self.storage.save_note(note_id, &note).is_ok() {
+                            self.enqueue_backup(format!("auto: {}", note.title));
+                            count += 1;
+                        } else {
+                            failed += 1;
+                        }
+                    }
+                }
+                self.list.selected_indices.clear();
+                self.list.list_mode = crate::list_view::ListMode::Normal;
+                self.refresh_visual_list();
+                self.clamp_visual_index();
+                self.request_notes_reconcile();
+                self.set_temporary_status(&format!("Tags applied to {count} note(s)"));
+                if failed > 0 {
+                    let text = format!("Failed to update tags on {failed} note(s)");
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
+                return;
+            }
+
+            // Single-note mode
             let ext = std::path::Path::new(&popup.note_id)
                 .extension()
                 .and_then(|e| e.to_str())
@@ -83,15 +167,21 @@ impl App {
                 note.tags = tags;
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
+                    self.messages.push(
+                        format!("Failed to save tags: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 } else {
                     self.enqueue_backup(format!("auto: {}", note.title));
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
-                    }
+                    self.refresh_note_single(None, &popup.note_id);
                     self.set_temporary_status_static("Tags updated");
                 }
             } else {
                 self.set_temporary_status_static("Failed to load note to update tags");
+                self.messages.push(
+                    "Failed to load note to update tags".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -152,6 +242,23 @@ impl App {
         }
     }
 
+    pub fn accept_tag_from_all_tags(&mut self) {
+        if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active
+            && let Some(tag) = popup.all_tags.get(popup.all_tags_selected).cloned()
+        {
+            let text = popup.input.lines().join("");
+            let trimmed = text.trim().trim_end_matches(',').trim();
+            let new_text = if trimmed.is_empty() {
+                format!("{tag}, ")
+            } else {
+                format!("{trimmed}, {tag}, ")
+            };
+            popup.input.select_all();
+            popup.input.cut();
+            popup.input.insert_str(&new_text);
+        }
+    }
+
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
         let count = self
             .storage
@@ -181,12 +288,13 @@ impl App {
             detail: Some(detail),
             confirm_label: "Delete".into(),
             is_destructive: true,
-            selected_button: 1,
+            selected_button: 0,
         });
     }
 
     pub fn confirm_delete_tag(&mut self, tag: String) {
         let mut count = 0;
+        let mut failed = 0;
         if let Ok(note_ids) = self
             .storage
             .list_note_ids(self.list.show_hidden_files, false)
@@ -207,6 +315,8 @@ impl App {
                     note.tags.retain(|t| t != &tag);
                     if self.storage.save_note(&note_id, &note).is_ok() {
                         self.enqueue_backup(format!("auto: {}", note.title));
+                    } else {
+                        failed += 1;
                     }
                     count += 1;
                 }
@@ -214,9 +324,13 @@ impl App {
         }
 
         self.set_temporary_status(&format!("Deleted '{tag}' from {count} note(s)"));
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        if failed > 0 {
+            let text = format!("Failed to update tags on {failed} note(s)");
+            self.set_temporary_status(&text);
+            self.messages
+                .push(text, crate::app::messages::MessageSeverity::Warning);
         }
+        self.request_notes_reconcile();
         let live_tags = self.collect_live_tags();
 
         if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active {
@@ -241,47 +355,172 @@ impl App {
         }
         self.update_tag_suggestions();
     }
+    pub fn begin_remove_tags_from_selected(&mut self) {
+        if self.list.list_mode != crate::list_view::ListMode::Select
+            || self.list.selected_indices.is_empty()
+        {
+            self.set_temporary_status_static("Enter Select mode and select notes first");
+            return;
+        }
 
-    pub fn apply_tag_to_selected(&mut self, tag: String) {
-        let mut count = 0;
-        let indices: Vec<usize> = self.list.selected_indices.iter().copied().collect();
-
-        for &idx in &indices {
-            if let Some(crate::list_view::VisualItem::Note { summary_idx, .. }) =
-                self.list.visual_list.get(idx)
-            {
-                let note = &self.notes[*summary_idx];
-                let note_id = note.id.clone();
-                let note_title = note.title.clone();
-                let ext = std::path::Path::new(&note_id)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("");
-
-                if ext != "md" && ext != "txt" && ext != "clin" {
-                    continue;
+        let total = self.list.selected_indices.len();
+        let mut tag_count_map: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for &idx in &self.list.selected_indices {
+            if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
+                for tag in &self.notes[*summary_idx].tags {
+                    *tag_count_map.entry(tag.clone()).or_insert(0) += 1;
                 }
+            }
+        }
 
-                if let Ok(mut loaded) = self.storage.load_note(&note_id) {
-                    if !loaded.tags.contains(&tag) {
-                        loaded.tags.push(tag.clone());
+        let mut tags: Vec<String> = tag_count_map.keys().cloned().collect();
+        tags.sort();
+        let tag_counts: Vec<usize> = tags.iter().map(|t| tag_count_map[t]).collect();
+
+        if tags.is_empty() {
+            self.set_temporary_status_static("Selected notes have no tags to remove");
+            return;
+        }
+
+        self.popups.active = Some(crate::popups::ActivePopup::RemoveTags(RemoveTagsPopup {
+            tags,
+            selected: HashSet::new(),
+            cursor: 0,
+            scroll_offset: 0,
+            last_scroll: None,
+            confirm: None,
+            tag_counts,
+            total_selected: total,
+        }));
+    }
+
+    pub fn confirm_remove_tags_from_selected(&mut self) {
+        let (selected_tags, note_ids) = {
+            let popup = match self.popups.active.take() {
+                Some(crate::popups::ActivePopup::RemoveTags(p)) => p,
+                _ => return,
+            };
+            let selected_tags: HashSet<String> = popup
+                .selected
+                .iter()
+                .filter_map(|&i| popup.tags.get(i).cloned())
+                .collect();
+
+            let note_ids: Vec<String> = self
+                .list
+                .selected_indices
+                .iter()
+                .filter_map(|&idx| {
+                    if let Some(VisualItem::Note { summary_idx, .. }) =
+                        self.list.visual_list.get(idx)
+                    {
+                        Some(self.notes[*summary_idx].id.clone())
+                    } else {
+                        None
                     }
-                    if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        self.enqueue_backup(format!("auto: {}", note_title));
-                        count += 1;
-                    }
+                })
+                .collect();
+
+            (selected_tags, note_ids)
+        };
+
+        if selected_tags.is_empty() {
+            self.set_temporary_status_static("No tags selected to remove");
+            self.list.selected_indices.clear();
+            self.list.list_mode = crate::list_view::ListMode::Normal;
+            self.refresh_visual_list();
+            self.clamp_visual_index();
+            self.request_notes_reconcile();
+            return;
+        }
+
+        let count = note_ids.len();
+        let mut failed = 0;
+        for note_id in &note_ids {
+            if let Ok(mut note) = self.storage.load_note(note_id) {
+                note.tags.retain(|t| !selected_tags.contains(t));
+                if self.storage.save_note(note_id, &note).is_ok() {
+                    self.enqueue_backup(format!("auto: {}", note.title));
+                } else {
+                    failed += 1;
                 }
             }
         }
 
         self.list.selected_indices.clear();
         self.list.list_mode = crate::list_view::ListMode::Normal;
+        self.refresh_visual_list();
+        self.clamp_visual_index();
+        self.request_notes_reconcile();
+        self.set_temporary_status(&format!(
+            "Removed tags from {}/{} note(s)",
+            count - failed,
+            count
+        ));
+        if failed > 0 {
+            let text = format!("Failed to update tags on {} note(s)", failed);
+            self.messages
+                .push(text, crate::app::messages::MessageSeverity::Warning);
+        }
+    }
 
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-            return;
+    pub fn begin_remove_all_tags_from_selected(&mut self) {
+        if let Some(crate::popups::ActivePopup::RemoveTags(popup)) = &mut self.popups.active {
+            popup.confirm = Some(ConfirmPopup {
+                action: crate::popups::ConfirmAction::RemoveAllTagsFromSelected,
+                message: "Remove ALL tags from selected notes?".into(),
+                detail: Some("This cannot be undone.".into()),
+                confirm_label: "Remove All".into(),
+                is_destructive: true,
+                selected_button: 1,
+            });
+        }
+    }
+
+    pub fn confirm_remove_all_tags(&mut self) {
+        self.popups.active = None;
+
+        let note_ids: Vec<String> = self
+            .list
+            .selected_indices
+            .iter()
+            .filter_map(|&idx| {
+                if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
+                    Some(self.notes[*summary_idx].id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let count = note_ids.len();
+        let mut failed = 0;
+        for note_id in &note_ids {
+            if let Ok(mut note) = self.storage.load_note(note_id) {
+                note.tags.clear();
+                if self.storage.save_note(note_id, &note).is_ok() {
+                    self.enqueue_backup(format!("auto: {}", note.title));
+                } else {
+                    failed += 1;
+                }
+            }
         }
 
-        self.set_temporary_status(&format!("Tag '{tag}' applied to {count} note(s)"));
+        self.list.selected_indices.clear();
+        self.list.list_mode = crate::list_view::ListMode::Normal;
+        self.refresh_visual_list();
+        self.clamp_visual_index();
+        self.request_notes_reconcile();
+        self.set_temporary_status(&format!(
+            "Removed all tags from {}/{} note(s)",
+            count - failed,
+            count
+        ));
+        if failed > 0 {
+            let text = format!("Failed to update tags on {} note(s)", failed);
+            self.messages
+                .push(text, crate::app::messages::MessageSeverity::Warning);
+        }
     }
 }

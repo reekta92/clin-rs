@@ -1,3 +1,4 @@
+use crate::app::ViewMode;
 use crate::backup::git_ops::FileChangeType;
 use crate::backup::state::{BackupInputMode, BackupState, SettingsField};
 use crate::keybinds::BackupAction;
@@ -8,11 +9,14 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap},
 };
+use std::path::Path;
 
 pub fn draw_dashboard(
     frame: &mut ratatui::Frame,
     state: &mut crate::backup::state::BackupState,
     area: Rect,
+    config: &crate::config::ClinConfig,
+    app_status: Option<&str>,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -39,10 +43,10 @@ pub fn draw_dashboard(
             ])
             .split(content_area);
 
-        draw_content(frame, content_chunks[0], state);
-        draw_diff_pane(frame, content_chunks[1], state);
+        draw_content(frame, content_chunks[0], state, config.ui.scrollbars);
+        draw_diff_pane(frame, content_chunks[1], state, config.ui.scrollbars);
     } else {
-        draw_content(frame, content_area, state);
+        draw_content(frame, content_area, state, config.ui.scrollbars);
     }
 
     let theme = &state.theme;
@@ -54,19 +58,29 @@ pub fn draw_dashboard(
         (kb.display_backup(BackupAction::Pull), "pull"),
         (kb.display_backup(BackupAction::Refresh), "refresh"),
         (kb.display_backup(BackupAction::OpenSettings), "settings"),
-        (kb.display_backup(BackupAction::Help), "help"),
-        (kb.display_backup(BackupAction::Back), "back"),
+        (kb.backup_keys_display(BackupAction::Back), "back"),
+        (
+            format!("F1/{}", kb.backup_keys_display(BackupAction::Help)),
+            "help",
+        ),
+        ("F2".to_string(), "keybinds"),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
-    crate::ui::draw_status_bar(
-        frame,
-        footer_area,
-        theme,
-        None,
-        hint_line,
-        None,
-        state.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Backup);
+    ctx.area = Some(footer_area);
+    ctx.backup = Some(state);
+    ctx.app_status = app_status;
+    ctx.hints = Some(hint_line.spans);
+    if let Some(p) = &state.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Backup, theme);
+    crate::ui::draw_status_bar(frame, footer_area, theme, left_line, right_line);
     if state.input_mode == BackupInputMode::EditCommitMessage {
         draw_commit_popup(frame, area, state);
     }
@@ -91,11 +105,17 @@ pub fn backup_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'stat
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_header(
     frame: &mut Frame,
     area: Rect,
+    config: &crate::config::ClinConfig,
+    app_status: Option<&str>,
+    vault_path: &Path,
+    date_format: &str,
     state: &BackupState,
     icon_mode: crate::config::IconMode,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let theme = &state.theme;
     let backup_tabs_array = backup_tabs(icon_mode);
@@ -108,25 +128,45 @@ pub fn draw_header(
     } else {
         0
     };
-    let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
-    let right_text = state.status.as_ref().map(|status| {
-        let modified_text = if !status.staged.is_empty()
-            || !status.unstaged.is_empty()
-            || !status.untracked.is_empty()
-        {
-            "modified"
+    let hovered = mouse_pos.and_then(|(col, row)| {
+        if row == area.y {
+            let region = crate::ui::title_bar_tabs_region(area, "Backup");
+            crate::ui::hit_test_tabs(
+                &tabs,
+                area.x,
+                area.width,
+                region.x,
+                col,
+                state.tab_icons_only,
+                icon_mode,
+            )
         } else {
-            "clean"
-        };
-        Line::from(format!(
-            "{} | ↑{} ↓{} | {}",
-            status.branch, status.ahead, status.behind, modified_text
-        ))
+            None
+        }
     });
-    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None, right_text);
+    let spans = crate::ui::build_tab_spans(
+        &tabs,
+        active,
+        hovered,
+        theme,
+        state.tab_icons_only,
+        icon_mode,
+    );
+
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Backup);
+    ctx.area = Some(area);
+    ctx.backup = Some(state);
+    ctx.app_status = app_status;
+    ctx.vault_path = Some(vault_path);
+    ctx.date_format = Some(date_format);
+    let (left_line, right_line) =
+        crate::statusline::render_header(&ctx, &config.statusline, ViewMode::Backup, theme);
+    crate::ui::draw_view_title_bar_with_tabs(
+        frame, area, "Backup", theme, left_line, spans, right_line, app_status, 0,
+    );
 }
 
-fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
+fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState, scrollbars_enabled: bool) {
     let theme = &state.theme;
 
     if !state.settings.enabled || state.status.is_none() {
@@ -227,6 +267,28 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             }
         }
 
+        let hovered_idx = state.mouse_pos.and_then(|(col, row)| {
+            let inner_y = area.y + 1;
+            let inner_h = area.height.saturating_sub(2);
+            let inner_x = area.x + 2;
+            let inner_w = area.width.saturating_sub(4);
+            if col >= inner_x
+                && col < inner_x + inner_w
+                && row >= inner_y
+                && row < inner_y + inner_h
+            {
+                crate::ui::list_index_at(row, inner_y, 1, state.list_state.offset(), items.len())
+                    .filter(|i| state.file_index_at_rendered_line(*i).is_some())
+            } else {
+                None
+            }
+        });
+        if let Some(h_idx) = hovered_idx
+            && Some(h_idx) != state.list_state.selected()
+        {
+            items[h_idx] = items[h_idx].clone().style(theme.hover_style());
+        }
+
         let list = List::new(items)
             .block(
                 Block::default()
@@ -248,6 +310,25 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.list_state);
+        let content_len = state.selectable_files.len();
+        let viewport_len = area.height.saturating_sub(2) as usize;
+        let meta = crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(area),
+            content_len,
+            viewport_len,
+        };
+        state.last_content_scroll = Some(meta);
+        if scrollbars_enabled {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                state.selected_index,
+                content_len.saturating_sub(1),
+                &state.theme,
+            );
+        }
     } else if state.selected_section == crate::backup::state::BackupSection::History {
         let mut items = Vec::new();
         items.push(ListItem::new(Line::from(Span::styled(
@@ -281,6 +362,41 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             }
         }
 
+        let hovered_idx = state.mouse_pos.and_then(|(col, row)| {
+            let inner_y = area.y + 1;
+            let inner_h = area.height.saturating_sub(2);
+            let inner_x = area.x + 2;
+            let inner_w = area.width.saturating_sub(4);
+            if col >= inner_x
+                && col < inner_x + inner_w
+                && row >= inner_y
+                && row < inner_y + inner_h
+            {
+                let idx = crate::ui::list_index_at(
+                    row,
+                    inner_y,
+                    1,
+                    state.history_list_state.offset(),
+                    items.len(),
+                );
+                if let Some(idx) = idx
+                    && idx > 0
+                    && !state.commits.is_empty()
+                {
+                    Some(idx)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+        if let Some(h_idx) = hovered_idx
+            && Some(h_idx) != state.history_list_state.selected()
+        {
+            items[h_idx] = items[h_idx].clone().style(theme.hover_style());
+        }
+
         let list = List::new(items)
             .block(
                 Block::default()
@@ -303,6 +419,25 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.history_list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.history_list_state);
+        let content_len = state.commits.len();
+        let viewport_len = area.height.saturating_sub(2) as usize;
+        let meta = crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(area),
+            content_len,
+            viewport_len,
+        };
+        state.last_content_scroll = Some(meta);
+        if scrollbars_enabled {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                state.selected_commit_index,
+                content_len.saturating_sub(1),
+                &state.theme,
+            );
+        }
     }
 
     // Status Message Flash
@@ -324,7 +459,12 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
     state.last_content_height = area.height;
 }
 
-fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
+fn draw_diff_pane(
+    frame: &mut Frame,
+    area: Rect,
+    state: &mut BackupState,
+    scrollbars_enabled: bool,
+) {
     let theme = &state.theme;
     let block = Block::default()
         .title(" Diff ")
@@ -376,12 +516,32 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             };
             lines.push(Line::from(Span::styled(line, style)));
         }
-
+        let lines_len = lines.len();
         let paragraph = Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: false })
             .scroll((state.diff_scroll, 0));
         frame.render_widget(paragraph, area);
+        let content_len = lines_len;
+        let viewport_len = area.height as usize;
+        let meta = crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(area),
+            content_len,
+            viewport_len,
+        };
+        state.last_diff_scroll = Some(meta);
+        state.last_diff_area = Some(area);
+        if scrollbars_enabled {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                state.diff_scroll as usize,
+                content_len.saturating_sub(viewport_len),
+                &state.theme,
+            );
+        }
     }
     state.last_diff_height = area.height;
 }
@@ -398,13 +558,12 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             "cancel",
         ),
     ];
-    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "COMMIT",
         crate::ui::PopupSize::Prompt,
-        &hint_line,
+        crate::ui::PopupHints::Keybinds(&hints_items),
         theme,
     );
 
@@ -448,16 +607,14 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             "close",
         ),
     ];
-    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "BACKUP SETTINGS",
         crate::ui::PopupSize::Large,
-        &hint_line,
+        crate::ui::PopupHints::Keybinds(&hints_items),
         theme,
     );
-
     let outer_block = Block::default()
         .style(theme.bg_style())
         .borders(Borders::ALL)
@@ -494,10 +651,19 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
                 theme.muted
             };
 
+            let is_hovered = state
+                .mouse_pos
+                .is_some_and(|(col, row)| crate::events::contains_cell(area, col, row));
+            let block_style = if is_hovered && state.settings.focused_field != field {
+                theme.hover_style()
+            } else {
+                theme.bg_style()
+            };
+
             let block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
-                .style(theme.bg_style());
+                .style(block_style);
 
             let inner = block.inner(area);
             let text = format!("{label}: {state_text}");
@@ -506,7 +672,7 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
                 Style::default().fg(style).add_modifier(Modifier::BOLD),
             ))
             .alignment(Alignment::Center)
-            .style(theme.bg_style());
+            .style(block_style);
 
             frame.render_widget(block, area);
             frame.render_widget(para, inner);
@@ -558,6 +724,14 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     ];
 
     for (area, field, placeholder, textarea) in text_fields {
+        let is_hovered = state
+            .mouse_pos
+            .is_some_and(|(col, row)| crate::events::contains_cell(area, col, row));
+        let block_style = if is_hovered && state.settings.focused_field != field {
+            theme.hover_style()
+        } else {
+            theme.bg_style()
+        };
         let border_color = if state.settings.focused_field == field {
             theme.heading
         } else {
@@ -585,7 +759,7 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
-                .style(theme.bg_style()),
+                .style(block_style),
         );
 
         frame.render_widget(&cloned, area);
@@ -593,11 +767,16 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
     // Save Button
     let is_save_focused = state.settings.focused_field == SettingsField::SaveButton;
+    let is_save_hovered = state
+        .mouse_pos
+        .is_some_and(|(col, row)| crate::events::contains_cell(chunks[7], col, row));
     let save_style = if is_save_focused {
         Style::default()
             .fg(theme.highlight_fg)
             .bg(theme.accent)
             .add_modifier(Modifier::BOLD)
+    } else if is_save_hovered {
+        theme.hover_style().add_modifier(Modifier::BOLD)
     } else {
         Style::default()
             .fg(theme.accent)
@@ -613,6 +792,8 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         }))
         .style(if is_save_focused {
             Style::default().bg(theme.accent)
+        } else if is_save_hovered {
+            theme.hover_style()
         } else {
             theme.bg_style()
         });

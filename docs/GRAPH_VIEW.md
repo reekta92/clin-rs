@@ -8,7 +8,7 @@ Technical docs for the force-directed graph module — visualizes the note corpu
 
 The graph view displays all notes as nodes with edges representing `[[wikilinks]]` connections between them. It uses a force-directed layout simulation (`fdg_sim` crate) that runs in a background thread, settling into a stable configuration.
 
-**Source:** `src/graf/` — modules: `app`, `graph`, `input`, `physics`, `render`, `state`, `themes`, `ui`, `util`, `viewport`
+**Source:** `src/graf/` — modules: `app`, `graph`, `input`, `physics`, `render`, `spatial`, `themes`, `ui`, `util`, `viewport`
 
 ---
 
@@ -19,10 +19,10 @@ The graph view displays all notes as nodes with edges representing `[[wikilinks]
 1. Lists all note IDs from `Storage`
 2. Loads each note summary (title, tags, folder, links)
 3. Filters out nodes that don't meet criteria:
-   - `min_links` — minimum link threshold
+   - `show_orphan` — show isolated notes with no links
    - `exclude_tags` — skip notes with these tags
    - `exclude_patterns` — skip notes matching path patterns
-   - `max_nodes` — cap total nodes
+   - `max_node` — cap total nodes
 4. Creates force nodes with `GraphNodeData`
 5. Creates edges from `[[wikilinks]]` extracted by `extract_wikilinks()`
 6. Resolves links via title matching (case-insensitive)
@@ -134,8 +134,9 @@ The simulation is considered "settled" when total kinetic energy drops below `0.
 ### Preview Pane
 
 The Graph view supports a preview pane identically to the List view. When enabled, it renders the contents of the currently selected node.
-+ **Positioning**: The preview pane respects the `list.preview_position` setting (right, bottom, etc.).
-+ **Toggling**: Can be toggled on/off independently of the List view's preview state.
+
+- **Positioning**: The preview pane uses the list preview position (`"left"` or `"right"`).
+- **Toggling**: It can be toggled independently of the List view's preview state.
 
 
 ### Keyboard

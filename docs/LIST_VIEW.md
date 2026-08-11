@@ -8,7 +8,7 @@ The List view is the primary interface for browsing, searching, and managing you
 
 The List view (`ViewMode::List`) provides a flexible way to interact with your note library. Whether you prefer a visual grid of cards or a structured file tree, the List view adapts to your workflow.
 
-**Source:** `src/app.rs`, `src/ui.rs` (List rendering logic)
+**Source:** `src/app.rs`, `src/ui/list_view.rs` (List rendering logic)
 
 ---
 
@@ -37,7 +37,7 @@ The List view features a configurable preview pane that renders the contents of 
 - **Draw Snapshots**: Shows a static preview of `.draw` files.
 
 ### Preview Configuration
-The preview pane can be toggled on/off and its position can be configured (e.g., right, bottom) in your configuration file.
+The preview pane can be toggled on/off and positioned on the left or right in configuration.
 
 ---
 
@@ -59,7 +59,7 @@ When creating a new note (via the "Create new..." tile or keyboard shortcuts), a
 - **Folders**: Organize notes into nested directories.
 
 ### Discovery
-- **Searching**: Use the built-in search popup to find notes by title or content (grep).
+- **Searching**: Use the built-in search popup to find notes by title or content.
 - **Filtering**: Filter the list by tags to narrow down your selection.
 
 ## Bottom Strip Widgets

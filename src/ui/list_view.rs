@@ -1,19 +1,54 @@
 use super::{
-    PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
-    draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
-    draw_view_title_bar, draw_view_title_bar_with_tabs, ext_badge, format_keybind_hints,
-    format_relative_time, list_state_selected, popup_block, popup_hint_line,
+    PopupHints, PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans,
+    draw_confirm_popup, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
+    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
+    popup_block, popup_hint_line, preview_spans,
 };
-use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
+use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
+use unicode_width::UnicodeWidthStr;
 
 const GRID_TILE_W: u16 = 10; // outer width incl. border
 const GRID_TILE_H: u16 = 5; // outer height incl. border
 const GRID_GAP: u16 = 1; // space between tiles (h and v)
 const GRID_LEFT_MARGIN: u16 = 2; // left inset inside list_area
 const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
+
+/// Viewport base span for SubnoteGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
+/// Shared between renderer and mouse handler to prevent drift.
+pub(crate) const SUBNOTE_GRAPH_BASE_SPAN: f64 = 15.0;
+
+/// Viewport base span for FolderGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
+/// Shared between renderer and mouse handler to prevent drift.
+pub(crate) const FOLDER_GRAPH_BASE_SPAN: f64 = 15.0;
+
+/// A hollow (outlined) circle drawn on a ratatui Canvas via Line segments.
+struct HollowCircle {
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    color: ratatui::style::Color,
+}
+
+impl ratatui::widgets::canvas::Shape for HollowCircle {
+    fn draw(&self, painter: &mut ratatui::widgets::canvas::Painter) {
+        let steps = 48u32;
+        for i in 0..steps {
+            let a1 = (i as f64) * std::f64::consts::TAU / steps as f64;
+            let a2 = ((i + 1) as f64) * std::f64::consts::TAU / steps as f64;
+            ratatui::widgets::canvas::Line {
+                x1: self.cx + self.radius * a1.cos(),
+                y1: self.cy + self.radius * a1.sin(),
+                x2: self.cx + self.radius * a2.cos(),
+                y2: self.cy + self.radius * a2.sin(),
+                color: self.color,
+            }
+            .draw(painter);
+        }
+    }
+}
 
 /// Compute the per-section rectangles within the calendar strip area.
 pub(crate) fn section_rects(cal_rect: Rect, active: &[crate::config::NotesSection]) -> Vec<Rect> {
@@ -83,8 +118,12 @@ fn draw_strip_draw(
     let grid = crate::snapshot::render_draw_snapshot_with_size(
         data,
         &app.app_theme,
+        app.config.ui.icon_mode,
         content_area.width,
         content_area.height,
+        1.0,
+        0.0,
+        0.0,
     );
     frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), content_area);
 }
@@ -101,7 +140,7 @@ fn draw_strip_graf(
             // Progressive settle: 10 steps per frame to avoid blocking
             if !gs.is_settled && app.graph_preview_steps < 100 {
                 for _ in 0..10 {
-                    crate::graf::physics::simulation_step(gs, 0.01, 0.016);
+                    crate::graf::physics::simulation_step(gs, 0.12);
                     app.graph_preview_steps += 1;
                     if gs.is_settled {
                         break;
@@ -185,7 +224,7 @@ fn draw_strip_graf(
                     .node_own_color
                     .get(&idx)
                     .copied()
-                    .unwrap_or(Color::Gray);
+                    .unwrap_or(app.app_theme.muted);
                 let col = world_to_col(node.location.x as f64);
                 let sub_row = world_to_subrow(node.location.y as f64);
                 grid[sub_row * iw + col] = Some(color);
@@ -233,7 +272,395 @@ fn draw_strip_graf(
     }
 }
 
+/// Shorten a line segment so each endpoint stops at the border of a circle
+/// of the given radius centered on that endpoint. Returns the original
+/// endpoints unchanged when the two circles overlap (distance <= r1 + r2)
+/// or the endpoints coincide, so degenerate cases don't produce NaNs.
+fn shorten_segment_to_borders(
+    x1: f64,
+    y1: f64,
+    r1: f64,
+    x2: f64,
+    y2: f64,
+    r2: f64,
+) -> (f64, f64, f64, f64) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist = dx.hypot(dy);
+    if dist <= r1 + r2 || dist == 0.0 {
+        return (x1, y1, x2, y2);
+    }
+    let ux = dx / dist;
+    let uy = dy / dist;
+    (x1 + ux * r1, y1 + uy * r1, x2 - ux * r2, y2 - uy * r2)
+}
+
+/// Compute positions on a circle of radius `r` for `n` items, starting from top
+/// (angle = -π/2). Used by both SubnoteGraph and FolderGraph renderers.
+pub(crate) fn orbit_positions(n: usize, r: f64) -> Vec<(f64, f64)> {
+    (0..n)
+        .map(|i| {
+            let angle = i as f64 * std::f64::consts::TAU / n as f64 - std::f64::consts::FRAC_PI_2;
+            (r * angle.cos(), r * angle.sin())
+        })
+        .collect()
+}
+/// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
+pub fn render_subnote_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    parent_title: &str,
+    subnotes: &[crate::storage::SubNote],
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    use ratatui::symbols::Marker;
+    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
+
+    let zoom = 1.0;
+    let pan_x = 0.0;
+    let pan_y = 0.0;
+
+    // Background
+    let bg = theme.preview_bg_style();
+    frame.render_widget(Block::default().style(bg), rect);
+
+    if subnotes.is_empty() {
+        let line = Line::from(vec![Span::styled(
+            "No subnotes",
+            Style::default().fg(theme.muted),
+        )]);
+        let p = ratatui::widgets::Paragraph::new(line)
+            .style(theme.preview_bg_style())
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(p, rect);
+        return;
+    }
+
+    // World-coordinate layout: parent at origin, subnotes on a circle.
+    let layout_r = 10.0_f64;
+    let parent_r = 3.0_f64;
+    let sub_r = 1.5_f64;
+    let positions = orbit_positions(subnotes.len(), layout_r);
+
+    // Viewport bounds from zoom/pan.
+    let aspect = rect.width as f64 / rect.height as f64;
+    let cell_aspect = 2.0; // terminal cells are ~2× taller than wide
+    let span_x = SUBNOTE_GRAPH_BASE_SPAN / zoom;
+    let span_y = span_x * cell_aspect / aspect;
+    let x_bounds = [pan_x - span_x, pan_x + span_x];
+    let y_bounds = [pan_y - span_y, pan_y + span_y];
+
+    // For on-screen sizing of circles and title offsets.
+    let cells_per_world = rect.width as f64 / (2.0 * span_x);
+
+    // Build shapes.
+    let mut edges: Vec<CanvasLine> = Vec::new();
+    for &(sx, sy) in &positions {
+        let (x1, y1, x2, y2) = shorten_segment_to_borders(0.0, 0.0, parent_r, sx, sy, sub_r);
+        edges.push(CanvasLine {
+            x1,
+            y1,
+            x2,
+            y2,
+            color: theme.border,
+        });
+    }
+    // Wikilink edges: subnote -> subnote.
+    let title_to_idx: std::collections::HashMap<String, usize> = subnotes
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.title.to_lowercase(), i))
+        .collect();
+    let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    for (i, sub) in subnotes.iter().enumerate() {
+        let (sx, sy) = positions[i];
+        for link in crate::storage::extract_wikilinks(&sub.content) {
+            if let Some(&j) = title_to_idx.get(&link.to_lowercase())
+                && j != i
+            {
+                let key = if i < j { (i, j) } else { (j, i) };
+                if drawn.insert(key) {
+                    let (tx, ty) = positions[j];
+                    let (x1, y1, x2, y2) = shorten_segment_to_borders(sx, sy, sub_r, tx, ty, sub_r);
+                    edges.push(CanvasLine {
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        color: theme.success,
+                    });
+                }
+            }
+        }
+    }
+    let parent_circle = HollowCircle {
+        cx: 0.0,
+        cy: 0.0,
+        radius: parent_r,
+        color: theme.accent,
+    };
+    let sub_circles: Vec<HollowCircle> = positions
+        .iter()
+        .map(|&(sx, sy)| HollowCircle {
+            cx: sx,
+            cy: sy,
+            radius: sub_r,
+            color: theme.tag,
+        })
+        .collect();
+
+    // Render Canvas with Braille marker.
+    let canvas = Canvas::default()
+        .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
+        .block(Block::default().style(bg))
+        .marker(Marker::Braille)
+        .x_bounds(x_bounds)
+        .y_bounds(y_bounds)
+        .paint(|ctx| {
+            for edge in &edges {
+                ctx.draw(edge);
+            }
+            ctx.draw(&parent_circle);
+            for sc in &sub_circles {
+                ctx.draw(sc);
+            }
+        });
+    frame.render_widget(canvas, rect);
+
+    // Post-canvas: world -> screen transform for text overlay.
+    let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
+        let col =
+            rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
+        let row = rect.y as f64 + rect.height as f64
+            - (wy - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * rect.height as f64;
+        (col, row)
+    };
+    let buf = frame.buffer_mut();
+    let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
+
+    // Parent title.
+    let (px, py) = world_to_screen(0.0, parent_r);
+    draw_title_above(
+        buf,
+        px,
+        py,
+        parent_title,
+        max_title_len,
+        rect,
+        Style::default().fg(theme.fg),
+    );
+
+    // Subnote titles.
+    for (&(sx, sy), sub) in positions.iter().zip(subnotes.iter()) {
+        let (scx, scy) = world_to_screen(sx, sy);
+        draw_title_above(
+            buf,
+            scx,
+            scy - sub_r * cells_per_world,
+            &sub.title,
+            max_title_len,
+            rect,
+            Style::default().fg(theme.fg),
+        );
+    }
+}
+
+/// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
+/// and focus transitions into subfolders (re-focus) or notes (content card).
+pub fn render_folder_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    focused_label: &str,
+    children: &[crate::list_view::FolderGraphNode],
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    use ratatui::symbols::Marker;
+    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
+
+    let zoom = 1.0;
+    let pan_x = 0.0;
+    let pan_y = 0.0;
+
+    // Background
+    let bg = theme.preview_bg_style();
+    frame.render_widget(Block::default().style(bg), rect);
+
+    if children.is_empty() {
+        let line = Line::from(vec![Span::styled(
+            "Empty folder",
+            Style::default().fg(theme.muted),
+        )]);
+        let p = ratatui::widgets::Paragraph::new(line)
+            .style(theme.preview_bg_style())
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(p, rect);
+        return;
+    }
+
+    // World-coordinate layout: parent at origin, children on a circle.
+    let parent_r = 3.0_f64;
+    let child_r = 1.5_f64;
+
+    // Viewport bounds from zoom/pan.
+    let aspect = rect.width as f64 / rect.height as f64;
+    let cell_aspect = 2.0;
+    let span_x = FOLDER_GRAPH_BASE_SPAN / zoom;
+    let span_y = span_x * cell_aspect / aspect;
+    let x_bounds = [pan_x - span_x, pan_x + span_x];
+    let y_bounds = [pan_y - span_y, pan_y + span_y];
+    let cells_per_world = rect.width as f64 / (2.0 * span_x);
+    // Build shapes: parent->child edges.
+    let mut edges: Vec<CanvasLine> = Vec::new();
+    for child in children {
+        let (x1, y1, x2, y2) =
+            shorten_segment_to_borders(0.0, 0.0, parent_r, child.x, child.y, child_r);
+        edges.push(CanvasLine {
+            x1,
+            y1,
+            x2,
+            y2,
+            color: theme.border,
+        });
+    }
+    // Wikilink edges between note children within the focused folder.
+    let notes_only: Vec<&crate::list_view::FolderGraphNode> =
+        children.iter().filter(|c| c.is_note).collect();
+    if notes_only.len() > 1 {
+        let title_to_idx: std::collections::HashMap<String, usize> = notes_only
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.label.to_lowercase(), i))
+            .collect();
+        let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+        for (i, child) in notes_only.iter().enumerate() {
+            for link in &child.links {
+                if let Some(&j) = title_to_idx.get(&link.to_lowercase())
+                    && j != i
+                {
+                    let key = if i < j { (i, j) } else { (j, i) };
+                    if drawn.insert(key) {
+                        let tx = notes_only[j].x;
+                        let ty = notes_only[j].y;
+                        let (x1, y1, x2, y2) =
+                            shorten_segment_to_borders(child.x, child.y, child_r, tx, ty, child_r);
+                        edges.push(CanvasLine {
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            color: theme.success,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let parent_circle = HollowCircle {
+        cx: 0.0,
+        cy: 0.0,
+        radius: parent_r,
+        color: theme.accent,
+    };
+    let child_circles: Vec<HollowCircle> = children
+        .iter()
+        .map(|c| HollowCircle {
+            cx: c.x,
+            cy: c.y,
+            radius: child_r,
+            color: if c.is_note { theme.tag } else { theme.folder },
+        })
+        .collect();
+
+    // Render Canvas
+    let canvas = Canvas::default()
+        .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
+        .block(Block::default().style(bg))
+        .marker(Marker::Braille)
+        .x_bounds(x_bounds)
+        .y_bounds(y_bounds)
+        .paint(|ctx| {
+            for edge in &edges {
+                ctx.draw(edge);
+            }
+            ctx.draw(&parent_circle);
+            for cc in &child_circles {
+                ctx.draw(cc);
+            }
+        });
+    frame.render_widget(canvas, rect);
+
+    // Post-canvas: world -> screen transform for text overlay.
+    let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
+        let col =
+            rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
+        let row = rect.y as f64 + rect.height as f64
+            - (wy - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * rect.height as f64;
+        (col, row)
+    };
+    let buf = frame.buffer_mut();
+    let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
+
+    // Parent title.
+    let (px, py) = world_to_screen(0.0, parent_r);
+    draw_title_above(
+        buf,
+        px,
+        py,
+        focused_label,
+        max_title_len,
+        rect,
+        Style::default().fg(theme.fg),
+    );
+
+    // Child labels.
+    for child in children {
+        let (scx, scy) = world_to_screen(child.x, child.y);
+        draw_title_above(
+            buf,
+            scx,
+            scy - child_r * cells_per_world,
+            &child.label,
+            max_title_len,
+            rect,
+            Style::default().fg(theme.fg),
+        );
+    }
+}
+/// Draw `text` centered above position (x, y_top) in the buffer, clamped to rect.
+fn draw_title_above(
+    buf: &mut ratatui::buffer::Buffer,
+    x: f64,
+    y_top: f64,
+    text: &str,
+    max_len: usize,
+    rect: Rect,
+    style: Style,
+) {
+    let truncated = crate::graf::util::truncate(text, max_len);
+    if truncated.is_empty() {
+        return;
+    }
+    let title_y = (y_top - 1.0).round() as u16;
+    let title_y = title_y.max(rect.y);
+    let start_x = (x - truncated.chars().count() as f64 / 2.0).round() as u16;
+    for (col, ch) in (start_x..).zip(truncated.chars()) {
+        if col >= rect.x
+            && col < rect.right()
+            && title_y >= rect.y
+            && title_y < rect.bottom()
+            && let Some(cell) = buf.cell_mut((col, title_y))
+        {
+            cell.set_char(ch).set_style(style);
+        }
+    }
+}
+
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
+    let saved_mouse_pos = app.mouse_pos;
+    if app.popups.active.is_some() {
+        app.mouse_pos = None;
+    }
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -248,182 +675,212 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         "Notes"
     };
-    let in_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
-        || app.list.tag_to_assign.is_some();
+    let in_select_mode = app.list.list_mode == crate::list_view::ListMode::Select;
     if in_select_mode {
-        let mode_label = if app.list.tag_to_assign.is_some() {
-            "TAG MODE"
-        } else {
-            "SELECT MODE"
-        };
         let badge_text = format!(
-            " {} \u{2014} {} selected ",
-            mode_label,
+            " SELECT MODE \u{2014} {} selected ",
             app.list.selected_indices.len()
         );
-        let bar = Paragraph::new(Span::styled(
-            badge_text,
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(Alignment::Center);
-        frame.render_widget(bar, chunks[0]);
-    } else if app.preview_fullscreen {
-        let preview_info = get_preview_info(app);
-        draw_view_title_bar(
-            frame,
-            chunks[0],
-            title,
-            &app.app_theme,
-            preview_info,
-            Some(app.status.as_ref()),
-            None,
+        let header_rect = chunks[0];
+        frame.render_widget(Clear, header_rect);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(app.app_theme.accent)),
+            header_rect,
         );
-    } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
-        let mut tabs = vec![
-            (
-                "Vault",
-                Some(crate::ui::get_icon(
-                    "\u{f07b}",
-                    "\u{1f4c1}",
-                    app.config.ui.icon_mode,
-                )),
-            ),
-            (
-                "Pinned",
-                Some(crate::ui::get_icon(
-                    "\u{f4cc}",
-                    "\u{1f4cc}",
-                    app.config.ui.icon_mode,
-                )),
-            ),
-        ];
-        if app.config.list.smart_folders_enabled {
-            tabs.push((
-                "Smart",
-                Some(crate::ui::get_icon(
-                    "\u{f0e7}",
-                    "\u{26a1}",
-                    app.config.ui.icon_mode,
-                )),
-            ));
-        }
-        let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
-            1
-        } else if app.list.grid_folder == VIRTUAL_SMART_PATH
-            || app.list.grid_folder.starts_with('@')
-        {
-            2
-        } else {
-            0
-        };
-        let tab_spans = build_tab_spans(
-            &tabs,
-            selected_idx,
-            &app.app_theme,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
-        );
-        let detail_text = if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let s = &app.notes[*summary_idx];
-            let mut spans = Vec::new();
-
-            let when = format_relative_time(s.updated_at);
-            spans.push(Span::styled(
-                format!(
-                    " {} ",
-                    crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)
-                ),
-                Style::default().fg(app.app_theme.muted),
-            ));
-            spans.push(Span::styled(
-                when.into_owned(),
-                Style::default().fg(app.app_theme.muted),
-            ));
-
-            if !s.tags.is_empty() {
-                spans.push(Span::raw(" | "));
-                spans.push(Span::styled(
-                    format!(
-                        "{} ",
-                        crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.tag)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    s.tags.join(", "),
-                    Style::default().fg(app.app_theme.fg),
-                ));
-            }
-            spans.push(Span::raw(" ")); // padding right
-            Some(Line::from(spans))
-        } else if let Some(crate::app::VisualItem::Folder {
-            name, note_count, ..
-        }) = app.list.visual_list.get(app.list.visual_index)
-            && name != ".."
-        {
-            let mut spans = Vec::new();
-            let suffix = if *note_count == 1 { "note" } else { "notes" };
-            spans.push(Span::styled(
-                format!(
-                    " {} ",
-                    crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
-                ),
-                Style::default().fg(app.app_theme.folder),
-            ));
-            spans.push(Span::styled(
-                format!("{note_count} {suffix}"),
-                Style::default().fg(app.app_theme.fg),
-            ));
-            spans.push(Span::raw(" ")); // padding right
-            Some(Line::from(spans))
-        } else if let Some(crate::app::VisualItem::SmartFolder { note_count, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let mut spans = Vec::new();
-            let suffix = if *note_count == 1 { "note" } else { "notes" };
-            spans.push(Span::styled(
-                format!(
-                    " {} ",
-                    crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
-                ),
-                Style::default().fg(app.app_theme.tag),
-            ));
-            spans.push(Span::styled(
-                format!("{note_count} {suffix}"),
-                Style::default().fg(app.app_theme.fg),
-            ));
-            spans.push(Span::raw(" ")); // padding right
-            Some(Line::from(spans))
-        } else {
-            None
-        };
-
-        draw_view_title_bar_with_tabs(
-            frame,
-            chunks[0],
-            title,
-            tab_spans,
-            &app.app_theme,
-            Some(app.status.as_ref()),
-            detail_text,
+        let text_width = badge_text.chars().count() as u16;
+        let label_x = header_rect.x + (header_rect.width.saturating_sub(text_width)) / 2;
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                badge_text,
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))),
+            Rect::new(label_x, header_rect.y, text_width, 1),
         );
     } else {
-        draw_view_title_bar(
-            frame,
-            chunks[0],
-            title,
-            &app.app_theme,
-            None,
-            Some(app.status.as_ref()),
-            None,
-        );
+        let preview_info = get_preview_info(app);
+        let note = crate::statusline::active_note(app, ViewMode::List);
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
+        ctx.area = Some(chunks[0]);
+        ctx.note = note;
+        ctx.preview_info = preview_info.as_ref();
+        if let Some(pi) = &preview_info {
+            ctx.preview = Some(preview_spans(pi, &app.app_theme));
+        }
+
+        let detail = list_detail_value(app);
+        if let Some(detail) = &detail {
+            ctx.detail = Some(detail.spans_without(&[]));
+            ctx.list_detail = Some(detail.clone());
+        }
+        if app.preview_fullscreen {
+            let left_line = crate::statusline::render_header_left(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+            );
+            let capacity = chunks[0]
+                .width
+                .saturating_sub(left_line.width().min(usize::from(chunks[0].width)) as u16);
+            let right_line = crate::statusline::render_header_right(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+                Some(capacity),
+            );
+            draw_view_title_bar(
+                frame,
+                chunks[0],
+                &app.app_theme,
+                left_line,
+                right_line,
+                Some(app.status.as_ref()),
+                app.load_spinner_tick,
+            );
+        } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
+            let mut tabs = vec![
+                (
+                    "Vault",
+                    Some(crate::ui::get_icon(
+                        "\u{f07b}",
+                        "\u{1f4c1}",
+                        app.config.ui.icon_mode,
+                    )),
+                ),
+                (
+                    "Pinned",
+                    Some(crate::ui::get_icon(
+                        "\u{f4cc}",
+                        "\u{1f4cc}",
+                        app.config.ui.icon_mode,
+                    )),
+                ),
+            ];
+            if app.config.list.smart_folders_enabled {
+                tabs.push((
+                    "Smart",
+                    Some(crate::ui::get_icon(
+                        "\u{f0e7}",
+                        "\u{26a1}",
+                        app.config.ui.icon_mode,
+                    )),
+                ));
+            }
+            // Subnotes tab always visible (like Pinned)
+            tabs.push((
+                "Subnotes",
+                Some(crate::ui::get_icon(
+                    "\u{f02c}",
+                    "\u{1f3f7}",
+                    app.config.ui.icon_mode,
+                )),
+            ));
+            let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
+                1
+            } else if app.list.grid_folder == VIRTUAL_SMART_PATH
+                || app.list.grid_folder.starts_with('@')
+            {
+                2
+            } else if app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder)
+            {
+                if app.config.list.smart_folders_enabled {
+                    3
+                } else {
+                    2
+                }
+            } else {
+                0
+            };
+            let hovered = app.mouse_pos.and_then(|(col, row)| {
+                if row == chunks[0].y {
+                    let region = crate::ui::title_bar_tabs_region(chunks[0], title);
+                    crate::ui::hit_test_tabs(
+                        &tabs,
+                        chunks[0].x,
+                        chunks[0].width,
+                        region.x,
+                        col,
+                        app.config.ui.tab_icons_only,
+                        app.config.ui.icon_mode,
+                    )
+                } else {
+                    None
+                }
+            });
+            let tab_spans = build_tab_spans(
+                &tabs,
+                selected_idx,
+                hovered,
+                &app.app_theme,
+                app.config.ui.tab_icons_only,
+                app.config.ui.icon_mode,
+            );
+
+            let left_line = crate::statusline::render_header_left(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+            );
+            let tab_width = tab_spans
+                .iter()
+                .map(|span| span.content.width() as u16)
+                .fold(0u16, u16::saturating_add);
+            let tabs_rect = crate::ui::title_bar_tabs_rect(chunks[0], title, tab_width);
+            let occupied = chunks[0]
+                .x
+                .saturating_add(left_line.width().min(usize::from(chunks[0].width)) as u16)
+                .max(tabs_rect.right());
+            let right_line = crate::statusline::render_header_right(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+                Some(chunks[0].right().saturating_sub(occupied)),
+            );
+            draw_view_title_bar_with_tabs(
+                frame,
+                chunks[0],
+                title,
+                &app.app_theme,
+                left_line,
+                tab_spans,
+                right_line,
+                Some(app.status.as_ref()),
+                app.load_spinner_tick,
+            );
+        } else {
+            let left_line = crate::statusline::render_header_left(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+            );
+            let capacity = chunks[0]
+                .width
+                .saturating_sub(left_line.width().min(usize::from(chunks[0].width)) as u16);
+            let right_line = crate::statusline::render_header_right(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+                Some(capacity),
+            );
+            draw_view_title_bar(
+                frame,
+                chunks[0],
+                &app.app_theme,
+                left_line,
+                right_line,
+                Some(app.status.as_ref()),
+                app.load_spinner_tick,
+            );
+        }
     }
 
     let (list_area, preview_area, calendar_area) = list_view_layout(
@@ -443,15 +900,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
     if !app.preview_fullscreen {
         let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-        let mut items: Vec<ListItem> = Vec::new();
 
         if is_grid {
             app.list.grid_tiles.clear();
+            app.list.last_scroll = None;
 
             // --- render directory breadcrumbs at the top of the list area ---
             let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
             let is_smart =
                 app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@');
+            let is_subnotes = app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder);
             let mut spans = Vec::new();
             if is_pinned {
                 spans.push(Span::styled(
@@ -460,18 +919,29 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)
                     ),
                     Style::default()
-                        .fg(app.app_theme.heading)
+                        .fg(app.app_theme.pinned)
                         .add_modifier(Modifier::BOLD),
                 ));
             } else if is_smart {
+                let smart_icon =
+                    crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
+                let smart_text = format!(" {smart_icon} Smart");
+                let smart_w = smart_text.chars().count() as u16;
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    row == list_area.y + 1
+                        && col >= list_area.x
+                        && col < list_area.x + smart_w
+                        && app.list.grid_folder != VIRTUAL_SMART_PATH
+                });
                 spans.push(Span::styled(
-                    format!(
-                        " {} Smart",
-                        crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.tag)
-                        .add_modifier(Modifier::BOLD),
+                    smart_text,
+                    if is_hovered {
+                        app.app_theme.hover_style()
+                    } else {
+                        Style::default()
+                            .fg(app.app_theme.smart)
+                            .add_modifier(Modifier::BOLD)
+                    },
                 ));
                 if app.list.grid_folder.starts_with('@') {
                     let label = if app.list.grid_folder == "@today" {
@@ -484,6 +954,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         tag
                     } else if let Some(custom) = app.list.grid_folder.strip_prefix("@custom:") {
                         custom
+                    } else if app.list.grid_folder == "@tagged" {
+                        "Tagged"
                     } else {
                         &app.list.grid_folder
                     };
@@ -496,26 +968,95 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         Style::default().fg(app.app_theme.fg),
                     ));
                 }
-            } else {
+            } else if is_subnotes {
+                let sub_icon =
+                    crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", app.config.ui.icon_mode);
+                let sub_text = format!(" {sub_icon} Subnotes");
+                let sub_w = sub_text.chars().count() as u16;
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    row == list_area.y + 1
+                        && col >= list_area.x
+                        && col < list_area.x + sub_w
+                        && app.list.grid_folder != VIRTUAL_SUBNOTES_PATH
+                });
                 spans.push(Span::styled(
-                    format!(
-                        " {} Vault",
-                        crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.folder)
-                        .add_modifier(Modifier::BOLD),
+                    sub_text,
+                    if is_hovered {
+                        app.app_theme.hover_style()
+                    } else {
+                        Style::default()
+                            .fg(app.app_theme.subnote)
+                            .add_modifier(Modifier::BOLD)
+                    },
+                ));
+                if crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder) {
+                    let parent_id =
+                        crate::app::App::subnotes_parent_id_from_grid_path(&app.list.grid_folder);
+                    let label = app
+                        .notes
+                        .iter()
+                        .find(|n| n.id == parent_id)
+                        .map(|n| n.title.clone())
+                        .unwrap_or_else(|| parent_id.to_string());
+                    spans.push(Span::styled(
+                        " / ",
+                        Style::default().fg(app.app_theme.muted),
+                    ));
+                    spans.push(Span::styled(label, Style::default().fg(app.app_theme.fg)));
+                }
+            } else {
+                let vault_icon =
+                    crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode);
+                let vault_text = format!(" {vault_icon} Vault");
+                let vault_w = vault_text.chars().count() as u16;
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    row == list_area.y + 1
+                        && col >= list_area.x
+                        && col < list_area.x + vault_w
+                        && !app.list.grid_folder.is_empty()
+                });
+                spans.push(Span::styled(
+                    vault_text,
+                    if is_hovered {
+                        app.app_theme.hover_style()
+                    } else {
+                        Style::default()
+                            .fg(app.app_theme.folder)
+                            .add_modifier(Modifier::BOLD)
+                    },
                 ));
                 if !app.list.grid_folder.is_empty() {
-                    for part in app.list.grid_folder.split('/') {
+                    let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
+                    let mut current_path = String::new();
+                    let mut offset = list_area.x + vault_w;
+                    for (part_idx, part) in parts.iter().enumerate() {
                         spans.push(Span::styled(
                             " / ",
                             Style::default().fg(app.app_theme.muted),
                         ));
+                        offset += 3;
+                        let part_w = part.chars().count() as u16;
+                        if !current_path.is_empty() {
+                            current_path.push('/');
+                        }
+                        current_path.push_str(part);
+
+                        let is_part_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                            row == list_area.y + 1
+                                && col >= offset
+                                && col < offset + part_w
+                                && part_idx < parts.len() - 1
+                        });
+
                         spans.push(Span::styled(
                             part.to_string(),
-                            Style::default().fg(app.app_theme.fg),
+                            if is_part_hovered {
+                                app.app_theme.hover_style()
+                            } else {
+                                Style::default().fg(app.app_theme.fg)
+                            },
                         ));
+                        offset += part_w;
                     }
                 }
             }
@@ -531,26 +1072,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
 
             let len = app.list.visual_list.len();
+            let total_rows = len.div_ceil(cols);
+            let max_scroll = total_rows.saturating_sub(rows);
 
-            // --- clamp grid_scroll so the selected tile stays visible, without over-scrolling ---
-            if cols > 0 && rows > 0 && len > 0 {
-                let sel_row = app.list.visual_index / cols;
-                if sel_row < app.list.grid_scroll {
-                    app.list.grid_scroll = sel_row;
+            // grid_scroll is viewport-row offset. Keep selected tile visible without blank
+            // overscroll below a final partial row.
+            if len > 0 && rows > 0 {
+                let sel_row = app.list.visual_index.min(len.saturating_sub(1)) / cols;
+                let mut scroll = app.list.grid_scroll.min(max_scroll);
+                if sel_row < scroll {
+                    scroll = sel_row;
+                } else if sel_row >= scroll.saturating_add(rows) {
+                    scroll = sel_row.saturating_add(1).saturating_sub(rows);
                 }
-                let last_visible = app.list.grid_scroll + rows.saturating_sub(1);
-                if sel_row > last_visible {
-                    app.list.grid_scroll = sel_row.saturating_sub(rows.saturating_sub(1));
-                }
-                let max_scroll = (len - 1) / cols;
-                if app.list.grid_scroll > max_scroll {
-                    app.list.grid_scroll = max_scroll;
-                }
+                app.list.grid_scroll = scroll.min(max_scroll);
             } else {
                 app.list.grid_scroll = 0;
+                app.list.scroll_drag = None;
             }
 
-            let start = app.list.grid_scroll * cols;
+            let start = app.list.grid_scroll.saturating_mul(cols);
             let count = (rows * cols).min(len.saturating_sub(start));
             let buf = frame.buffer_mut();
 
@@ -569,21 +1110,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 );
                 let is_selected = vi == app.list.visual_index;
                 let in_selection = app.list.selected_indices.contains(&vi);
+                let is_hovered = app
+                    .mouse_pos
+                    .is_some_and(|(col, row)| crate::events::contains_cell(tile_rect, col, row));
 
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
                 let (icon_char, text_label, glyph_color, raw_name) = match item {
-                    crate::app::VisualItem::Folder { name, .. } => {
-                        let is_pinned = name == VIRTUAL_PINNED_LABEL;
+                    crate::app::VisualItem::Folder {
+                        path,
+                        name,
+                        is_pinned,
+                        ..
+                    } => {
+                        let is_pinned = *is_pinned;
                         let is_parent = name == "..";
-                        let (ic, label) = if is_pinned {
+                        let is_subnotes = !is_parent
+                            && (path.as_str() == crate::app::VIRTUAL_SUBNOTES_PATH
+                                || crate::app::App::is_subnotes_parent_grid_path(path));
+                        let (ic, label) = if is_subnotes {
                             (
                                 crate::ui::get_char(
-                                    '\u{f4cc}',
-                                    '\u{1f4cc}',
+                                    '\u{f15b}',
+                                    '\u{1f4c3}',
                                     app.config.ui.icon_mode,
                                 ),
-                                "F",
+                                "SN",
                             )
                         } else if is_parent {
                             (
@@ -595,6 +1147,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 "^",
                             )
                         } else {
+                            // Always folder icon — if pinned, pin glyph goes top-right
                             (
                                 crate::ui::get_char(
                                     '\u{f07b}',
@@ -605,7 +1158,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             )
                         };
                         let col = if is_pinned {
-                            app.app_theme.heading
+                            app.app_theme.pinned
+                        } else if is_subnotes {
+                            app.app_theme.subnote
                         } else {
                             app.app_theme.folder
                         };
@@ -653,8 +1208,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 ),
                                 "Custom",
                             ),
+                            crate::list_view::SmartFolderKind::Tagged => (
+                                crate::ui::get_char(
+                                    '\u{f0e7}',
+                                    '\u{26a1}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Tagged",
+                            ),
                         };
-                        (ic, text_label, app.app_theme.tag, label.clone())
+                        (ic, text_label, app.app_theme.smart, label.clone())
                     }
                     crate::app::VisualItem::Note {
                         summary_idx,
@@ -664,14 +1227,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         ..
                     } => {
                         let s = &app.notes[*summary_idx];
+                        let is_image = std::path::Path::new(&s.id)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .is_some_and(crate::storage::is_image_ext);
+                        let is_unknown = {
+                            let ext = std::path::Path::new(&s.id)
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .unwrap_or("");
+                            !*is_clin
+                                && !*is_draw
+                                && !*is_canvas
+                                && !is_image
+                                && ext != "md"
+                                && ext != "txt"
+                        };
                         let col = if s.pinned {
-                            app.app_theme.heading
+                            app.app_theme.pinned
                         } else if *is_clin {
                             app.app_theme.destructive
                         } else if *is_draw {
                             app.app_theme.success
                         } else if *is_canvas {
                             app.app_theme.accent
+                        } else if is_image {
+                            app.app_theme.warning
                         } else {
                             app.app_theme.text
                         };
@@ -683,6 +1264,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             crate::ui::get_char('\u{f1fc}', '\u{270f}', app.config.ui.icon_mode)
                         } else if *is_canvas {
                             crate::ui::get_char('\u{f005}', '\u{2b50}', app.config.ui.icon_mode)
+                        } else if is_image {
+                            crate::ui::get_char('\u{f1c5}', '\u{1f5bc}', app.config.ui.icon_mode)
+                        } else if is_unknown {
+                            '?'
                         } else {
                             crate::ui::get_char('\u{f15c}', '\u{1f4c4}', app.config.ui.icon_mode)
                         };
@@ -692,6 +1277,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             "D"
                         } else if *is_canvas {
                             "C"
+                        } else if is_unknown {
+                            "?"
                         } else {
                             "MD"
                         };
@@ -703,17 +1290,40 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         app.app_theme.success,
                         "Create...".to_string(),
                     ),
+                    crate::app::VisualItem::Subnote {
+                        parent_id,
+                        subnote_idx,
+                        ..
+                    } => {
+                        let ic =
+                            crate::ui::get_char('\u{f02c}', '\u{1f3f7}', app.config.ui.icon_mode);
+                        let title = app
+                            .subnotes_view_cache
+                            .iter()
+                            .find_map(|(p, subs)| {
+                                if p == parent_id {
+                                    subs.get(*subnote_idx).map(|s| s.title.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
+                        (ic, "SN", app.app_theme.subnote, title)
+                    }
                 };
 
                 // --- tile border (plain border = "button") ---
                 let mut block = Block::default().borders(Borders::ALL);
-                // Selected (in multi-select set) tiles get an accent-filled interior; the
-                // cursor tile keeps its highlight_bg border on top of any fill so a tile
-                // that is both selected and cursor stays distinguishable.
+                // Selected tiles get accent bg. Cursor-on-selected gets a brighter border
+                // so the cursor position remains visible on already-selected tiles.
                 if in_selection {
                     block = block.style(Style::default().bg(app.app_theme.accent));
+                } else if is_hovered && !is_selected {
+                    block = block.style(app.app_theme.hover_style());
                 }
-                let border_fg = if is_selected {
+                let border_fg = if is_selected && in_selection {
+                    app.app_theme.highlight_fg
+                } else if is_selected {
                     app.app_theme.highlight_bg
                 } else if in_selection {
                     app.app_theme.accent
@@ -730,6 +1340,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 };
                 let base_style = if in_selection {
                     Style::default().bg(app.app_theme.accent)
+                } else if is_hovered && !is_selected {
+                    app.app_theme.hover_style()
                 } else {
                     Style::default()
                 };
@@ -788,6 +1400,35 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     buf.set_string(tg_x, inner.y, tg.to_string(), tag_style);
                 }
 
+                // --- pin icon: top right corner for pinned folders ---
+                let is_pinned_folder = matches!(
+                    item,
+                    crate::app::VisualItem::Folder {
+                        is_pinned: true,
+                        ..
+                    }
+                );
+                if is_pinned_folder {
+                    let pin_x = inner.x + inner.width.saturating_sub(1);
+                    let pin_fg = if in_selection {
+                        app.app_theme.highlight_fg
+                    } else {
+                        app.app_theme.pinned
+                    };
+                    let pin_style =
+                        base_style
+                            .fg(pin_fg)
+                            .add_modifier(if is_selected || in_selection {
+                                Modifier::BOLD
+                            } else {
+                                Modifier::empty()
+                            });
+                    let pg = crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode);
+                    let pw = unicode_width::UnicodeWidthChar::width(pg).unwrap_or(1) as u16;
+                    let pg_x = pin_x.saturating_sub(pw.saturating_sub(1));
+                    buf.set_string(pg_x, inner.y, pg.to_string(), pin_style);
+                }
+
                 // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
                 let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
                 let mut chars: Vec<char> = sanitized.chars().collect();
@@ -805,6 +1446,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     } else {
                         Style::default().add_modifier(Modifier::BOLD)
                     }
+                } else if is_hovered {
+                    app.app_theme.hover_style()
                 } else {
                     Style::default()
                 };
@@ -824,11 +1467,106 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 });
             }
             // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
-        } else {
-            items.reserve(app.list.display_items.len());
-            for item in &app.list.display_items {
-                items.push(item.clone());
+            if len > 0 && rows > 0 {
+                let meta = crate::ui::scrollbar::ScrollbarMeta {
+                    track: crate::ui::scrollbar::track_rect(list_area),
+                    content_len: total_rows,
+                    viewport_len: rows,
+                };
+                app.list.last_scroll = Some(meta);
+                if !crate::ui::scrollbar::overflows(total_rows, rows) {
+                    app.list.scroll_drag = None;
+                } else if app.config.ui.scrollbars {
+                    crate::ui::scrollbar::draw_scrollbar(
+                        frame,
+                        list_area,
+                        meta.content_len,
+                        meta.viewport_len,
+                        app.list.grid_scroll,
+                        max_scroll,
+                        &app.app_theme,
+                    );
+                }
             }
+        } else {
+            let total_len = app.list.visual_list.len();
+            let viewport_len = list_area.height.saturating_sub(2) as usize;
+
+            let mut offset = app.list.list_state.offset();
+            if offset > total_len.saturating_sub(viewport_len) {
+                offset = total_len.saturating_sub(viewport_len);
+            }
+            if app.list.visual_index < offset {
+                offset = app.list.visual_index;
+            } else if app.list.visual_index >= offset + viewport_len {
+                offset = app
+                    .list
+                    .visual_index
+                    .saturating_add(1)
+                    .saturating_sub(viewport_len);
+            }
+            *app.list.list_state.offset_mut() = offset;
+
+            let end = (offset + viewport_len).min(total_len);
+
+            let inner_x = list_area.x + 2;
+            let inner_y = list_area.y + 1;
+            let inner_w = list_area.width.saturating_sub(4);
+            let inner_h = list_area.height.saturating_sub(2);
+            let hovered_visual_index = app.mouse_pos.and_then(|(col, row)| {
+                if col >= inner_x
+                    && col < inner_x + inner_w
+                    && row >= inner_y
+                    && row < inner_y + inner_h
+                {
+                    crate::ui::list_index_at(row, inner_y, 1, offset, total_len)
+                } else {
+                    None
+                }
+            });
+
+            let mut items = Vec::with_capacity(end.saturating_sub(offset));
+            for idx in offset..end {
+                let item = app.format_visual_item(idx);
+                let in_selection = app.list.selected_indices.contains(&idx);
+                let is_cursor = idx == app.list.visual_index;
+                if is_cursor && in_selection {
+                    items.push(
+                        item.style(
+                            Style::default()
+                                .bg(app.app_theme.accent)
+                                .fg(app.app_theme.highlight_fg)
+                                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                        ),
+                    );
+                } else if in_selection {
+                    items.push(
+                        item.style(
+                            Style::default()
+                                .bg(app.app_theme.accent)
+                                .fg(app.app_theme.highlight_fg)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    );
+                } else if is_cursor {
+                    items.push(
+                        item.style(
+                            Style::default()
+                                .fg(app.app_theme.highlight_fg)
+                                .bg(app.app_theme.highlight_bg)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    );
+                } else if Some(idx) == hovered_visual_index {
+                    items.push(item.style(app.app_theme.hover_style()));
+                } else {
+                    items.push(item);
+                }
+            }
+            let relative_selected = app.list.visual_index.saturating_sub(offset);
+            let mut rel_state = ListState::default();
+            rel_state.select(Some(relative_selected));
+
             let list = List::new(items)
                 .block(
                     Block::default()
@@ -839,12 +1577,28 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .highlight_style(
                     Style::default()
                         .fg(app.app_theme.highlight_fg)
-                        .bg(app.app_theme.highlight_bg)
                         .add_modifier(Modifier::BOLD),
                 );
 
-            app.list.list_state.select(Some(app.list.visual_index));
-            frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
+            frame.render_stateful_widget(list, list_area, &mut rel_state);
+            let content_len = total_len;
+            let meta = crate::ui::scrollbar::ScrollbarMeta {
+                track: crate::ui::scrollbar::track_rect(list_area),
+                content_len,
+                viewport_len,
+            };
+            app.list.last_scroll = Some(meta);
+            if app.config.ui.scrollbars {
+                crate::ui::scrollbar::draw_scrollbar(
+                    frame,
+                    list_area,
+                    content_len,
+                    viewport_len,
+                    app.list.visual_index,
+                    content_len.saturating_sub(1),
+                    &app.app_theme,
+                );
+            }
         }
     }
     if let Some(preview_rect) = preview_area {
@@ -858,21 +1612,182 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 });
 
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
-        let content = if content_is_current || app.list.pending_preview_update {
-            app.list.preview_content.as_ref()
-        } else {
-            None
-        };
+        let is_current_or_pending = content_is_current || app.list.pending_preview_update;
 
-        crate::preview::draw_preview_pane(
-            frame,
-            preview_rect,
-            &app.app_theme,
-            content,
-            hide_encrypted,
-            app.list.snapshot_scroll_offset,
-            app.config.ui.icon_mode,
-        );
+        // SubnoteGraph: render statically from cache (no physics, no GraphState).
+        // We bypass draw_preview_pane because it doesn't have access to App.
+        let mut rendered_graph = false;
+        if (content_is_current || app.list.pending_preview_update)
+            && let Some(crate::list_view::PreviewContent::SubnoteGraph { parent_id }) =
+                app.list.preview_content.as_ref()
+        {
+            // Look up parent title + subnote titles from the cache (no physics, no GraphState).
+            let parent_title = app
+                .notes
+                .iter()
+                .find(|n| n.id == *parent_id)
+                .map(|n| n.title.clone())
+                .unwrap_or_else(|| parent_id.clone());
+            let subnotes: Vec<crate::storage::SubNote> = app
+                .subnotes_view_cache
+                .iter()
+                .find(|(p, _)| p == parent_id)
+                .map(|(_, subs)| subs.clone())
+                .unwrap_or_default();
+            render_subnote_graph_static(
+                frame,
+                preview_rect,
+                &parent_title,
+                &subnotes,
+                &app.app_theme,
+            );
+            rendered_graph = true;
+        }
+        if !rendered_graph
+            && (content_is_current || app.list.pending_preview_update)
+            && let Some(crate::list_view::PreviewContent::FolderGraph {
+                root_path: _,
+                focused_path,
+            }) = app.list.preview_content.as_ref()
+        {
+            // Extract all immutable data before the mutable render call.
+            let (children, label) = app.folder_graph_children(focused_path);
+            let positions = orbit_positions(children.len(), 10.0);
+            let positioned: Vec<crate::list_view::FolderGraphNode> = children
+                .iter()
+                .zip(positions.iter())
+                .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
+                .collect();
+            render_folder_graph_static(frame, preview_rect, &label, &positioned, &app.app_theme);
+            rendered_graph = true;
+        }
+        if !rendered_graph {
+            let content = if is_current_or_pending {
+                app.list.preview_content.as_ref()
+            } else {
+                None
+            };
+            crate::preview::draw_preview_pane(
+                frame,
+                preview_rect,
+                &app.app_theme,
+                content,
+                hide_encrypted,
+                app.list.snapshot_scroll_offset,
+                app.config.ui.icon_mode,
+            );
+        }
+
+        // Overlay decoded images on the preview text
+        if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
+            &app.list.preview_content
+            && let Some(doc) = renderer.document()
+            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+        {
+            let page = renderer.current_page_range();
+            let scroll = app.list.snapshot_scroll_offset as usize;
+            let start = page.start.saturating_add(scroll).min(page.end);
+            let block = Block::default()
+                .style(app.app_theme.preview_bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 1));
+            let inner = block.inner(preview_rect);
+            let end = (start + inner.height as usize).min(page.end);
+            let range = start..end;
+            let col_width = inner.width;
+
+            for (local_line_idx, url) in doc.image_slots(range) {
+                let resolved = app.storage.resolve_attachment(url);
+                let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
+                if !path.exists() {
+                    continue;
+                }
+                let key = crate::image_render::ImageKey { path, mtime: 0 };
+                if app.list.image_cache.get_proto(&key).is_none() {
+                    app.list
+                        .image_cache
+                        .request(key.clone(), 512, decode_tx, picker);
+                }
+                if let Some(proto) = app.list.image_cache.get_proto(&key) {
+                    let row = inner.y + local_line_idx as u16;
+                    let max_h = app.config.image.preview_rows as u16;
+                    let img_rect = Rect::new(
+                        inner.x,
+                        row,
+                        col_width.min(inner.width),
+                        max_h.min(inner.bottom().saturating_sub(row)),
+                    );
+                    if img_rect.width > 1 && img_rect.height > 1 {
+                        frame.render_widget(Clear, img_rect);
+                        frame.render_widget(
+                            Block::default().style(app.app_theme.preview_bg_style()),
+                            img_rect,
+                        );
+                        frame.render_stateful_widget(
+                            ratatui_image::StatefulImage::default()
+                                .resize(ratatui_image::Resize::Fit(None)),
+                            img_rect,
+                            proto,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Overlay standalone image file on the preview pane
+        if (content_is_current || app.list.pending_preview_update)
+            && let Some(crate::list_view::PreviewContent::Image(path)) = &app.list.preview_content
+            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+        {
+            let inner_pad = 2_u16;
+            let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
+            let key = crate::image_render::ImageKey {
+                path: path.clone(),
+                mtime: 0,
+            };
+            if app.list.image_cache.get_proto(&key).is_none() {
+                app.list
+                    .image_cache
+                    .request(key.clone(), 512, decode_tx, picker);
+            }
+            if let Some(proto) = app.list.image_cache.get_proto(&key) {
+                // available area (full preview minus padding) — the bounding box
+                let max_w = col_width.min(preview_rect.width.saturating_sub(2));
+                let max_h = preview_rect.height.saturating_sub(2);
+                let bound_rect =
+                    Rect::new(preview_rect.x + inner_pad, preview_rect.y + 1, max_w, max_h);
+                // clear the full bounding box (removes any "Image loading..." text)
+                if bound_rect.width > 1 && bound_rect.height > 1 {
+                    frame.render_widget(Clear, bound_rect);
+                    frame.render_widget(
+                        Block::default().style(app.app_theme.preview_bg_style()),
+                        bound_rect,
+                    );
+                }
+                // get actual rendered image size after Fit scaling
+                let rendered = proto.size_for(
+                    ratatui_image::Resize::Fit(None),
+                    ratatui::layout::Size::new(max_w, max_h),
+                );
+                // center the image within the available area
+                let offset_x = (max_w.saturating_sub(rendered.width)) / 2;
+                let offset_y = (max_h.saturating_sub(rendered.height)) / 2;
+                let img_rect = Rect::new(
+                    bound_rect.x + offset_x,
+                    bound_rect.y + offset_y,
+                    rendered.width.min(max_w),
+                    rendered.height.min(max_h),
+                );
+                if img_rect.width > 1 && img_rect.height > 1 {
+                    frame.render_stateful_widget(
+                        ratatui_image::StatefulImage::default()
+                            .resize(ratatui_image::Resize::Fit(None)),
+                        img_rect,
+                        proto,
+                    );
+                }
+            }
+        }
     }
     if let Some(cal_rect) = calendar_area {
         let bottom_border = app.calendar_position == crate::config::CalendarPosition::Top;
@@ -884,9 +1799,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     frame,
                     r,
                     &app.app_theme,
-                    &app.notes,
+                    app.note_index
+                        .as_ref()
+                        .map(|i| &i.activity_by_day)
+                        .unwrap_or(&std::collections::HashMap::new()),
                     bottom_border,
-                    app.config.list.week_start,
+                    app.list.week_start,
                     cal_rect,
                 ),
                 crate::config::NotesSection::Goals => {
@@ -927,8 +1845,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 "move",
             ),
             (kb.display_list(ListAction::Open), "open"),
-            (kb.display_list(ListAction::Help), "help"),
-            (kb.display_list(ListAction::Quit), "quit"),
+            (kb.list_keys_display(ListAction::Quit), "quit"),
+            (
+                format!("F1/{}", kb.list_keys_display(ListAction::Help)),
+                "help",
+            ),
+            ("F2".to_string(), "keybinds"),
         ]
     } else {
         vec![
@@ -943,30 +1865,29 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (kb.display_list(ListAction::Open), "open"),
             (kb.display_list(ListAction::CollapseAll), "collapse"),
             (kb.display_list(ListAction::ExpandAll), "expand"),
-            (kb.display_list(ListAction::Help), "help"),
-            (kb.display_list(ListAction::Quit), "quit"),
+            (kb.list_keys_display(ListAction::Quit), "quit"),
+            (
+                format!("F1/{}", kb.list_keys_display(ListAction::Help)),
+                "help",
+            ),
+            ("F2".to_string(), "keybinds"),
         ]
     };
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
 
     let hint = if in_select_mode {
-        if app.list.tag_to_assign.is_some() {
-            let tag_items = vec![
-                (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
-                ("Enter".to_string(), "apply tag"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ];
-            format_keybind_hints(&app.app_theme, &tag_items)
-        } else {
-            let select_items = vec![
-                (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
-                (kb.display_list(ListAction::MoveNote), "move"),
-                (kb.display_list(ListAction::ManageTags), "tag"),
-                (kb.display_list(ListAction::Delete), "delete"),
-                (kb.display_list(ListAction::ToggleSelectMode), "exit"),
-            ];
-            format_keybind_hints(&app.app_theme, &select_items)
-        }
+        let select_items = vec![
+            (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
+            (kb.display_list(ListAction::MoveNote), "move"),
+            (kb.display_list(ListAction::ManageTags), "tag"),
+            (
+                kb.display_list(ListAction::RemoveTagsFromSelected),
+                "remove tags",
+            ),
+            (kb.display_list(ListAction::Delete), "delete"),
+            (kb.display_list(ListAction::ToggleSelectMode), "exit"),
+        ];
+        format_keybind_hints(&app.app_theme, &select_items)
     } else if app.layout_edit {
         let layout_items = vec![
             ("drag".to_string(), "borders/panes"),
@@ -982,20 +1903,35 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         default_hints
     };
-    let badge = Some(ext_badge(
-        app.editor.external_editor_enabled,
+    let badge_spans = if app.app_theme.hint_bar_style.has_filled_cells() {
+        crate::ui::ext_badge_spans(
+            app.editor.external_editor_enabled,
+            &app.app_theme,
+            Some(app.app_theme.accent),
+        )
+    } else {
+        crate::ui::ext_badge_spans(app.editor.external_editor_enabled, &app.app_theme, None)
+    };
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
+    ctx.area = Some(chunks[2]);
+    ctx.hints = Some(hint.spans);
+    ctx.badge = Some(badge_spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) = crate::statusline::render_footer(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::List,
         &app.app_theme,
-    ));
-    draw_status_bar(
-        frame,
-        chunks[2],
-        &app.app_theme,
-        badge,
-        hint,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
     );
-    draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
+    draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
         let constraints = match app.preview_position {
@@ -1053,8 +1989,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
-        draw_template_popup(frame, popup, area, &app.app_theme);
+    app.mouse_pos = saved_mouse_pos;
+
+    if let Some(crate::popups::ActivePopup::Template(popup)) = &mut app.popups.active {
+        draw_template_popup(frame, popup, frame.area(), &app.app_theme, app.mouse_pos);
     }
 
     if let Some(crate::popups::ActivePopup::Folder(popup)) = &mut app.popups.active {
@@ -1062,13 +2000,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter confirm · Esc cancel");
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             title,
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&crate::ui::text_input_hints("confirm")),
             &app.app_theme,
         );
 
@@ -1087,16 +2024,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
-        );
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             "TAGS",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("Tab".to_string(), "accept"),
+                ("Enter".to_string(), "save"),
+                ("d".to_string(), "delete from all"),
+                ("Esc".to_string(), "cancel"),
+            ]),
             &app.app_theme,
         );
 
@@ -1124,7 +2062,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .border_style(input_border)
             .title("");
         let input_inner = input_block.inner(input_chunks[0]);
-        frame.render_widget(input_block, chunks[0]);
+        frame.render_widget(input_block, input_chunks[0]);
         frame.render_widget(&popup.input, input_inner);
 
         if !popup.suggestions.is_empty() {
@@ -1162,10 +2100,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
         let tag_empty = popup.all_tags.is_empty();
         let tag_items: Vec<ListItem> = if tag_empty {
-            vec![ListItem::new(Span::styled(
-                "No tags found",
-                Style::default().fg(app.app_theme.muted),
-            ))]
+            crate::ui::empty_list_item(&app.app_theme, "No tags found")
         } else {
             popup
                 .all_tags
@@ -1189,12 +2124,145 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut tags_state = list_state_selected(
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            tags_list,
+            chunks[1],
             (popup.focus == crate::popups::TagPopupFocus::AllTagsList
                 && !popup.all_tags.is_empty())
             .then_some(popup.all_tags_selected),
+            popup.scroll_offset,
         );
-        frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
+        popup.scroll_offset = state.offset();
+        let inner_tags = Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_tags,
+            &state,
+            popup.all_tags.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
+    }
+
+    // RemoveTags popup
+    if let Some(crate::popups::ActivePopup::RemoveTags(popup)) = &mut app.popups.active {
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "REMOVE TAGS",
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                ("j/k".to_string(), "move"),
+                ("Space".to_string(), "toggle"),
+                ("a".to_string(), "all"),
+                ("Enter".to_string(), "remove"),
+                ("d".to_string(), "remove all"),
+                ("Esc".to_string(), "cancel"),
+            ]),
+            &app.app_theme,
+        );
+        let total = popup.total_selected;
+        let tag_count = popup.tags.len();
+        let items: Vec<ListItem> = if tag_count == 0 {
+            crate::ui::empty_list_item(&app.app_theme, "No tags to remove")
+        } else {
+            popup
+                .tags
+                .iter()
+                .enumerate()
+                .map(|(i, tag)| {
+                    let count = popup.tag_counts.get(i).copied().unwrap_or(0);
+                    let count_label = if count >= total {
+                        "(all)"
+                    } else {
+                        &format!("({count})")
+                    };
+                    let label = format!("  {} {}", tag, count_label);
+                    let is_selected = popup.selected.contains(&i);
+                    let is_cursor = i == popup.cursor;
+                    let style = if is_cursor && is_selected {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                    } else if is_cursor {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.heading)
+                    } else if is_selected {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(Line::from(label)).style(style)
+                })
+                .collect()
+        };
+
+        let tags_list = build_list_widget(items, &app.app_theme)
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(app.app_theme.heading)),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("  ");
+
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            tags_list,
+            content,
+            (!popup.tags.is_empty()).then_some(popup.cursor),
+            popup.scroll_offset,
+        );
+        popup.scroll_offset = state.offset();
+        let inner_tags = Rect {
+            x: content.x + 1,
+            y: content.y + 1,
+            width: content.width.saturating_sub(2),
+            height: content.height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_tags,
+            &state,
+            popup.tags.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner_tags),
+            content_len: popup.tags.len(),
+            viewport_len: inner_tags.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            inner_tags,
+            popup.tags.len(),
+            inner_tags.height as usize,
+            popup.cursor,
+            popup.tags.len().saturating_sub(1),
+            &app.app_theme,
+        );
+
+        if let Some(confirm) = &popup.confirm {
+            draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme, true);
+        }
     }
 
     if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut app.popups.active {
@@ -1205,13 +2273,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
             _ => "MOVE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter confirm  Esc cancel");
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             title,
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::CycleFocus), "switch"),
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
             &app.app_theme,
         );
 
@@ -1219,26 +2290,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(1)])
             .split(content);
-
-        let search_border = if picker.focus == crate::app::FolderPickerFocus::Search {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        picker.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(search_border)
-                .title(""),
-        );
-        frame.render_widget(&picker.input, chunks[0]);
-
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
-            vec![ListItem::new(Span::styled(
-                "(no matching folders)",
-                Style::default().fg(app.app_theme.muted),
-            ))]
+            crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
         } else {
             picker
                 .filtered_folders
@@ -1271,26 +2324,44 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut state = list_state_selected(
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            list,
+            chunks[1],
             (picker.focus == crate::app::FolderPickerFocus::Results
                 && !picker.filtered_folders.is_empty())
             .then_some(picker.selected),
+            picker.scroll_offset,
         );
-
-        frame.render_stateful_widget(list, chunks[1], &mut state);
+        picker.scroll_offset = state.offset();
+        let inner_fp = Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_fp,
+            &state,
+            picker.filtered_folders.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
     }
 
     if let Some(palette) = &mut app.command_palette {
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Tab category · Enter run · ↑/↓ select · Esc close",
-        );
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             "COMMANDS",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("Tab".to_string(), "category"),
+                ("Enter".to_string(), "run"),
+                ("↑/↓".to_string(), "select"),
+                ("Esc".to_string(), "close"),
+            ]),
             &app.app_theme,
         );
 
@@ -1316,9 +2387,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
+        let hovered = app.mouse_pos.and_then(|(col, row)| {
+            if row == chunks[1].y {
+                crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    col,
+                    app.config.ui.tab_icons_only,
+                    app.config.ui.icon_mode,
+                )
+            } else {
+                None
+            }
+        });
         let tab_spans = build_tab_spans(
             &tabs,
             palette.active_tab,
+            hovered,
             &app.app_theme,
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
@@ -1328,10 +2415,29 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .style(app.app_theme.hint_line_bg_style());
         frame.render_widget(tabs_w, chunks[1]);
 
+        let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = chunks[2].y + 1;
+            if !palette.items.is_empty()
+                && row >= inner_y
+                && col > chunks[2].x
+                && col < chunks[2].x + chunks[2].width - 1
+            {
+                crate::ui::list_index_at(
+                    row,
+                    inner_y,
+                    2,
+                    palette.state.offset(),
+                    palette.items.len(),
+                )
+            } else {
+                None
+            }
+        });
         let items: Vec<ListItem> = palette
             .items
             .iter()
-            .map(|item| {
+            .enumerate()
+            .map(|(i, item)| {
                 let mut spans = vec![Span::styled(
                     format!("{} ", item.glyph),
                     Style::default()
@@ -1339,13 +2445,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
-                ListItem::new(vec![
+                let mut list_item = ListItem::new(vec![
                     Line::from(spans),
                     Line::from(Span::styled(
                         &item.description,
                         Style::default().fg(app.app_theme.muted),
                     )),
-                ])
+                ]);
+                if Some(i) == hovered_cmd_idx {
+                    list_item = list_item.style(app.app_theme.hover_style());
+                }
+                list_item
             })
             .collect();
 
@@ -1369,13 +2479,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             "RENAME",
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&crate::ui::text_input_hints("rename")),
             &app.app_theme,
         );
 
@@ -1389,21 +2498,22 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Goals(popup)) = &mut app.popups.active {
-        let (title, sub) = match popup.mode {
-            crate::popups::GoalsPopupMode::WordGoal => {
-                ("DAILY WORD GOAL", "Enter word count · Esc cancel")
-            }
-            crate::popups::GoalsPopupMode::NoteGoal => {
-                ("DAILY NOTE GOAL", "Enter note count · Esc cancel")
-            }
+        let items: Vec<(String, &str)> = match popup.mode {
+            crate::popups::GoalsPopupMode::WordGoal => vec![
+                ("Enter".to_string(), "word count"),
+                ("Esc".to_string(), "cancel"),
+            ],
+            crate::popups::GoalsPopupMode::NoteGoal => vec![
+                ("Enter".to_string(), "note count"),
+                ("Esc".to_string(), "cancel"),
+            ],
         };
-        let hint_line = popup_hint_line(&app.app_theme, sub);
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             title,
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&items),
             &app.app_theme,
         );
 
@@ -1423,13 +2533,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter create · Esc cancel");
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             title,
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&crate::ui::text_input_hints("create")),
             &app.app_theme,
         );
         popup.input.set_block(popup_block("", &app.app_theme));
@@ -1444,13 +2553,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter import · Esc cancel");
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             title,
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&crate::ui::text_input_hints("import")),
             &app.app_theme,
         );
         popup.input.set_block(
@@ -1463,16 +2571,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
-        );
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             "SEARCH",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("f:".to_string(), "folder"),
+                ("p:".to_string(), "pinned"),
+                ("t:".to_string(), "tag"),
+                ("g:".to_string(), "text"),
+                ("\\e\\".to_string(), "escapes filters"),
+            ]),
             &app.app_theme,
         );
 
@@ -1607,7 +2717,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
         frame.render_widget(&popup.input, input_chunk);
 
-        let has_title = !popup.title_results.is_empty();
+        let has_title = !popup.title_result_ids.is_empty();
         let has_grep = !popup.grep_results.is_empty();
 
         let results_focused = popup.focus == crate::popups::SearchFocus::Results;
@@ -1617,70 +2727,145 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Style::default().fg(app.app_theme.muted)
         };
 
-        let (all_items, results_title) = if has_grep {
-            let mut visible: Vec<(usize, String)> = Vec::new();
-            let mut i = 0;
-            while i < popup.grep_results.len() {
-                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
-                let icon = if popup.grep_is_header[i] {
-                    if is_collapsed { "\u{25b6}" } else { "\u{25bc}" }
-                } else {
-                    ""
-                };
-                visible.push((i, format!("{}{}", icon, popup.grep_results[i])));
-                i += 1;
-                if is_collapsed {
-                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
-                        i += 1;
-                    }
-                }
-            }
-            let items: Vec<ListItem> = visible
-                .iter()
-                .map(|(_, t)| {
-                    ListItem::new(crate::ui::styled_result_line(
-                        t,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                    ))
-                })
-                .collect();
-            (items, "")
+        let inner_results = Rect {
+            x: results_chunk.x + 1,
+            y: results_chunk.y + 1,
+            width: results_chunk.width.saturating_sub(2),
+            height: results_chunk.height.saturating_sub(2),
+        };
+        let viewport_len = inner_results.height as usize;
+
+        let total_items = if has_grep {
+            popup.total_grep_rows()
         } else if has_title {
-            let items: Vec<ListItem> = popup
-                .title_results
-                .iter()
-                .map(|entry| {
+            popup.title_result_ids.len()
+        } else {
+            0
+        };
+
+        let selected_idx = if has_grep {
+            popup.grep_selected
+        } else if has_title {
+            popup.title_selected
+        } else {
+            0
+        };
+
+        let mut offset = popup.results_scroll_offset;
+        if offset > total_items.saturating_sub(viewport_len) {
+            offset = total_items.saturating_sub(viewport_len);
+        }
+        if selected_idx < offset {
+            offset = selected_idx;
+        } else if selected_idx >= offset + viewport_len {
+            offset = selected_idx.saturating_add(1).saturating_sub(viewport_len);
+        }
+        popup.results_scroll_offset = offset;
+
+        let end = (offset + viewport_len).min(total_items);
+
+        let items: Vec<ListItem> = if has_grep {
+            (offset..end)
+                .map(|r| {
+                    if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
+                        ListItem::new(Span::styled(
+                            "  Results truncated; refine grep query",
+                            Style::default()
+                                .fg(app.app_theme.muted)
+                                .add_modifier(Modifier::ITALIC),
+                        ))
+                    } else {
+                        let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                            Ok(i) => i,
+                            Err(i) => i.saturating_sub(1),
+                        };
+                        let base = popup.grep_row_offsets[hit_idx];
+                        let hit = &popup.grep_results[hit_idx];
+                        if r == base {
+                            let arrow = if popup.grep_expanded.contains(&hit.note_id) {
+                                "▼ "
+                            } else {
+                                "▶ "
+                            };
+                            let note_summary =
+                                app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
+                            let title = note_summary
+                                .map(|n| n.title.as_str())
+                                .unwrap_or(&*hit.note_id);
+                            let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                            let label = if folder.is_empty() {
+                                title.to_string()
+                            } else {
+                                format!("{folder}/{title}")
+                            };
+                            let trunc_suffix = if hit.truncated {
+                                "; first 200 lines shown"
+                            } else {
+                                ""
+                            };
+                            let header_text =
+                                format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
+                            ListItem::new(crate::ui::styled_result_line(
+                                &header_text,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                            ))
+                        } else {
+                            let line_idx = r - base - 1;
+                            let line_hit = &hit.lines[line_idx];
+                            let line_text =
+                                format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
+                            ListItem::new(Span::styled(
+                                line_text,
+                                Style::default().fg(app.app_theme.text),
+                            ))
+                        }
+                    }
+                })
+                .collect()
+        } else if has_title {
+            (offset..end)
+                .map(|idx| {
+                    let id_arc = &popup.title_result_ids[idx];
+                    let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
+                    let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
+                    let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                    let label = if folder.is_empty() {
+                        title.to_string()
+                    } else {
+                        format!("{folder}/{title}")
+                    };
                     ListItem::new(crate::ui::styled_result_line(
-                        entry,
+                        &label,
                         &app.app_theme,
                         app.config.ui.icon_mode,
                     ))
                 })
-                .collect();
-            (items, "")
+                .collect()
         } else {
             let msg = if query_text.trim().is_empty() && !has_filter {
                 "Type to search notes"
             } else {
                 "No results"
             };
-            (
-                vec![ListItem::new(Span::styled(
-                    msg.to_string(),
-                    Style::default().fg(app.app_theme.muted),
-                ))],
-                "",
-            )
+            vec![ListItem::new(Span::styled(
+                msg,
+                Style::default().fg(app.app_theme.muted),
+            ))]
         };
 
-        let results_list = List::new(all_items)
+        let rel_selected = selected_idx.saturating_sub(offset);
+        let mut rel_state = ListState::default();
+        if results_focused && total_items > 0 {
+            rel_state.select(Some(rel_selected));
+        }
+
+        let results_list = List::new(items)
             .block(
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .border_style(results_border)
-                    .title(results_title),
+                    .border_style(results_border),
             )
             .highlight_style(
                 Style::default()
@@ -1689,38 +2874,46 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("  ");
-        let mut list_state = ListState::default();
-        if results_focused && has_grep {
-            let mut vis_pos = 0;
-            let mut i = 0;
-            while i < popup.grep_results.len() && i <= popup.grep_selected {
-                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
-                if i == popup.grep_selected {
-                    list_state.select(Some(vis_pos));
-                    break;
-                }
-                vis_pos += 1;
-                i += 1;
-                if is_collapsed {
-                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
-                        i += 1;
-                    }
-                }
-            }
-        } else if results_focused && has_title {
-            list_state.select(Some(popup.title_selected));
+
+        frame.render_stateful_widget(results_list, results_chunk, &mut rel_state);
+        crate::ui::paint_list_hover(
+            frame,
+            inner_results,
+            &rel_state,
+            end.saturating_sub(offset),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner_results),
+            content_len: total_items,
+            viewport_len,
+        });
+        if app.config.ui.scrollbars {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                inner_results,
+                total_items,
+                viewport_len,
+                selected_idx,
+                total_items.saturating_sub(1),
+                &app.app_theme,
+            );
         }
-        frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
     }
 
-    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &app.popups.active {
-        let hint_line = popup_hint_line(&app.app_theme, "r restore · d delete · E empty · q close");
+    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut app.popups.active {
         let content = draw_popup_frame(
             frame,
-            area,
+            frame.area(),
             "TRASH",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("r".to_string(), "restore"),
+                ("d".to_string(), "delete"),
+                ("E".to_string(), "empty"),
+                ("q".to_string(), "close"),
+            ]),
             &app.app_theme,
         );
 
@@ -1762,13 +2955,34 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut state = list_state_selected(Some(trash.selected));
-
-        frame.render_stateful_widget(list, content, &mut state);
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            list,
+            content,
+            Some(trash.selected),
+            trash.scroll_offset,
+        );
+        trash.scroll_offset = state.offset();
+        let inner_content = Rect {
+            x: content.x + 1,
+            y: content.y + 1,
+            width: content.width.saturating_sub(2),
+            height: content.height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_content,
+            &state,
+            trash.items.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
     }
 
     if let Some(popup) = &app.popups.confirm {
-        draw_confirm_popup(frame, popup, area, &app.app_theme);
+        let literal_yes_no =
+            !matches!(&app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
+        draw_confirm_popup(frame, popup, frame.area(), &app.app_theme, literal_yes_no);
     }
 }
 
@@ -1861,6 +3075,17 @@ fn get_item_name(app: &App, idx: usize) -> Option<String> {
                 app.notes.get(*summary_idx).map(|n| n.title.clone())
             }
             crate::list_view::VisualItem::CreateNew { .. } => Some("Create...".to_string()),
+            crate::list_view::VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => app.subnotes_view_cache.iter().find_map(|(p, subs)| {
+                if p == parent_id {
+                    subs.get(*subnote_idx).map(|s| s.title.clone())
+                } else {
+                    None
+                }
+            }),
         }
     } else {
         None
@@ -1980,6 +3205,24 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                 };
                 (folder, note.title.clone())
             }
+            crate::list_view::VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => {
+                let title = app
+                    .subnotes_view_cache
+                    .iter()
+                    .find_map(|(p, subs)| {
+                        if p == parent_id {
+                            subs.get(*subnote_idx).map(|s| s.title.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
+                ("Subnotes".to_string(), title)
+            }
             crate::list_view::VisualItem::CreateNew { path, .. } => {
                 let folder = if path.is_empty() {
                     "Vault".to_string()
@@ -2013,12 +3256,265 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
     }
 }
 
+pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHeaderDetail> {
+    use crate::statusline::{ListHeaderDetail, ListHeaderField};
+
+    let item = app.list.visual_list.get(app.list.visual_index)?;
+    match item {
+        crate::app::VisualItem::Note { summary_idx, .. } => {
+            let note = app.notes.get(*summary_idx)?;
+            let muted = Style::default().fg(app.app_theme.muted);
+            let tag_icon_style = Style::default()
+                .fg(app.app_theme.tag)
+                .add_modifier(Modifier::BOLD);
+            let mut groups = Vec::new();
+
+            let clock = crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode);
+            let mut age = Vec::new();
+            if !clock.is_empty() {
+                age.push(Span::styled(clock, muted));
+                age.push(Span::styled(" ", muted));
+            }
+            age.push(Span::styled(
+                crate::statusline::list_relative_age(note.updated_at),
+                muted,
+            ));
+            groups.push((ListHeaderField::Age, age));
+
+            if !note.tags.is_empty() {
+                let tag_icon =
+                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode);
+                let mut tags = Vec::new();
+                if !tag_icon.is_empty() {
+                    tags.push(Span::styled(tag_icon, tag_icon_style));
+                    tags.push(Span::styled(" ", tag_icon_style));
+                }
+                tags.push(Span::styled(
+                    crate::statusline::compact_list_tags(&note.tags),
+                    Style::default().fg(app.app_theme.fg),
+                ));
+                groups.push((ListHeaderField::Tags, tags));
+            }
+
+            if app.list.show_file_size {
+                groups.push((
+                    ListHeaderField::Size,
+                    vec![Span::styled(
+                        crate::ui::format_size(note.size_bytes),
+                        Style::default().fg(app.app_theme.muted),
+                    )],
+                ));
+            }
+            Some(ListHeaderDetail::new(groups))
+        }
+        crate::app::VisualItem::Folder {
+            name,
+            note_count,
+            recursive_count,
+            ..
+        } if name != ".." => {
+            let icon = crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode);
+            let count = if *recursive_count > *note_count {
+                format!("{note_count}+{}", recursive_count - note_count)
+            } else {
+                note_count.to_string()
+            };
+            let mut spans = Vec::new();
+            if !icon.is_empty() {
+                spans.push(Span::styled(
+                    icon,
+                    Style::default().fg(app.app_theme.folder),
+                ));
+                spans.push(Span::styled(" ", Style::default().fg(app.app_theme.folder)));
+            }
+            spans.push(Span::styled(count, Style::default().fg(app.app_theme.fg)));
+            Some(ListHeaderDetail::new(vec![(ListHeaderField::Count, spans)]))
+        }
+        crate::app::VisualItem::SmartFolder { note_count, .. } => {
+            let icon = crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode);
+            let mut spans = Vec::new();
+            if !icon.is_empty() {
+                spans.push(Span::styled(icon, Style::default().fg(app.app_theme.tag)));
+                spans.push(Span::styled(" ", Style::default().fg(app.app_theme.tag)));
+            }
+            spans.push(Span::styled(
+                note_count.to_string(),
+                Style::default().fg(app.app_theme.fg),
+            ));
+            Some(ListHeaderDetail::new(vec![(ListHeaderField::Count, spans)]))
+        }
+        _ => None,
+    }
+}
+
+#[allow(dead_code)]
+pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
+    list_detail_value(app).map(|detail| Line::from(detail.spans_without(&[])))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::ViewMode;
     use crate::config::CalendarPosition;
     use crate::config::PreviewPosition;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn grid_test_app(items: usize) -> (tempfile::TempDir, App) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        for path in [
+            &storage.data_dir,
+            &storage.config_dir,
+            &storage.notes_dir,
+            &storage.templates_dir,
+        ] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+
+        let mut app = App::new(storage).unwrap();
+        app.list.visual_list = (0..items)
+            .map(|i| crate::list_view::VisualItem::CreateNew {
+                path: format!("item-{i}"),
+                depth: 0,
+            })
+            .collect();
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.list.preview_enabled = false;
+        app.list.calendar_enabled = false;
+        app.config.ui.scrollbars = true;
+        (temp_dir, app)
+    }
+
+    fn draw_grid(terminal: &mut Terminal<TestBackend>, app: &mut App) {
+        terminal.draw(|frame| draw_list_view(frame, app)).unwrap();
+    }
+
+    fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn grid_scrollbar_drag_selects_first_tile_of_bottom_view() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(10);
+        let mut terminal = Terminal::new(TestBackend::new(36, 18)).unwrap();
+        draw_grid(&mut terminal, &mut app);
+
+        let meta = app.list.last_scroll.expect("grid scrollbar metadata");
+        assert_eq!((meta.content_len, meta.viewport_len), (4, 2));
+        let bottom = meta.track.bottom().saturating_sub(1);
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                meta.track.x,
+                meta.track.y,
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                meta.track.x,
+                bottom,
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(MouseEventKind::Up(MouseButton::Left), meta.track.x, bottom),
+            Rect::new(0, 0, 36, 18),
+        );
+
+        assert_eq!(app.list.grid_scroll, 2);
+        assert_eq!(app.list.visual_index, 6);
+        assert!(app.list.scroll_drag.is_none());
+        assert_eq!(
+            app.list.last_scroll.expect("metadata remains").content_len,
+            4
+        );
+        assert_eq!(
+            app.list.last_scroll.expect("metadata remains").viewport_len,
+            2
+        );
+
+        draw_grid(&mut terminal, &mut app);
+        assert_eq!(
+            terminal
+                .backend()
+                .buffer()
+                .get(meta.track.x, bottom)
+                .symbol(),
+            "█"
+        );
+    }
+
+    #[test]
+    fn grid_scrollbar_track_click_reaches_bottom() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(10);
+        let mut terminal = Terminal::new(TestBackend::new(36, 18)).unwrap();
+        draw_grid(&mut terminal, &mut app);
+
+        let meta = app.list.last_scroll.expect("grid scrollbar metadata");
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                meta.track.x,
+                meta.track.bottom().saturating_sub(1),
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+
+        assert_eq!(app.list.grid_scroll, 2);
+        assert_eq!(app.list.visual_index, 6);
+    }
+
+    #[test]
+    fn grid_scrollbar_fit_and_empty_states_do_not_scroll() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(6);
+        let mut terminal = Terminal::new(TestBackend::new(36, 18)).unwrap();
+        draw_grid(&mut terminal, &mut app);
+
+        let meta = app.list.last_scroll.expect("fit grid metadata");
+        assert_eq!((meta.content_len, meta.viewport_len), (2, 2));
+        assert_eq!(app.list.grid_scroll, 0);
+        assert!(app.list.scroll_drag.is_none());
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                meta.track.x,
+                meta.track.bottom().saturating_sub(1),
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+        assert_eq!(app.list.grid_scroll, 0);
+        assert_eq!(app.list.visual_index, 0);
+
+        app.list.visual_list.clear();
+        draw_grid(&mut terminal, &mut app);
+        assert!(app.list.last_scroll.is_none());
+        assert_eq!(app.list.grid_scroll, 0);
+        assert!(app.list.grid_tiles.is_empty());
+    }
 
     #[test]
     fn calendar_never_overlaps_preview_and_stays_in_list_column() {
@@ -2091,6 +3587,7 @@ mod tests {
 
     #[test]
     fn test_get_preview_info() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -2107,6 +3604,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).unwrap();
 
@@ -2213,6 +3711,60 @@ mod tests {
                 next_name: Some("other".to_string()),
             })
         );
+    }
+
+    #[test]
+    fn list_detail_line_includes_file_size_when_enabled() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        for path in [
+            &storage.data_dir,
+            &storage.config_dir,
+            &storage.notes_dir,
+            &storage.templates_dir,
+        ] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        let mut app = App::new(storage).unwrap();
+        let size_bytes = 1_536;
+        app.notes = vec![crate::storage::NoteSummary {
+            id: "note.md".into(),
+            title: "Note".into(),
+            updated_at: 0,
+            folder: String::new(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes,
+        }];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 0,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.list.visual_index = 0;
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.list.show_file_size = true;
+
+        let detail = list_detail_line(&app).unwrap().to_string();
+        assert!(detail.contains(&crate::ui::format_size(size_bytes)));
+        assert!(detail.contains("ago"));
+
+        app.list.show_file_size = false;
+        let detail = list_detail_line(&app).unwrap().to_string();
+        assert!(!detail.contains(&crate::ui::format_size(size_bytes)));
+        assert!(detail.contains("ago"));
     }
 
     #[test]
@@ -2333,5 +3885,251 @@ mod tests {
         assert_eq!(rects[1].y, r.y);
         assert_eq!(rects[1].height, r.height);
         assert_eq!(rects[1].right(), r.right());
+    }
+
+    #[test]
+    fn orbit_positions_count_and_radius() {
+        for n in [0, 1, 2, 3, 4, 8] {
+            let r = 10.0;
+            let pos = orbit_positions(n, r);
+            assert_eq!(pos.len(), n, "count mismatch for n={n}");
+            if n > 0 {
+                // First point is at angle -π/2 → (0, -r).
+                let (x, y) = pos[0];
+                assert!((x - 0.0).abs() < 1e-12, "first x not 0: {x}");
+                assert!((y - (-r)).abs() < 1e-12, "first y not -r: {y}");
+            }
+        }
+    }
+    #[test]
+    fn list_header_compact_fields() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.notes = vec![crate::storage::NoteSummary {
+            id: "note.md".into(),
+            title: "Note".into(),
+            updated_at: crate::ui::now_unix_secs(),
+            folder: String::new(),
+            tags: vec![
+                "123456789012".into(),
+                "界界界界界界界".into(),
+                "third".into(),
+                "fourth".into(),
+                "fifth".into(),
+            ],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1_536,
+        }];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 0,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.list.show_file_size = true;
+
+        for (field, order, expected) in [
+            (
+                crate::list_view::SortField::Title,
+                crate::list_view::SortOrder::Ascending,
+                "A-z",
+            ),
+            (
+                crate::list_view::SortField::Title,
+                crate::list_view::SortOrder::Descending,
+                "Z-a",
+            ),
+            (
+                crate::list_view::SortField::Modified,
+                crate::list_view::SortOrder::Ascending,
+                "✎▲",
+            ),
+            (
+                crate::list_view::SortField::Modified,
+                crate::list_view::SortOrder::Descending,
+                "✎▼",
+            ),
+        ] {
+            app.list.sort_field = field;
+            app.list.sort_order = order;
+            app.config.ui.icon_mode = crate::config::IconMode::Unicode;
+            let mut ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+            ctx.note = app.notes.first();
+            assert_eq!(ctx.resolve("sort").as_deref(), Some(expected));
+        }
+        app.config.ui.icon_mode = crate::config::IconMode::Nerd;
+        let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        assert_eq!(ctx.resolve("sort").as_deref(), Some("\u{f03eb}▼"));
+        app.list.sort_field = crate::list_view::SortField::Modified;
+        app.config.ui.icon_mode = crate::config::IconMode::None;
+        let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        assert_eq!(ctx.resolve("sort").as_deref(), Some("M▼"));
+
+        assert_eq!(crate::statusline::compact_list_tags(&[]), "");
+        assert_eq!(
+            crate::statusline::compact_list_tags(&["123456789012".into()]),
+            "123456789012"
+        );
+        assert_eq!(
+            crate::statusline::compact_list_tags(&["界界界界界界界".into()]),
+            "界界界界界…"
+        );
+        assert_eq!(
+            crate::statusline::compact_list_tags(&app.notes[0].tags),
+            "123456789012, 界界界界界… +3"
+        );
+        let note_detail = list_detail_line(&app).expect("note detail").to_string();
+        assert!(note_detail.contains("123456789012, 界界界界界… +3"));
+        assert!(note_detail.contains(&crate::ui::format_size(1_536)));
+
+        app.list.visual_list = vec![crate::list_view::VisualItem::Folder {
+            path: "folder".into(),
+            name: "folder".into(),
+            depth: 0,
+            is_expanded: false,
+            note_count: 2,
+            recursive_count: 5,
+            stale: false,
+            is_pinned: false,
+        }];
+        assert!(
+            list_detail_line(&app)
+                .expect("folder detail")
+                .to_string()
+                .contains("2+3")
+        );
+        app.list.visual_list = vec![crate::list_view::VisualItem::SmartFolder {
+            kind: crate::list_view::SmartFolderKind::Today,
+            label: "Today".into(),
+            depth: 0,
+            is_expanded: false,
+            note_count: 5,
+        }];
+        assert_eq!(
+            list_detail_line(&app)
+                .expect("smart detail")
+                .to_string()
+                .trim(),
+            "5"
+        );
+    }
+    fn render_list_header_right<'a>(
+        app: &'a App,
+        theme: &AppThemeColors,
+        max_width: Option<u16>,
+    ) -> Option<Line<'a>> {
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
+        ctx.note = crate::statusline::active_note(app, ViewMode::List);
+        if let Some(detail) = list_detail_value(app) {
+            ctx.detail = Some(detail.spans_without(&[]));
+            ctx.list_detail = Some(detail);
+        }
+        crate::statusline::render_header_right(
+            &ctx,
+            &app.config.statusline,
+            ViewMode::List,
+            theme,
+            max_width,
+        )
+    }
+
+    #[test]
+    fn list_header_drops_fields_by_priority() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.notes = vec![crate::storage::NoteSummary {
+            id: "note.md".into(),
+            title: "Note".into(),
+            updated_at: crate::ui::now_unix_secs(),
+            folder: String::new(),
+            tags: vec!["alpha".into(), "beta".into()],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1_536,
+        }];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 0,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.list.show_file_size = true;
+        app.list.sort_field = crate::list_view::SortField::Modified;
+        app.list.sort_order = crate::list_view::SortOrder::Descending;
+        app.config.ui.icon_mode = crate::config::IconMode::None;
+        app.config.statusline.list = Some(crate::config::StatuslineOverride {
+            header_left: None,
+            header_right: Some("L {sort} {detail} {tags} {note_updated_rel} {note_size} R".into()),
+            footer_left: None,
+            footer_right: None,
+        });
+
+        for style in [
+            crate::config::HintBarStyle::Classic,
+            crate::config::HintBarStyle::Sharp,
+            crate::config::HintBarStyle::Bubbles,
+            crate::config::HintBarStyle::Brackets,
+            crate::config::HintBarStyle::Hexagon,
+        ] {
+            let mut theme = AppThemeColors::default();
+            theme.hint_bar_style = style;
+            let full = render_list_header_right(&app, &theme, None).expect("full header");
+            assert!(full.to_string().contains("1.5 KB"));
+            let without_size =
+                render_list_header_right(&app, &theme, Some(full.width().saturating_sub(1) as u16))
+                    .expect("header without size");
+            assert!(!without_size.to_string().contains("1.5 KB"), "{style:?}");
+            let without_age = render_list_header_right(
+                &app,
+                &theme,
+                Some(without_size.width().saturating_sub(1) as u16),
+            )
+            .expect("header without age");
+            assert!(!without_age.to_string().contains("just now"), "{style:?}");
+            let without_sort = render_list_header_right(
+                &app,
+                &theme,
+                Some(without_age.width().saturating_sub(1) as u16),
+            )
+            .expect("header without sort");
+            assert!(!without_sort.to_string().contains("M▼"), "{style:?}");
+            let literals_only = render_list_header_right(
+                &app,
+                &theme,
+                Some(without_sort.width().saturating_sub(1) as u16),
+            )
+            .expect("literal header");
+            assert!(literals_only.to_string().contains("L"), "{style:?}");
+            assert!(literals_only.to_string().contains("R"), "{style:?}");
+        }
+
+        app.config
+            .statusline
+            .list
+            .as_mut()
+            .expect("list override")
+            .header_right = Some("{sort} {detail}".into());
+        app.list.visual_list = vec![crate::list_view::VisualItem::Folder {
+            path: "folder".into(),
+            name: "folder".into(),
+            depth: 0,
+            is_expanded: false,
+            note_count: 2,
+            recursive_count: 5,
+            stale: false,
+            is_pinned: false,
+        }];
+        let theme = AppThemeColors::default();
+        let full = render_list_header_right(&app, &theme, None).expect("folder header");
+        let without_count =
+            render_list_header_right(&app, &theme, Some(full.width().saturating_sub(1) as u16))
+                .expect("folder header without count");
+        assert!(!without_count.to_string().contains("2+3"));
+        assert!(without_count.to_string().contains("M▼"));
     }
 }

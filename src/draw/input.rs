@@ -12,6 +12,12 @@ pub fn handle_event(
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
+    if app.text_editor.is_some()
+        && let Event::Mouse(mouse) = ev
+    {
+        return handle_text_editor_mouse(mouse, app);
+    }
+
     if let Some((idx, textarea)) = &mut app.text_editor {
         app.seq_matcher.clear();
         match ev {
@@ -130,6 +136,53 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
     app.active_shape_type = shapes[next_idx];
 }
 
+fn handle_text_editor_mouse(
+    mouse: MouseEvent,
+    app: &mut DrawAppState,
+) -> anyhow::Result<Option<DrawEventAction>> {
+    let Some((_, textarea)) = &mut app.text_editor else {
+        return Ok(None);
+    };
+    let Some(textarea_area) = app.text_editor_rect else {
+        return Ok(None);
+    };
+
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left)
+            if crate::events::contains_cell(textarea_area, mouse.column, mouse.row) =>
+        {
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
+            crate::events::move_textarea_cursor_to_mouse(
+                textarea,
+                textarea_area,
+                mouse.column,
+                mouse.row,
+                scroll_row,
+                scroll_col,
+            );
+            app.mouse_selection.begin(textarea);
+        }
+        MouseEventKind::Drag(MouseButton::Left) if app.mouse_selection.active => {
+            app.mouse_selection.mark_drag();
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
+            crate::events::move_textarea_cursor_to_mouse(
+                textarea,
+                textarea_area,
+                mouse.column,
+                mouse.row,
+                scroll_row,
+                scroll_col,
+            );
+        }
+        MouseEventKind::Up(MouseButton::Left) if app.mouse_selection.active => {
+            app.mouse_selection.finish(textarea);
+        }
+        _ => {}
+    }
+
+    Ok(None)
+}
+
 fn handle_mouse(
     ev: MouseEvent,
     app: &mut DrawAppState,
@@ -179,8 +232,7 @@ fn handle_mouse(
             let header_y = area.y.saturating_sub(1);
             if ev.row == header_y {
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
-                let tabs: Vec<(&str, Option<&str>)> =
-                    tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
+                let tabs = crate::ui::tab_vec_from_array(&tabs_arr);
                 let region = crate::ui::title_bar_tabs_region(area, "Draw");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,
@@ -262,7 +314,8 @@ fn handle_mouse(
         }
         MouseEventKind::Up(MouseButton::Left) => {
             let mut changed = false;
-            if let Some(stroke) = app.current_stroke.take() {
+            if let Some(mut stroke) = app.current_stroke.take() {
+                stroke.points = crate::draw::render::smooth_points(&stroke.points);
                 app.data.elements.push(DrawElement::Stroke(stroke));
                 changed = true;
             }
@@ -279,6 +332,7 @@ fn handle_mouse(
             }
         }
         MouseEventKind::Up(_) => {
+            app.is_panning = false;
             app.last_mouse_pos = None;
         }
         MouseEventKind::ScrollUp => {
@@ -382,6 +436,7 @@ fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
             }
         },
         DrawElement::Text(t) => (t.x - cx).abs() > threshold || (t.y - cy).abs() > threshold,
+        DrawElement::Image(_) => true,
     });
 }
 
@@ -396,6 +451,7 @@ fn line_dist(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
 }
 
 fn panning(x: u16, y: u16, app: &mut DrawAppState) {
+    app.is_panning = true;
     if let Some((lx, ly)) = app.last_mouse_pos {
         let area = app.last_area;
         if area.width > 0 && area.height > 0 {

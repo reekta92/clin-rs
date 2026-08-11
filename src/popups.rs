@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 
@@ -27,6 +29,7 @@ pub enum ConfirmAction {
         folder_paths: Vec<String>,
     },
     QuitApp,
+    RemoveAllTagsFromSelected,
 }
 
 pub struct ConfirmPopup {
@@ -38,18 +41,14 @@ pub struct ConfirmPopup {
     pub selected_button: usize,
 }
 
-pub struct ContextMenu {
-    pub x: u16,
-    pub y: u16,
-    pub selected: usize,
-}
-
 pub struct TemplatePopup {
     pub all_templates: Vec<TemplateSummary>,
     pub filtered_templates: Vec<TemplateSummary>,
     pub input: TextArea<'static>,
     pub selected: usize,
+    pub scroll_offset: usize,
     pub focus: TemplatePopupFocus,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,9 +68,11 @@ pub struct ThemePopup {
     pub themes: Vec<String>,
     pub is_custom: Vec<bool>,
     pub selected: usize,
+    pub scroll_offset: usize,
     pub focus: ThemePopupFocus,
     pub general_is_solid: bool,
     pub graph_is_solid: bool,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,12 +83,15 @@ pub enum TagPopupFocus {
 
 pub struct TagPopup {
     pub note_id: String,
+    pub batch_note_ids: Option<Vec<String>>,
     pub input: TextArea<'static>,
     pub all_tags: Vec<String>,
     pub suggestions: Vec<String>,
     pub suggestion_index: usize,
     pub focus: TagPopupFocus,
     pub all_tags_selected: usize,
+    pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 pub enum FolderPopupMode {
@@ -95,6 +99,16 @@ pub enum FolderPopupMode {
     Rename { old_path: String },
 }
 
+pub struct RemoveTagsPopup {
+    pub tags: Vec<String>,
+    pub selected: std::collections::HashSet<usize>,
+    pub cursor: usize,
+    pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub confirm: Option<ConfirmPopup>,
+    pub tag_counts: Vec<usize>,
+    pub total_selected: usize,
+}
 pub struct FolderPopup {
     pub mode: FolderPopupMode,
     pub input: TextArea<'static>,
@@ -144,7 +158,9 @@ pub struct FolderPicker {
     pub filtered_folders: Vec<String>,
     pub selected: usize,
     pub input: TextArea<'static>,
+    pub scroll_offset: usize,
     pub focus: FolderPickerFocus,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 pub struct NoteRenamePopup {
@@ -185,24 +201,68 @@ pub enum SearchFocus {
     Results,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchLineHit {
+    pub line_number: usize,
+    pub snippet: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchNoteHit {
+    pub note_id: std::sync::Arc<str>,
+    pub match_count: usize,
+    pub lines: Vec<SearchLineHit>,
+    pub truncated: bool,
+}
 pub struct SearchPopup {
     pub input: TextArea<'static>,
     pub focus: SearchFocus,
 
-    pub title_results: Vec<String>,
-    pub title_result_indices: Vec<usize>,
+    pub title_result_ids: Vec<std::sync::Arc<str>>,
     pub title_selected: usize,
 
-    pub grep_results: Vec<String>,
-    pub grep_result_indices: Vec<usize>,
-    pub grep_is_header: Vec<bool>,
-    pub grep_expanded: std::collections::HashSet<usize>,
-
+    pub grep_results: Vec<SearchNoteHit>,
+    pub grep_row_offsets: Vec<usize>,
+    pub grep_expanded: std::collections::HashSet<std::sync::Arc<str>>,
     pub grep_selected: usize,
+    pub globally_truncated: bool,
+    pub read_errors: usize,
+
+    pub results_scroll_offset: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
+
+impl SearchPopup {
+    pub fn rebuild_grep_offsets(&mut self) {
+        let mut offsets = Vec::with_capacity(self.grep_results.len());
+        let mut current = 0usize;
+        for hit in &self.grep_results {
+            offsets.push(current);
+            current += 1;
+            if self.grep_expanded.contains(&hit.note_id) {
+                current += hit.lines.len();
+            }
+        }
+        self.grep_row_offsets = offsets;
+    }
+
+    pub fn total_grep_rows(&self) -> usize {
+        let mut count = 0usize;
+        for hit in &self.grep_results {
+            count += 1;
+            if self.grep_expanded.contains(&hit.note_id) {
+                count += hit.lines.len();
+            }
+        }
+        if self.globally_truncated {
+            count += 1;
+        }
+        count
+    }
+}
+
 pub struct SortPopup {
     pub selected: usize,
 }
@@ -225,7 +285,6 @@ pub struct InfoPopup {
 pub struct IconModePopup {
     pub selected: usize,
 }
-
 pub struct HintBarStylePopup {
     pub selected: usize,
 }
@@ -261,6 +320,8 @@ pub struct GoalsPopup {
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
+    pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -269,15 +330,113 @@ pub enum SubnotesFocus {
     EditTitle,
     EditContent,
 }
-
 pub struct SubnotesPopup {
     pub parent_id: String,
     pub subnotes: Vec<crate::storage::SubNote>,
     pub selected: usize,
     pub focus: SubnotesFocus,
+    pub scroll_offset: usize,
     pub title_input: TextArea<'static>,
     pub content_input: TextArea<'static>,
     pub is_dirty: bool,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+}
+/// 0-based flat index of the `vis_pos`-th visible grep item.
+/// Children of collapsed headers are skipped. None if out of range.
+#[allow(clippy::implicit_hasher)]
+pub fn grep_visible_to_flat(
+    is_header: &[bool],
+    expanded: &HashSet<usize>,
+    vis_pos: usize,
+) -> Option<usize> {
+    let mut count = 0;
+    let mut i = 0;
+    while i < is_header.len() {
+        let is_collapsed = is_header[i] && !expanded.contains(&i);
+        if count == vis_pos {
+            return Some(i);
+        }
+        count += 1;
+        i += 1;
+        if is_collapsed {
+            while i < is_header.len() && !is_header[i] {
+                i += 1;
+            }
+        }
+    }
+    None
+}
+
+/// 0-based visible position of flat index `flat`; None if hidden under a collapsed header.
+#[allow(clippy::implicit_hasher)]
+pub fn grep_flat_to_visible(
+    is_header: &[bool],
+    expanded: &HashSet<usize>,
+    flat: usize,
+) -> Option<usize> {
+    let mut vis_pos = 0;
+    let mut i = 0;
+    while i < is_header.len() && i <= flat {
+        let is_collapsed = is_header[i] && !expanded.contains(&i);
+        if i == flat {
+            return Some(vis_pos);
+        }
+        vis_pos += 1;
+        i += 1;
+        if is_collapsed {
+            while i < is_header.len() && !is_header[i] {
+                if i == flat {
+                    return None;
+                }
+                i += 1;
+            }
+        }
+    }
+    None
+}
+
+#[allow(clippy::implicit_hasher)]
+/// Previous visible flat index from `cur`; returns `cur` if none.
+pub fn grep_prev_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
+    if cur == 0 {
+        return 0;
+    }
+    let mut i = cur - 1;
+    loop {
+        if is_header[i] {
+            return i;
+        }
+        let mut parent = i;
+        while parent > 0 && !is_header[parent] {
+            parent -= 1;
+        }
+        if expanded.contains(&parent) {
+            return i;
+        }
+        if i == 0 {
+            return 0;
+        }
+        i -= 1;
+    }
+}
+#[allow(clippy::implicit_hasher)]
+/// Next visible flat index from `cur`; returns `cur` if none.
+pub fn grep_next_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
+    let mut i = cur + 1;
+    while i < is_header.len() {
+        if is_header[i] {
+            return i;
+        }
+        let mut parent = i;
+        while parent > 0 && !is_header[parent] {
+            parent -= 1;
+        }
+        if expanded.contains(&parent) {
+            return i;
+        }
+        i += 1;
+    }
+    cur
 }
 
 /// The single active (non-confirm) popup. Only one is ever active at a time;
@@ -289,6 +448,7 @@ pub enum ActivePopup {
     Tag(TagPopup),
     IconMode(IconModePopup),
     HintBarStyle(HintBarStylePopup),
+    RemoveTags(RemoveTagsPopup),
     KeybindPreset(KeybindPresetPopup),
     Sort(SortPopup),
     Folder(FolderPopup),
@@ -298,10 +458,59 @@ pub enum ActivePopup {
     Import(ImportPopup),
     CreateFormat(CreateFormatPopup),
     Search(SearchPopup),
-    ContextMenu(ContextMenu),
     TrashView(TrashView),
     Goals(GoalsPopup),
     Subnotes(Box<SubnotesPopup>),
+}
+
+impl ActivePopup {
+    pub fn draw(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        theme: &crate::app_theme::AppThemeColors,
+        keybinds: &crate::keybinds::Keybinds,
+        mouse_pos: Option<(u16, u16)>,
+    ) {
+        match self {
+            ActivePopup::Theme(p) => {
+                crate::ui::draw_theme_popup(frame, p, area, theme, keybinds, mouse_pos)
+            }
+            ActivePopup::IconMode(p) => {
+                crate::ui::draw_icon_mode_popup(frame, p, area, theme, keybinds, mouse_pos)
+            }
+            ActivePopup::HintBarStyle(p) => {
+                crate::ui::draw_hint_bar_style_popup(frame, p, area, theme, keybinds, mouse_pos)
+            }
+            ActivePopup::KeybindPreset(p) => {
+                crate::ui::draw_keybind_preset_popup(frame, p, area, theme, keybinds, mouse_pos)
+            }
+            ActivePopup::Sort(p) => {
+                crate::ui::draw_sort_popup(frame, p, area, theme, keybinds, mouse_pos)
+            }
+            ActivePopup::CreateFormat(p) => {
+                crate::ui::draw_create_format_popup(frame, p, area, theme, keybinds, mouse_pos)
+            }
+            ActivePopup::Subnotes(p) => crate::ui::draw_subnotes_popup(frame, p, area, theme),
+            ActivePopup::Info(p) => crate::ui::draw_info_popup(frame, area, p, theme),
+            _ => {}
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupTextField {
+    CreateNote,
+    Goals,
+    NoteRename,
+    Import,
+    Folder,
+    Tag,
+    FolderPicker,
+    Search,
+    Template,
+    SubnotesTitle,
+    SubnotesContent,
 }
 
 #[derive(Default)]
@@ -310,6 +519,9 @@ pub struct PopupManager {
     pub confirm: Option<ConfirmPopup>,
     /// The single active popup, if any.
     pub active: Option<ActivePopup>,
+    pub(crate) text_selection: Option<(PopupTextField, crate::text_edit::MouseTextSelection)>,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
 
 impl PopupManager {
@@ -341,5 +553,6 @@ impl PopupManager {
     pub fn clear_all(&mut self) {
         self.active = None;
         self.confirm = None;
+        self.text_selection = None;
     }
 }

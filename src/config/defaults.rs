@@ -60,8 +60,12 @@ pub fn default_graph_background() -> Background {
 pub fn default_theme() -> String {
     "default".to_string()
 }
-pub fn default_date_format() -> String {
+pub fn default_list_date_format() -> String {
     "%Y-%m-%d".to_string()
+}
+
+pub fn default_editor_date_format() -> String {
+    "%Y-%m-%d %H:%M".to_string()
 }
 pub fn default_word_goal() -> usize {
     500
@@ -74,4 +78,7 @@ pub fn default_sections() -> Vec<super::types::NotesSection> {
         super::types::NotesSection::Calendar,
         super::types::NotesSection::Goals,
     ]
+}
+pub fn default_max_node() -> usize {
+    500
 }

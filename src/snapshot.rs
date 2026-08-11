@@ -8,6 +8,7 @@ use ratatui::widgets::*;
 use crate::app_theme::AppThemeColors;
 use crate::draw::state::{DrawData, DrawElement, Shape, Stroke};
 use crate::pinstar::data::{CanvasData, CanvasNode};
+use unicode_width::UnicodeWidthChar;
 
 const PREVIEW_COLS: u16 = 78;
 
@@ -16,10 +17,13 @@ const PREVIEW_ROWS: u16 = 38;
 pub fn render_canvas_snapshot(
     data: &CanvasData,
     theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
+    width: u16,
+    height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
 ) -> Vec<Vec<(char, Style)>> {
-    let width = PREVIEW_COLS;
-    let height = PREVIEW_ROWS;
-
     if data.nodes.is_empty() || width == 0 || height == 0 {
         return empty_grid(width, height);
     }
@@ -36,7 +40,7 @@ pub fn render_canvas_snapshot(
 
     let zoom_x = (width as f64 - 4.0) / content_w;
     let zoom_y = (height as f64 - 4.0) / content_h;
-    let zoom = zoom_x.min(zoom_y).clamp(0.01, 10.0);
+    let zoom = (zoom_x.min(zoom_y) * scale).clamp(0.0001, 10.0);
 
     let center_x = (min_x + max_x) / 2.0;
     let center_y = (min_y + max_y) / 2.0;
@@ -63,24 +67,33 @@ pub fn render_canvas_snapshot(
                 let ay = fy + fh / 2.0;
                 let bx = tx + tw / 2.0;
                 let by = ty + th / 2.0;
-
-                let sfx = ((ax - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0);
-                let sfy = ((ay - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0);
-                let stx = ((bx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0);
-                let sty = ((by - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0);
-
-                draw_braille_line(buf, sfx, sfy, stx, sty, theme.muted);
+                let sfx =
+                    ((ax - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+                let sfy = ((ay - center_y) * zoom)
+                    + (area.y as f64 + area.height as f64 / 2.0)
+                    + offset_y;
+                let stx =
+                    ((bx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+                let sty = ((by - center_y) * zoom)
+                    + (area.y as f64 + area.height as f64 / 2.0)
+                    + offset_y;
+                crate::ui::braille::draw_braille_line(buf, sfx, sfy, stx, sty, theme.muted);
             }
         }
 
+        // Pass 1: group nodes (drawn behind child nodes)
         for node in &data.nodes {
+            if !matches!(node, CanvasNode::Group(_)) {
+                continue;
+            }
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
-
-            let sx = ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0);
-            let sy = ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0);
-            let sw = (nw * zoom).max(4.0);
-            let sh = (nh * zoom).max(2.0);
+            let sx =
+                ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+            let sy =
+                ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
+            let sw = (nw * zoom).max(1.0);
+            let sh = (nh * zoom).max(1.0);
 
             if sx + sw < area.left() as f64
                 || sx > area.right() as f64
@@ -108,56 +121,230 @@ pub fn render_canvas_snapshot(
             };
             let node_color = canvas_color_to_style(color_str, theme);
 
-            let title = match node {
-                CanvasNode::File(n) => std::path::Path::new(&n.file)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(&n.file)
-                    .to_string(),
-                CanvasNode::Link(n) => n.url.clone(),
-                _ => node.id().to_string(),
+            let title = match node.title() {
+                Some(t) => t.to_string(),
+                None => match node {
+                    CanvasNode::File(n) => std::path::Path::new(&n.file)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&n.file)
+                        .to_string(),
+                    CanvasNode::Link(n) => n.url.clone(),
+                    CanvasNode::Group(n) => n.label.clone().unwrap_or_default(),
+                    CanvasNode::Text(_) => "".to_string(),
+                },
             };
 
             let inner_text = node.text();
 
-            let max_text_len = (node_rect.width.saturating_sub(2) as usize).min(
-                node_rect.height.saturating_sub(2) as usize
-                    * node_rect.width.saturating_sub(2) as usize,
-            );
-            let display_text = if inner_text.len() > max_text_len && max_text_len > 10 {
-                format!("{}…", &inner_text[..max_text_len.saturating_sub(1)])
+            let max_text_len = (node_rect.width.saturating_sub(2) as usize)
+                * (node_rect.height.saturating_sub(2) as usize);
+            let display_text = if inner_text.chars().count() > max_text_len && max_text_len > 10 {
+                let mut s: String = inner_text
+                    .chars()
+                    .take(max_text_len.saturating_sub(1))
+                    .collect();
+                s.push('…');
+                s
             } else {
                 inner_text.to_string()
             };
+            let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
 
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(node_color))
-                .title(title)
-                .style(theme.bg_style());
+            if is_image {
+                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let filled_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(
+                        Style::default()
+                            .bg(node_color)
+                            .fg(theme.bg.unwrap_or(Color::Reset)),
+                    );
 
-            let text = Paragraph::new(display_text)
-                .block(block)
-                .style(Style::default().fg(theme.fg))
-                .wrap(Wrap { trim: false });
+                let icon_line = Line::from(Span::styled(
+                    icon,
+                    Style::default().fg(theme.bg.unwrap_or(Color::Reset)),
+                ))
+                .alignment(Alignment::Center);
 
-            frame.render_widget(Clear, node_rect);
-            frame.render_widget(text, node_rect);
+                let content_height = node_rect.height.saturating_sub(2);
+                let empty_count = content_height / 2;
+
+                let mut lines: Vec<Line> = Vec::new();
+                for _ in 0..empty_count {
+                    lines.push(Line::from(""));
+                }
+                lines.push(icon_line);
+
+                let text = Paragraph::new(lines).block(filled_block);
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            } else {
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(theme.bg_style());
+
+                let text = Paragraph::new(display_text)
+                    .block(block)
+                    .style(Style::default().fg(theme.fg))
+                    .wrap(Wrap { trim: false });
+
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            }
+        }
+
+        // Pass 2: non-group nodes (drawn on top of groups)
+        for node in &data.nodes {
+            if matches!(node, CanvasNode::Group(_)) {
+                continue;
+            }
+            let (nx, ny) = node.pos();
+            let (nw, nh) = node.size();
+            let sx =
+                ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+            let sy =
+                ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
+            let sw = (nw * zoom).max(1.0);
+            let sh = (nh * zoom).max(1.0);
+
+            if sx + sw < area.left() as f64
+                || sx > area.right() as f64
+                || sy + sh < area.top() as f64
+                || sy > area.bottom() as f64
+            {
+                continue;
+            }
+
+            let left = sx.max(area.left() as f64) as u16;
+            let top = sy.max(area.top() as f64) as u16;
+            let right = (sx + sw).min(area.right() as f64) as u16;
+            let bottom = (sy + sh).min(area.bottom() as f64) as u16;
+            if right <= left || bottom <= top {
+                continue;
+            }
+
+            let node_rect = Rect::new(left, top, right - left, bottom - top);
+
+            let color_str = match node {
+                CanvasNode::Text(n) => n.color.as_deref(),
+                CanvasNode::File(n) => n.color.as_deref(),
+                CanvasNode::Link(n) => n.color.as_deref(),
+                CanvasNode::Group(_) => None,
+            };
+            let node_color = canvas_color_to_style(color_str, theme);
+
+            let title = match node.title() {
+                Some(t) => t.to_string(),
+                None => match node {
+                    CanvasNode::File(n) => std::path::Path::new(&n.file)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&n.file)
+                        .to_string(),
+                    CanvasNode::Link(n) => n.url.clone(),
+                    CanvasNode::Group(n) => n.label.clone().unwrap_or_default(),
+                    CanvasNode::Text(_) => "".to_string(),
+                },
+            };
+
+            let inner_text = node.text();
+
+            let max_text_len = (node_rect.width.saturating_sub(2) as usize)
+                * (node_rect.height.saturating_sub(2) as usize);
+            let display_text = if inner_text.chars().count() > max_text_len && max_text_len > 10 {
+                let mut s: String = inner_text
+                    .chars()
+                    .take(max_text_len.saturating_sub(1))
+                    .collect();
+                s.push('…');
+                s
+            } else {
+                inner_text.to_string()
+            };
+            let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
+
+            if is_image {
+                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let filled_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(
+                        Style::default()
+                            .bg(node_color)
+                            .fg(theme.bg.unwrap_or(Color::Reset)),
+                    );
+
+                let icon_line = Line::from(Span::styled(
+                    icon,
+                    Style::default().fg(theme.bg.unwrap_or(Color::Reset)),
+                ))
+                .alignment(Alignment::Center);
+
+                let content_height = node_rect.height.saturating_sub(2);
+                let empty_count = content_height / 2;
+
+                let mut lines: Vec<Line> = Vec::new();
+                for _ in 0..empty_count {
+                    lines.push(Line::from(""));
+                }
+                lines.push(icon_line);
+
+                let text = Paragraph::new(lines).block(filled_block);
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            } else {
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(theme.bg_style());
+
+                let text = Paragraph::new(display_text)
+                    .block(block)
+                    .style(Style::default().fg(theme.fg))
+                    .wrap(Wrap { trim: false });
+
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            }
         }
     });
 
     extract_grid(terminal, width, height)
 }
 
-pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<(char, Style)>> {
-    render_draw_snapshot_with_size(data, theme, PREVIEW_COLS, PREVIEW_ROWS)
+pub fn render_draw_snapshot(
+    data: &DrawData,
+    theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
+) -> Vec<Vec<(char, Style)>> {
+    render_draw_snapshot_with_size(
+        data,
+        theme,
+        icon_mode,
+        PREVIEW_COLS,
+        PREVIEW_ROWS,
+        1.0,
+        0.0,
+        0.0,
+    )
 }
 
 pub fn render_draw_snapshot_with_size(
     data: &DrawData,
     theme: &AppThemeColors,
+    _icon_mode: crate::config::IconMode,
     width: u16,
     height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
 ) -> Vec<Vec<(char, Style)>> {
     if width == 0 || height == 0 {
         return empty_grid(width, height);
@@ -165,8 +352,16 @@ pub fn render_draw_snapshot_with_size(
 
     let (min_x, min_y, max_x, max_y) = draw_bounds(data);
     let padding = 20.0;
-    let x_bounds = [min_x - padding, max_x + padding];
-    let y_bounds = [min_y - padding, max_y + padding];
+    let cx = (min_x + max_x) / 2.0;
+    let cy = (min_y + max_y) / 2.0;
+    let hw = ((max_x - min_x) / 2.0 + padding).max(10.0) / scale;
+    let hh = ((max_y - min_y) / 2.0 + padding).max(10.0) / scale;
+    let ratio_x = (2.0 * hw) / width as f64;
+    let ratio_y = (2.0 * hh) / height as f64;
+    let cx_shifted = cx - offset_x * ratio_x;
+    let cy_shifted = cy + offset_y * ratio_y;
+    let x_bounds = [cx_shifted - hw, cx_shifted + hw];
+    let y_bounds = [cy_shifted - hh, cy_shifted + hh];
 
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -199,6 +394,10 @@ pub fn render_draw_snapshot_with_size(
                                 ratatui::text::Line::from(text.content.clone())
                                     .style(Style::default().fg(color)),
                             );
+                        }
+                        DrawElement::Image(_) => {
+                            // Image elements are inert — kept for backward compat
+                            // with older .draw files, not rendered.
                         }
                     }
                 }
@@ -256,15 +455,26 @@ impl Widget for RenderedSnapshot<'_> {
                 break;
             }
             let row = &self.grid[src_row];
-            for (col_idx, buf_x) in (area.left()..area.right()).enumerate() {
-                if col_idx >= row.len() {
+            let mut buf_x = area.left();
+            for &(ch, style) in row {
+                if buf_x >= area.right() {
                     break;
                 }
-                let (ch, style) = row[col_idx];
-                let safe_ch = if ch.is_control() { ' ' } else { ch };
+                let (safe_ch, w) = if ch.is_control() {
+                    (' ', 1u16)
+                } else {
+                    (ch, UnicodeWidthChar::width(ch).unwrap_or(0) as u16)
+                };
+                if w == 0 {
+                    continue;
+                }
+                if buf_x as u32 + w as u32 > area.right() as u32 {
+                    break;
+                }
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
                     cell.set_char(safe_ch).set_style(style);
                 }
+                buf_x += w;
             }
         }
     }
@@ -404,6 +614,10 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
                 max_x = max_x.max(t.x + t.content.len() as f64 * 8.0);
                 max_y = max_y.max(t.y + 12.0);
             }
+            DrawElement::Image(_) => {
+                // Image elements are inert — kept for backward compat
+                // with older .draw files, not included in bounds.
+            }
         }
     }
     if min_x == f64::MAX {
@@ -415,11 +629,15 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
 
 fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     match color {
-        Some(s) if s.starts_with('#') && s.len() == 7 => {
-            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-            Color::Rgb(r, g, b)
+        Some(s) if s.starts_with('#') => {
+            if s.len() == 7 {
+                let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
+                let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
+                let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
+                Color::Rgb(r, g, b)
+            } else {
+                theme.accent
+            }
         }
         Some("1") | Some("red") => Color::Rgb(255, 82, 82),
         Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
@@ -431,48 +649,19 @@ fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
-fn draw_braille_line(buf: &mut Buffer, mut x1: f64, mut y1: f64, x2: f64, y2: f64, color: Color) {
-    let dx = x2 - x1;
-    let dy = y2 - y1;
-    let dist = (dx * dx + dy * dy).sqrt();
-    let steps = (dist * 2.0) as usize;
-    if steps == 0 {
-        return;
-    }
-    let sx = dx / steps as f64;
-    let sy = dy / steps as f64;
-
-    for _ in 0..=steps {
-        let cx = x1 as u16;
-        let cy = y1 as u16;
-        let dot_x = ((x1 - cx as f64) * 2.0) as u16;
-        let dot_y = ((y1 - cy as f64) * 4.0) as u16;
-
-        if let Some(cell) = buf.cell_mut((cx, cy)) {
-            let mut braile_code = match cell.symbol().chars().next() {
-                Some(c) if ('\u{2800}'..='\u{28FF}').contains(&c) => c as u32 - 0x2800,
-                _ => 0,
-            };
-            let dot_bit = match (dot_x, dot_y) {
-                (0, 0) => 0x01,
-                (0, 1) => 0x02,
-                (0, 2) => 0x04,
-                (1, 0) => 0x08,
-                (1, 1) => 0x10,
-                (1, 2) => 0x20,
-                (0, 3) => 0x40,
-                (1, 3) => 0x80,
-                _ => 0,
-            };
-            braile_code |= dot_bit;
-            if let Some(c) = char::from_u32(0x2800 + braile_code) {
-                cell.set_char(c).set_fg(color);
-            }
-        }
-
-        x1 += sx;
-        y1 += sy;
-    }
+/// Check if a file path has a common image extension.
+fn is_image_ext(file: &str) -> bool {
+    let ext = match std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+    {
+        Some(e) => e.to_ascii_lowercase(),
+        None => return false,
+    };
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg" | "ico" | "tiff" | "tif" | "avif"
+    )
 }
 
 fn draw_stroke_lines(ctx: &mut Context, stroke: &Stroke) {
@@ -608,6 +797,7 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pinstar::data::{GroupNode, TextNode};
     use ratatui::backend::TestBackend;
 
     /// Regression guard: a grid cell containing a control char must not
@@ -629,5 +819,213 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let cell = buffer.cell((0, 0)).unwrap();
         assert_eq!(cell.symbol(), " ", "control char replaced by space");
+    }
+
+    /// Wide chars (e.g. CJK) must advance buf_x by their visual width so
+    /// the next grid cell lands after the continuation cell.
+    #[test]
+    fn rendered_snapshot_writes_wide_char_to_two_cells() {
+        let grid = vec![vec![('中', Style::default()), ('b', Style::default())]];
+        let snapshot = RenderedSnapshot::new(&grid);
+
+        let backend = TestBackend::new(4, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(snapshot, frame.area());
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        // '中' occupies cells (0,0) (visual) — cell (1,0) is NOT 'b'
+        assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "中");
+        // 'b' lands at (2,0) — AFTER the wide-char continuation cell
+        assert_ne!(
+            buffer.cell((1, 0)).unwrap().symbol(),
+            "b",
+            "cell (1,0) should not be 'b' — wide char '中' occupies cols 0-1"
+        );
+        assert_eq!(buffer.cell((2, 0)).unwrap().symbol(), "b");
+    }
+
+    #[test]
+    fn canvas_snapshot_fits_wide_content() {
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "n1".to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "A".to_string(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "n2".to_string(),
+                    x: 7000.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "B".to_string(),
+                    title: None,
+                    color: None,
+                }),
+            ],
+            edges: vec![],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_canvas_snapshot(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            40,
+            20,
+            1.0,
+            0.0,
+            0.0,
+        );
+        let left_has_content = (0..=19).any(|col| {
+            grid.iter()
+                .any(|row| row.get(col).is_some_and(|(ch, _)| *ch != ' '))
+        });
+        assert!(
+            left_has_content,
+            "left half should have content from node near x=0"
+        );
+        let right_has_content = (20..=39).any(|col| {
+            grid.iter()
+                .any(|row| row.get(col).is_some_and(|(ch, _)| *ch != ' '))
+        });
+        assert!(
+            right_has_content,
+            "right half should have content from node near x=7000"
+        );
+    }
+
+    #[test]
+    fn draw_snapshot_renders_content() {
+        let data = DrawData {
+            version: 1,
+            width: 500.0,
+            height: 500.0,
+            background: None,
+            elements: vec![DrawElement::Shape(Shape::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                color: (255, 0, 0),
+            })],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_draw_snapshot_with_size(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            40,
+            10,
+            1.0,
+            0.0,
+            0.0,
+        );
+        // Per-axis scaling: drawing fills the pane (no letterboxing from uniform fit)
+        let has_content = grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '));
+        assert!(has_content, "drawing must be visible in the preview");
+    }
+
+    /// Regression: wide canvas bounds remain visible at preview size.
+    #[test]
+    fn canvas_snapshot_fits_wide_fixture() {
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "left".to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "Left".to_string(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "right".to_string(),
+                    x: 7180.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "Right".to_string(),
+                    title: None,
+                    color: None,
+                }),
+            ],
+            edges: vec![],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_canvas_snapshot(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            78,
+            38,
+            1.0,
+            0.0,
+            0.0,
+        );
+        assert_eq!(grid.len(), 38, "height matches");
+        assert_eq!(grid[0].len(), 78, "width matches");
+        assert!(
+            grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' ')),
+            "wide fixture must produce visible content"
+        );
+    }
+
+    /// Verify file nodes inside groups are visible (not cleared by later group render).
+    #[test]
+    fn file_nodes_visible_inside_groups() {
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "f1".to_string(),
+                    x: 100.0,
+                    y: 100.0,
+                    width: 200.0,
+                    height: 100.0,
+                    text: "hello".to_string(),
+                    title: Some("file1".to_string()),
+                    color: Some("#ff0000".to_string()),
+                }),
+                CanvasNode::Group(GroupNode {
+                    id: "g1".to_string(),
+                    x: 50.0,
+                    y: 50.0,
+                    width: 300.0,
+                    height: 200.0,
+                    label: Some("group".to_string()),
+                    color: Some("#0000ff".to_string()),
+                }),
+            ],
+            edges: vec![],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_canvas_snapshot(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            60,
+            30,
+            1.0,
+            0.0,
+            0.0,
+        );
+        let has_file_content = grid.iter().any(|row| {
+            let s: String = row.iter().map(|(ch, _)| *ch).collect();
+            s.contains("hello") || s.contains("file1")
+        });
+        assert!(
+            has_file_content,
+            "file node must render on top of group, not be cleared"
+        );
     }
 }

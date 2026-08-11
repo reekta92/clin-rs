@@ -8,9 +8,9 @@ Technical docs for the setup wizard (`ViewMode::Setup`) — a first-run / onboar
 
 ## Overview
 
-`ViewMode::Setup` is a single-centered onboarding screen that lets the user configure appearance and keybind preset before diving into the app. It is shown on first launch and can be reopened at any time via the command palette (`OpenSetupWizardAction`, id `setup.open`).
-
-The wizard has no title bar, no status bar, and no preview pane chrome — it is a dedicated full-screen form with a live markdown preview pane.
+`ViewMode::Setup` is a first-run wizard, reopenable from command palette. It
+selects vault plus appearance and keybind preset. Vault changes rebootstrap
+same process; content is never copied. Use `clin storage migrate` explicitly.
 
 ---
 
@@ -36,60 +36,44 @@ The screen is centered both horizontally and vertically. The left column contain
 
 | Constant | Value | Description |
 |---|---|---|
-| `COL_WIDTH` | 44 | Width of the left column (logo + options) |
-| `COL_HEIGHT` | 16 | Total height of the centered column |
-| `OPTION_ROWS` | 5 | Number of cycle-in-place option rows |
-| `DONE_ROW` | 5 | Index of the Done button (0-indexed from first option) |
-| `PREVIEW_WIDTH` | 50 | Width of the markdown preview pane |
-| `VALUE_WIDTH` | 18 | Max width of the displayed option value |
-| `SETUP_PREVIEW_MD` | *inline string* | Markdown content rendered in the preview pane |
+| `COL_WIDTH` | 44 | Width of left column |
+| `COL_HEIGHT` | 19 | Total centered-column height |
+| `OPTION_ROWS` | 6 | Vault plus five cycle-in-place rows |
+| `DONE_ROW` | 6 | Done button index |
+| `PREVIEW_WIDTH` | 50 | Markdown preview width |
 
----
+### Rows
 
-## The 5 Option Rows
-
-Each row cycles through values in place when the user presses `CycleNext` / `CyclePrev`. Changing a row calls `App::apply_setup_live()` so the preview updates immediately.
-
-| Row | Option | Cycles Through |
+| Row | Option | Behavior |
 |---|---|---|
-| Theme | `[Theme]` | All 19 built-in themes (see `SETUP_THEMES` in `src/setup.rs`) |
+| Vault | `[Vault] [Select]` | Native directory picker; text fallback permits absolute paths |
+| Theme | `[Theme]` | Built-in and custom themes |
 | Background | `[Background]` | Transparent / Solid |
-| Hint Bar Style | `[Hint Bar Style]` | Classic / Accent / PowerlineSharp / PowerlineRounded / PowerlineSlanted |
-| Icon Mode | `[Icon Mode]` | Nerd / Unicode / None |
-| Keybind Preset | `[Keybind Preset]` | Default / Helix / Vim / Emacs |
-
+| Hint bar | `[Hint bar]` | Hint bar styles |
+| Icons | `[Icons]` | Nerd / Unicode / None |
+| Keybinds | `[Keybinds]` | Default / Helix / Vim / Emacs |
 ---
 
 ## Keybindings
 
-The setup wizard is driven by `SetupAction` (defined in `src/keybinds/types.rs`), with defaults in `src/keybinds/defaults.rs` and the scope `[setup]` in `keybinds.toml`.
-
 | Key | Action |
 |---|---|
 | `Up` / `Down` | Move focus between rows |
-| `CycleNext` / `CyclePrev` | Cycle the focused row's value |
-| `Activate` | Select / activate the focused row (Done button) |
-| `Finish` / `Esc` | Opens a confirm-exit overlay that either commits all changes to `config.toml` (via `App::finish_setup()`) or aborts |
+| `Enter` / `Space` on Vault | Select vault |
+| Left / Right | Cycle selected non-Vault option |
+| `Esc` | Confirm setup exit, or cancel vault modal |
+| `F2` | Toggle global QuickKeybinds |
 
-### Mouse
+Above Done, wizard always shows: `Remember: press ? for help or F2 for keybinds.`
+`?` is display-only during setup; help opens after setup.
 
-| Gesture | Action |
-|---|---|
-| Click a row label | Focus that row |
-| Click a row value | Cycle the value |
-| Click Done button | Finish setup and apply all changes |
+### Vault behavior
 
-Mouse handling is in `src/events/setup.rs:91`.
-
----
-
-## Vault Path
-
-The wizard configures appearance and keybind preset only. The storage / vault path is set separately via:
-- `clin storage set <PATH>` CLI command, or
-- `storage_path` in the `[core]` section of `config.toml`
-
-Both support `~` and `$VAR` / `${VAR}` expansion.
+Picker cancellation leaves current path unchanged. Fallback validates absolute
+paths, expands `~` and environment variables, preserves symlinks, and creates
+missing directories only on Finish. Non-empty directories without `.clin`
+require confirmation. `--vault` shows `[CLI override]`, disables Vault row,
+and is never persisted to config.
 
 ---
 

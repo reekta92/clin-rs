@@ -1,7 +1,6 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 use std::borrow::Cow;
 
 impl App {
@@ -15,19 +14,20 @@ impl App {
         }
         self.mode = ViewMode::Help;
         self.help_tab = tab;
-        self.help_scroll = 0;
-        self.help_tab_scroll.insert(tab, 0);
+        self.help_page = 0;
+        self.help_info_active = 0;
+        self.help_tab_page.insert(tab, 0);
         self.status = Cow::Borrowed("");
         self.status_until = None;
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
+        self.reroll_help_suggestions();
     }
 
     pub fn close_help_page(&mut self) {
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        self.help_scroll = 0;
-        self.help_tab = HelpTab::Notes;
-        self.help_tab_scroll.clear();
+        self.help_page = 0;
+        self.help_tab_page.clear();
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
         self.set_default_status();
@@ -38,9 +38,15 @@ impl App {
             self.return_mode = Some(self.mode);
         }
         self.mode = ViewMode::Setup;
+        let vault_path = self
+            .config
+            .effective_storage_path()
+            .unwrap_or_else(|_| self.storage.data_dir.clone());
         self.setup_state = Some(crate::setup::SetupState::from_config(
             &self.config,
             &self.app_theme,
+            vault_path,
+            crate::config::has_storage_path_override(),
         ));
         self.status = Cow::Borrowed("");
         self.status_until = None;
@@ -51,7 +57,8 @@ impl App {
             match crate::graf::app::GrafAppState::new(
                 &self.config,
                 self.storage.clone(),
-                vec![],
+                self.notes.clone(),
+                self.config_errors.clone(),
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
             ) {
@@ -60,6 +67,10 @@ impl App {
                 }
                 Err(_) => {
                     self.set_temporary_status_static("Failed to build graph view");
+                    self.messages.push(
+                        "Failed to build graph view".to_string(),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                     return;
                 }
             }
@@ -69,12 +80,12 @@ impl App {
             self.mode = ViewMode::Graph;
         }
     }
-    pub fn open_content_tree_view(&mut self) {
+    pub fn open_outline_view(&mut self) {
         let note_id = self.get_selected_note_id();
-        self.content_tree_state = if let Some(id) = note_id {
+        self.outline_state = if let Some(id) = note_id {
             match self.storage.load_note(&id) {
                 Ok(note) => {
-                    let state = crate::content_tree::state::ContentTreeState::new(
+                    let state = crate::outline::state::OutlineState::new(
                         id.clone(),
                         &note.title,
                         &note.content,
@@ -84,30 +95,27 @@ impl App {
 
                     Some(state)
                 }
-                Err(_) => Some(crate::content_tree::state::ContentTreeState::error(
+                Err(_) => Some(crate::outline::state::OutlineState::error(
                     id,
                     self.keybinds.clone(),
                     self.seq_matcher.clone(),
                 )),
             }
         } else {
-            Some(crate::content_tree::state::ContentTreeState::error(
+            Some(crate::outline::state::OutlineState::error(
                 String::new(),
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
             ))
         };
-        if self.mode != ViewMode::ContentTree {
+        if self.mode != ViewMode::Outline {
             self.return_mode = Some(self.mode);
-            self.mode = ViewMode::ContentTree;
+            self.mode = ViewMode::Outline;
         }
     }
 
     pub fn open_backup_view(&mut self) {
-        let vault_path = self
-            .config
-            .effective_storage_path()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let vault_path = crate::config::vault_path_or_dot(&self.config);
         let config = &self.config;
 
         self.backup_state = Some(crate::backup::state::BackupState::new(
@@ -127,13 +135,14 @@ impl App {
 
     pub fn open_draw_view(&mut self) {
         let note_id = self.get_selected_note_id();
-        self.draw_state = Some(crate::draw::app::DrawAppState::new(
+        let state = crate::draw::app::DrawAppState::new(
             self.storage.clone(),
             note_id,
             self.app_theme.clone(),
             self.keybinds.clone(),
             self.seq_matcher.clone(),
-        ));
+        );
+        self.draw_state = Some(state);
         if self.mode != ViewMode::Draw {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Draw;
@@ -141,11 +150,13 @@ impl App {
     }
 
     pub fn close_draw_view(&mut self) {
-        self.editor.editing_id = None;
+        let editing_id = self.editor.editing_id.take();
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
 
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        if let Some(id) = editing_id {
+            self.refresh_note_single(None, &id);
+        } else {
+            self.request_notes_reconcile();
         }
         self.set_default_status();
     }
@@ -154,32 +165,52 @@ impl App {
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            let path = self.storage.note_path(&self.notes[*summary_idx].id);
-            if let Ok(state) = crate::pinstar::state::PinstarState::load(
+            let note_id = self.notes[*summary_idx].id.clone();
+            let path = self.storage.note_path(&note_id);
+            let prev_mode = self.mode;
+            self.load_and_open_note(&note_id, None);
+            if self.mode == ViewMode::Edit {
+                if prev_mode != ViewMode::Canvas {
+                    self.return_mode = Some(prev_mode);
+                }
+                self.mode = ViewMode::Canvas;
+            } else {
+                self.set_temporary_status_static("Failed to load .canvas file!");
+                self.messages.push(
+                    "Failed to load .canvas file!".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+            }
+
+            if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
                 &path,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
             ) {
+                state.image_cache =
+                    crate::image_render::cache::ImageCache::new(self.config.image.cache_size);
+                state.image_picker = self.image_picker.clone();
+                state.image_decode_tx = self.image_decode_tx.clone();
                 self.canvas_state = Some(state);
-                if self.mode != ViewMode::Canvas {
-                    self.return_mode = Some(self.mode);
-                    self.mode = ViewMode::Canvas;
-                }
-
-                self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {
                 self.set_temporary_status_static("Failed to load .canvas file!");
+                self.messages.push(
+                    "Failed to load .canvas file!".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
 
     pub fn close_canvas_view(&mut self) {
-        self.editor.editing_id = None;
+        let editing_id = self.editor.editing_id.take();
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
 
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        if let Some(id) = editing_id {
+            self.refresh_note_single(None, &id);
+        } else {
+            self.request_notes_reconcile();
         }
         self.set_default_status();
     }
@@ -188,12 +219,19 @@ impl App {
         if tab == self.help_tab {
             return;
         }
-        let current_scroll = self.help_scroll;
-        self.help_tab_scroll.insert(self.help_tab, current_scroll);
+        let current_page = self.help_page;
+        self.help_tab_page.insert(self.help_tab, current_page);
         self.help_tab = tab;
-        self.help_scroll = self.help_tab_scroll.get(&tab).copied().unwrap_or(0);
+        self.help_info_active = 0;
+        self.help_page = self.help_tab_page.get(&tab).copied().unwrap_or(0);
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
+        self.reroll_help_suggestions();
+    }
+
+    pub fn reroll_help_suggestions(&mut self) {
+        let rolled = crate::ui::roll_suggestions(self.help_tab, 4);
+        self.help_suggestions = rolled.into_iter().copied().collect();
     }
 
     pub fn begin_create_draw(&mut self) {
@@ -206,14 +244,12 @@ impl App {
     }
 
     pub fn begin_create_draw_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -236,14 +272,12 @@ impl App {
     }
 
     pub fn begin_create_canvas_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -266,6 +300,8 @@ impl App {
                 self.popups.active = Some(crate::popups::ActivePopup::TrashView(TrashView {
                     items,
                     selected: 0,
+                    scroll_offset: 0,
+                    last_scroll: None,
                 }));
             }
             Err(e) => {

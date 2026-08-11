@@ -6,8 +6,7 @@ Technical docs for the theme and color system — 19 built-in themes, per-color 
 
 ## Custom Themes
 
-Drop a TOML file into `~/.config/clin/themes/<name>.toml` to make `<name>` available
-as a theme. Set `theme = "<name>"` in `config.toml` to activate it.
+Drop a TOML file into the active configuration directory’s `themes/<name>.toml` to make `<name>` available as a theme. Set `theme = "<name>"` under `[ui]` in `config.toml` to activate it.
 
 ### File Schema
 
@@ -25,6 +24,9 @@ fg = "#ffffff"
 border = "#414868"
 tag = "#bb9af7"
 folder = "#7dcfff"
+pinned = "#9ece6a"       # Pinned category
+smart = "#bb9af7"        # Smart folders category
+subnote = "#94e2d5"      # Subnotes category
 highlight_fg = "#1a1b26"
 highlight_bg = "#7aa2f7"
 background = "#1a1b26"   # optional → transparent when absent
@@ -67,16 +69,16 @@ clin has a flexible theme system with 19 built-in themes, transparent and solid 
 ## Architecture
 
 ```
-config.toml [theme] section
+config.toml [ui] section
          │
          ▼
-ThemeConfig struct (config.rs)
+UiConfig struct (config)
     ├── theme: Theme enum
     ├── background: Background enum
     └── per-color overrides (Option<String> hex)
          │
          ▼
-AppThemeColors::from_config(&ThemeConfig)
+AppThemeColors::from_config(&UiConfig)
     ├── Theme enum → graf/themes.rs → ThemeColors palette
     ├── Apply per-color overrides
     └── Return AppThemeColors struct
@@ -122,11 +124,10 @@ Each theme defines an 8-color palette for nodes plus chrome, title, text, foregr
 ---
 
 ## Theme Config Options
-
-All in `[theme]` section of `config.toml`:
+All options live in the `[ui]` section of `config.toml`:
 
 ```toml
-[theme]
+[ui]
 theme = "tokyo_night"           # Theme name
 background = "transparent"      # "transparent" or "solid"
 
@@ -202,6 +203,9 @@ pub struct AppThemeColors {
     pub border: Color,       // Borders and dividers
     pub tag: Color,          // Tag labels
     pub folder: Color,       // Folder labels
+    pub pinned: Color,         // Pinned items category color
+    pub smart: Color,          // Smart folders category color
+    pub subnote: Color,        // Subnotes category color
     pub highlight_fg: Color, // Text on highlighted bg
     pub highlight_bg: Color, // Selection highlight background
 }
@@ -225,7 +229,7 @@ impl AppThemeColors {
 
 | View | Uses |
 |---|---|
-| List | `accent` (selection), `tag` (tags), `folder` (folder names), `muted` (hints), `border` (dividers), `bg` (background) |
+  | List | `accent` (selection), `pinned` (pinned items), `smart` (smart folders), `subnote` (subnotes), `folder` (vault folders), `tag` (tags), `muted` (hints), `border` (dividers), `bg` (background) |
 | Edit | `accent` (cursor), `highlight_fg`/`highlight_bg` (title bar), `muted` (status), `border` (dividers) |
 | Help | `accent` (current tab), `muted` (other tabs), `title_bar_bg_style` (tab bar), `bg_style` (content) |
 | Graph | Uses graf `ThemeColors` palette for node/edge/grid colors; `app_theme` for UI shell (status bar, borders) |
@@ -239,8 +243,7 @@ impl AppThemeColors {
 There are two ways to add a theme. The **preferred path requires no recompile**.
 
 ### Preferred: No-Recompile Custom TOML (see "Custom Themes" above)
-
-Drop a TOML file into `~/.config/clin/themes/<name>.toml` with the schema documented in the [Custom Themes](#custom-themes) section above. The theme name is the filename (without `.toml`). Select it by setting `theme = "<name>"` in `config.toml` — no Rust code changes, no recompilation.
+Drop a TOML file into the active configuration directory’s `themes/<name>.toml` with the schema documented in the [Custom Themes](#custom-themes) section above. The theme name is the filename (without `.toml`). Select it by setting `theme = "<name>"` under `[ui]` in `config.toml` — no Rust code changes or recompilation.
 
 ### Fallback: Built-in Theme (recompile required)
 
@@ -275,9 +278,14 @@ See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 
 ---
 
+## Statusline Interaction
+
+Custom statusline text (configured via `[statusline]` in `config.toml`) uses the active theme in every `hint_bar_style`. `classic` is the default; the remaining built-in styles are `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, and `hexagon`.
+
+---
 ## Connections
 
-- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — `[theme]` config section
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — `[ui]` theme options
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how `AppThemeColors` flows through the rendering pipeline
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — graf theme palettes
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `SwitchThemeAction`

@@ -30,7 +30,7 @@ impl Action for ShowInfoAction {
         // Notes
         if let Some(note_id) = app.get_selected_note_id() {
             let note = app.storage.load_note(&note_id)?;
-            let summary = match app.summary_cache.get(&note_id) {
+            let summary = match app.notes.iter().find(|n| n.id == note_id) {
                 Some(s) => s.clone(),
                 None => app.storage.load_note_summary(&note_id)?,
             };
@@ -41,10 +41,9 @@ impl Action for ShowInfoAction {
             let reading_time_mins = (words as f64 / 200.0).ceil() as usize;
 
             // Header count via outline parser (minus root node)
-            let header_count =
-                crate::content_tree::parse::parse_outline(&note.title, &note.content)
-                    .len()
-                    .saturating_sub(1);
+            let header_count = crate::outline::parse::parse_outline(&note.title, &note.content)
+                .len()
+                .saturating_sub(1);
 
             // Task count: lines matching - [ ], - [x], * [ ], * [x]
             let task_count = note
@@ -136,7 +135,7 @@ impl Action for ShowInfoAction {
             let mut latest_title = String::new();
 
             let prefix = format!("{}/", folder_path);
-            for summary in app.summary_cache.values() {
+            for summary in &app.notes {
                 if summary.folder == folder_path || summary.folder.starts_with(&prefix) {
                     total_notes += 1;
                     total_size += summary.size_bytes;

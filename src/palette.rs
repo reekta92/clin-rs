@@ -59,13 +59,15 @@ pub struct CommandPalette {
     pub state: ListState,
     pub context_note_id: Option<String>,
     pub active_tab: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub last_results_area: Option<ratatui::layout::Rect>,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
 }
+
 impl CommandPalette {
     pub fn new(context_note_id: Option<String>, app: &crate::app::App) -> Self {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(Style::default());
-        input.set_placeholder_text("Search commands...");
-        input.set_style(app.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&app.app_theme, "Search commands...");
         input.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
@@ -79,6 +81,10 @@ impl CommandPalette {
             state: ListState::default(),
             context_note_id,
             active_tab: 0,
+            last_scroll: None,
+            scroll_drag: None,
+            last_results_area: None,
+            mouse_selection: crate::text_edit::MouseTextSelection::default(),
         };
         p.refresh_items(app);
         p
@@ -88,9 +94,7 @@ impl CommandPalette {
         let query = self.input.lines()[0].as_str();
         let actions = crate::actions::get_all_action_infos(app);
         let mut matched = Vec::with_capacity(actions.len());
-
         let category_filter = palette_tabs(app.config.ui.icon_mode)[self.active_tab].2;
-
         if query.is_empty() {
             for action in actions {
                 if category_filter.is_some_and(|cat| action.category != cat) {
@@ -124,7 +128,6 @@ impl CommandPalette {
             }
             matched.sort_by_key(|b| std::cmp::Reverse(b.score));
         }
-
         self.items = matched;
         if self.items.is_empty() {
             self.state.select(None);
@@ -146,7 +149,9 @@ impl CommandPalette {
             }
             KeyCode::BackTab => {
                 if self.active_tab == 0 {
-                    self.active_tab = palette_tabs(app.config.ui.icon_mode).len() - 1;
+                    self.active_tab = palette_tabs(app.config.ui.icon_mode)
+                        .len()
+                        .saturating_sub(1);
                 } else {
                     self.active_tab -= 1;
                 }
@@ -186,7 +191,9 @@ impl CommandPalette {
                 return true;
             }
             _ => {
-                self.input.input(key);
+                if !crate::text_edit::apply_text_shortcuts(&app.keybinds, &mut self.input, key) {
+                    self.input.input(key);
+                }
                 self.refresh_items(app);
             }
         }

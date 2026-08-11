@@ -1,9 +1,12 @@
-pub mod content_tree;
 pub mod decrypt;
 pub mod encrypt;
 pub mod import;
 pub mod info;
+pub mod insert_date;
 pub mod ocr;
+pub mod outline;
+pub mod rasterize;
+
 pub mod settings;
 
 use crate::app::App;
@@ -184,6 +187,7 @@ toggle_action!(
     begin_theme_selection,
     app,
     crate::config::ClinConfig::load()
+        .0
         .map(|c| c.ui.theme.clone())
         .unwrap_or_else(|_| "default".to_string())
 );
@@ -230,13 +234,17 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
+        Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
+        Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
-        Box::new(content_tree::OpenContentTreeAction),
+        Box::new(outline::OpenOutlineAction),
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
+        Box::new(ocr::PasteImageAction),
+        Box::new(ocr::InsertImageFromFileAction),
         Box::new(SwitchThemeAction),
         Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
@@ -244,7 +252,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(ToggleLayoutAction),
         Box::new(settings::ToggleLayoutEditModeAction),
         Box::new(settings::TogglePreviewPaneAction),
-        Box::new(settings::TogglePreviewWrapAction),
+        Box::new(settings::ToggleWrapAction),
         Box::new(settings::ToggleCalendarAction),
         Box::new(settings::ToggleLineNumbersAction),
         Box::new(settings::ToggleConfirmDeleteAction),
@@ -257,11 +265,27 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::ToggleFoldersFirstAction),
+        Box::new(settings::ToggleInlineInfoAction),
         Box::new(settings::ToggleSmartFoldersAction),
         Box::new(settings::ConfigureSmartFoldersAction),
         Box::new(settings::SetNoteGoalAction),
         Box::new(settings::CycleIconModeAction),
         Box::new(settings::CycleHintBarStyleAction),
+        Box::new(settings::ToggleEditModeHighlightAction),
+        Box::new(settings::ToggleGhostSyntaxAction),
+        Box::new(settings::ToggleExtendedMarkdownAction),
+        Box::new(settings::ToggleScrollbarsAction),
+        Box::new(settings::ToggleSyntaxHighlightingAction),
+        Box::new(settings::ToggleCodeLineNumbersAction),
+        Box::new(settings::ToggleShowFileSizeAction),
+        Box::new(settings::CycleListDensityAction),
+        Box::new(settings::CycleWeekStartAction),
+        Box::new(settings::ToggleGoalsAction),
+        Box::new(settings::ToggleGraphPreviewAction),
+        Box::new(settings::ToggleGraphShowLegendAction),
+        Box::new(settings::ToggleGraphShowGridAction),
+        Box::new(settings::ToggleGraphShowMinimapAction),
+        Box::new(settings::ToggleGraphShowOrphanAction),
         Box::new(info::ShowInfoAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,

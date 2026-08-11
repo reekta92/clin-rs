@@ -19,16 +19,23 @@ toggle_action!(
 );
 
 toggle_action!(
-    TogglePreviewWrapAction,
-    "settings.preview_wrap",
-    "Toggle Preview Word Wrap",
-    "Wrap long preview lines to the pane width",
+    ToggleWrapAction,
+    "settings.wrap",
+    "Toggle Word Wrap",
+    "Toggle word wrap for both editor and preview",
     ActionCategory::Settings,
     "\u{f036}",
     "\u{1f4c4}",
-    toggle_preview_wrap,
+    toggle_wrap,
     app,
-    if app.preview_wrap { "On" } else { "Off" }
+    if match app.mode {
+        crate::app::ViewMode::Edit => app.config.editor.soft_wrap,
+        _ => app.preview_wrap,
+    } {
+        "On"
+    } else {
+        "Off"
+    }
 );
 
 toggle_action!(
@@ -102,6 +109,19 @@ toggle_action!(
     toggle_confirm_on_quit,
     app,
     if app.confirm_on_quit { "On" } else { "Off" }
+);
+
+toggle_action!(
+    ToggleInlineInfoAction,
+    "settings.inline_info",
+    "Toggle Inline Info",
+    "Show or hide inline metadata (tags, dates, sizes, folder counts) in the notes list",
+    ActionCategory::Settings,
+    "\u{f0b0}",
+    "\u{2699}",
+    toggle_inline_info,
+    app,
+    if app.list.inline_info { "On" } else { "Off" }
 );
 
 toggle_action!(
@@ -251,13 +271,7 @@ toggle_action!(
     "\u{1f4cb}",
     begin_hint_bar_style_selection,
     app,
-    match app.config.ui.hint_bar_style {
-        crate::config::HintBarStyle::Classic => "Classic",
-        crate::config::HintBarStyle::Accent => "Accent",
-        crate::config::HintBarStyle::PowerlineSharp => "Powerline Sharp",
-        crate::config::HintBarStyle::PowerlineRounded => "Powerline Rounded",
-        crate::config::HintBarStyle::PowerlineSlanted => "Powerline Slanted",
-    }
+    app.config.ui.hint_bar_style.name()
 );
 
 toggle_action!(
@@ -284,6 +298,257 @@ toggle_action!(
     toggle_smart_folders,
     app,
     if app.config.list.smart_folders_enabled {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleEditModeHighlightAction,
+    "settings.edit_mode_highlight",
+    "Toggle Edit Mode Highlight",
+    "Show or hide edit mode highlighting in the note editor",
+    ActionCategory::Settings,
+    "\u{f044}",
+    "\u{1f4dd}",
+    toggle_edit_mode_highlight,
+    app,
+    if app.config.editor.edit_mode_highlight {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGhostSyntaxAction,
+    "settings.ghost_syntax",
+    "Toggle Ghost Syntax",
+    "Show or hide ghost syntax highlighting in the note editor",
+    ActionCategory::Settings,
+    "\u{f0db}",
+    "\u{1f4dd}",
+    toggle_ghost_syntax,
+    app,
+    if app.config.editor.ghost_syntax {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleExtendedMarkdownAction,
+    "settings.extended_markdown",
+    "Toggle Extended Markdown",
+    "Enable or disable extended markdown features in the editor",
+    ActionCategory::Settings,
+    "\u{f15b}",
+    "\u{1f4d6}",
+    toggle_extended_markdown,
+    app,
+    if app.config.editor.extended_markdown_features {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleScrollbarsAction,
+    "settings.scrollbars",
+    "Toggle Scrollbars",
+    "Show or hide mouse-draggable scrollbars on scrollable regions",
+    ActionCategory::Settings,
+    "\u{f0db}",
+    "\u{1f4cb}",
+    toggle_scrollbars,
+    app,
+    if app.config.ui.scrollbars {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleSyntaxHighlightingAction,
+    "settings.syntax_highlighting",
+    "Toggle Syntax Highlighting",
+    "Enable or disable syntax highlighting in code blocks",
+    ActionCategory::Settings,
+    "\u{f121}",
+    "\u{1f4d6}",
+    toggle_syntax_highlighting,
+    app,
+    if app.config.core.syntax_highlighting {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleCodeLineNumbersAction,
+    "settings.code_line_numbers",
+    "Toggle Code Line Numbers",
+    "Show or hide line numbers in code blocks",
+    ActionCategory::Settings,
+    "\u{f03a}",
+    "\u{0023}\u{20e3}",
+    toggle_code_line_numbers,
+    app,
+    if app.config.core.code_line_numbers {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleShowFileSizeAction,
+    "settings.show_file_size",
+    "Toggle Show File Size",
+    "Show or hide file sizes in the notes list",
+    ActionCategory::Settings,
+    "\u{f15c}",
+    "\u{1f4c4}",
+    toggle_show_file_size,
+    app,
+    if app.list.show_file_size { "On" } else { "Off" }
+);
+
+toggle_action!(
+    CycleListDensityAction,
+    "settings.cycle_list_density",
+    "Cycle List Density",
+    "Switch between compact and comfortable list spacing",
+    ActionCategory::Settings,
+    "\u{f00a}",
+    "\u{1f4cb}",
+    cycle_list_density,
+    app,
+    if app.list.list_density == crate::config::ListDensity::Compact {
+        "Compact"
+    } else {
+        "Comfortable"
+    }
+);
+
+toggle_action!(
+    CycleWeekStartAction,
+    "settings.cycle_week_start",
+    "Cycle Week Start",
+    "Switch between Sunday and Monday as the first day of the week",
+    ActionCategory::Settings,
+    "\u{f073}",
+    "\u{1f4c5}",
+    cycle_week_start,
+    app,
+    if app.list.week_start == crate::config::WeekStart::Sunday {
+        "Sunday"
+    } else {
+        "Monday"
+    }
+);
+
+toggle_action!(
+    ToggleGoalsAction,
+    "settings.goals",
+    "Toggle Goals",
+    "Show or hide daily goals in the notes list",
+    ActionCategory::Settings,
+    "\u{f1e5}",
+    "\u{1f3af}",
+    toggle_goals,
+    app,
+    if app.config.goals.enabled {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGraphPreviewAction,
+    "settings.folder_graph_preview",
+    "Toggle Folder Graph Preview",
+    "Show or hide the graph preview in the notes list",
+    ActionCategory::Settings,
+    "\u{f0c0}",
+    "\u{1f578}",
+    toggle_folder_graph_preview,
+    app,
+    if app.config.list.folder_graph_preview {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGraphShowLegendAction,
+    "settings.graph_show_legend",
+    "Toggle Graph Legend",
+    "Show or hide the legend in the graph overlay",
+    ActionCategory::Settings,
+    "\u{f02e}",
+    "\u{1f4cb}",
+    toggle_graph_show_legend,
+    app,
+    if app.config.graf.visual.show_legend {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGraphShowGridAction,
+    "settings.graph_show_grid",
+    "Toggle Graph Grid",
+    "Show or hide the background grid in the graph overlay",
+    ActionCategory::Settings,
+    "\u{f0c9}",
+    "\u{1f4ca}",
+    toggle_graph_show_grid,
+    app,
+    if app.config.graf.visual.show_grid {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGraphShowMinimapAction,
+    "settings.graph_show_minimap",
+    "Toggle Graph Minimap",
+    "Show or hide the minimap in the graph overlay",
+    ActionCategory::Settings,
+    "\u{f279}",
+    "\u{1f5fa}",
+    toggle_graph_show_minimap,
+    app,
+    if app.config.graf.visual.show_minimap {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGraphShowOrphanAction,
+    "settings.graph_show_orphan",
+    "Toggle Orphan Nodes",
+    "Show or hide orphan nodes in the graph overlay",
+    ActionCategory::Settings,
+    "\u{f0c1}",
+    "\u{1f4e1}",
+    toggle_graph_show_orphan,
+    app,
+    if app.config.graf.filter.show_orphan {
         "On"
     } else {
         "Off"

@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-use std::time::{Duration, UNIX_EPOCH};
-
 use chrono::Datelike;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -9,7 +6,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app_theme::AppThemeColors;
-use crate::storage::NoteSummary;
 
 /// Draw a GitHub-contributions-style rolling-weeks heatmap at the bottom of
 /// the notes view.
@@ -20,11 +16,12 @@ use crate::storage::NoteSummary;
 /// with a filled cell.
 ///
 /// Needs at least 9 rows and 8 columns; otherwise it no-ops.
+#[allow(clippy::implicit_hasher)]
 pub fn draw_calendar(
     frame: &mut Frame,
     rect: Rect,
     theme: &AppThemeColors,
-    notes: &[NoteSummary],
+    activity_by_day: &std::collections::HashMap<chrono::NaiveDate, usize>,
     bottom_border: bool,
     week_start: crate::config::WeekStart,
     strip_rect: Rect,
@@ -50,17 +47,6 @@ pub fn draw_calendar(
     let shift = (today_wd - target).rem_euclid(7);
     let last_col_start = today - chrono::Duration::days(shift);
     let first_col_start = last_col_start - chrono::Duration::days(7 * (weeks as i64 - 1));
-
-    // Aggregate counts per date within the window.
-    let mut counts: HashMap<chrono::NaiveDate, usize> = HashMap::new();
-    for n in notes {
-        let secs = UNIX_EPOCH + Duration::from_secs(n.updated_at);
-        let dt: chrono::DateTime<chrono::Local> = secs.into();
-        let d = dt.date_naive();
-        if d >= first_col_start && d <= today {
-            *counts.entry(d).or_insert(0) += 1;
-        }
-    }
 
     let mut lines: Vec<Line> = Vec::with_capacity(8);
 
@@ -96,7 +82,7 @@ pub fn draw_calendar(
         ));
         for col_i in 0..weeks as usize {
             let date = first_col_start + chrono::Duration::days((7 * col_i + row_i) as i64);
-            let count = counts.get(&date).copied().unwrap_or(0);
+            let count = activity_by_day.get(&date).copied().unwrap_or(0);
             let (ch, style) = if date == today {
                 (
                     '\u{2588}', // █

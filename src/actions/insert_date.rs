@@ -3,34 +3,35 @@ use crate::app::App;
 use anyhow::Result;
 use std::borrow::Cow;
 
-pub struct OpenContentTreeAction;
+pub struct InsertDateAction;
 
-impl Action for OpenContentTreeAction {
+impl Action for InsertDateAction {
     fn id(&self) -> Cow<'static, str> {
-        Cow::Borrowed("content_tree.open")
+        Cow::Borrowed("editor.insert_date")
     }
 
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Content Tree")
+        Cow::Borrowed("Insert Date")
     }
 
     fn description(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Show the selected note's headers and content as a navigable tree")
+        Cow::Borrowed("Insert current date/time at the cursor position using the configured format")
     }
+
     fn category(&self) -> super::ActionCategory {
         super::ActionCategory::Notes
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f1bb}", "\u{1f333}")
+        ("\u{f133}", "\u{1f4c5}")
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
-        if app.get_selected_note_id().is_none() {
-            app.set_temporary_status_static("Select a note first");
-            return Ok(());
-        }
-        app.open_content_tree_view();
+        let s = chrono::Local::now()
+            .format(&app.config.editor.date_format)
+            .to_string();
+        app.editor.body.insert_str(&s);
+        app.request_editor_preview_update();
         Ok(())
     }
 }

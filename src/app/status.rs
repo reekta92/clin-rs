@@ -22,11 +22,14 @@ impl App {
         self.status_until = Some(Instant::now() + Duration::from_secs(2));
     }
 
-    pub fn tick_status(&mut self) {
+    pub fn tick_status(&mut self) -> bool {
         if let Some(until) = self.status_until
             && Instant::now() >= until
         {
             self.set_default_status();
+            true
+        } else {
+            false
         }
     }
 }

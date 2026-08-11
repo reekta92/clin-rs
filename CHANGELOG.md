@@ -2,6 +2,290 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.7] - 2026-08-05
+
+### Added
+
+- Add Ctrl+d batch tag removal from select mode
+- Split quick-keybinds into columns when terminal too short
+- Add Compact style
+- Add Hexagon hint bar style
+- Add gradient powerline hint bar styles
+
+### Changed
+
+- Merge batch tagging mode into select mode
+
+### Fixed
+
+- Show_all_files = true now shows all files with '?'
+- Use Ctrl+. for remove tags (Ctrl+r collides with RefreshNotes)
+- Use Ctrl+r for batch remove tags (Ctrl+d collides)
+- Show pinned folders in grid with correct colors
+
+### Miscellaneous
+
+- .gitignore and project structure changes
+
+### Performance
+
+- Batch input and cache highlight to kill O(N²) per-keystroke work
+## [0.10.0-rc.6] - 2026-07-26
+
+### Added
+
+- Add Ctrl+C/X/V, bracket-paste routing, notifier
+- Add 4 hint bar styles (Bubbles, Blurred, Chips, Brackets)
+- Add global F1 (help) and F5 (redraw) keybinds
+- Bold key column and message labels in overlays
+- Route all silent failures into message overlay
+- Added error catching and notification system for warnings/fatals
+- Standardize footer hints across all views
+- Add Shift+Tab reverse cycle for grid layout tabs
+- Add 15 palette actions for runtime-safe config toggles
+
+### Changed
+
+- Host-agnostic core for clin-gui
+
+### Documentation
+
+- Add Find in File, Outline, Links to editor popup help
+- Sync all docs to current codebase state
+
+### Fixed
+
+- Route keyboard shortcuts through system clipboard path
+- Reorder footer hints to put quit before help
+- Duplicate push re-freshens existing entry instead of vanishing
+- Fixed fatal error message for storage init
+- Prevent header/footer overlap at small terminal widths
+- Fixed colors with powerline themes repeating
+- Revert draw preview to per-axis fill
+- Match subnotes color and glyphs across layouts
+- Render groups behind children, parse hex node colors
+- Fit .canvas and .draw previews with uniform aspect
+- Confine tag-popup textarea border to input area
+- Check virtual paths in tree layout color logic
+- Expand subnotes, fix graph bg, add sort indicator
+- Run NaN reset before drag skip, scatter coincident nodes
+
+### Performance
+
+- Eliminate O(E·N) edge scan and per-frame allocations
+
+### Release
+
+- V0.10.0-rc.6
+## [0.10.0-rc.5] - 2026-07-24
+
+### Added
+
+- Add QuickKeybinds overlay toggled by F2
+- Preview pane scroll syncs with the textarea
+- Add dynamic md coloring
+- Add ghost syntax (conceal method) for markdown
+
+### CI
+
+- Fix actions/checkout and resolve clippy -D warnings
+
+### Changed
+
+- Removed READ mode and modal typing method
+- More changes to the markdown style to make it's output unified
+- Rewrite built-in layout engine
+
+### Fixed
+
+- Scale offset-range positions to reach track bottom
+- Wrapping behaviour fixes
+- Potential fix for graph view nodes flinging around
+- Potential fix for graph view causing crash
+- Codeblocks color fix so it uses a color from the theme
+- Ctrl + f not launching the quick search
+- Preview pane scroll sync fixes when wrap is on
+- Reorganize hint items
+- Fixed preview pane and textarea sync
+- Tab not inserting indentation
+- Fixed left margin for h1 headers
+- Trim unsaved note whitespace
+- Remove dead code warnings
+
+### Performance
+
+- Reduced the poll rate with frozen layout
+
+### Release
+
+- V0.10.0-rc.5
+## [0.10.0-rc.4] - 2026-07-22
+
+### Added
+
+- Add deterministic angular jitter to static layout
+- Add circular layout for static graphs
+- Continuous scrolling READ preview
+- Refine Graph layout to use double-click opening and respect preview pane
+- Add top-level Graph layout option for notes
+- Add graf.max_node setting
+- Reorganize generated file layout
+- Add `clin cache reset` command
+
+### Changed
+
+- Replace static circle layout with degree-ranked disk
+- Implement simulated annealing graph physics
+
+### Fixed
+
+- Make Windows release build compile
+- Drop isolated nodes when show_orphan is false
+- Create directory before saving summaries
+- Tolerate spaces and lowercase in Shift+letter binds
+
+### Miscellaneous
+
+- Warning cleanup
+
+### Performance
+
+- Optimize GFM renderer using run-based layout and async worker
+- Optimize graph rendering and physics
+- Cache preview codeblocks and simplify edit view
+- Add LOD, spatial index, adaptive physics, and node cap
+- Optimize view for large 10k note vaults
+- Persist note summary cache to disk, defer graph rebuilds
+
+### Release
+
+- V0.10.0-rc.4
+- V0.10.0-rc.3
+- V0.10.0-rc.2
+## [0.10.0-rc.1] - 2026-07-18
+
+### Performance
+
+- Cache folder list in FolderGraph preview, drop per-frame O(N) scan
+
+### Release
+
+- V0.10.0-rc.1
+## [0.10.0-rc.0] - 2026-07-18
+
+### Added
+
+- Render FolderGraph note card with markdown
+- Scroll note content by page
+- Extend help view to 10 tabs (ContentTree, Setup)
+
+### Changed
+
+- Rename "Content tree" → "Outline" across code, config, and docs
+- Remove redundant full-redraw clears from event handlers
+
+### Fixed
+
+- Track visual width, fit tables to pane, fix CJK in snapshot
+- Cycle pages on middle-click, fix page indicator
+- Remove Phase 2 render gate that caused ~500ms hover lag
+
+### Performance
+
+- Coalesce Moved events and gate redundant hover draws
+
+### Release
+
+- V0.10.0-rc.0
+
+### Revert
+
+- Remove ContentTree and Setup tabs
+## [0.10.0-beta.5] - 2026-07-18
+
+### Added
+
+- Extended graph preview for all the folders
+- Tweaks to the subnotes tab/folder and graph preview
+- Draw inter-subnote wikilink edges in subnote graph
+- Add browsable Subnotes view with grid tab and tree folder
+- Perf-fix mouse selection, add read-mode select + clipboard, mode header
+- Add READ/EDIT mode indicator to title bar
+- Add modal READ/EDIT modes to Edit view
+- Added scrollbar to related sections of the project
+
+### Changed
+
+- Replace subnote graph physics with static braille radial diagram
+- Sync scroll cache on explicit scroll, add source-line map for READ↔EDIT
+- Remove custom cursor-line and selection highlights
+- Unify all list hit-tests through list_index_at
+
+### Fixed
+
+- Correct viewport math, pan direction, and add focus mode
+- Fixed h1 title position in markdown renderer
+- Align edit view hit-test layout with render layout
+- Scale scrollbar position from offset to selection range
+- Render help tab icons, coalesce mouse events, skip CreateNew in select
+- Replace textarea search with own impl to fix wrap panic
+
+### Release
+
+- V0.10.0-beta.5
+- V0.10.0-beta.4
+## [0.10.0-beta.3] - 2026-07-15
+
+### Added
+
+- Replace DP+Chaikin smoothing with binomial filter
+- Add image file support
+- Render image nodes with filled block and icon
+- Add mouse-drag panning and fix canvas text wrap
+- Zoom previews toward cursor, fix scroll direction
+- Scale snapshots to fill expanded pane
+- Add draggable scrollbars to all scrollable panes
+
+### CI
+
+- Modernize arm runners to use native arm
+- Dispatch release issue revert
+- Fix arm64 apt sources for release workflow
+- Forced ipv4 in dispatch release
+- Fixed format checks
+
+### Changed
+
+- Removed image support from the draw view
+- Refactored source editor pane to use the same code as the edit view
+
+### Documentation
+
+- Update README.md, ROADMAP.md and new config references
+
+### Fixed
+
+- Separate node display title from internal ID
+- Preserve pin status through encrypt/decrypt
+
+### Miscellaneous
+
+- Lock file regenerate
+- Check fix
+- Update readme about version bump
+- Bump version to 1.90
+- Cleanup project dir
+- Sort Cargo.lock alphabetically
+
+### Performance
+
+- Decouple preview drag state from rendering
+- Cache parsed data and re-render grids in-memory
+
+### Release
+
+- V0.10.0-beta.3
+- V0.10.0-beta.3
 ## [0.9.10] - 2026-08-03
 
 ### Fixed
@@ -28,14 +312,92 @@ All notable changes to clin are documented in this file.
 - V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
 
+### Added
+
+- Redesigned title bar and merged it into the header bar
+- Add mouse support to quick search
+- Show recursive folder count in header bar
+- Add inline_info toggle for notes list metadata
+- Centralize popup mouse handling
+- Add hover highlight to canvas context menu
+- Add hover highlights to all interactive elements
+- Rename backlinks to links pane and show forward links
+- Add sidebars and wikilink previews
+- Add find popup, insert-date, soft-wrap toggle
+- Add images.enabled config option to disable pixel rendering
+- Add pixel image rendering across Canvas, Notes, Draw
+- Add ratatui-image rendering across canvas, draw, and notes views
+- Add preset-aware tip caveats and expand tip pools
+- Add popup accordion with n/N cycle in Notes info pane
+- Add popup descriptions to Notes info pane
+- Always render {hints} with powerline colors regardless of hint_bar_style
+- Restructure help view into 3-pane layout
+- Render live keybinds and styled markup in tips pane
+- Auto-generate entries from exhaustive action meta
+
+### CI
+
+- Fix remaining format warnings in events and keybinds
+- Fixed format warnings
+
+### Changed
+
+- Refactored edit view line highlight code
+- Deduplicate layout, add UX features, context menu
+- Remove dropdown border, add "Find:" label before input
+- Rename QuickPopup→QuickSearch, render in header bar
+- Apply fmt, canvas ocr image insertion, cleanup
+- Unify popup footer rendering through PopupHints enum
+- Unify UI helpers and improve safety
+- Remove Accent style, rename Powerline variants, fix tab highlight
+- Move page indicator to title bar via statusline
+
 ### Fixed
 
 - Wire libgit2 auth callbacks into push/pull
+- Fix selection styling and right-click jump
+- Fixed jittering when moving nodes
+- Merged inline_info with show_date_in_notes
+- Fixed mouse interaction with quick search
+- Resolve canvas overlap and template version
+- Show file detail header in tree layout too
+- Deduplicate tags on save
+- Append tag from all_tags without double commas
+- Add scroll/click/hover to trash, template, tags popups
+- Fixed mouse scrolling breaks mouse accuracy in list popups
+- Add scroll-offset to mouse row→index mapping in all list popups
+- Fix mouse click off-by-one, add scroll, fix double-click
+- Fix line numbers and mouse under soft-wrap
+- Fix list hovers and sidebar click offset
+- Account for scroll offset in command palette hover
+- Correct sidebar mouse click offset
+- Surface config validation errors in graph view overlay
+- Use heading color for selection highlight row bg
+- Fill full row width with selection highlight
+- Add search glyph, improve readability on accent bg
+- Use accent color for dropdown background, fix no-match fg
+- Fill dropdown background with theme bg_style
+- Clear header text before drawing search overlay
+- Add preview-bg fill under small images
+- 3 preview/canvas bugs — bg fill, pan drain, image indicator
+- Render images in list view preview pane
+- Include [image] section in shipped default config template
+- Clear is_dragging_resize_handle on drop and resize-exit
+- Clear resize state on Left Up so image renders after resize
+- Wire image fields, fix file picker, add canvas image node
 - Add universal q/Esc back/quit intercepts, override-proof
+- Coalesce queued drag events; fix instant-apply popup cycle
+- Hint bar preview dispatches on hint_bar_style
+- Popup footers ignore hint_bar_style setting
+- Split detail into powerline cells; fix right-side junction bg
 
 ### Miscellaneous
 
 - Add support section to the readme
+
+### Performance
+
+- Render lightweight dot markers during pan/zoom transforms
 
 ### Release
 

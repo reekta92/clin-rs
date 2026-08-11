@@ -252,7 +252,7 @@ impl FromStr for LabelMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum IconMode {
     #[default]
@@ -367,11 +367,146 @@ pub enum PreviewPosition {
 #[serde(rename_all = "snake_case")]
 pub enum HintBarStyle {
     #[default]
+    #[serde(alias = "accent")]
     Classic,
-    Accent,
-    PowerlineSharp,
-    PowerlineRounded,
-    PowerlineSlanted,
+    #[serde(alias = "powerline_sharp")]
+    Sharp,
+    #[serde(alias = "powerline_rounded")]
+    Rounded,
+    #[serde(alias = "powerline_slanted")]
+    Slanted,
+    Bubbles,
+    Blurred,
+    Chips,
+    Brackets,
+    Compact,
+    SharpGradient,
+    RoundedGradient,
+    SlantedGradient,
+    Hexagon,
+}
+
+impl HintBarStyle {
+    /// Every style in picker/display order.
+    pub const ALL: [HintBarStyle; 13] = [
+        HintBarStyle::Classic,
+        HintBarStyle::Sharp,
+        HintBarStyle::Rounded,
+        HintBarStyle::Slanted,
+        HintBarStyle::Bubbles,
+        HintBarStyle::Blurred,
+        HintBarStyle::Chips,
+        HintBarStyle::Brackets,
+        HintBarStyle::Compact,
+        HintBarStyle::SharpGradient,
+        HintBarStyle::RoundedGradient,
+        HintBarStyle::SlantedGradient,
+        HintBarStyle::Hexagon,
+    ];
+
+    /// Display name ("Classic", "Bubbles", …).
+    pub fn name(self) -> &'static str {
+        match self {
+            HintBarStyle::Classic => "Classic",
+            HintBarStyle::Sharp => "Sharp",
+            HintBarStyle::Rounded => "Rounded",
+            HintBarStyle::Slanted => "Slanted",
+            HintBarStyle::Bubbles => "Bubbles",
+            HintBarStyle::Blurred => "Blurred",
+            HintBarStyle::Chips => "Chips",
+            HintBarStyle::Brackets => "Brackets",
+            HintBarStyle::Compact => "Compact",
+            HintBarStyle::SharpGradient => "SharpGradient",
+            HintBarStyle::RoundedGradient => "RoundedGradient",
+            HintBarStyle::SlantedGradient => "SlantedGradient",
+            HintBarStyle::Hexagon => "Hexagon",
+        }
+    }
+
+    /// Config/template string ("classic", "bubbles", …) — matches serde names.
+    pub fn as_config_str(self) -> &'static str {
+        match self {
+            HintBarStyle::Classic => "classic",
+            HintBarStyle::Sharp => "sharp",
+            HintBarStyle::Rounded => "rounded",
+            HintBarStyle::Slanted => "slanted",
+            HintBarStyle::Bubbles => "bubbles",
+            HintBarStyle::Blurred => "blurred",
+            HintBarStyle::Chips => "chips",
+            HintBarStyle::Brackets => "brackets",
+            HintBarStyle::Compact => "compact",
+            HintBarStyle::SharpGradient => "sharp_gradient",
+            HintBarStyle::RoundedGradient => "rounded_gradient",
+            HintBarStyle::SlantedGradient => "slanted_gradient",
+            HintBarStyle::Hexagon => "hexagon",
+        }
+    }
+
+    /// Position in `ALL`.
+    pub fn index(self) -> usize {
+        HintBarStyle::ALL
+            .iter()
+            .position(|&s| s == self)
+            .unwrap_or(0)
+    }
+
+    /// `ALL.get(idx)`, fallback Classic (default) on out-of-range.
+    pub fn from_index(idx: usize) -> Self {
+        HintBarStyle::ALL.get(idx).copied().unwrap_or_default()
+    }
+
+    /// Styles painting cells on filled backgrounds.
+    /// true: Sharp|Rounded|Slanted|Bubbles|Blurred|Chips. false: Classic|Brackets.
+    pub fn has_filled_cells(self) -> bool {
+        match self {
+            HintBarStyle::Classic | HintBarStyle::Brackets | HintBarStyle::Compact => false,
+            HintBarStyle::Sharp
+            | HintBarStyle::Rounded
+            | HintBarStyle::Slanted
+            | HintBarStyle::Bubbles
+            | HintBarStyle::Blurred
+            | HintBarStyle::Chips
+            | HintBarStyle::SharpGradient
+            | HintBarStyle::RoundedGradient
+            | HintBarStyle::SlantedGradient
+            | HintBarStyle::Hexagon => true,
+        }
+    }
+
+    /// Chained powerline family: Sharp|Rounded|Slanted|SharpGradient|RoundedGradient|SlantedGradient.
+    pub fn is_chained(self) -> bool {
+        matches!(
+            self,
+            HintBarStyle::Sharp
+                | HintBarStyle::Rounded
+                | HintBarStyle::Slanted
+                | HintBarStyle::SharpGradient
+                | HintBarStyle::RoundedGradient
+                | HintBarStyle::SlantedGradient
+        )
+    }
+
+    /// Whether this is a gradient transition style.
+    pub fn is_gradient(self) -> bool {
+        matches!(
+            self,
+            HintBarStyle::SharpGradient
+                | HintBarStyle::RoundedGradient
+                | HintBarStyle::SlantedGradient
+        )
+    }
+
+    /// Detached-family edge glyphs (left, right), drawn fg=cell-bg on bar-bg.
+    /// Bubbles → ("\u{e0b6}", "\u{e0b4}"); Blurred → ("░▒▓", "▓▒░"); Chips → ("", ""); others → None.
+    pub fn cell_caps(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            HintBarStyle::Bubbles => Some(("\u{e0b6}", "\u{e0b4}")),
+            HintBarStyle::Blurred => Some(("░▒▓", "▓▒░")),
+            HintBarStyle::Chips => Some(("", "")),
+            HintBarStyle::Hexagon => Some(("\u{e0b2}", "\u{e0b0}")),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -396,6 +531,38 @@ pub enum WeekStart {
     #[default]
     Sunday,
     Monday,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PhysicsTickRate {
+    #[default]
+    Auto,
+    Fixed,
+}
+
+impl FromStr for PhysicsTickRate {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(PhysicsTickRate::Auto),
+            "fixed" => Ok(PhysicsTickRate::Fixed),
+            _ => Err(format!("Unknown physics tick_rate: {s}")),
+        }
+    }
+}
+
+impl std::fmt::Display for PhysicsTickRate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PhysicsTickRate::Auto => "auto",
+                PhysicsTickRate::Fixed => "fixed",
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -464,5 +631,38 @@ mod tests {
     #[test]
     fn unknown_theme_still_errors() {
         assert!(Theme::from_str("not_a_theme").is_err());
+    }
+
+    #[test]
+    fn hint_bar_style_round_trip() {
+        for s in HintBarStyle::ALL {
+            assert_eq!(
+                HintBarStyle::from_index(s.index()),
+                s,
+                "from_index roundtrip for {:?}",
+                s
+            );
+        }
+        // Names must be unique.
+        let mut names: Vec<&str> = HintBarStyle::ALL.iter().map(|s| s.name()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(
+            names.len(),
+            HintBarStyle::ALL.len(),
+            "name() values not unique"
+        );
+        // Config strings must be unique.
+        let mut cfg: Vec<&str> = HintBarStyle::ALL
+            .iter()
+            .map(|s| s.as_config_str())
+            .collect();
+        cfg.sort();
+        cfg.dedup();
+        assert_eq!(
+            cfg.len(),
+            HintBarStyle::ALL.len(),
+            "as_config_str() values not unique"
+        );
     }
 }

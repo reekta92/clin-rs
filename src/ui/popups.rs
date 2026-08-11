@@ -3,26 +3,31 @@ use ratatui_textarea::TextArea;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{PopupSize, get_textarea_scroll};
+use super::PopupSize;
 use crate::app::{ConfirmPopup, TemplatePopup, ThemePopup};
 use crate::app_theme::AppThemeColors;
 
 pub fn draw_template_popup(
     frame: &mut Frame,
-    popup: &TemplatePopup,
+    popup: &mut TemplatePopup,
     area: Rect,
     theme: &AppThemeColors,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let hint_line = popup_hint_line(
-        theme,
-        "Tab switch · Enter use template · n create · d delete · Space edit · ? help · Esc cancel",
-    );
     let content = draw_popup_frame(
         frame,
         area,
         "TEMPLATES",
         PopupSize::Large,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            ("Tab".to_string(), "switch"),
+            ("Enter".to_string(), "use template"),
+            ("n".to_string(), "create"),
+            ("d".to_string(), "delete"),
+            ("Space".to_string(), "edit"),
+            ("?".to_string(), "help"),
+            ("Esc".to_string(), "cancel"),
+        ]),
         theme,
     );
 
@@ -49,10 +54,7 @@ pub fn draw_template_popup(
     frame.render_widget(&input, chunks[0]);
 
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
-        vec![ListItem::new(Span::styled(
-            "(no matching templates)",
-            Style::default().fg(theme.muted),
-        ))]
+        empty_list_item(theme, "(no matching templates)")
     } else {
         popup
             .filtered_templates
@@ -97,9 +99,44 @@ pub fn draw_template_popup(
         } else {
             None
         },
+        popup.scroll_offset,
     );
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
+    popup.scroll_offset = state.offset();
+    paint_list_hover(
+        frame,
+        Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        },
+        &state,
+        popup.filtered_templates.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
+    let list_inner = Rect {
+        x: chunks[1].x + 1,
+        y: chunks[1].y + 1,
+        width: chunks[1].width.saturating_sub(2),
+        height: chunks[1].height.saturating_sub(2),
+    };
+    popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+        track: crate::ui::scrollbar::track_rect(list_inner),
+        content_len: popup.filtered_templates.len(),
+        viewport_len: list_inner.height as usize,
+    });
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        list_inner,
+        popup.filtered_templates.len(),
+        list_inner.height as usize,
+        popup.selected,
+        popup.filtered_templates.len().saturating_sub(1),
+        theme,
+    );
 }
 
 pub fn draw_info_popup(
@@ -108,13 +145,12 @@ pub fn draw_info_popup(
     popup: &crate::popups::InfoPopup,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let hints = crate::ui::format_keybind_hints(theme, &[("Enter/Esc".to_string(), "close")]);
     let inner = crate::ui::draw_popup_frame(
         frame,
         area,
         &popup.title,
         crate::ui::PopupSize::Medium,
-        &hints,
+        PopupHints::Keybinds(&[("Enter/Esc".to_string(), "close")]),
         theme,
     );
     // Inner border, background, and padding matching other popup styles
@@ -207,9 +243,35 @@ pub fn draw_info_popup(
     }
 }
 
-pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &AppThemeColors) {
-    let hint_line = popup_hint_line(theme, "Tab navigate · Enter select · Esc close");
-    let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, &hint_line, theme);
+pub fn draw_theme_popup(
+    frame: &mut Frame,
+    popup: &mut ThemePopup,
+    area: Rect,
+    theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
+) {
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "THEMES",
+        PopupSize::Medium,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::CycleFocus),
+                "navigate",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "close",
+            ),
+        ]),
+        theme,
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -253,8 +315,47 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, chunks[0], &mut state);
+    let state = render_list_with_selection(
+        frame,
+        list,
+        chunks[0],
+        Some(popup.selected),
+        popup.scroll_offset,
+    );
+    popup.scroll_offset = state.offset();
+    paint_list_hover(
+        frame,
+        Rect {
+            x: chunks[0].x + 1,
+            y: chunks[0].y + 1,
+            width: chunks[0].width.saturating_sub(2),
+            height: chunks[0].height.saturating_sub(2),
+        },
+        &state,
+        popup.themes.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
+    let theme_inner = Rect {
+        x: chunks[0].x + 1,
+        y: chunks[0].y + 1,
+        width: chunks[0].width.saturating_sub(2),
+        height: chunks[0].height.saturating_sub(2),
+    };
+    popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+        track: crate::ui::scrollbar::track_rect(theme_inner),
+        content_len: popup.themes.len(),
+        viewport_len: theme_inner.height as usize,
+    });
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        theme_inner,
+        popup.themes.len(),
+        theme_inner.height as usize,
+        popup.selected,
+        popup.themes.len().saturating_sub(1),
+        theme,
+    );
 
     let gen_label = if popup.general_is_solid {
         "General Background Color: ON"
@@ -267,13 +368,23 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
         "Graph Background Color: OFF"
     };
 
+    let gen_hovered =
+        mouse_pos.is_some_and(|(col, row)| crate::events::contains_cell(chunks[1], col, row));
+    let graph_hovered =
+        mouse_pos.is_some_and(|(col, row)| crate::events::contains_cell(chunks[2], col, row));
+
     let gen_style = if popup.general_is_solid {
         Style::default().fg(theme.success)
     } else {
         Style::default().fg(theme.destructive)
     };
+    let gen_block_style = if gen_hovered {
+        theme.hover_style()
+    } else {
+        theme.bg_style()
+    };
     let gen_block = Block::default()
-        .style(theme.bg_style())
+        .style(gen_block_style)
         .borders(Borders::ALL)
         .border_style(if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
             Style::default().fg(theme.heading)
@@ -292,8 +403,13 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
     } else {
         Style::default().fg(theme.destructive)
     };
+    let graph_block_style = if graph_hovered {
+        theme.hover_style()
+    } else {
+        theme.bg_style()
+    };
     let graph_block = Block::default()
-        .style(theme.bg_style())
+        .style(graph_block_style)
         .borders(Borders::ALL)
         .border_style(if popup.focus == crate::app::ThemePopupFocus::GraphBg {
             Style::default().fg(theme.heading)
@@ -307,16 +423,39 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
     frame.render_widget(graph_block, chunks[2]);
     frame.render_widget(graph_para, graph_inner);
 }
-
 pub fn draw_sort_popup(
     frame: &mut Frame,
     popup: &crate::popups::SortPopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
-    let content_area =
-        draw_popup_frame(frame, area, "SORT BY", PopupSize::Medium, &hint_line, theme);
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "SORT BY",
+        PopupSize::Medium,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ]),
+        theme,
+    );
 
     let options = [
         "Title (A-Z)",
@@ -343,23 +482,52 @@ pub fn draw_sort_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_icon_mode_popup(
     frame: &mut Frame,
     popup: &crate::popups::IconModePopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
     let content_area = draw_popup_frame(
         frame,
         area,
         "ICON MODE",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ]),
         theme,
     );
 
@@ -383,23 +551,52 @@ pub fn draw_icon_mode_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_create_format_popup(
     frame: &mut Frame,
     popup: &crate::popups::CreateFormatPopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
     let content_area = draw_popup_frame(
         frame,
         area,
         "CREATE NEW",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ]),
         theme,
     );
 
@@ -428,36 +625,62 @@ pub fn draw_create_format_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_hint_bar_style_popup(
     frame: &mut Frame,
     popup: &crate::popups::HintBarStylePopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
     let content_area = draw_popup_frame(
         frame,
         area,
         "HINT BAR STYLE",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ]),
         theme,
     );
 
-    let options = [
-        "Classic",
-        "Accent",
-        "Powerline Sharp",
-        "Powerline Rounded",
-        "Powerline Slanted",
-    ];
+    let options: Vec<&str> = crate::config::HintBarStyle::ALL
+        .iter()
+        .map(|s| s.name())
+        .collect();
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .map(|opt| ListItem::new(Line::from(Span::raw(*opt))))
         .collect();
 
     let list = List::new(items)
@@ -474,26 +697,52 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_keybind_preset_popup(
     frame: &mut Frame,
     popup: &crate::popups::KeybindPresetPopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let hint_line = popup_hint_line(
-        theme,
-        "\u{2191}\u{2193}: Navigate \u{2022} Enter: Select \u{2022} Esc: Cancel",
-    );
     let content_area = draw_popup_frame(
         frame,
         area,
         "KEYBIND PRESET",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ]),
         theme,
     );
 
@@ -522,8 +771,20 @@ pub fn draw_keybind_preset_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
 
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
@@ -596,11 +857,148 @@ pub fn build_list_widget<'a>(
     )
 }
 
+/// Map a mouse row to a list item index, honoring scroll offset and row pitch.
+///
+/// `first_row_y` = screen y of the first item row (for a bordered list, `area.y + 1`;
+/// for a borderless list, the list rect's `y`). `row_pitch` = rows per item (1 for
+/// single-line, 2 for two-line palette entries). `offset` = the [`ListState::offset()`]
+/// captured right after render. `item_count` = total items. Returns `None` when the
+/// click is above the first row, in an empty trailing row, or past the last item.
+pub fn list_index_at(
+    mouse_row: u16,
+    first_row_y: u16,
+    row_pitch: u16,
+    offset: usize,
+    item_count: usize,
+) -> Option<usize> {
+    if item_count == 0 || row_pitch == 0 || mouse_row < first_row_y {
+        return None;
+    }
+    let visual = ((mouse_row - first_row_y) / row_pitch) as usize;
+    let idx = visual.saturating_add(offset);
+    (idx < item_count).then_some(idx)
+}
+///
+/// Free-scroll a list viewport by `delta` rows, clamped to `[0, max(0, item_count - viewport)]`.
+/// `delta < 0` scrolls up. Returns the new offset.
+pub fn scroll_viewport(offset: usize, delta: i32, item_count: usize, viewport: usize) -> usize {
+    let max_off = item_count.saturating_sub(viewport);
+    (offset as i32)
+        .saturating_add(delta)
+        .clamp(0, max_off as i32) as usize
+}
+///
+/// Clamp `selected` into the visible range `[offset, offset + viewport - 1]` (capped at
+/// `item_count - 1`). Returns `0` when `item_count == 0`.
+pub fn clamp_selected_to_view(
+    selected: usize,
+    offset: usize,
+    item_count: usize,
+    viewport: usize,
+) -> usize {
+    if item_count == 0 {
+        return 0;
+    }
+    let bottom = (offset + viewport).saturating_sub(1).min(item_count - 1);
+    if selected < offset {
+        offset
+    } else if selected > bottom {
+        bottom
+    } else {
+        selected
+    }
+}
 /// Initialize a [`ListState`] with an optional selection.
-pub fn list_state_selected(selected: Option<usize>) -> ListState {
-    let mut s = ListState::default();
+pub fn list_state_selected(selected: Option<usize>, offset: usize) -> ListState {
+    let mut s = ListState::default().with_offset(offset);
     s.select(selected);
     s
+}
+
+/// Paint hover highlight onto the list row under the mouse.
+///
+/// MUST be called AFTER the list was rendered with `state` (render is what makes
+/// `state.offset()` reflect the real scroll). `inner` is the rect where item rows
+/// actually live — pass the list block's inner rect (border already removed).
+/// Single-row items assumed (index = row - inner.y + offset).
+pub fn paint_list_hover(
+    frame: &mut Frame,
+    inner: Rect,
+    state: &ListState,
+    item_count: usize,
+    mouse_pos: Option<(u16, u16)>,
+    hover_style: Style,
+) {
+    let Some((col, row)) = mouse_pos else {
+        return;
+    };
+    if inner.width == 0 || inner.height == 0 || item_count == 0 {
+        return;
+    }
+    if col < inner.x || col >= inner.x + inner.width {
+        return;
+    }
+    if row < inner.y || row >= inner.y + inner.height {
+        return;
+    }
+    let Some(idx) = list_index_at(row, inner.y, 1, state.offset(), item_count) else {
+        return;
+    };
+    if Some(idx) == state.selected() {
+        return;
+    }
+    let row_rect = Rect {
+        x: inner.x,
+        y: row,
+        width: inner.width,
+        height: 1,
+    };
+    frame.buffer_mut().set_style(row_rect, hover_style);
+}
+
+pub fn make_popup_textarea(theme: &AppThemeColors, placeholder: &str) -> TextArea<'static> {
+    let mut input = TextArea::default();
+    input.set_cursor_line_style(Style::default());
+    input.set_style(theme.bg_style());
+    if !placeholder.is_empty() {
+        input.set_placeholder_text(placeholder);
+        input.set_placeholder_style(Style::default().fg(theme.muted));
+    }
+    input
+}
+
+pub fn empty_list_item(theme: &AppThemeColors, label: &str) -> Vec<ListItem<'static>> {
+    vec![ListItem::new(Span::styled(
+        label.to_string(),
+        Style::default().fg(theme.muted),
+    ))]
+}
+
+pub fn render_list_with_selection(
+    frame: &mut Frame,
+    list: List,
+    area: Rect,
+    selected: Option<usize>,
+    offset: usize,
+) -> ListState {
+    let mut state = list_state_selected(selected, offset);
+    frame.render_stateful_widget(list, area, &mut state);
+    state
+}
+
+pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
+    let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
+    secs.into()
+}
+
+pub fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    if s.chars().count() > max_chars {
+        let mut t: String = s.chars().take(max_chars).collect();
+        t.push('…');
+        t
+    } else {
+        s.to_string()
+    }
 }
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
@@ -633,14 +1031,12 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
         return Cow::Owned(format!("{}h ago", diff / 3600));
     }
 
-    let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
-    let dt: chrono::DateTime<chrono::Local> = secs.into();
+    let dt = unix_ts_to_local(unix_ts);
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
 pub fn format_date(unix_ts: u64, date_format: &str) -> String {
-    let secs = std::time::UNIX_EPOCH + std::time::Duration::from_secs(unix_ts);
-    let dt: chrono::DateTime<chrono::Local> = secs.into();
+    let dt = unix_ts_to_local(unix_ts);
     dt.format(date_format).to_string()
 }
 
@@ -680,69 +1076,107 @@ pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
     }
 }
 
-pub fn draw_status_bar<'a>(
-    frame: &mut Frame,
-    area: Rect,
+pub fn ext_badge_spans<'a>(
+    enabled: bool,
     theme: &AppThemeColors,
-    badge: Option<StatusBarBadge>,
-    hint: Line<'a>,
-    right: Option<Line<'a>>,
-    pending: Option<&str>,
-) {
-    let mut left_spans: Vec<Span> = Vec::new();
-    if let Some(p) = pending {
-        left_spans.push(Span::styled(
-            format!("{p} "),
-            Style::default().fg(theme.highlight_fg).bg(theme.accent),
-        ));
-    }
-    if let Some(b) = badge {
-        match theme.hint_bar_style {
-            crate::config::HintBarStyle::PowerlineSharp
-            | crate::config::HintBarStyle::PowerlineRounded
-            | crate::config::HintBarStyle::PowerlineSlanted => {
-                let sep_char = match theme.hint_bar_style {
-                    crate::config::HintBarStyle::PowerlineSharp => "",
-                    crate::config::HintBarStyle::PowerlineRounded => "",
-                    crate::config::HintBarStyle::PowerlineSlanted => "",
-                    _ => unreachable!(),
-                };
-                let pwr_bg = b.style.fg.unwrap_or(theme.accent);
-                let pwr_style = Style::default()
-                    .bg(pwr_bg)
-                    .fg(theme.highlight_fg)
-                    .add_modifier(b.style.add_modifier);
-                left_spans.push(Span::styled(b.label, pwr_style));
+    next_bg: Option<Color>,
+) -> Vec<Span<'a>> {
+    let b = ext_badge(enabled, theme);
+    let mut spans = Vec::new();
+    let pwr_bg = b.style.fg.unwrap_or(theme.accent);
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::Sharp
+        | crate::config::HintBarStyle::Rounded
+        | crate::config::HintBarStyle::Slanted
+        | crate::config::HintBarStyle::SharpGradient
+        | crate::config::HintBarStyle::RoundedGradient
+        | crate::config::HintBarStyle::SlantedGradient => {
+            let sep_char = match theme.hint_bar_style {
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
+                    "\u{e0b0}"
+                }
+                crate::config::HintBarStyle::Rounded
+                | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted
+                | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
+                _ => unreachable!(),
+            };
+            let pwr_style = Style::default()
+                .bg(pwr_bg)
+                .fg(theme.highlight_fg)
+                .add_modifier(b.style.add_modifier);
+            spans.push(Span::styled(b.label, pwr_style));
 
-                let next_bg = hint
-                    .spans
-                    .first()
-                    .and_then(|s| s.style.bg)
-                    .or(theme.hint_line_bg());
+            if theme.hint_bar_style.is_gradient() {
+                let resolved_next_bg = next_bg.unwrap_or(theme.bg.unwrap_or(Color::Black));
+                let step1 = crate::app_theme::mix_colors(pwr_bg, resolved_next_bg, 0.33);
+                let step2 = crate::app_theme::mix_colors(pwr_bg, resolved_next_bg, 0.67);
+
+                spans.push(Span::styled(
+                    sep_char,
+                    Style::default().fg(pwr_bg).bg(step1),
+                ));
+                spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
+                let mut sep_style3 = Style::default().fg(step2);
+                if let Some(bg) = next_bg {
+                    sep_style3 = sep_style3.bg(bg);
+                }
+                spans.push(Span::styled(sep_char, sep_style3));
+            } else {
                 let mut sep_style = Style::default().fg(pwr_bg);
                 if let Some(bg) = next_bg {
                     sep_style = sep_style.bg(bg);
                 }
-                left_spans.push(Span::styled(sep_char, sep_style));
-            }
-            _ => {
-                left_spans.push(Span::styled(b.label, b.style));
-                left_spans.push(Span::raw(" "));
+                spans.push(Span::styled(sep_char, sep_style));
             }
         }
-    }
-    left_spans.extend(hint.spans);
+        crate::config::HintBarStyle::Bubbles
+        | crate::config::HintBarStyle::Blurred
+        | crate::config::HintBarStyle::Chips
+        | crate::config::HintBarStyle::Hexagon => {
+            let (cap_l, cap_r) = theme.hint_bar_style.cell_caps().unwrap_or(("", ""));
+            let pwr_style = Style::default()
+                .bg(pwr_bg)
+                .fg(theme.highlight_fg)
+                .add_modifier(b.style.add_modifier);
 
+            spans.push(Span::styled(cap_l, Style::default().fg(pwr_bg)));
+            spans.push(Span::styled(b.label, pwr_style));
+
+            spans.push(Span::styled(cap_r, Style::default().fg(pwr_bg)));
+            spans.push(Span::raw(" "));
+        }
+        crate::config::HintBarStyle::Brackets => {
+            spans.push(Span::styled("[", Style::default().fg(theme.fg)));
+            spans.push(Span::styled(
+                b.label.trim().to_string(),
+                Style::default().fg(pwr_bg).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled("]", Style::default().fg(theme.fg)));
+            spans.push(Span::raw(" "));
+        }
+        crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact => {
+            spans.push(Span::styled(b.label, b.style));
+            spans.push(Span::raw(" "));
+        }
+    }
+    spans
+}
+
+pub fn draw_status_bar<'a>(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &AppThemeColors,
+    left: Line<'a>,
+    right: Option<Line<'a>>,
+) {
     if let Some(right_line) = right {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Min(0),
-                Constraint::Length(right_line.width() as u16),
-            ])
+            .constraints([Constraint::Length(left.width() as u16), Constraint::Min(0)])
             .split(area);
 
-        let left_para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        let left_para = Paragraph::new(left).style(theme.hint_line_bg_style());
         frame.render_widget(left_para, chunks[0]);
 
         let right_para = Paragraph::new(right_line)
@@ -750,40 +1184,68 @@ pub fn draw_status_bar<'a>(
             .style(theme.hint_line_bg_style());
         frame.render_widget(right_para, chunks[1]);
     } else {
-        let para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        let para = Paragraph::new(left).style(theme.hint_line_bg_style());
         frame.render_widget(para, area);
     }
 }
 
+/// Always renders hints in the classic muted ` · `-joined style, ignoring `hint_bar_style`.
+/// Used by popups so they don't inherit powerline styling.
+pub fn format_keybind_hints_classic<'a>(
+    theme: &'a AppThemeColors,
+    items: &[(String, &'a str)],
+) -> Line<'a> {
+    let mut spans = Vec::new();
+    for (i, (key, action)) in items.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+        }
+        spans.push(Span::styled(
+            key.clone(),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {}", action),
+            Style::default().fg(theme.muted),
+        ));
+    }
+    Line::from(spans)
+}
 pub fn format_keybind_hints<'a>(
     theme: &'a AppThemeColors,
     items: &[(String, &'static str)],
 ) -> Line<'a> {
-    match theme.hint_bar_style {
-        crate::config::HintBarStyle::Classic => {
-            let mut spans = Vec::new();
-            for (i, (key, action)) in items.iter().enumerate() {
-                if i > 0 {
-                    spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
-                }
-                spans.push(Span::styled(
-                    key.clone(),
-                    Style::default()
-                        .fg(theme.muted)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    format!(" {}", action),
-                    Style::default().fg(theme.muted),
-                ));
+    let build_bg_colors = || {
+        let base_colors = [
+            theme.accent,
+            theme.folder,
+            theme.tag,
+            theme.warning,
+            theme.success,
+        ];
+        let mut bg_colors = Vec::new();
+        for &color in &base_colors {
+            if bg_colors.last() != Some(&color) {
+                bg_colors.push(color);
             }
-            Line::from(spans)
         }
-        crate::config::HintBarStyle::Accent => {
+        if bg_colors.len() > 1 && bg_colors.first() == bg_colors.last() {
+            bg_colors.pop();
+        }
+        if bg_colors.is_empty() {
+            bg_colors.push(theme.accent);
+        }
+        bg_colors
+    };
+
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::Compact => {
             let mut spans = Vec::new();
             for (i, (key, action)) in items.iter().enumerate() {
                 if i > 0 {
-                    spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                    spans.push(Span::raw(" "));
                 }
                 spans.push(Span::styled(
                     key.clone(),
@@ -791,30 +1253,30 @@ pub fn format_keybind_hints<'a>(
                         .fg(theme.accent)
                         .add_modifier(Modifier::BOLD),
                 ));
-                spans.push(Span::styled(
-                    format!(" {}", action),
-                    Style::default().fg(theme.muted),
-                ));
+                spans.push(Span::raw(" "));
+                let short: String = action.chars().take(3).collect();
+                spans.push(Span::styled(short, Style::default().fg(theme.muted)));
             }
             Line::from(spans)
         }
-        style @ (crate::config::HintBarStyle::PowerlineSharp
-        | crate::config::HintBarStyle::PowerlineRounded
-        | crate::config::HintBarStyle::PowerlineSlanted) => {
+        crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
+        style @ (crate::config::HintBarStyle::Sharp
+        | crate::config::HintBarStyle::Rounded
+        | crate::config::HintBarStyle::Slanted
+        | crate::config::HintBarStyle::SharpGradient
+        | crate::config::HintBarStyle::RoundedGradient
+        | crate::config::HintBarStyle::SlantedGradient) => {
             let sep_char = match style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
+                    "\u{e0b0}"
+                }
+                crate::config::HintBarStyle::Rounded
+                | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted
+                | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
                 _ => unreachable!(),
             };
-
-            let bg_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
+            let bg_colors = build_bg_colors();
             let fg = theme.highlight_fg;
             let mut spans = Vec::new();
 
@@ -831,17 +1293,111 @@ pub fn format_keybind_hints<'a>(
                     Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
                 ));
 
-                let mut sep_style = Style::default().fg(bg);
-                if let Some(n_bg) = next_bg {
-                    sep_style = sep_style.bg(n_bg);
+                if style.is_gradient() {
+                    let resolved_next_bg = next_bg.unwrap_or(theme.bg.unwrap_or(Color::Black));
+                    let step1 = crate::app_theme::mix_colors(bg, resolved_next_bg, 0.33);
+                    let step2 = crate::app_theme::mix_colors(bg, resolved_next_bg, 0.67);
+
+                    spans.push(Span::styled(sep_char, Style::default().fg(bg).bg(step1)));
+                    spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
+                    let mut sep_style3 = Style::default().fg(step2);
+                    if let Some(n_bg) = next_bg {
+                        sep_style3 = sep_style3.bg(n_bg);
+                    }
+                    spans.push(Span::styled(sep_char, sep_style3));
+                } else {
+                    let mut sep_style = Style::default().fg(bg);
+                    if let Some(n_bg) = next_bg {
+                        sep_style = sep_style.bg(n_bg);
+                    }
+                    spans.push(Span::styled(sep_char, sep_style));
                 }
-                spans.push(Span::styled(sep_char, sep_style));
+            }
+            Line::from(spans)
+        }
+        style @ (crate::config::HintBarStyle::Bubbles
+        | crate::config::HintBarStyle::Blurred
+        | crate::config::HintBarStyle::Chips
+        | crate::config::HintBarStyle::Hexagon) => {
+            let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
+            let bg_colors = build_bg_colors();
+            let fg = theme.highlight_fg;
+            let bar_bg = theme.hint_line_bg();
+            let mut spans = Vec::new();
+
+            for (i, (key, action)) in items.iter().enumerate() {
+                let bg = bg_colors[i % bg_colors.len()];
+
+                if let Some(bbg) = bar_bg {
+                    spans.push(Span::styled(cap_l, Style::default().fg(bg).bg(bbg)));
+                } else {
+                    spans.push(Span::styled(cap_l, Style::default().fg(bg)));
+                }
+
+                spans.push(Span::styled(
+                    format!(" {} {} ", key, action),
+                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
+                ));
+
+                if let Some(bbg) = bar_bg {
+                    spans.push(Span::styled(cap_r, Style::default().fg(bg).bg(bbg)));
+                } else {
+                    spans.push(Span::styled(cap_r, Style::default().fg(bg)));
+                }
+
+                if i < items.len() - 1 {
+                    if let Some(bbg) = bar_bg {
+                        spans.push(Span::styled(" ", Style::default().bg(bbg)));
+                    } else {
+                        spans.push(Span::raw(" "));
+                    }
+                }
+            }
+            Line::from(spans)
+        }
+        crate::config::HintBarStyle::Brackets => {
+            let mut spans = Vec::new();
+            for (i, (key, action)) in items.iter().enumerate() {
+                spans.push(Span::styled("[", Style::default().fg(theme.fg)));
+                spans.push(Span::styled(
+                    key.clone(),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled("]", Style::default().fg(theme.fg)));
+                spans.push(Span::styled(
+                    format!(" {}", action),
+                    Style::default().fg(theme.muted),
+                ));
+                if i < items.len() - 1 {
+                    spans.push(Span::raw("  "));
+                }
             }
             Line::from(spans)
         }
     }
 }
 
+/// Describes the content of a popup footer hint line.
+pub enum PopupHints<'a> {
+    /// Key-action pairs: each key rendered in accent+bold, actions in muted, joined by ` · `.
+    Keybinds(&'a [(String, &'a str)]),
+    /// Plain text hint rendered entirely in muted.
+    Text(&'a str),
+}
+
+/// Build a popup footer `Line` from either keybind pairs or plain text.
+/// Always uses classic muted style — never inherits `hint_bar_style`.
+pub fn popup_footer_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>) -> Line<'a> {
+    match hints {
+        PopupHints::Keybinds(items) => format_keybind_hints_classic(theme, items),
+        PopupHints::Text(text) => Line::from(Span::styled(
+            text.to_string(),
+            Style::default().fg(theme.muted),
+        )),
+    }
+}
 pub fn draw_popup_footer(frame: &mut Frame, area: Rect, theme: &AppThemeColors, hints: &Line<'_>) {
     let footer = Paragraph::new(hints.clone())
         .alignment(Alignment::Center)
@@ -854,7 +1410,7 @@ pub fn draw_popup_frame(
     area: Rect,
     title: &str,
     size: PopupSize,
-    hints: &Line<'_>,
+    hints: PopupHints<'_>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);
@@ -864,7 +1420,8 @@ pub fn draw_popup_frame(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area);
-    draw_popup_footer(frame, chunks[1], theme, hints);
+    let hint_line = popup_footer_hints(theme, hints);
+    draw_popup_footer(frame, chunks[1], theme, &hint_line);
     chunks[0]
 }
 
@@ -875,17 +1432,30 @@ pub fn popup_hint_line(theme: &AppThemeColors, text: &str) -> Line<'static> {
     ))
 }
 
+pub(crate) fn text_input_hints(action: &str) -> [(String, &str); 2] {
+    [("Enter".to_string(), action), ("Esc".to_string(), "cancel")]
+}
 pub fn draw_confirm_popup_frame(
     frame: &mut Frame,
     area: Rect,
     title: &str,
     size: PopupSize,
     is_destructive: bool,
+    hints: PopupHints<'_>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);
     frame.render_widget(Clear, popup_area);
     draw_popup_banner(frame, popup_area, title, theme);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(popup_area);
+
+    let hint_line = popup_footer_hints(theme, hints);
+    draw_popup_footer(frame, chunks[1], theme, &hint_line);
+
     let border_color = if is_destructive {
         theme.destructive
     } else {
@@ -895,8 +1465,8 @@ pub fn draw_confirm_popup_frame(
         .style(theme.bg_style())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
-    let inner = block.inner(popup_area);
-    frame.render_widget(block, popup_area);
+    let inner = block.inner(chunks[0]);
+    frame.render_widget(block, chunks[0]);
     inner
 }
 
@@ -905,13 +1475,26 @@ pub fn draw_confirm_popup(
     popup: &ConfirmPopup,
     area: Rect,
     theme: &AppThemeColors,
+    literal_yes_no: bool,
 ) {
+    let hints = if literal_yes_no {
+        [
+            ("y".to_string(), popup.confirm_label.as_str()),
+            ("n".to_string(), "cancel"),
+        ]
+    } else {
+        [
+            ("Enter".to_string(), popup.confirm_label.as_str()),
+            ("Esc".to_string(), "cancel"),
+        ]
+    };
     let inner = draw_confirm_popup_frame(
         frame,
         area,
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
+        PopupHints::Keybinds(&hints),
         theme,
     );
 
@@ -965,10 +1548,18 @@ pub fn draw_confirm_popup(
         (confirm, cancel)
     };
 
+    let (confirm_key, cancel_key) = if literal_yes_no {
+        ("y", "n")
+    } else {
+        ("Enter", "Esc")
+    };
     let buttons = Line::from(vec![
-        Span::styled(format!(" {} (y) ", popup.confirm_label), confirm_style),
+        Span::styled(
+            format!(" {} ({confirm_key}) ", popup.confirm_label),
+            confirm_style,
+        ),
         Span::raw("   "),
-        Span::styled(" Cancel (n) ", cancel_style),
+        Span::styled(format!(" Cancel ({cancel_key}) "), cancel_style),
     ]);
     let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
     frame.render_widget(buttons_para, chunks[3]);
@@ -984,54 +1575,25 @@ pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     }
 }
 
-pub fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
-    let version = env!("CARGO_PKG_VERSION");
-    let text = format!("clin v{version}");
-    let width = text.len() as u16;
-    if area.width < width + 2 || area.height < 1 {
-        return;
-    }
-    let wm_area = Rect::new(area.x + area.width - width - 1, area.y, width, 1);
-    let para = Paragraph::new(text).style(Style::default().fg(color));
-    frame.render_widget(para, wm_area);
-}
-
-pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
-    if editor.selection_range().is_some() {
-        return;
-    }
-    let (scroll_row, _) = get_textarea_scroll(editor);
-    let cursor_row = editor.cursor().0;
-    let screen_row = cursor_row.saturating_sub(scroll_row) as u16;
-    let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);
-    let y = inner_y + screen_row;
-    if y < area.y || y >= area.bottom() {
-        return;
-    }
-    let buf = frame.buffer_mut();
-    for x in area.left()..area.right() {
-        if let Some(cell) = buf.cell_mut((x, y)) {
-            cell.set_bg(bg);
-        }
-    }
-}
-
 pub fn draw_subnotes_popup(
     frame: &mut Frame,
-    popup: &crate::popups::SubnotesPopup,
+    popup: &mut crate::popups::SubnotesPopup,
     area: Rect,
     theme: &AppThemeColors,
 ) {
-    let hint_line = popup_hint_line(
-        theme,
-        "Alt+N new · Ctrl+E ext edit · Esc back/close · Enter/l edit · d/Del delete · Tab/Enter/Shift+Tab navigate",
-    );
     let content = draw_popup_frame(
         frame,
         area,
         "SUB-NOTES",
         PopupSize::Large,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            ("Alt+N".to_string(), "new"),
+            ("Ctrl+E".to_string(), "ext edit"),
+            ("Esc".to_string(), "back/close"),
+            ("Enter/l".to_string(), "edit"),
+            ("d/Del".to_string(), "delete"),
+            ("Tab/Enter/Shift+Tab".to_string(), "navigate"),
+        ]),
         theme,
     );
 
@@ -1091,6 +1653,28 @@ pub fn draw_subnotes_popup(
         let mut list_state = ListState::default();
         list_state.select(Some(popup.selected));
         frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
+        popup.scroll_offset = list_state.offset();
+        // Scrollbar for subnotes list
+        let sub_list_inner = Rect {
+            x: main_chunks[0].x + 1,
+            y: main_chunks[0].y + 1,
+            width: main_chunks[0].width.saturating_sub(2),
+            height: main_chunks[0].height.saturating_sub(2),
+        };
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(sub_list_inner),
+            content_len: popup.subnotes.len(),
+            viewport_len: sub_list_inner.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            sub_list_inner,
+            popup.subnotes.len(),
+            sub_list_inner.height as usize,
+            popup.selected,
+            popup.subnotes.len().saturating_sub(1),
+            theme,
+        );
     }
 
     let edit_chunks = Layout::default()
@@ -1141,4 +1725,41 @@ pub fn draw_subnotes_popup(
             .style(theme.bg_style()),
     );
     frame.render_widget(&content_input, edit_chunks[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Modifier;
+
+    fn has_mod(st: Style, m: Modifier) -> bool {
+        st.add_modifier.contains(m)
+    }
+
+    #[test]
+    fn classic_keybind_hints_pop_key_color() {
+        let theme = AppThemeColors::default();
+        let line = format_keybind_hints_classic(&theme, &[("j/k".into(), "nav")]);
+        let key_span = &line.spans[0];
+        assert_eq!(
+            key_span.style.fg,
+            Some(theme.accent),
+            "keybind key fg should be accent color"
+        );
+        assert!(
+            has_mod(key_span.style, Modifier::BOLD),
+            "keybind key should be bold"
+        );
+    }
+
+    #[test]
+    fn text_input_hints_use_enter_and_escape() {
+        assert_eq!(
+            text_input_hints("import"),
+            [
+                ("Enter".to_string(), "import"),
+                ("Esc".to_string(), "cancel"),
+            ]
+        );
+    }
 }

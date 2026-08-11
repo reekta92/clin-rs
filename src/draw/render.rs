@@ -1,3 +1,4 @@
+use crate::app::ViewMode;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
 use crate::keybinds::DrawAction;
@@ -5,6 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::symbols::Marker;
+use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 use ratatui::widgets::{Block, List, ListItem};
 
@@ -31,7 +33,6 @@ pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'s
         ),
     ]
 }
-
 /// Tab order is fixed (Draw, Shape, Text, Erase) and intentionally NOT the
 /// `DrawTool` enum ordinal (enum is Draw, Erase, Text, Shape). Keep this array
 /// the single source of truth for index<->tool.
@@ -49,10 +50,13 @@ pub fn draw_tool_tab_index(tool: DrawTool) -> usize {
 
 pub fn draw_canvas(
     frame: &mut Frame,
-    app: &DrawAppState,
+    app: &mut DrawAppState,
     area: Rect,
-    _config: &crate::config::ClinConfig,
+    config: &crate::config::ClinConfig,
+    mouse_pos: Option<(u16, u16)>,
 ) {
+    let mut canvas_area = area;
+    canvas_area.height = canvas_area.height.saturating_sub(1);
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -77,7 +81,7 @@ pub fn draw_canvas(
                     grid_step_y *= 2.0;
                 }
                 // compensate for terminal cell aspect ratio (~2:1 height:width) so grid appears even
-                grid_step_y *= area.width as f64 / (2.0 * area.height as f64);
+                grid_step_y *= canvas_area.width as f64 / (2.0 * canvas_area.height as f64);
                 let start_x = (x_bounds[0] / grid_step_x).floor() * grid_step_x;
                 let end_x = (x_bounds[1] / grid_step_x).ceil() * grid_step_x;
                 let start_y = (y_bounds[0] / grid_step_y).floor() * grid_step_y;
@@ -114,11 +118,14 @@ pub fn draw_canvas(
                             ratatui::text::Line::from(content).style(Style::default().fg(color)),
                         );
                     }
+                    DrawElement::Image(_) => {
+                        // Rendered as StatefulImage pass after the canvas widget
+                    }
                 }
             }
 
             if let Some(stroke) = &app.current_stroke {
-                draw_stroke(ctx, stroke);
+                draw_smoothed_stroke(ctx, stroke);
             }
 
             if let Some(DrawElement::Shape(shape)) = &app.preview_element {
@@ -126,7 +133,7 @@ pub fn draw_canvas(
             }
         });
 
-    frame.render_widget(canvas, area);
+    frame.render_widget(canvas, canvas_area);
 
     let status_area = Rect::new(
         area.x,
@@ -152,27 +159,49 @@ pub fn draw_canvas(
             "erase",
         ),
         (app.keybinds.display_draw(DrawAction::ToggleGrid), "grid"),
-        (app.keybinds.display_draw(DrawAction::Quit), "back"),
+        (app.keybinds.draw_keys_display(DrawAction::Quit), "back"),
+        (
+            format!("F1/{}", app.keybinds.draw_keys_display(DrawAction::Help)),
+            "help",
+        ),
+        ("F2".to_string(), "keybinds"),
     ];
     let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
-    crate::ui::draw_status_bar(
-        frame,
-        status_area,
-        &app.theme,
-        None,
-        hint_line,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Draw);
+    ctx.area = Some(status_area);
+    ctx.draw = Some(app);
+    ctx.hints = Some(hint_line.spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.theme.highlight_fg)
+                .bg(app.theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Draw, &app.theme);
+    crate::ui::draw_status_bar(frame, status_area, &app.theme, left_line, right_line);
 
     if app.show_shape_selector {
-        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "SELECT SHAPE",
             crate::ui::PopupSize::Small,
-            &hint_line,
+            crate::ui::PopupHints::Keybinds(&[
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::ShapeSelectorConfirm),
+                    "select",
+                ),
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::ShapeSelectorCancel),
+                    "cancel",
+                ),
+            ]),
             &app.theme,
         );
 
@@ -183,14 +212,30 @@ pub fn draw_canvas(
             (DrawShapeType::Line, "Line"),
             (DrawShapeType::Arrow, "Arrow"),
         ];
+        let hovered_idx = mouse_pos.and_then(|(col, row)| {
+            let items_top = content.y + 1;
+            let items_bottom = items_top + shapes.len() as u16;
+            if row >= items_top
+                && row < items_bottom
+                && col > content.x
+                && col < content.x + content.width - 1
+            {
+                Some((row - items_top) as usize)
+            } else {
+                None
+            }
+        });
 
         let items: Vec<ListItem> = shapes
             .iter()
-            .map(|(st, name)| {
+            .enumerate()
+            .map(|(i, (st, name))| {
                 let style = if app.active_shape_type == *st {
                     Style::default()
                         .fg(app.theme.highlight_fg)
                         .bg(app.theme.highlight_bg)
+                } else if hovered_idx == Some(i) {
+                    app.theme.hover_style()
                 } else {
                     Style::default().fg(app.theme.fg)
                 };
@@ -206,15 +251,26 @@ pub fn draw_canvas(
 
         frame.render_widget(list, content);
     }
+    app.text_editor_rect = None;
 
     if let Some((_, textarea)) = &app.text_editor {
-        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter save · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "EDIT TEXT",
             crate::ui::PopupSize::Prompt,
-            &hint_line,
+            crate::ui::PopupHints::Keybinds(&[
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::TextEditorConfirm),
+                    "save",
+                ),
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::TextEditorCancel),
+                    "cancel",
+                ),
+            ]),
             &app.theme,
         );
 
@@ -224,6 +280,7 @@ pub fn draw_canvas(
                 .style(app.theme.bg_style())
                 .border_style(Style::default().fg(app.theme.accent)),
         );
+        app.text_editor_rect = Some(Block::bordered().inner(content));
         themed_textarea.set_style(app.theme.bg_style());
 
         frame.render_widget(&themed_textarea, content);
@@ -233,6 +290,48 @@ pub fn draw_canvas(
 fn draw_stroke(ctx: &mut Context, stroke: &Stroke) {
     let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
     for window in stroke.points.windows(2) {
+        if let [p1, p2] = window {
+            ctx.draw(&Line {
+                x1: p1.0,
+                y1: p1.1,
+                x2: p2.0,
+                y2: p2.1,
+                color,
+            });
+        }
+    }
+}
+/// Binomial filter smoothing (discrete Gaussian blur).
+/// Applies a 3-point moving average with weights [0.25, 0.5, 0.25]
+/// for 10 iterations. Acts as a powerful low-pass filter that
+/// eliminates stair-step quantization noise.
+pub fn smooth_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    if points.len() <= 2 {
+        return points.to_vec();
+    }
+    let n = points.len();
+    let mut xs: Vec<f64> = points.iter().map(|p| p.0).collect();
+    let mut ys: Vec<f64> = points.iter().map(|p| p.1).collect();
+    for _ in 0..10 {
+        let prev_xs = xs.clone();
+        let prev_ys = ys.clone();
+        xs[0] = prev_xs[0];
+        ys[0] = prev_ys[0];
+        for i in 1..n - 1 {
+            xs[i] = 0.25 * prev_xs[i - 1] + 0.5 * prev_xs[i] + 0.25 * prev_xs[i + 1];
+            ys[i] = 0.25 * prev_ys[i - 1] + 0.5 * prev_ys[i] + 0.25 * prev_ys[i + 1];
+        }
+        xs[n - 1] = prev_xs[n - 1];
+        ys[n - 1] = prev_ys[n - 1];
+    }
+    xs.into_iter().zip(ys).collect()
+}
+
+/// Draw a stroke after applying binomial smoothing.
+fn draw_smoothed_stroke(ctx: &mut Context, stroke: &Stroke) {
+    let smoothed = smooth_points(&stroke.points);
+    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
+    for window in smoothed.windows(2) {
         if let [p1, p2] = window {
             ctx.draw(&Line {
                 x1: p1.0,

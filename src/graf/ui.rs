@@ -8,12 +8,10 @@ use crate::graf::app::GrafAppState;
 
 pub fn draw_ui(
     frame: &mut Frame,
-    state: &GrafAppState,
+    state: &mut GrafAppState,
     config: &ClinConfig,
     area: Rect,
-    header_area: Rect,
     theme: &crate::app_theme::AppThemeColors,
-    app_status: Option<&str>,
 ) {
     let (graph_area, preview_area) = if state.preview_enabled {
         let (constraints, main_idx, p_idx) = match config.list.preview_position {
@@ -40,29 +38,13 @@ pub fn draw_ui(
             .direction(Direction::Horizontal)
             .constraints(constraints)
             .split(area);
-        (full_cols[main_idx], Some((full_cols[p_idx], full_cols[1])))
+        let p_area = full_cols[p_idx];
+        state.last_preview_pane_width = p_area.width;
+        state.last_preview_pane_height = p_area.height;
+        (full_cols[main_idx], Some((p_area, full_cols[1])))
     } else {
         (area, None)
     };
-
-    let right_text = if let Some(graph_state) = &state.graph_state {
-        let guard = graph_state.read();
-        Some(ratatui::text::Line::from(
-            crate::graf::render::compute_status_string(&guard, graph_area),
-        ))
-    } else {
-        None
-    };
-
-    crate::ui::draw_view_title_bar(
-        frame,
-        header_area,
-        "Graph",
-        theme,
-        None,
-        app_status,
-        right_text,
-    );
 
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);
@@ -88,6 +70,7 @@ pub fn draw_ui(
             theme,
             &state.keybinds,
             state.seq_matcher.pending_display().as_deref(),
+            state.mouse_pos,
         );
     }
 
@@ -96,12 +79,33 @@ pub fn draw_ui(
         draw_dim_vline(frame, sep_area, state.app_theme.muted);
     }
 
-    if state.search_active {
-        draw_search(frame, area, state, config, &colors);
+    if let Some(popup) = &state.search_popup {
+        let max_visible = config.graf.search.max_visible;
+        let theme = &state.app_theme;
+        let popup_width = (50u16).min(area.width.saturating_sub(4));
+        crate::ui::quick_search::draw_quick_search(
+            frame,
+            area,
+            popup,
+            theme,
+            max_visible,
+            move |(_, title), is_selected, theme: &crate::app_theme::AppThemeColors| {
+                let style = if is_selected {
+                    ratatui::style::Style::default().fg(theme.fg)
+                } else {
+                    ratatui::style::Style::default().fg(theme.highlight_fg)
+                };
+                let prefix = if is_selected { "▸ " } else { "  " };
+                let display =
+                    crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
+                ratatui::text::Line::styled(format!("{prefix}{display}"), style)
+            },
+            config.ui.icon_mode,
+        );
     }
 
     if let Some(ref msg) = state.config_reload_msg {
-        draw_reload_notification(frame, area, msg, &colors);
+        draw_reload_notification(frame, area, msg, &colors, theme);
     }
 }
 
@@ -169,114 +173,12 @@ fn suggest_fix(err: &str) -> Option<String> {
     None
 }
 
-fn draw_search(
-    frame: &mut Frame,
-    area: Rect,
-    state: &GrafAppState,
-    config: &ClinConfig,
-    colors: &crate::config::ThemeColors,
-) {
-    let max_visible = config.graf.search.max_visible;
-    let result_count = state.search_results.len();
-    let visible_count = result_count.min(max_visible);
-    let popup_width = (50u16).min(area.width.saturating_sub(4));
-    let popup_height = (visible_count + 3).min(area.height.saturating_sub(4) as usize) as u16;
-
-    let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = 3;
-
-    let popup_area = ratatui::layout::Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-    let before = &state.search_query[..state.search_cursor];
-    let after = &state.search_query[state.search_cursor..];
-    let label_style = ratatui::style::Style::default().fg(colors.label_color);
-    let cursor_style = ratatui::style::Style::default()
-        .fg(colors.border_color)
-        .add_modifier(ratatui::style::Modifier::REVERSED);
-    let input_line = ratatui::text::Line::from(vec![
-        ratatui::text::Span::styled(before.to_string(), label_style),
-        ratatui::text::Span::styled(
-            after
-                .chars()
-                .next()
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| " ".to_string()),
-            cursor_style,
-        ),
-        ratatui::text::Span::styled(
-            after
-                .chars()
-                .next()
-                .map(|_| {
-                    after[after
-                        .char_indices()
-                        .nth(1)
-                        .map(|(i, _)| i)
-                        .unwrap_or(after.len())..]
-                        .to_string()
-                })
-                .unwrap_or_default(),
-            label_style,
-        ),
-    ]);
-
-    let mut lines: Vec<ratatui::text::Line> = vec![input_line];
-
-    if result_count == 0 && !state.search_query.is_empty() {
-        lines.push(ratatui::text::Line::styled(
-            "  No matches",
-            ratatui::style::Style::default().fg(colors.status_bar_color),
-        ));
-    } else {
-        let scroll_offset = state
-            .search_selected
-            .saturating_sub(max_visible.saturating_sub(1));
-        for (i, (_, title)) in state
-            .search_results
-            .iter()
-            .enumerate()
-            .skip(scroll_offset)
-            .take(max_visible)
-        {
-            let is_selected = i == state.search_selected;
-            let style = if is_selected {
-                ratatui::style::Style::default()
-                    .fg(colors
-                        .background_color
-                        .unwrap_or(ratatui::style::Color::Black))
-                    .bg(colors
-                        .node_colors
-                        .first()
-                        .copied()
-                        .unwrap_or(colors.label_color))
-            } else {
-                ratatui::style::Style::default().fg(colors.label_color)
-            };
-            let prefix = "  ";
-            let display =
-                crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
-            lines.push(ratatui::text::Line::styled(
-                format!("{prefix}{display}"),
-                style,
-            ));
-        }
-    }
-
-    let block = ratatui::widgets::Block::default()
-        .borders(ratatui::widgets::Borders::ALL)
-        .title("Search")
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(ratatui::style::Style::default().fg(colors.border_color));
-
-    let paragraph = ratatui::widgets::Paragraph::new(lines).block(block);
-    frame.render_widget(paragraph, popup_area);
-}
-
 fn draw_reload_notification(
     frame: &mut Frame,
     area: Rect,
     msg: &str,
     colors: &crate::config::ThemeColors,
+    theme: &crate::app_theme::AppThemeColors,
 ) {
     let width = (msg.len() as u16 + 4).min(area.width);
     let height = 3u16;
@@ -287,7 +189,7 @@ fn draw_reload_notification(
 
     let is_error = msg.starts_with("Config error");
     let border_color = if is_error {
-        ratatui::style::Color::Red
+        theme.destructive
     } else {
         colors.border_color
     };

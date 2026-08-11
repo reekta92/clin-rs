@@ -1,19 +1,25 @@
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 use super::structs::{
-    FilterConfig, InteractionConfig, PhysicsConfig, SearchConfig, UiConfig, VisualConfig,
+    ClinConfig, FilterConfig, InteractionConfig, PhysicsConfig, SearchConfig, UiConfig,
+    VisualConfig,
 };
+
+fn extract_decor(item: &toml_edit::Item) -> Option<toml_edit::Decor> {
+    match item {
+        toml_edit::Item::Value(v) => Some(v.decor().clone()),
+        toml_edit::Item::Table(t) => Some(t.decor().clone()),
+        _ => None,
+    }
+}
 
 /// Merge a `toml::Value` into a `toml_edit::Item`, preserving comments/decor.
 pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value) {
     match toml_val {
         toml::Value::Table(toml_tbl) => {
             if !edit_item.is_table() {
-                let decor = match edit_item {
-                    toml_edit::Item::Value(v) => Some(v.decor().clone()),
-                    toml_edit::Item::Table(t) => Some(t.decor().clone()),
-                    _ => None,
-                };
+                let decor = extract_decor(edit_item);
                 let mut new_table = toml_edit::Table::new();
                 if let Some(d) = decor {
                     *new_table.decor_mut() = d;
@@ -52,11 +58,7 @@ pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value)
                 }
                 *edit_item = toml_edit::Item::ArrayOfTables(new_aot);
             } else {
-                let decor = match edit_item {
-                    toml_edit::Item::Value(v) => Some(v.decor().clone()),
-                    toml_edit::Item::Table(t) => Some(t.decor().clone()),
-                    _ => None,
-                };
+                let decor = extract_decor(edit_item);
                 let mut edit_arr = toml_edit::Array::new();
                 for val in toml_arr {
                     edit_arr.push(
@@ -76,11 +78,7 @@ pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value)
             }
         }
         _ => {
-            let decor = match edit_item {
-                toml_edit::Item::Value(v) => Some(v.decor().clone()),
-                toml_edit::Item::Table(t) => Some(t.decor().clone()),
-                _ => None,
-            };
+            let decor = extract_decor(edit_item);
             let mut new_item = toml_value_to_item(toml_val);
             if let Some(d) = decor {
                 match &mut new_item {
@@ -153,11 +151,11 @@ pub(crate) struct GrafConfigOnly {
     pub search: SearchConfig,
 }
 
-/// The embedded default config template shipped with the app.
-pub fn default_config_content() -> &'static str {
-    r###"# Clin Configuration File
+/// Annotated base template. Runtime defaults are merged into this once below,
+/// keeping comments while guaranteeing every non-optional field is emitted.
+const DEFAULT_CONFIG_TEMPLATE: &str = r###"# Clin configuration
 
-# ── Core ─────────────────────────────────────────────────────────────────────
+# Core
 
 [core]
 # Custom path for notes storage (e.g., "/home/user/vault").
@@ -171,8 +169,15 @@ mouse_enabled = true
 # Default folder for new notes (relative to vault root).
 # default_folder = "inbox"
 
-# Confirm before moving a note or folder to the trash.
+# Confirm before moving a note/folder to trash, or deleting a note.
 confirm_on_delete = true
+
+# Confirm before quitting the application (when there are unsaved changes).
+confirm_on_quit = false
+
+# Wrap note preview at word boundaries.
+preview_wrap = true
+
 # Enable multi-key sequences (e.g. "g g", "Space f"). Off by default; automatically
 # enabled when a preset (vim/helix/emacs) uses multi-key sequences.
 enable_key_sequences = false
@@ -180,6 +185,7 @@ enable_key_sequences = false
 # Keybind preset ("default", "helix", "vim", "emacs").
 # Applies to all navigation surfaces; never affects text editing.
 # keybind_preset = "default"
+
 # Ctrl+e behavior: "inline" (maximize the preview pane, default) or
 # "external" (suspend the TUI and run preview_command on the note).
 # preview_expand_mode = "inline"
@@ -189,8 +195,28 @@ enable_key_sequences = false
 # Falls back to $PAGER, then "less". Examples: "glow", "bat", "mdcat".
 # preview_command = "glow"
 
+# Enable syntax highlighting in the note preview.
+syntax_highlighting = true
 
-# ── Display ──
+# Color theme for code blocks in preview (syntect theme name).
+# Common values: "base16-ocean.dark", "InspiredGitHub", "Solarized (dark)".
+# code_theme = "base16-ocean.dark"
+
+# Show line numbers in code blocks.
+code_line_numbers = true
+
+# Automatically refresh the notes list when files change on disk.
+auto_refresh = true
+
+# Show a visual indicator when word wrap splits a line in the preview.
+preview_wrap_indicator = false
+
+# Maximum length (in characters) for link URLs displayed in the UI.
+# Longer URLs are truncated. Set to 0 for no limit.
+# link_url_max_length = 80
+
+
+# Display
 
 [ui]
 # Theme to use ("default", "tokyo_night", "catppuccin_mocha", "onedark", "gruvbox", etc.)
@@ -204,14 +230,17 @@ background = "transparent"
 # Show the status bar at the bottom of the screen.
 show_status_bar = true
 
+# Show mouse-draggable scrollbars on scrollable regions.
+scrollbars = true
+
 # Icon mode ("nerd", "unicode", "none"). Controls icon rendering throughout the app.
 icon_mode = "nerd"
 
 # Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette).
 tab_icons_only = false
-#
-# Hint bar style ("classic", "accent", "powerline_sharp", "powerline_rounded", "powerline_slanted")
-hint_bar_style = "classic"
+
+# Hint bar style ("classic", "sharp", "rounded", "slanted", "bubbles", "blurred", "chips", "brackets", "compact", "sharp_gradient", "rounded_gradient", "slanted_gradient", "hexagon")
+# hint_bar_style = "classic"
 
 # Color overrides (hex strings like "#ffffff").
 # accent = "#ff0000"
@@ -223,9 +252,14 @@ hint_bar_style = "classic"
 # border = "#444444"
 # tag = "#ffa500"
 # folder = "#00ffff"
+# pinned = "#ffff00"
+# smart = "#ff00ff"
+# subnote = "#00ffff"
 # background_color = "#000000"
 
-# ── List View ─────────────────────────────────────────────────────────────────
+
+
+# Notes list
 
 [list]
 # Show the preview pane in the notes list by default.
@@ -237,14 +271,13 @@ preview_position = "right"
 # Hide previews of encrypted notes.
 preview_encryption = false
 
-# Show modification date in the notes list.
-show_date_in_list = true
+# Show inline metadata (tags, file size, date, folder counts) next to note titles.
+inline_info = true
 
 # Show file size in the notes list.
 show_file_size = false
-
 # Date format for the notes list (chrono format, e.g., "%Y-%m-%d").
-date_format = "%Y-%m-%d"
+date_format = "%Y-%m-%d %H:%M"
 
 # Density of the notes list ("comfortable" or "compact").
 density = "compact"
@@ -258,8 +291,8 @@ default_view = "grid"
 # Default sorting order ("ascending" or "descending").
 # default_sort_order = "ascending"
 
-# Keep pinned notes at the top of the list.
-pinned_on_top = true
+# Pin/highlight folders at the top of the list.
+pinned_on_top = false
 
 # Show hidden files and folders (starting with ".") in the notes list.
 show_hidden_files = false
@@ -268,9 +301,29 @@ show_hidden_files = false
 # Non-note files open in the OS default application.
 show_all_files = false
 
+# Comma-separated list of regex patterns. Directories whose name matches any
+# pattern are never descended into during note/folder listing. Use to skip
+# obsidian-style attachments folders, e.g. skip_dirs = ["attachments", "assets"]
+# Changes require restart.
+# skip_dirs = []
+
+# Show folders before notes in the list.
+folders_first = true
+
+# Show folder link count in graph preview within the notes list.
+folder_graph_preview = false
 
 # Show a month calendar (with note activity) at the bottom of the notes view.
 calendar_enabled = true
+
+# Calendar position ("top", "bottom").
+# calendar_position = "bottom"
+
+# Calendar height in rows (9-20). Default 9.
+# calendar_height = 9
+
+# First day of the week ("monday", "sunday", "saturday").
+# week_start = "monday"
 
 # Enable smart virtual folders in the notes list (e.g. Today, Week, Untagged).
 smart_folders_enabled = false
@@ -286,16 +339,17 @@ smart_folders_enabled = false
 # Preview pane width ratio (0.2-0.8). Default 0.43.
 # preview_width_ratio = 0.43
 
-# Calendar height in rows (9-20). Default 9.
-# calendar_height = 9
+# Default expand depth for folders. When set, auto-expands folders up to the given depth.
+# default_expand_depth = 1
 
-# Calendar position ("top", "bottom"). Default "bottom".
-# calendar_position = "bottom"
-#
+# List of folders to always show at the top, regardless of sort order.
+# pinned_folders = ["inbox", "important"]
+
 # Bottom-strip sections, left-to-right. Max 2. One of: calendar, goals, draw, graf.
 # sections = ["calendar", "goals"]
 
-# ── Editor ────────────────────────────────────────────────────────────────────
+
+# Editor
 
 [editor]
 # External editor command (e.g., "nvim", "code", "nano").
@@ -309,6 +363,49 @@ preview_enabled = false
 
 # Show line numbers in the editor.
 show_line_numbers = true
+
+# Date format for the timestamp insertion shortcut.
+# date_format = "%Y-%m-%d %H:%M"
+
+# Enable syntax highlighting in the editor status cues.
+edit_mode_highlight = true
+
+# Enable soft-wrapping of lines in the editor.
+soft_wrap = false
+
+# Status line
+
+# Customize the title bar (header, top) and status bar (footer, bottom) text.
+# Templates interpolate {variables} — e.g. {time}, {word_count}, {note_count}.
+# Unknown variables render literally; use {{ }} for literal braces.
+# Full variable list: docs/CONFIG_REFERENCE.md → "Template Interpolation Variables".
+[statusline]
+# Built-in defaults shown below (commented). Uncomment a line to override.
+# header_left = "{title} {preview}"
+# header_right = ""
+# footer_left = "{pending}{badge}{hints}"
+# footer_right = "{version}"
+
+# Per-view overrides — each sub-table accepts the same four fields:
+#   list, edit, help, graph, draw, canvas, backup, outline
+# Example:
+# [statusline.list]
+# footer_right = "{note_count} notes ({selected_count} selected) | {version}"
+
+# Goals
+
+[goals]
+# Enable the daily word/note goals system.
+enabled = true
+
+# Daily target word count (incremental additions). Set to 0 to disable.
+word_goal = 500
+
+# Daily target note count (edited or created). Set to 0 to disable.
+note_goal = 3
+
+
+# Backup
 
 [backup]
 # Enable auto-backups via git.
@@ -328,15 +425,37 @@ auto_push = false
 
 # Remote name for git push (defaults to "origin").
 # remote_name = "origin"
+
 # Interval in minutes for automatic background backups.
 # auto_backup_interval = 30
 
-# ── Graph View (Graf) ─────────────────────────────────────────────────────────
+
+# Images
+
+[image]
+# Enable pixel image rendering in canvas, draw, and note preview.
+enabled = true
+
+# Maximum pixel dimension for decoded images (larger images are downscaled).
+# max_dimension = 2048
+
+# Maximum number of decoded images cached per view.
+# cache_size = 32
+
+# Subdirectory within the vault for storing attached image files.
+# attachments_subdir = "attachments"
+
+# Number of terminal rows reserved for inline image previews in notes.
+# preview_rows = 8
+
+# Graph
 
 [graf]
+# Maximum number of nodes to simulate and display (0 = unlimited).
+max_node = 500
+
 # Enable preview pane in graph view.
 preview_enabled = false
-
 [graf.visual]
 # Graph background style ("solid", "transparent")
 graph_background = "solid"
@@ -407,6 +526,9 @@ grid_divisions = 10
 # Ideal distance between nodes.
 ideal_distance = 80.0
 
+# Physics tick rate ("auto" or "fixed"). Auto reduces tick rate for large graphs.
+tick_rate = "auto"
+
 [graf.interaction]
 # Zoom sensitivity factor.
 zoom_factor = 1.15
@@ -418,8 +540,8 @@ drag_sensitivity = 1.0
 # List of tags to exclude from graph view.
 exclude_tags = []
 
-# Minimum number of links for a node to be visible.
-min_links = 0
+# Show isolated notes with no valid links.
+show_orphan = false
 
 [graf.search]
 # Maximum results to show in graph search.
@@ -428,16 +550,62 @@ max_results = 20
 # Maximum visible search results.
 max_visible = 10
 
-# ── Goals System ──────────────────────────────────────────────────────────────
 
-[goals]
-# Enable the daily word/note goals system.
-enabled = true
+"###;
 
-# Daily target word count (incremental additions). Set to 0 to disable.
-word_goal = 500
+static DEFAULT_CONFIG_CONTENT: LazyLock<String> = LazyLock::new(|| {
+    let mut document = DEFAULT_CONFIG_TEMPLATE
+        .parse::<toml_edit::DocumentMut>()
+        .expect("default config template must be valid TOML");
+    let serialized =
+        toml::to_string(&ClinConfig::default()).expect("default config must serialize");
+    let defaults: toml::Value =
+        toml::from_str(&serialized).expect("serialized default config must be valid TOML");
+    if let toml::Value::Table(table) = defaults {
+        for (key, value) in table {
+            if let Some(item) = document.get_mut(&key) {
+                merge_toml_value(item, &value);
+            } else {
+                document.insert(&key, toml_value_to_item(&value));
+            }
+        }
+    }
 
-# Daily target note count (edited or created). Set to 0 to disable.
-note_goal = 3
-"###
+    document.to_string()
+});
+
+/// Complete annotated config generated from the current runtime defaults.
+pub fn default_config_content() -> &'static str {
+    &DEFAULT_CONFIG_CONTENT
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn default_config_content_uses_plain_workflow_order() {
+        let content = super::default_config_content();
+        let headings = [
+            "# Core",
+            "# Display",
+            "# Notes list",
+            "# Editor",
+            "# Status line",
+            "# Goals",
+            "# Backup",
+            "# Images",
+            "# Graph",
+        ];
+        let mut previous = 0;
+        for heading in headings {
+            let position = content.find(heading).unwrap();
+            assert!(position >= previous, "{heading} out of workflow order");
+            previous = position;
+        }
+        assert!(!content.contains('─'));
+        let parsed: crate::config::ClinConfig = toml::from_str(content).unwrap();
+        assert_eq!(parsed.statusline.header_left, None);
+        assert_eq!(parsed.statusline.header_right, None);
+        assert_eq!(parsed.statusline.footer_left, None);
+        assert_eq!(parsed.statusline.footer_right, None);
+    }
 }
