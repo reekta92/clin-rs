@@ -1338,6 +1338,8 @@ where
             } else {
                 Duration::from_millis(16)
             }
+        } else if app.mode == ViewMode::Setup {
+            Duration::from_millis(250)
         } else if app.mode == ViewMode::Draw {
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {

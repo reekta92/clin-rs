@@ -3,7 +3,7 @@
 use crate::app::App;
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
-use crate::setup::{CLIN_ASCII, OPTION_ROWS, SetupState};
+use crate::setup::{CLIN_ASCII, LOGO_CURSOR_ASCII, OPTION_ROWS, SetupState};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -12,11 +12,14 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 
-const COL_HEIGHT: u16 = 19;
-/// Vertical column: logo (6), gap, options (6), gap, hint (2), Done (3).
+const COL_HEIGHT: u16 = 18;
+/// Vertical column: logo (5), gap, options (6), gap, hint (2), Done (3).
 const COL_WIDTH: u16 = 44;
 const VALUE_WIDTH: usize = 18;
 const PREVIEW_WIDTH: u16 = 50;
+const LOGO_WIDTH: u16 = 28;
+const LOGO_CURSOR_GAP: u16 = 2;
+const LOGO_CURSOR_WIDTH: u16 = 4;
 const SETUP_PREVIEW_MD: &str = r#"# Welcome to Clin
 
 A terminal note-taking app with `inline code`, **bold**, and _italics_.
@@ -77,7 +80,7 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
     let v_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6),
+            Constraint::Length(5),
             Constraint::Length(1),
             Constraint::Length(OPTION_ROWS as u16),
             Constraint::Length(1),
@@ -95,6 +98,28 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
     }
 }
 
+fn draw_setup_logo(frame: &mut Frame, area: Rect, style: Style, cursor_visible: bool) {
+    let logo_group_width = LOGO_WIDTH + LOGO_CURSOR_GAP + LOGO_CURSOR_WIDTH;
+    let group_x = area.x + area.width.saturating_sub(logo_group_width) / 2;
+    let logo_area = Rect::new(group_x, area.y, LOGO_WIDTH.min(area.width), area.height);
+    frame.render_widget(
+        Paragraph::new(CLIN_ASCII)
+            .style(style)
+            .alignment(Alignment::Left),
+        logo_area,
+    );
+
+    if cursor_visible && area.width >= logo_group_width {
+        let cursor_area = Rect::new(
+            group_x + LOGO_WIDTH + LOGO_CURSOR_GAP,
+            area.y,
+            LOGO_CURSOR_WIDTH,
+            area.height,
+        );
+        frame.render_widget(Paragraph::new(LOGO_CURSOR_ASCII).style(style), cursor_area);
+    }
+}
+
 pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     let theme = &app.app_theme;
     let Some(state) = app.setup_state.as_mut() else {
@@ -106,15 +131,17 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
     let layout = setup_layout(frame.area());
 
-    // Logo.
-    let logo = Paragraph::new(CLIN_ASCII)
-        .style(
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-        .alignment(Alignment::Center);
-    frame.render_widget(logo, layout.logo);
+    // The cursor owns a fixed rectangle beside the wordmark, so blinking it
+    // never changes the logo's position or the surrounding layout.
+    let logo_style = Style::default()
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
+    draw_setup_logo(
+        frame,
+        layout.logo,
+        logo_style,
+        state.logo_cursor_visible_at(std::time::Instant::now()),
+    );
 
     // Option rows.
     let hovered_row = app.mouse_pos.and_then(|(col, row)| {
@@ -190,7 +217,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     );
 
     frame.render_widget(
-        Paragraph::new("Remember: press ? for help or F2 for keybinds.")
+        Paragraph::new("Remember: press F1 for help or F2 for keybinds.")
             .style(
                 Style::default()
                     .fg(theme.muted)
@@ -667,4 +694,61 @@ fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
             .style(theme.bg_style()),
         chunks[2],
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn render_logo(cursor_visible: bool) -> ratatui::buffer::Buffer {
+        let mut terminal = Terminal::new(TestBackend::new(COL_WIDTH, 5)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw_setup_logo(frame, frame.area(), Style::default(), cursor_visible);
+            })
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    #[test]
+    fn full_height_cursor_blinks_without_moving_logo() {
+        let visible = render_logo(true);
+        let hidden = render_logo(false);
+        let group_x = (COL_WIDTH - (LOGO_WIDTH + LOGO_CURSOR_GAP + LOGO_CURSOR_WIDTH)) / 2;
+        let cursor_x = group_x + LOGO_WIDTH + LOGO_CURSOR_GAP;
+
+        for y in 0..5 {
+            for x in group_x..group_x + LOGO_WIDTH {
+                assert_eq!(
+                    visible.cell((x, y)).unwrap().symbol(),
+                    hidden.cell((x, y)).unwrap().symbol(),
+                );
+            }
+            for x in cursor_x..cursor_x + LOGO_CURSOR_WIDTH {
+                assert_eq!(visible.cell((x, y)).unwrap().symbol(), "█");
+                assert_eq!(hidden.cell((x, y)).unwrap().symbol(), " ");
+            }
+        }
+    }
+
+    #[test]
+    fn short_top_row_keeps_l_and_i_aligned() {
+        let logo = render_logo(true);
+        let group_x = (COL_WIDTH - (LOGO_WIDTH + LOGO_CURSOR_GAP + LOGO_CURSOR_WIDTH)) / 2;
+
+        // The top of `l` occupies the same columns as its stem.
+        for x in group_x + 11..=group_x + 12 {
+            assert_eq!(logo.cell((x, 0)).unwrap().symbol(), "█", "top x={x}");
+            assert_eq!(logo.cell((x, 1)).unwrap().symbol(), "█", "stem x={x}");
+        }
+        // The only other top-row glyph is the dot directly above `i`.
+        for x in group_x + 16..=group_x + 17 {
+            assert_eq!(logo.cell((x, 0)).unwrap().symbol(), "█");
+            assert_eq!(logo.cell((x, 2)).unwrap().symbol(), "█");
+        }
+        for x in group_x..group_x + 11 {
+            assert_eq!(logo.cell((x, 0)).unwrap().symbol(), " ");
+        }
+    }
 }

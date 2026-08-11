@@ -39,13 +39,20 @@ pub const SETUP_HINT_STYLES: &[&str] = &[
     "Classic", "Sharp", "Rounded", "Slanted", "Bubbles", "Blurred", "Chips", "Brackets", "Compact",
 ];
 
-pub const CLIN_ASCII: &str = "\
- ██████╗██╗     ██╗███╗   ██╗
-██╔════╝██║     ██║████╗  ██║
-██║     ██║     ██║██╔██╗ ██║
-██║     ██║     ██║██║╚██╗██║
-╚██████╗███████╗██║██║ ╚████║
- ╚═════╝╚══════╝╚═╝╚═╝  ╚═══╝ ";
+pub const CLIN_ASCII: &str = concat!(
+    "          ██   ██\n",
+    "   ████   ██        █████\n",
+    " ██       ██   ██   ██   ██\n",
+    " ██       ██   ██   ██   ██\n",
+    "   ████   ██   ██   ██   ██",
+);
+pub const LOGO_CURSOR_ASCII: &str = "\
+████
+████
+████
+████
+████";
+const LOGO_BLINK_INTERVAL: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub fn icon_mode_at(idx: usize) -> crate::config::IconMode {
     match idx {
@@ -126,6 +133,7 @@ pub struct SetupState {
     pub(crate) preview_renderer: crate::markdown::MarkdownRenderer,
     pub(crate) preview_key: Option<SetupPreviewKey>,
     pub(crate) pending_preview_resize: Option<(u16, std::time::Instant)>,
+    pub(crate) logo_blink_started: std::time::Instant,
 }
 
 impl SetupState {
@@ -165,7 +173,14 @@ impl SetupState {
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
+            logo_blink_started: std::time::Instant::now(),
         }
+    }
+
+    /// Whether the five-row terminal block cursor is visible in this frame.
+    pub fn logo_cursor_visible_at(&self, now: std::time::Instant) -> bool {
+        let elapsed = now.saturating_duration_since(self.logo_blink_started);
+        (elapsed.as_millis() / LOGO_BLINK_INTERVAL.as_millis()).is_multiple_of(2)
     }
 
     pub fn is_done_selected(&self) -> bool {
@@ -366,6 +381,20 @@ mod tests {
             s.move_sel(true);
         }
         assert_eq!(s.selected, DONE_ROW);
+    }
+
+    #[test]
+    fn logo_cursor_blinks_every_half_second() {
+        let state = SetupState::from_config(
+            &crate::config::ClinConfig::default(),
+            &crate::app_theme::AppThemeColors::default(),
+            PathBuf::from("/vault"),
+            false,
+        );
+        let start = state.logo_blink_started;
+        assert!(state.logo_cursor_visible_at(start));
+        assert!(!state.logo_cursor_visible_at(start + LOGO_BLINK_INTERVAL));
+        assert!(state.logo_cursor_visible_at(start + LOGO_BLINK_INTERVAL * 2));
     }
 
     #[test]

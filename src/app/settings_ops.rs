@@ -1000,6 +1000,7 @@ mod tests {
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
+            logo_blink_started: std::time::Instant::now(),
         });
 
         app.finish_setup();
@@ -1045,6 +1046,7 @@ mod tests {
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
+            logo_blink_started: std::time::Instant::now(),
         });
 
         // Cycle theme forward → apply_setup_live writes it to config.
@@ -1088,6 +1090,7 @@ mod tests {
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
+            logo_blink_started: std::time::Instant::now(),
         });
 
         let esc = KeyEvent {
