@@ -1180,7 +1180,6 @@ impl App {
                 let summary = &self.notes[*summary_idx];
                 let indent = "  ".repeat(*depth);
 
-                let when = crate::ui::format_relative_time(summary.updated_at);
                 let mut text_style = Style::default();
 
                 let mut spans = Vec::new();
@@ -1321,12 +1320,6 @@ impl App {
                     ));
                 }
 
-                if vi == self.list.visual_index && !self.list.inline_info {
-                    spans.push(Span::styled(
-                        format!("  ({when})"),
-                        Style::default().fg(self.app_theme.muted),
-                    ));
-                }
                 let mut lines = vec![Line::from(spans)];
                 if self.list.list_density == crate::config::ListDensity::Comfortable {
                     lines.push(Line::from(""));
