@@ -59,11 +59,6 @@ on:
         required: false
         type: boolean
         default: true
-      build_macos_intel:
-        description: "Also build x86_64-apple-darwin (Intel)"
-        required: false
-        type: boolean
-        default: true
       build_targets:
         description: "Which target set to build ('linux-only' = fast iteration)"
         required: true
@@ -82,11 +77,6 @@ on:
         default: true
       update_docs:
         description: "Post-release commit updating README/PKGBUILD"
-        required: false
-        type: boolean
-        default: true
-      check_nix:
-        description: "Run nix build check"
         required: false
         type: boolean
         default: true
@@ -117,11 +107,9 @@ jobs:
       build_packages: ${{ inputs.build_packages }}
       build_appimage: ${{ inputs.build_appimage }}
       build_dmg: ${{ inputs.build_dmg }}
-      build_macos_intel: ${{ inputs.build_macos_intel }}
       build_targets: ${{ inputs.build_targets }}
       publish_crates: ${{ inputs.publish_crates }}
       publish_aur: ${{ inputs.publish_aur }}
       update_docs: ${{ inputs.update_docs }}
-      check_nix: ${{ inputs.check_nix }}
       create_discussion: ${{ inputs.create_discussion }}
     secrets: inherit
