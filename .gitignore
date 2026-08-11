@@ -4,5 +4,7 @@ development/
 info/
 graphify-out/
 
-# nix build result
+# nix
 result
+/result
+/.direnv/
