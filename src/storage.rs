@@ -154,8 +154,12 @@ pub(crate) fn is_existing_vault(dir: &Path) -> bool {
                     None => continue,
                 };
                 // Ignore clin-managed subdirectories and all hidden entries
-                if name == "notes" || name == "templates" || name.starts_with('.') {
-                    continue;
+                if name == "notes"
+                    || name == "templates"
+                    || name.starts_with('.')
+                    || name == "key.bin"
+                    || name == "state.json"
+                {
                 }
                 return true; // Any other content → vault
             }
