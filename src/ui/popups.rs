@@ -190,7 +190,11 @@ pub fn draw_info_popup(
             }
             crate::popups::InfoItem::Tags(tags) => {
                 let total: usize = tags.iter().map(|t| t.chars().count() + 2).sum();
-                let lines = if tags.is_empty() { 1 } else { (total / width).max(1) as u16 + 1 };
+                let lines = if tags.is_empty() {
+                    1
+                } else {
+                    (total / width).max(1) as u16 + 1
+                };
                 constraints.push(Constraint::Length(1 + lines));
             }
         }
@@ -249,8 +253,7 @@ pub fn draw_info_popup(
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(item_area);
-                let heading_para =
-                    Paragraph::new("Tags").style(Style::default().fg(theme.accent));
+                let heading_para = Paragraph::new("Tags").style(Style::default().fg(theme.accent));
                 frame.render_widget(heading_para, text_chunks[0]);
                 let body_line: Line<'_> = if tags.is_empty() {
                     Line::from(Span::styled("(none)", Style::default().fg(theme.muted)))
