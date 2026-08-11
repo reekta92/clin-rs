@@ -2,6 +2,44 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0] - 2026-08-11
+
+### Added
+
+- Added clin ascii art to the about page
+- Add in-session vault selection
+
+### CI
+
+- Fixed ci warnings
+- Routed all ci/cd channels to the central repo
+
+### Documentation
+
+- Synchronize docs with implementation
+
+### Fixed
+
+- Preserve markdown styles and compact headers
+- Changed ascii art in the setup wizard
+- Show form popup keys
+- Label text popup shortcuts
+- Reserve text popup keys
+- Use character highlight offsets
+- Reserve literal yes and no
+- Preserve content line structure
+- Align scrollbar with viewport
+- Resolve pane and clipboard regressions
+- Refresh previews and streamline text selection
+
+### Miscellaneous
+
+- Remove redundant repository files and folders
+- .gitignore formatting
+
+### Performance
+
+- Add dedicated editor session pipeline
 ## [0.10.0-rc.7] - 2026-08-05
 
 ### Added
@@ -30,6 +68,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Batch input and cache highlight to kill O(N²) per-keystroke work
+
+### Release
+
+- V0.10.0-rc.7
 ## [0.10.0-rc.6] - 2026-07-26
 
 ### Added
@@ -245,75 +287,6 @@ All notable changes to clin are documented in this file.
 - Zoom previews toward cursor, fix scroll direction
 - Scale snapshots to fill expanded pane
 - Add draggable scrollbars to all scrollable panes
-
-### CI
-
-- Modernize arm runners to use native arm
-- Dispatch release issue revert
-- Fix arm64 apt sources for release workflow
-- Forced ipv4 in dispatch release
-- Fixed format checks
-
-### Changed
-
-- Removed image support from the draw view
-- Refactored source editor pane to use the same code as the edit view
-
-### Documentation
-
-- Update README.md, ROADMAP.md and new config references
-
-### Fixed
-
-- Separate node display title from internal ID
-- Preserve pin status through encrypt/decrypt
-
-### Miscellaneous
-
-- Lock file regenerate
-- Check fix
-- Update readme about version bump
-- Bump version to 1.90
-- Cleanup project dir
-- Sort Cargo.lock alphabetically
-
-### Performance
-
-- Decouple preview drag state from rendering
-- Cache parsed data and re-render grids in-memory
-
-### Release
-
-- V0.10.0-beta.3
-- V0.10.0-beta.3
-## [0.9.10] - 2026-08-03
-
-### Fixed
-
-- Use XDG config dir on macOS instead of Library/Application Support
-
-### Miscellaneous
-
-- Revert version to 0.9.9 to allow 0.9.10 release
-- Bump toml from 1.1.3+spec-1.1.0 to 1.1.4+spec-1.1.0
-- Bump clap from 4.6.2 to 4.6.4
-- Bump serde_json from 1.0.150 to 1.0.151
-- Bump anyhow from 1.0.103 to 1.0.104
-- Bump uuid from 1.23.5 to 1.24.0
-- Bump clap from 4.6.1 to 4.6.2
-
-### Styling
-
-- Fix line break in config_dir assignment
-
-### Release
-
-- V0.10.0-beta.2
-- V0.10.0-beta.0
-## [0.9.9] - 2026-07-14
-
-### Added
-
 - Redesigned title bar and merged it into the header bar
 - Add mouse support to quick search
 - Show recursive folder count in header bar
@@ -337,11 +310,19 @@ All notable changes to clin are documented in this file.
 
 ### CI
 
+- Modernize arm runners to use native arm
+- Dispatch release issue revert
+- Fix arm64 apt sources for release workflow
+- Forced ipv4 in dispatch release
+- Fixed format checks
 - Fix remaining format warnings in events and keybinds
 - Fixed format warnings
+- Migrate to a central workflow system
 
 ### Changed
 
+- Removed image support from the draw view
+- Refactored source editor pane to use the same code as the edit view
 - Refactored edit view line highlight code
 - Deduplicate layout, add UX features, context menu
 - Remove dropdown border, add "Find:" label before input
@@ -352,9 +333,14 @@ All notable changes to clin are documented in this file.
 - Remove Accent style, rename Powerline variants, fix tab highlight
 - Move page indicator to title bar via statusline
 
+### Documentation
+
+- Update README.md, ROADMAP.md and new config references
+
 ### Fixed
 
-- Wire libgit2 auth callbacks into push/pull
+- Separate node display title from internal ID
+- Preserve pin status through encrypt/decrypt
 - Fix selection styling and right-click jump
 - Fixed jittering when moving nodes
 - Merged inline_info with show_date_in_notes
@@ -385,19 +371,68 @@ All notable changes to clin are documented in this file.
 - Clear is_dragging_resize_handle on drop and resize-exit
 - Clear resize state on Left Up so image renders after resize
 - Wire image fields, fix file picker, add canvas image node
-- Add universal q/Esc back/quit intercepts, override-proof
 - Coalesce queued drag events; fix instant-apply popup cycle
 - Hint bar preview dispatches on hint_bar_style
 - Popup footers ignore hint_bar_style setting
 - Split detail into powerline cells; fix right-side junction bg
+- Restore x86_64-darwin support
+
+### Miscellaneous
+
+- Lock file regenerate
+- Check fix
+- Update readme about version bump
+- Bump version to 1.90
+- Cleanup project dir
+- Sort Cargo.lock alphabetically
+- Gitignore cleanup
+- Modernize nix packaging
+
+### Performance
+
+- Decouple preview drag state from rendering
+- Cache parsed data and re-render grids in-memory
+- Render lightweight dot markers during pan/zoom transforms
+
+### Release
+
+- V0.10.0-beta.3
+- V0.10.0-beta.3
+## [0.9.10] - 2026-08-03
+
+### Fixed
+
+- Use XDG config dir on macOS instead of Library/Application Support
+
+### Miscellaneous
+
+- Revert version to 0.9.9 to allow 0.9.10 release
+- Bump toml from 1.1.3+spec-1.1.0 to 1.1.4+spec-1.1.0
+- Bump clap from 4.6.2 to 4.6.4
+- Bump serde_json from 1.0.150 to 1.0.151
+- Bump anyhow from 1.0.103 to 1.0.104
+- Bump uuid from 1.23.5 to 1.24.0
+- Bump clap from 4.6.1 to 4.6.2
+
+### Styling
+
+- Fix line break in config_dir assignment
+
+### Release
+
+- V0.9.10
+- V0.10.0-beta.2
+- V0.10.0-beta.0
+## [0.9.9] - 2026-07-14
+
+### Fixed
+
+- Wire libgit2 auth callbacks into push/pull
+- Add universal q/Esc back/quit intercepts, override-proof
 
 ### Miscellaneous
 
 - Add support section to the readme
-
-### Performance
-
-- Render lightweight dot markers during pan/zoom transforms
 
 ### Release
 
