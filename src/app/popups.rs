@@ -768,6 +768,64 @@ template = """
         }
     }
 
+    pub fn begin_setup_vault_selection(&mut self) {
+        let Some(state) = self.setup_state.as_ref() else {
+            return;
+        };
+        if state.vault_cli_override {
+            return;
+        }
+        let pending = state.vault_path.clone();
+        match crate::ui::pick_directory("Select vault directory") {
+            Ok(crate::ui::DirectoryPickerOutcome::Selected(path)) => {
+                self.select_setup_vault(path);
+            }
+            Ok(crate::ui::DirectoryPickerOutcome::Cancelled) => {}
+            Ok(crate::ui::DirectoryPickerOutcome::Unavailable) => {
+                self.open_setup_vault_input(
+                    pending,
+                    Some("Directory picker unavailable; enter an absolute vault path.".to_string()),
+                );
+            }
+            Err(error) => self
+                .open_setup_vault_input(pending, Some(format!("Directory picker failed: {error}"))),
+        }
+    }
+
+    pub fn open_setup_vault_input(&mut self, path: std::path::PathBuf, notice: Option<String>) {
+        if let Some(state) = self.setup_state.as_mut() {
+            state.vault_modal = Some(crate::setup::SetupVaultModal::PathInput {
+                input: ratatui_textarea::TextArea::from([path.display().to_string()]),
+                notice,
+            });
+            state.vault_error = None;
+        }
+    }
+
+    pub fn select_setup_vault(&mut self, path: std::path::PathBuf) {
+        match crate::setup::vault_requires_confirmation(&path) {
+            Ok(true) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.vault_modal =
+                        Some(crate::setup::SetupVaultModal::ConfirmNonEmpty { path });
+                }
+            }
+            Ok(false) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.vault_path = path;
+                    state.confirmed_nonempty_path = None;
+                    state.vault_modal = None;
+                    state.vault_error = None;
+                }
+            }
+            Err(error) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.vault_error = Some(error.to_string());
+                }
+            }
+        }
+    }
+
     pub fn apply_setup_live(&mut self) {
         let mut visuals_changed = false;
 
@@ -834,29 +892,98 @@ template = """
         }
     }
 
-    /// Finish: live-apply + persist + seed templates/welcome note + close.
+    /// Finish setup. A changed vault is initialized and committed for a clean
+    /// in-process session rebootstrap; unchanged setup keeps normal flow.
     pub fn finish_setup(&mut self) {
+        let previous_config = self.config.clone();
         self.apply_setup_live();
-        match self.config.save() {
-            Ok(()) => {
-                let _ = self.storage.template_manager().create_examples();
-                self.request_notes_reconcile();
-                self.set_temporary_status_static("Setup complete");
-                self.setup_state = None;
-                self.mode = self
-                    .return_mode
-                    .take()
-                    .unwrap_or(crate::app::ViewMode::List);
+        let (selected_path, changed_vault, confirmed_path) = {
+            let Some(state) = self.setup_state.as_ref() else {
+                return;
+            };
+            let selected_path = state.vault_path.clone();
+            (
+                selected_path.clone(),
+                !state.vault_cli_override && selected_path != state.initial_vault_path,
+                state.confirmed_nonempty_path.clone(),
+            )
+        };
+        if !changed_vault {
+            match self.config.save() {
+                Ok(()) => {
+                    let _ = self.storage.template_manager().create_examples();
+                    self.request_notes_reconcile();
+                    self.set_temporary_status_static("Setup complete");
+                    self.setup_state = None;
+                    self.mode = self
+                        .return_mode
+                        .take()
+                        .unwrap_or(crate::app::ViewMode::List);
+                }
+                Err(error) => {
+                    self.set_temporary_status(&format!("Setup failed to save: {error}"));
+                    if let Some(state) = self.setup_state.as_mut() {
+                        state.confirm_exit = false;
+                    }
+                }
             }
-            Err(e) => {
-                // Keep the wizard open so the user can retry. Selections are
-                // preserved in setup_state; in-memory config already reflects them.
-                self.set_temporary_status(&format!("Setup failed to save: {e}"));
+            return;
+        }
+        match crate::setup::vault_requires_confirmation(&selected_path) {
+            Ok(true) if confirmed_path.as_ref() != Some(&selected_path) => {
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.confirm_exit = false;
+                    state.vault_modal = Some(crate::setup::SetupVaultModal::ConfirmNonEmpty {
+                        path: selected_path,
+                    });
+                }
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                self.set_temporary_status(&format!("Failed to initialize vault: {error}"));
                 if let Some(state) = self.setup_state.as_mut() {
                     state.confirm_exit = false;
                 }
+                return;
             }
         }
+        if let Err(error) = std::fs::create_dir_all(&selected_path) {
+            self.set_temporary_status(&format!("Failed to initialize vault: {error}"));
+            if let Some(state) = self.setup_state.as_mut() {
+                state.confirm_exit = false;
+            }
+            return;
+        }
+        let mut candidate = self.config.clone();
+        candidate.core.storage_path = Some(selected_path.clone());
+        let (storage_result, warnings) = crate::storage::Storage::init_with_config(&candidate);
+        let storage = match storage_result {
+            Ok(storage) => storage,
+            Err(error) => {
+                self.set_temporary_status(&format!("Failed to initialize vault: {error}"));
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.confirm_exit = false;
+                }
+                return;
+            }
+        };
+        if let Err(error) = candidate.save() {
+            self.set_temporary_status(&format!("Setup failed to save: {error}"));
+            if let Some(state) = self.setup_state.as_mut() {
+                state.confirm_exit = false;
+            }
+            return;
+        }
+        self.config = candidate;
+        self.setup_rebootstrap = Some(crate::setup::SetupRebootstrapRequest {
+            storage,
+            warnings,
+            previous_config,
+            previous_path: self.storage.data_dir.clone(),
+            selected_path,
+        });
+        self.should_quit = true;
     }
 
     /// Discard wizard mutations: reload config + keybinds from disk, close wizard.

@@ -1,5 +1,4 @@
-//! Setup wizard rendering: centered CLIN ASCII logo + cycle-in-place option
-//! rows + Done button. No title/status bars, no preview pane.
+//! Setup wizard rendering: centered logo, vault selector, options, hint, Done.
 
 use crate::app::App;
 use crate::app_theme::AppThemeColors;
@@ -10,11 +9,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Padding, Paragraph},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 
-const COL_HEIGHT: u16 = 16;
-/// Vertical column dimensions: logo (6) + gap (1) + options (5) + gap (1) + done (3).
+const COL_HEIGHT: u16 = 19;
+/// Vertical column: logo (6), gap, options (6), gap, hint (2), Done (3).
 const COL_WIDTH: u16 = 44;
 const VALUE_WIDTH: usize = 18;
 const PREVIEW_WIDTH: u16 = 50;
@@ -44,6 +43,7 @@ fn main() {
 pub(crate) struct SetupLayout {
     pub logo: Rect,
     pub options: Rect,
+    pub hint: Rect,
     pub done: Rect,
     pub preview: Rect,
 }
@@ -81,6 +81,7 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
             Constraint::Length(1),
             Constraint::Length(OPTION_ROWS as u16),
             Constraint::Length(1),
+            Constraint::Length(2),
             Constraint::Length(3),
         ])
         .split(left_col);
@@ -88,7 +89,8 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
     SetupLayout {
         logo: v_chunks[0],
         options: v_chunks[2],
-        done: v_chunks[4],
+        hint: v_chunks[4],
+        done: v_chunks[5],
         preview: preview_col,
     }
 }
@@ -116,8 +118,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
     // Option rows.
     let hovered_row = app.mouse_pos.and_then(|(col, row)| {
-        if !state.is_done_selected()
-            && col >= layout.options.x
+        if col >= layout.options.x
             && col < layout.options.x + layout.options.width
             && row >= layout.options.y
             && row < layout.options.y + OPTION_ROWS as u16
@@ -131,7 +132,10 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     for row in 0..OPTION_ROWS {
         let active = state.selected == row;
         let is_hovered = !active && Some(row) == hovered_row;
-        let base = if active {
+        let disabled = row == 0 && state.vault_cli_override;
+        let base = if disabled {
+            Style::default().fg(theme.muted)
+        } else if active {
             Style::default()
                 .fg(theme.highlight_fg)
                 .bg(theme.highlight_bg)
@@ -158,17 +162,43 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         } else {
             format!("{:^VALUE_WIDTH$}", value)
         };
-        lines.push(Line::from(vec![
-            Span::styled(format!("{:<10} ", label), base),
-            Span::styled("◀ ", arrow),
-            Span::styled(truncated_value, base),
-            Span::styled(" ▶", arrow),
-        ]));
+        // Keep Vault and cycle rows at the same fixed width. Vault reserves
+        // both arrow/action columns as whitespace because selecting it opens
+        // the directory flow rather than cycling a value.
+        let spans = if row == 0 {
+            vec![
+                Span::styled(format!("{:<10} ", label), base),
+                Span::styled("  ", arrow),
+                Span::styled(truncated_value, base),
+                Span::styled("         ", arrow),
+            ]
+        } else {
+            vec![
+                Span::styled(format!("{:<10} ", label), base),
+                Span::styled("◀ ", arrow),
+                Span::styled(truncated_value, base),
+                Span::styled(" ▶", arrow),
+                Span::styled("       ", arrow),
+            ]
+        };
+        lines.push(Line::from(spans));
     }
 
     frame.render_widget(
         Paragraph::new(lines).alignment(Alignment::Center),
         layout.options,
+    );
+
+    frame.render_widget(
+        Paragraph::new("Remember: press ? for help or F2 for keybinds.")
+            .style(
+                Style::default()
+                    .fg(theme.muted)
+                    .add_modifier(Modifier::ITALIC),
+            )
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true }),
+        layout.hint,
     );
 
     // Done button.
@@ -219,6 +249,46 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         );
     }
 
+    if let Some(modal) = state.vault_modal.as_mut() {
+        let content = crate::ui::draw_popup_frame(
+            frame,
+            frame.area(),
+            "VAULT DIRECTORY",
+            crate::ui::PopupSize::Prompt,
+            crate::ui::PopupHints::Keybinds(&[
+                ("Enter".to_string(), "confirm"),
+                ("Esc".to_string(), "cancel"),
+            ]),
+            theme,
+        );
+        match modal {
+            crate::setup::SetupVaultModal::PathInput { input, notice } => {
+                let text = notice
+                    .as_deref()
+                    .or(state.vault_error.as_deref())
+                    .unwrap_or(
+                        "Enter an absolute vault path. Existing directories are never modified.",
+                    );
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(2), Constraint::Length(1)])
+                    .split(content);
+                frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), chunks[0]);
+                frame.render_widget(&*input, chunks[1]);
+            }
+            crate::setup::SetupVaultModal::ConfirmNonEmpty { path } => {
+                frame.render_widget(
+                    Paragraph::new(format!(
+                        "Use this non-empty directory as the vault? Existing files will not be modified.\n{}",
+                        path.display()
+                    ))
+                    .wrap(Wrap { trim: true }),
+                    content,
+                );
+            }
+        }
+    }
+
     fn draw_setup_preview(
         frame: &mut Frame,
         area: Rect,
@@ -229,10 +299,11 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         state: &mut SetupState,
     ) {
         match selected {
-            0 | 1 => draw_preview_markdown(frame, area, theme, icon_mode, state),
-            2 => draw_preview_hint_bar(frame, area, theme),
-            3 => draw_preview_icons(frame, area, theme, icon_mode),
-            4 => draw_preview_keybinds(frame, area, theme, keybinds),
+            0 => draw_preview_vault(frame, area, theme, state),
+            1 | 2 => draw_preview_markdown(frame, area, theme, icon_mode, state),
+            3 => draw_preview_hint_bar(frame, area, theme),
+            4 => draw_preview_icons(frame, area, theme, icon_mode),
+            5 => draw_preview_keybinds(frame, area, theme, keybinds),
             _ => draw_preview_overview(frame, area, theme, state),
         }
     }
@@ -445,6 +516,77 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(Paragraph::new(lines).block(block), area);
     }
 
+    fn draw_preview_vault(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        state: &SetupState,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(
+                " Vault ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .padding(Padding::new(1, 1, 1, 0));
+        let default_path = crate::config::ClinConfig::default_storage_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|error| format!("Unavailable: {error}"));
+        let active_label = if state.vault_cli_override {
+            "Active path (CLI override)"
+        } else {
+            "Active path"
+        };
+        let mut lines = vec![
+            Line::from(Span::styled(
+                "Vault controls where notes and .clin metadata are stored.",
+                Style::default().fg(theme.text),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    format!("{active_label:<24}"),
+                    Style::default().fg(theme.heading),
+                ),
+                Span::styled(
+                    state.initial_vault_path.display().to_string(),
+                    Style::default().fg(theme.accent),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    "Selected path           ",
+                    Style::default().fg(theme.heading),
+                ),
+                Span::styled(
+                    state.vault_path.display().to_string(),
+                    Style::default().fg(theme.accent),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    "Default path            ",
+                    Style::default().fg(theme.heading),
+                ),
+                Span::styled(default_path, Style::default().fg(theme.muted)),
+            ]),
+        ];
+        if state.vault_cli_override {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "CLI override is active; setup cannot change this path.",
+                Style::default().fg(theme.muted),
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(lines).block(block).wrap(Wrap { trim: true }),
+            area,
+        );
+    }
+
     fn draw_preview_overview(
         frame: &mut Frame,
         area: Rect,
@@ -481,7 +623,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
-            "Press Esc to confirm.",
+            "Press Enter to confirm.",
             Style::default().fg(theme.muted),
         )));
 

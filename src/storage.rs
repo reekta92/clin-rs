@@ -169,23 +169,29 @@ use crate::fsutil::remove_file_if_exists;
 
 impl Storage {
     pub fn init() -> (Result<Self>, Vec<String>) {
-        let mut warnings = Vec::new();
-        let res = Self::init_inner(&mut warnings);
-        (res, warnings)
-    }
-
-    fn init_inner(warnings: &mut Vec<String>) -> Result<Self> {
-        let (config_res, config_warnings) = ClinConfig::load();
-        warnings.extend(config_warnings);
-        let bootstrap = match config_res {
-            Ok(c) => c,
-            Err(e) => {
+        let (config_res, mut warnings) = ClinConfig::load();
+        let config = match config_res {
+            Ok(config) => config,
+            Err(error) => {
                 warnings.push(format!(
-                    "Config error: {e}. Falling back to default configuration."
+                    "Config error: {error}. Falling back to default configuration."
                 ));
                 ClinConfig::default()
             }
         };
+        let (result, init_warnings) = Self::init_with_config(&config);
+        warnings.extend(init_warnings);
+        (result, warnings)
+    }
+
+    /// Initialize storage layout from an already-validated candidate config.
+    pub(crate) fn init_with_config(config: &ClinConfig) -> (Result<Self>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let result = Self::init_inner(config, &mut warnings);
+        (result, warnings)
+    }
+
+    fn init_inner(bootstrap: &ClinConfig, warnings: &mut Vec<String>) -> Result<Self> {
         let data_dir = bootstrap
             .effective_storage_path()
             .context("failed to determine storage path")?;
@@ -631,11 +637,24 @@ impl Storage {
         }
 
         if !per_preset.exists() {
+            let defaults = preset.base_keybinds();
+            match self.save_keybinds_for_preset(&defaults, preset) {
+                Ok(()) => return (defaults, warnings),
+                Err(error) => {
+                    warnings.push(format!(
+                        "Failed to create keybind preset {}: {error}. Falling back to '{preset}' preset.",
+                        per_preset.display()
+                    ));
+                    return (defaults, warnings);
+                }
+            }
+        }
+
+        if let Err(error) = crate::keybinds::repair_legacy_preset_sequences(&per_preset, preset) {
             warnings.push(format!(
-                "Keybinds missing: {}. Falling back to '{preset}' preset.",
+                "Failed to repair legacy keybind sequences in {}: {error}",
                 per_preset.display()
             ));
-            return (preset.base_keybinds(), warnings);
         }
         let keybinds = crate::keybinds::Keybinds::load_layered(
             &per_preset,
@@ -2439,5 +2458,30 @@ mod tests {
         assert!(!remove_file_if_exists(&path)?);
 
         Ok(())
+    }
+
+    #[test]
+    fn missing_keybind_preset_regenerates_without_warning() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage = Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        let preset = crate::config::KeybindPreset::Vim;
+        let path = storage.keybinds_path_for_preset(preset);
+
+        let (keybinds, warnings) = storage.load_keybinds_with_preset(preset);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(path.exists());
+        assert_eq!(keybinds.list, preset.base_keybinds().list);
+
+        fs::remove_dir_all(storage.keybinds_dir()).unwrap();
+        let (_, warnings) = storage.load_keybinds_with_preset(preset);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(path.exists());
     }
 }

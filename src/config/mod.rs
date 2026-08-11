@@ -67,6 +67,11 @@ fn storage_path_override() -> Option<PathBuf> {
     STORAGE_PATH_OVERRIDE.get().and_then(|opt| opt.clone())
 }
 
+/// Whether this process received a `--vault` override.
+pub(crate) fn has_storage_path_override() -> bool {
+    storage_path_override().is_some()
+}
+
 // ── ClinConfig impl ─────────────────────────────────────────────────────────
 
 fn write_config_file(config_path: &Path) -> Result<()> {
@@ -973,7 +978,7 @@ show_status_bar = false
         }
 
         let merged_str = doc.to_string();
-        assert!(merged_str.contains("# Clin Configuration File"));
+        assert!(merged_str.contains("# Clin configuration"));
         assert!(merged_str.contains("# Enable mouse support (clicking, scrolling, panning)."));
         assert!(merged_str.contains("# Show the status bar at the bottom of the screen."));
         assert!(merged_str.contains("# Show background grid."));

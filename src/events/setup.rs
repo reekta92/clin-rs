@@ -7,6 +7,53 @@ use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKin
 use ratatui::layout::Rect;
 
 pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
+    if let Some(modal) = app
+        .setup_state
+        .as_mut()
+        .and_then(|state| state.vault_modal.as_mut())
+    {
+        match modal {
+            crate::setup::SetupVaultModal::PathInput { input, .. } => match key.code {
+                KeyCode::Esc => {
+                    app.setup_state.as_mut().unwrap().vault_modal = None;
+                    return;
+                }
+                KeyCode::Enter => {
+                    let value = input.lines().join("\n");
+                    let path = crate::setup::validate_vault_path(&value);
+                    match path {
+                        Ok(path) => app.select_setup_vault(path),
+                        Err(error) => {
+                            if let Some(state) = app.setup_state.as_mut() {
+                                state.vault_error = Some(error.to_string());
+                            }
+                        }
+                    }
+                    return;
+                }
+                _ => {
+                    crate::events::handle_popup_text_input(key, input, &app.keybinds);
+                    return;
+                }
+            },
+            crate::setup::SetupVaultModal::ConfirmNonEmpty { path } => match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let path = path.clone();
+                    if let Some(state) = app.setup_state.as_mut() {
+                        state.vault_path = path.clone();
+                        state.confirmed_nonempty_path = Some(path);
+                        state.vault_modal = None;
+                    }
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    app.setup_state.as_mut().unwrap().vault_modal = None;
+                }
+                _ => {}
+            },
+        }
+        return;
+    }
+
     // Esc→confirm overlay absorbs all keys until resolved.
     if let Some(state) = app.setup_state.as_mut()
         && state.confirm_exit
@@ -54,20 +101,28 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
             }
         }
         SetupAction::Activate => {
-            let finish = app
+            let (finish, vault_selected) = app
                 .setup_state
                 .as_ref()
-                .map(|s| s.is_done_selected())
-                .unwrap_or(false);
+                .map(|s| (s.is_done_selected(), s.vault_selected()))
+                .unwrap_or((false, false));
             if finish {
                 app.finish_setup();
+            } else if vault_selected {
+                app.begin_setup_vault_selection();
             } else if let Some(state) = app.setup_state.as_mut() {
                 state.cycle(true);
                 app.apply_setup_live();
             }
         }
         SetupAction::CycleNext => {
-            if let Some(state) = app.setup_state.as_mut()
+            let vault_selected = app
+                .setup_state
+                .as_ref()
+                .is_some_and(crate::setup::SetupState::vault_selected);
+            if vault_selected {
+                app.begin_setup_vault_selection();
+            } else if let Some(state) = app.setup_state.as_mut()
                 && !state.is_done_selected()
             {
                 state.cycle(true);
@@ -75,7 +130,9 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
             }
         }
         SetupAction::CyclePrev => {
-            if let Some(state) = app.setup_state.as_mut() {
+            if let Some(state) = app.setup_state.as_mut()
+                && !state.vault_selected()
+            {
                 state.cycle(false);
                 app.apply_setup_live();
             }
@@ -90,6 +147,13 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
 
 pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect) {
     if !app.config.core.mouse_enabled {
+        return;
+    }
+    if app
+        .setup_state
+        .as_ref()
+        .is_some_and(|state| state.vault_modal.is_some() || state.confirm_exit)
+    {
         return;
     }
 
@@ -131,7 +195,9 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
             MouseAction::Finish => state.selected = crate::setup::DONE_ROW,
             MouseAction::CycleOption(row) => {
                 state.selected = row;
-                state.cycle(true);
+                if row != 0 || state.vault_cli_override {
+                    state.cycle(true);
+                }
             }
             MouseAction::MoveSel(down) => state.move_sel(down),
         }
@@ -139,6 +205,12 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
 
     if finish {
         app.finish_setup();
+    } else if app
+        .setup_state
+        .as_ref()
+        .is_some_and(crate::setup::SetupState::vault_selected)
+    {
+        app.begin_setup_vault_selection();
     } else {
         app.apply_setup_live();
     }

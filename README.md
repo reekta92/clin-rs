@@ -360,11 +360,19 @@ See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all availab
 ### config.toml example
 
 ```toml
-# General settings
+[core]
 storage_path = "/path/to/your/vault"
 mouse_enabled = true
 confirm_on_delete = true
 confirm_on_quit = false
+
+[ui]
+theme = "tokyo_night"
+background = "transparent"
+show_status_bar = true
+icon_mode = "nerd"
+hint_bar_style = "classic"
+# accent = "#ff6600"
 
 [list]
 preview_enabled = true
@@ -385,14 +393,6 @@ external_command = "nvim"
 external_enabled = false
 preview_enabled = false
 show_line_numbers = true
-
-[ui]
-theme = "tokyo_night"
-background = "transparent"
-show_status_bar = true
-icon_mode = "nerd"
-hint_bar_style = "classic"
-# accent = "#ff6600"
 ```
 
 

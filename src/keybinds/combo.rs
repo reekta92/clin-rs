@@ -242,6 +242,15 @@ impl KeyCombo {
         }
     }
 
+    /// Persistence form: every sequence stroke is separated by one ASCII space.
+    pub(crate) fn to_config_string(&self) -> String {
+        self.keys
+            .iter()
+            .map(Self::stroke_to_string)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// Legacy single-key fast-path match.
     /// Returns `true` if this is a length-1 combo whose key matches the event.
     /// Multi-key combos always return `false` here; use `KeyMatcher::resolve` for sequences.
@@ -363,5 +372,14 @@ mod tests {
         };
         let event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
         assert!(stroke.matches_event(&event));
+    }
+
+    #[test]
+    fn config_string_round_trips_sequences() {
+        for value in ["g g", "g e", "d d", "g G", "Ctrl+x Ctrl+s"] {
+            let combo = KeyCombo::parse(value).unwrap();
+            assert_eq!(combo.to_config_string(), value);
+            assert_eq!(KeyCombo::parse(&combo.to_config_string()), Some(combo));
+        }
     }
 }

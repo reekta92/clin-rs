@@ -991,6 +991,12 @@ mod tests {
             keybind_preset: 2, // Vim
             selected: 0,
             confirm_exit: false,
+            vault_path: std::path::PathBuf::from("/vault"),
+            initial_vault_path: std::path::PathBuf::from("/vault"),
+            vault_cli_override: false,
+            vault_modal: None,
+            confirmed_nonempty_path: None,
+            vault_error: None,
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
@@ -1028,8 +1034,14 @@ mod tests {
             hint_bar_style: 0,
             icon_mode: 0,
             keybind_preset: 0,
-            selected: 0, // Theme row
+            selected: 1, // Theme row
             confirm_exit: false,
+            vault_path: std::path::PathBuf::from("/vault"),
+            initial_vault_path: std::path::PathBuf::from("/vault"),
+            vault_cli_override: false,
+            vault_modal: None,
+            confirmed_nonempty_path: None,
+            vault_error: None,
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
@@ -1040,9 +1052,9 @@ mod tests {
         app.apply_setup_live();
         assert_eq!(app.config.ui.theme, "tokyo_night");
 
-        // Flip background via row 1 → config mirrors it.
+        // Flip background via row 2 → config mirrors it.
         let state = app.setup_state.as_mut().unwrap();
-        state.selected = 1;
+        state.selected = 2;
         state.cycle(true);
         app.apply_setup_live();
         assert_eq!(app.config.ui.background, crate::config::Background::Solid);
@@ -1067,6 +1079,12 @@ mod tests {
             keybind_preset: 0,
             selected: 0,
             confirm_exit: false,
+            vault_path: std::path::PathBuf::from("/vault"),
+            initial_vault_path: std::path::PathBuf::from("/vault"),
+            vault_cli_override: false,
+            vault_modal: None,
+            confirmed_nonempty_path: None,
+            vault_error: None,
             preview_renderer: crate::markdown::MarkdownRenderer::new(),
             preview_key: None,
             pending_preview_resize: None,
@@ -1209,5 +1227,35 @@ mod tests {
         if let Some(VisualItem::SmartFolder { note_count, .. }) = smart_folder {
             assert_eq!(*note_count, 1, "Only one note should match all criteria");
         }
+    }
+
+    #[test]
+    fn finish_setup_vault_change_requests_rebootstrap() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        crate::config::set_config_path_override(config_path);
+        let old_path = temp.path().join("old");
+        let new_path = temp.path().join("new");
+        std::fs::create_dir_all(old_path.join("notes")).unwrap();
+        std::fs::create_dir_all(old_path.join("templates")).unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: old_path.clone(),
+            config_dir: temp.path().join("config"),
+            notes_dir: old_path.join("notes"),
+            templates_dir: old_path.join("templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        let mut app = App::new(storage).unwrap();
+        let mut state =
+            crate::setup::SetupState::from_config(&app.config, &app.app_theme, old_path, false);
+        state.vault_path = new_path;
+        app.setup_state = Some(state);
+
+        app.finish_setup();
+
+        assert!(app.should_quit);
+        assert!(app.setup_rebootstrap.is_some());
     }
 }

@@ -9,6 +9,7 @@ pub mod help_meta;
 mod matcher;
 mod types;
 
+pub(crate) use api::repair_legacy_preset_sequences;
 pub use combo::KeyCombo;
 pub use matcher::{KeyMatcher, MatchOutcome};
 pub use types::*;

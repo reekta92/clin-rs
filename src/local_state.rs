@@ -185,6 +185,23 @@ impl LocalState {
         unreachable!("unbounded quarantine suffix loop always returns")
     }
 }
+
+/// Record a pending migration while keeping earliest source across vault switches.
+pub fn record_storage_migration(state_path: &Path, previous: &Path, target: &Path) -> Result<()> {
+    LocalState::update(state_path, |state| {
+        match &mut state.storage_migration {
+            Some(migration) => migration.target_path = target.to_path_buf(),
+            None => {
+                state.storage_migration = Some(StorageMigrationState {
+                    previous_path: previous.to_path_buf(),
+                    target_path: target.to_path_buf(),
+                });
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
 /// Canonicalize a vault path for use as a state key.
 ///
 /// Converts to absolute, canonicalises the deepest existing ancestor,
@@ -353,5 +370,20 @@ mod tests {
         let non_existent = tmp.path().join("a").join("nonexistent");
         let id2 = vault_identity_path(&non_existent).unwrap();
         assert!(id2.to_string_lossy().ends_with("/a/nonexistent"));
+    }
+
+    #[test]
+    fn record_storage_migration_preserves_original_source_and_updates_target() {
+        let tmp = TempDir::new().unwrap();
+        let path = state_path(&tmp);
+        record_storage_migration(&path, Path::new("/first"), Path::new("/second")).unwrap();
+        record_storage_migration(&path, Path::new("/second"), Path::new("/third")).unwrap();
+        assert_eq!(
+            LocalState::load(&path).unwrap().storage_migration,
+            Some(StorageMigrationState {
+                previous_path: PathBuf::from("/first"),
+                target_path: PathBuf::from("/third"),
+            })
+        );
     }
 }

@@ -226,3 +226,24 @@ pub fn finish_session(app: &mut App, guard: SessionGuard) -> Result<()> {
     }
     Ok(())
 }
+
+/// Stop workers for an in-process vault rebootstrap without triggering backup-on-quit.
+pub fn finish_session_for_rebootstrap(app: &mut App, guard: SessionGuard) -> Result<()> {
+    drop(app.backup_tx.take());
+    let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
+    loop {
+        match guard
+            .backup_done_rx
+            .recv_timeout(std::time::Duration::from_millis(200))
+        {
+            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                if std::time::Instant::now() >= deadline =>
+            {
+                break;
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+    Ok(())
+}

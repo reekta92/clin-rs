@@ -350,16 +350,11 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 && old_path != path
                 && let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
             {
-                let state_path = paths.state_path();
-                let _ = crate::local_state::LocalState::update(&state_path, |s| {
-                    if s.storage_migration.is_none() {
-                        s.storage_migration = Some(crate::local_state::StorageMigrationState {
-                            previous_path: old_path.clone(),
-                            target_path: path.clone(),
-                        });
-                    }
-                    Ok(())
-                });
+                let _ = crate::local_state::record_storage_migration(
+                    &paths.state_path(),
+                    &old_path,
+                    &path,
+                );
             }
 
             bootstrap.set_storage_path(path.clone());
@@ -393,16 +388,11 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             if old_path != default
                 && let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
             {
-                let state_path = paths.state_path();
-                let _ = crate::local_state::LocalState::update(&state_path, |s| {
-                    if s.storage_migration.is_none() {
-                        s.storage_migration = Some(crate::local_state::StorageMigrationState {
-                            previous_path: old_path.clone(),
-                            target_path: default.clone(),
-                        });
-                    }
-                    Ok(())
-                });
+                let _ = crate::local_state::record_storage_migration(
+                    &paths.state_path(),
+                    &old_path,
+                    &default,
+                );
             }
 
             bootstrap.reset_storage_path();
@@ -1049,43 +1039,102 @@ pub fn force_quit() -> ! {
 }
 
 fn run_tui_session(app: &mut App) -> Result<()> {
-    let guard = crate::session::start_session(app);
-
-    let result = {
-        let _tg = TerminalGuard::enter(app.mouse_enabled)?;
-        let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
-        let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
-        // Detect terminal graphics protocol while inside alt-screen+raw mode.
-        // Skip detection entirely when image rendering is disabled in config.
-        app.image_picker = if app.config.image.enabled {
-            Some(
-                ratatui_image::picker::Picker::from_query_stdio()
-                    .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
-            )
-        } else {
-            None
+    loop {
+        let guard = crate::session::start_session(app);
+        let result = {
+            let _terminal_guard = TerminalGuard::enter(app.mouse_enabled)?;
+            let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
+            let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
+            app.image_picker = if app.config.image.enabled {
+                Some(
+                    ratatui_image::picker::Picker::from_query_stdio()
+                        .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
+                )
+            } else {
+                None
+            };
+            let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
+            let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
+            let result = std::panic::catch_unwind(move || {
+                run_app(
+                    *terminal_safe,
+                    *app_safe,
+                    &mut crate::event_source::CrosstermEventSource,
+                )
+            });
+            if app.mode == ViewMode::Edit {
+                app.autosave();
+            }
+            result
         };
 
-        let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
-        let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
-        let res = std::panic::catch_unwind(move || {
-            run_app(
-                *terminal_safe,
-                *app_safe,
-                &mut crate::event_source::CrosstermEventSource,
-            )
-        });
-        if app.mode == ViewMode::Edit {
-            app.autosave();
+        let rebootstrap = app.setup_rebootstrap.take();
+        if let Some(request) = rebootstrap {
+            crate::session::finish_session_for_rebootstrap(app, guard)?;
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => return Err(error),
+                Err(error) => std::panic::resume_unwind(error),
+            }
+            let rebuilt = (|| -> Result<App> {
+                let fresh = App::new_deferred(request.storage.clone())?;
+                if request.previous_path.exists() && request.previous_path != request.selected_path
+                {
+                    let paths = crate::paths::AppPaths::discover(
+                        crate::config::ClinConfig::config_path()?,
+                    )?;
+                    crate::local_state::record_storage_migration(
+                        &paths.state_path(),
+                        &request.previous_path,
+                        &request.selected_path,
+                    )?;
+                }
+                Ok(fresh)
+            })();
+            let mut fresh = match rebuilt {
+                Ok(fresh) => fresh,
+                Err(error) => {
+                    request.previous_config.save().with_context(|| {
+                        format!(
+                            "failed to restore previous config after vault switch error: {error}"
+                        )
+                    })?;
+                    let (storage, _) =
+                        crate::storage::Storage::init_with_config(&request.previous_config);
+                    let storage = storage.with_context(|| {
+                        format!(
+                            "failed to restore previous vault after vault switch error: {error}"
+                        )
+                    })?;
+                    let mut restored = App::new_deferred(storage).with_context(|| {
+                        format!("failed to reopen previous vault after vault switch error: {error}")
+                    })?;
+                    restored.open_setup_view();
+                    if let Some(state) = restored.setup_state.as_mut() {
+                        state.vault_path = request.selected_path.clone();
+                    }
+                    restored.set_temporary_status(&format!(
+                        "Failed to switch vault; restored previous vault: {error}"
+                    ));
+                    *app = restored;
+                    continue;
+                }
+            };
+            for warning in request.warnings {
+                fresh
+                    .messages
+                    .push(warning, crate::app::messages::MessageSeverity::Warning);
+            }
+            let _ = fresh.storage.template_manager().create_examples();
+            fresh.set_temporary_status_static("Setup complete");
+            *app = fresh;
+            continue;
         }
-        res
-    }; // _guard dropped here: raw mode off, alt screen left
-
-    crate::session::finish_session(app, guard)?;
-
-    match result {
-        Ok(r) => r,
-        Err(err) => std::panic::resume_unwind(err),
+        crate::session::finish_session(app, guard)?;
+        match result {
+            Ok(result) => return result,
+            Err(error) => std::panic::resume_unwind(error),
+        }
     }
 }
 

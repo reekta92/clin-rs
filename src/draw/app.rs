@@ -25,7 +25,7 @@ pub struct DrawAppState {
     pub mouse_pos: Option<(u16, u16)>,
     pub text_editor: Option<(usize, TextArea<'static>)>,
     pub text_editor_rect: Option<Rect>,
-    pub mouse_selection: crate::text_edit::MouseTextSelection,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::draw::state::DrawShapeType,
     pub show_shape_selector: bool,

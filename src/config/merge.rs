@@ -153,9 +153,9 @@ pub(crate) struct GrafConfigOnly {
 
 /// Annotated base template. Runtime defaults are merged into this once below,
 /// keeping comments while guaranteeing every non-optional field is emitted.
-const DEFAULT_CONFIG_TEMPLATE: &str = r###"# Clin Configuration File
+const DEFAULT_CONFIG_TEMPLATE: &str = r###"# Clin configuration
 
-# ── Core ─────────────────────────────────────────────────────────────────────
+# Core
 
 [core]
 # Custom path for notes storage (e.g., "/home/user/vault").
@@ -216,7 +216,7 @@ preview_wrap_indicator = false
 # link_url_max_length = 80
 
 
-# ── Display ──
+# Display
 
 [ui]
 # Theme to use ("default", "tokyo_night", "catppuccin_mocha", "onedark", "gruvbox", etc.)
@@ -258,27 +258,8 @@ tab_icons_only = false
 # background_color = "#000000"
 
 
-# ── Statusline ───────────────────────────────────────────────────────────────
 
-# Customize the title bar (header, top) and status bar (footer, bottom) text.
-# Templates interpolate {variables} — e.g. {time}, {word_count}, {note_count}.
-# Unknown variables render literally; use {{ }} for literal braces.
-# Full variable list: docs/CONFIG_REFERENCE.md → "Template Interpolation Variables".
-[statusline]
-# Built-in defaults shown below (commented). Uncomment a line to override.
-# header_left = "{title} {preview}"
-# header_right = ""
-# footer_left = "{pending}{badge}{hints}"
-# footer_right = "{version}"
-
-# Per-view overrides — each sub-table accepts the same four fields:
-#   list, edit, help, graph, draw, canvas, backup, outline
-# Example:
-# [statusline.list]
-# footer_right = "{note_count} notes ({selected_count} selected) | {version}"
-
-
-# ── List View ─────────────────────────────────────────────────────────────────
+# Notes list
 
 [list]
 # Show the preview pane in the notes list by default.
@@ -368,7 +349,7 @@ smart_folders_enabled = false
 # sections = ["calendar", "goals"]
 
 
-# ── Editor ────────────────────────────────────────────────────────────────────
+# Editor
 
 [editor]
 # External editor command (e.g., "nvim", "code", "nano").
@@ -392,8 +373,39 @@ edit_mode_highlight = true
 # Enable soft-wrapping of lines in the editor.
 soft_wrap = false
 
+# Status line
 
-# ── Backup ────────────────────────────────────────────────────────────────────
+# Customize the title bar (header, top) and status bar (footer, bottom) text.
+# Templates interpolate {variables} — e.g. {time}, {word_count}, {note_count}.
+# Unknown variables render literally; use {{ }} for literal braces.
+# Full variable list: docs/CONFIG_REFERENCE.md → "Template Interpolation Variables".
+[statusline]
+# Built-in defaults shown below (commented). Uncomment a line to override.
+# header_left = "{title} {preview}"
+# header_right = ""
+# footer_left = "{pending}{badge}{hints}"
+# footer_right = "{version}"
+
+# Per-view overrides — each sub-table accepts the same four fields:
+#   list, edit, help, graph, draw, canvas, backup, outline
+# Example:
+# [statusline.list]
+# footer_right = "{note_count} notes ({selected_count} selected) | {version}"
+
+# Goals
+
+[goals]
+# Enable the daily word/note goals system.
+enabled = true
+
+# Daily target word count (incremental additions). Set to 0 to disable.
+word_goal = 500
+
+# Daily target note count (edited or created). Set to 0 to disable.
+note_goal = 3
+
+
+# Backup
 
 [backup]
 # Enable auto-backups via git.
@@ -418,7 +430,25 @@ auto_push = false
 # auto_backup_interval = 30
 
 
-# ── Graph View (Graf) ─────────────────────────────────────────────────────────
+# Images
+
+[image]
+# Enable pixel image rendering in canvas, draw, and note preview.
+enabled = true
+
+# Maximum pixel dimension for decoded images (larger images are downscaled).
+# max_dimension = 2048
+
+# Maximum number of decoded images cached per view.
+# cache_size = 32
+
+# Subdirectory within the vault for storing attached image files.
+# attachments_subdir = "attachments"
+
+# Number of terminal rows reserved for inline image previews in notes.
+# preview_rows = 8
+
+# Graph
 
 [graf]
 # Maximum number of nodes to simulate and display (0 = unlimited).
@@ -521,36 +551,6 @@ max_results = 20
 max_visible = 10
 
 
-# ── Goals System ──────────────────────────────────────────────────────────────
-
-[goals]
-# Enable the daily word/note goals system.
-enabled = true
-
-# Daily target word count (incremental additions). Set to 0 to disable.
-word_goal = 500
-
-# Daily target note count (edited or created). Set to 0 to disable.
-note_goal = 3
-
-
-# ── Image Rendering ────────────────────────────────────────────────────────────
-
-[image]
-# Enable pixel image rendering in canvas, draw, and note preview.
-enabled = true
-
-# Maximum pixel dimension for decoded images (larger images are downscaled).
-# max_dimension = 2048
-
-# Maximum number of decoded images cached per view.
-# cache_size = 32
-
-# Subdirectory within the vault for storing attached image files.
-# attachments_subdir = "attachments"
-
-# Number of terminal rows reserved for inline image previews in notes.
-# preview_rows = 8
 "###;
 
 static DEFAULT_CONFIG_CONTENT: LazyLock<String> = LazyLock::new(|| {
@@ -577,4 +577,35 @@ static DEFAULT_CONFIG_CONTENT: LazyLock<String> = LazyLock::new(|| {
 /// Complete annotated config generated from the current runtime defaults.
 pub fn default_config_content() -> &'static str {
     &DEFAULT_CONFIG_CONTENT
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn default_config_content_uses_plain_workflow_order() {
+        let content = super::default_config_content();
+        let headings = [
+            "# Core",
+            "# Display",
+            "# Notes list",
+            "# Editor",
+            "# Status line",
+            "# Goals",
+            "# Backup",
+            "# Images",
+            "# Graph",
+        ];
+        let mut previous = 0;
+        for heading in headings {
+            let position = content.find(heading).unwrap();
+            assert!(position >= previous, "{heading} out of workflow order");
+            previous = position;
+        }
+        assert!(!content.contains('─'));
+        let parsed: crate::config::ClinConfig = toml::from_str(content).unwrap();
+        assert_eq!(parsed.statusline.header_left, None);
+        assert_eq!(parsed.statusline.header_right, None);
+        assert_eq!(parsed.statusline.footer_left, None);
+        assert_eq!(parsed.statusline.footer_right, None);
+    }
 }

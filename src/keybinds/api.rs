@@ -39,10 +39,57 @@ fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone + std::cmp::Ord>(
         .map(|(a, c)| {
             (
                 a.clone(),
-                c.iter().map(|k| k.to_display_string()).collect::<Vec<_>>(),
+                c.iter().map(KeyCombo::to_config_string).collect::<Vec<_>>(),
             )
         })
         .collect()
+}
+
+/// Repair compact sequences emitted by older shipped Helix/Vim preset files.
+pub(crate) fn repair_legacy_preset_sequences(
+    path: &Path,
+    preset: crate::config::KeybindPreset,
+) -> Result<bool> {
+    let replacements: &[(&str, &str, &str)] = match preset {
+        crate::config::KeybindPreset::Helix => &[
+            ("jump_to_top", "gg", "g g"),
+            ("jump_to_bottom", "ge", "g e"),
+        ],
+        crate::config::KeybindPreset::Vim => &[
+            ("delete", "dd", "d d"),
+            ("jump_to_top", "gg", "g g"),
+            ("jump_to_bottom", "gG", "g G"),
+        ],
+        _ => return Ok(false),
+    };
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error).context("failed to read keybind preset"),
+    };
+    let mut doc = raw
+        .parse::<toml_edit::DocumentMut>()
+        .context("failed to parse keybind preset")?;
+    let Some(list) = doc.get_mut("list").and_then(toml_edit::Item::as_table_mut) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    for &(action, old, new) in replacements {
+        let Some(values) = list.get_mut(action).and_then(toml_edit::Item::as_array_mut) else {
+            continue;
+        };
+        for value in values.iter_mut() {
+            if value.as_str() == Some(old) {
+                *value = toml_edit::Value::from(new);
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        crate::fsutil::atomic_write(path, doc.to_string().as_bytes())
+            .context("failed to write repaired keybind preset")?;
+    }
+    Ok(changed)
 }
 
 /// Emits the four parallel accessor families (`matches_*`, `*_keys_display`,
@@ -928,6 +975,52 @@ mod tests {
                 .any(|c| c.to_display_string() == ": q")
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn repair_legacy_preset_sequences_preserves_custom_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vim.toml");
+        std::fs::write(
+            &path,
+            "# keep me\n[list]\ndelete = [\"dd\", \"x\"]\njump_to_top = [\"gg\"]\njump_to_bottom = [\"gG\"]\ncustom = [\"z\"]\n",
+        )
+        .unwrap();
+        assert!(repair_legacy_preset_sequences(&path, crate::config::KeybindPreset::Vim).unwrap());
+        let repaired = std::fs::read_to_string(path).unwrap();
+        assert!(repaired.contains("# keep me"));
+        assert!(repaired.contains("delete = [\"d d\", \"x\"]"));
+        assert!(repaired.contains("jump_to_top = [\"g g\"]"));
+        assert!(repaired.contains("jump_to_bottom = [\"g G\"]"));
+        assert!(repaired.contains("custom = [\"z\"]"));
+    }
+
+    #[test]
+    fn all_presets_round_trip_without_warnings() {
+        for preset in [
+            crate::config::KeybindPreset::Default,
+            crate::config::KeybindPreset::Helix,
+            crate::config::KeybindPreset::Vim,
+            crate::config::KeybindPreset::Emacs,
+        ] {
+            let expected = preset.base_keybinds();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("preset.toml");
+            expected.save(&path).unwrap();
+            let mut warnings = Vec::new();
+            let loaded =
+                Keybinds::load_layered(&path, preset.base_keybinds(), &mut warnings).unwrap();
+            assert!(warnings.is_empty(), "{preset:?}: {warnings:?}");
+            assert_eq!(loaded.list, expected.list);
+            assert_eq!(loaded.edit, expected.edit);
+            assert_eq!(loaded.help, expected.help);
+            assert_eq!(loaded.graph, expected.graph);
+            assert_eq!(loaded.draw, expected.draw);
+            assert_eq!(loaded.canvas, expected.canvas);
+            assert_eq!(loaded.backup, expected.backup);
+            assert_eq!(loaded.outline, expected.outline);
+            assert_eq!(loaded.setup, expected.setup);
+        }
     }
 }
 

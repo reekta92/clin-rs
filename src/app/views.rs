@@ -38,9 +38,15 @@ impl App {
             self.return_mode = Some(self.mode);
         }
         self.mode = ViewMode::Setup;
+        let vault_path = self
+            .config
+            .effective_storage_path()
+            .unwrap_or_else(|_| self.storage.data_dir.clone());
         self.setup_state = Some(crate::setup::SetupState::from_config(
             &self.config,
             &self.app_theme,
+            vault_path,
+            crate::config::has_storage_path_override(),
         ));
         self.status = Cow::Borrowed("");
         self.status_until = None;

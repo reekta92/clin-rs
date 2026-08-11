@@ -1454,6 +1454,76 @@ pub fn open_with_default_application(path: &Path) -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DirectoryPickerOutcome {
+    Selected(std::path::PathBuf),
+    Cancelled,
+    Unavailable,
+}
+
+/// Open a native directory picker without making a platform helper mandatory.
+pub fn pick_directory(prompt: &str) -> Result<DirectoryPickerOutcome> {
+    fn selected(output: std::process::Output) -> Result<DirectoryPickerOutcome> {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            return Ok(if path.is_empty() {
+                DirectoryPickerOutcome::Cancelled
+            } else {
+                DirectoryPickerOutcome::Selected(path.into())
+            });
+        }
+        if matches!(output.status.code(), Some(1)) {
+            return Ok(DirectoryPickerOutcome::Cancelled);
+        }
+        anyhow::bail!("directory picker exited with {}", output.status);
+    }
+
+    if cfg!(target_os = "linux") {
+        if which::which("zenity").is_ok() {
+            return selected(
+                Command::new("zenity")
+                    .args([
+                        "--file-selection",
+                        "--directory",
+                        &format!("--title={prompt}"),
+                    ])
+                    .output()
+                    .context("failed to launch zenity")?,
+            );
+        }
+        if which::which("kdialog").is_ok() {
+            return selected(
+                Command::new("kdialog")
+                    .args(["--getexistingdirectory", "."])
+                    .output()
+                    .context("failed to launch kdialog")?,
+            );
+        }
+        return Ok(DirectoryPickerOutcome::Unavailable);
+    }
+    if cfg!(target_os = "macos") {
+        return selected(
+            Command::new("osascript")
+                .args([
+                    "-e",
+                    &format!("POSIX path of (choose folder with prompt \"{prompt}\")"),
+                ])
+                .output()
+                .context("failed to launch osascript")?,
+        );
+    }
+    if cfg!(target_os = "windows") {
+        let script = "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if ($f.ShowDialog() -eq 'OK') { $f.SelectedPath }";
+        return selected(
+            Command::new("powershell")
+                .args(["-Command", script])
+                .output()
+                .context("failed to launch PowerShell")?,
+        );
+    }
+    Ok(DirectoryPickerOutcome::Unavailable)
+}
+
 /// Open a file-pick dialog. `filter_ext` supports semicolon-separated
 /// extensions (e.g. `"png;jpg"`) which are formatted per-platform.
 pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> {

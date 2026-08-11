@@ -92,7 +92,8 @@ Emacs mappings use Ctrl-heavy bindings for navigation and Ctrl-x prefix commands
 
 ## TOML Custom Keybind Sequence Syntax
 
-If you wish to customize or override keybinds manually in `~/.config/clin/keybinds.toml`, you can define multi-key sequences by separating individual key descriptions with spaces:
+UI/help may display compact simple sequences (`gg`, `dd`, `gG`). Persisted TOML
+always separates strokes with one ASCII space.
 
 ```toml
 [list]
@@ -100,4 +101,5 @@ jump_to_top = ["g g"]
 quit = ["Ctrl+x Ctrl+c", "q"]
 ```
 
-Every token in the sequence follows the existing modifier parsing conventions (e.g. `Ctrl+Shift+Z`, `Alt+Key`).
+Every token follows modifier parsing conventions (for example `Ctrl+Shift+Z`,
+`Alt+Key`).
