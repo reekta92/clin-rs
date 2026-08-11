@@ -69,7 +69,7 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
             "Visualize your notes as a force-directed graph of wikilinks and shared tags. Pan and zoom the canvas, search for nodes, open notes directly from the graph, and toggle a minimap, legend, grid, and preview to navigate large vaults visually."
         }
         HelpTab::Draw => {
-            "Sketch freehand strokes, drop shapes, and place text labels on a fixed-size drawing canvas. Switch between pen, shape picker, text, and eraser tools. Drawings are stored as .draw files you can reopen and edit."
+            "Sketch freehand strokes, drop shapes, and place text labels on a zoomable drawing canvas. Switch between pen, shape picker, text, and eraser tools. Drawings are stored as .draw files you can reopen and edit."
         }
         HelpTab::Canvas => {
             "An infinite pinstar canvas for connecting notes and drawings spatially. Move and zoom freely, open notes inline, connect nodes with edges, and manage everything through a context menu. Toggle the editor pane and grid to suit your workflow."
@@ -78,7 +78,7 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
             "Git-backed vault backup dashboard. Stage and unstage file changes, review diffs, write commit messages, push to or pull from a remote, and toggle auto-backup settings inline — all without leaving the app."
         }
         HelpTab::Templates => {
-            "Create reusable note templates with frontmatter and date variables. Pick a template from the notes view, search by name, and auto-fill date tokens when generating a new note. Drop .toml files in the templates directory to add your own."
+            "Create reusable TOML note templates with variable substitution. Pick a template from the notes view, search by name, and auto-fill date tokens when generating a new note. Add .toml files to the active storage templates directory."
         }
         HelpTab::About => {
             "Application metadata: version, configuration file paths, and the full command-line interface reference. Use this tab to find config locations and CLI subcommands for notes, storage, keybinds, templates, and config management."
@@ -111,7 +111,7 @@ const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Sort order",
-        "Cycle the note sorting order using {list:CycleSort} to sort by title, modified time, or size.",
+        "Cycle the note sorting order using {list:CycleSort} to sort by title or modified time.",
     ),
     tip(
         "Folders first",
@@ -443,23 +443,23 @@ const TEMPLATES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Template fields",
-        "Note templates can define frontmatter, custom titles, and template body placeholders.",
+        "Each template defines a name plus title and content fields; variables are substituted when a note is created.",
     ),
     tip(
-        "Frontmatter generation",
-        "Templates can include `` +++ `` frontmatter blocks with default values for **title**, **tags**, and custom fields.",
+        "Template format",
+        "Templates are TOML files. They do not use frontmatter blocks.",
     ),
     tip(
         "Variables list",
-        "Available template variables: `` {title} ``, `` {name} ``, `` {folder} ``, `` {id} ``, plus all date components.",
+        "Use date and time variables in titles or content. See the Templates help tab for every supported token.",
     ),
     tip(
         "Picker layout",
-        "The template picker shows the template **name** and **description** — use the description to hint at what the template creates.",
+        "The template picker lists template names. Type in the search bar to filter them.",
     ),
     tip(
-        "Template inheritance",
-        "You can nest templates by referencing other template files in the `` template `` field of a `.toml` template.",
+        "Template independence",
+        "Templates are independent TOML files; template inheritance is not supported.",
     ),
 ];
 const ABOUT_SUGGESTIONS: &[HelpSuggestion] = &[
@@ -497,19 +497,23 @@ const ABOUT_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "List notes via CLI",
-        "Run `` clin notes ls `` to list all notes in your vault from the command line.",
+        "Run `` clin notes list `` to list note titles in the current vault.",
     ),
     tip(
-        "Config key overrides",
-        "Run `` clin config set key value `` to change a single config option from the terminal.",
+        "Show config path",
+        "Run `` clin config show `` to print the active config file path.",
     ),
     tip(
-        "Graph view CLI",
-        "Use `` clin graph `` from your terminal to open the graph visualization directly.",
+        "Show storage path",
+        "Run `` clin storage show `` to print the current vault path.",
     ),
     tip(
-        "Version upgrade info",
-        "Run `` clin upgrade check `` to see if a new version of clin is available.",
+        "Export keybinds",
+        "Run `` clin keybinds export `` to print the active keybinds as TOML.",
+    ),
+    tip(
+        "Initialize templates",
+        "Run `` clin templates init `` to create example templates.",
     ),
 ];
 

@@ -9,6 +9,7 @@ use crate::app::{App, HelpTab, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::help_meta::{self, HelpMeta};
 use crate::keybinds::{HelpAction, Keybinds, ListAction};
+use crate::storage::Storage;
 use strum::IntoEnumIterator;
 
 pub fn help_tab_names() -> [&'static str; 8] {
@@ -386,6 +387,7 @@ pub fn help_text_for_tab(
     keybinds: &Keybinds,
     theme: &AppThemeColors,
     config: &crate::config::ClinConfig,
+    storage: &Storage,
 ) -> Vec<HelpRow> {
     match tab {
         HelpTab::Notes => notes_help_text(keybinds, theme),
@@ -394,8 +396,8 @@ pub fn help_text_for_tab(
         HelpTab::Draw => draw_help_text(keybinds, theme),
         HelpTab::Canvas => canvas_help_text(keybinds, theme),
         HelpTab::Backup => backup_help_text(keybinds, theme),
-        HelpTab::Templates => templates_help_text(keybinds, theme, tab),
-        HelpTab::About => about_help_text(keybinds, theme, config, tab),
+        HelpTab::Templates => templates_help_text(keybinds, theme, tab, storage),
+        HelpTab::About => about_help_text(keybinds, theme, config, tab, storage),
     }
 }
 
@@ -533,7 +535,13 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
     )
 }
 
-fn templates_help_text(keybinds: &Keybinds, theme: &AppThemeColors, tab: HelpTab) -> Vec<HelpRow> {
+fn templates_help_text(
+    keybinds: &Keybinds,
+    theme: &AppThemeColors,
+    tab: HelpTab,
+    storage: &Storage,
+) -> Vec<HelpRow> {
+    let template_dir = storage.templates_dir.display().to_string();
     let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
 
     let mut rows = Vec::new();
@@ -573,7 +581,7 @@ fn templates_help_text(keybinds: &Keybinds, theme: &AppThemeColors, tab: HelpTab
     rows.push(help_empty_row(tab));
     rows.push(help_item_dyn(
         "Templates directory",
-        Some("~/.config/clin/templates/"),
+        Some(&template_dir),
         theme,
         "Files",
         tab,
@@ -645,7 +653,14 @@ fn about_help_text(
     theme: &AppThemeColors,
     config: &crate::config::ClinConfig,
     tab: HelpTab,
+    storage: &Storage,
 ) -> Vec<HelpRow> {
+    let config_path = storage.config_dir.join("config.toml").display().to_string();
+    let keybinds_path = storage
+        .keybinds_path_for_preset(config.core.keybind_preset)
+        .display()
+        .to_string();
+    let templates_dir = storage.templates_dir.display().to_string();
     let mut rows = Vec::new();
     for (line_index, line) in crate::setup::CLIN_ASCII.lines().enumerate() {
         let version = if line_index == 2 {
@@ -702,21 +717,21 @@ fn about_help_text(
     rows.push(help_heading_row("Configuration", theme, tab));
     rows.push(help_empty_row(tab));
     rows.push(help_item_dyn(
-        "Keybinds overlay: ~/.config/clin/keybinds_<preset>.toml",
+        &format!("Keybinds: {keybinds_path}"),
         None,
         theme,
         "Configuration",
         tab,
     ));
     rows.push(help_item_dyn(
-        "Theme + storage:  ~/.config/clin/config.toml",
+        &format!("Theme + storage: {config_path}"),
         None,
         theme,
         "Configuration",
         tab,
     ));
     rows.push(help_item_dyn(
-        "Templates dir: <storage>/templates/",
+        &format!("Templates dir: {templates_dir}"),
         None,
         theme,
         "Configuration",
@@ -732,7 +747,7 @@ fn about_help_text(
         theme,
         tab,
     ));
-    rows.push(about_cli_row("clin help", "Show CLI help", theme, tab));
+    rows.push(about_cli_row("clin --help", "Show CLI help", theme, tab));
     rows.push(help_empty_row(tab));
     rows.push(about_cli_row(
         "clin notes list",
@@ -824,12 +839,6 @@ fn about_help_text(
     rows.push(help_empty_row(tab));
     rows.push(about_cli_row(
         "clin config show",
-        "Print effective config as TOML",
-        theme,
-        tab,
-    ));
-    rows.push(about_cli_row(
-        "clin config path",
         "Print config file path",
         theme,
         tab,
@@ -1572,12 +1581,21 @@ mod tests {
     }
 
     #[test]
-    fn about_help_includes_the_shared_clin_logo() {
+    fn about_help_includes_the_shared_clin_logo_and_runtime_paths() {
         let keybinds = Keybinds::default();
         let theme = AppThemeColors::default();
         let config = crate::config::ClinConfig::default();
-        let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About);
+        let storage = Storage {
+            data_dir: std::path::PathBuf::from("/test/data"),
+            config_dir: std::path::PathBuf::from("/test/config"),
+            notes_dir: std::path::PathBuf::from("/test/data/notes"),
+            templates_dir: std::path::PathBuf::from("/test/data/templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About, &storage);
         let displays: Vec<&str> = rows.iter().map(|row| row.display.as_str()).collect();
+        let search_texts: Vec<&str> = rows.iter().map(|row| row.search_text.as_str()).collect();
 
         for line in crate::setup::CLIN_ASCII.lines() {
             assert!(
@@ -1594,6 +1612,24 @@ mod tests {
         assert!(
             !displays.contains(&"Feature-packed terminal note management app"),
             "About page still contains the removed tagline"
+        );
+        for expected in [
+            "/test/config/config.toml",
+            "/test/config/keybinds/default.toml",
+            "/test/data/templates",
+            "clin --help",
+            "clin config show",
+        ] {
+            assert!(
+                search_texts.iter().any(|text| text.contains(expected)),
+                "About page is missing {expected:?}"
+            );
+        }
+        assert!(
+            !search_texts
+                .iter()
+                .any(|text| text.contains("clin config path")),
+            "About page still contains removed config-path command"
         );
     }
 }

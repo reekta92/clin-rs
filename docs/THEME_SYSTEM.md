@@ -6,8 +6,7 @@ Technical docs for the theme and color system — 19 built-in themes, per-color 
 
 ## Custom Themes
 
-Drop a TOML file into `~/.config/clin/themes/<name>.toml` to make `<name>` available
-as a theme. Set `theme = "<name>"` in `config.toml` to activate it.
+Drop a TOML file into the active configuration directory’s `themes/<name>.toml` to make `<name>` available as a theme. Set `theme = "<name>"` under `[ui]` in `config.toml` to activate it.
 
 ### File Schema
 
@@ -70,16 +69,16 @@ clin has a flexible theme system with 19 built-in themes, transparent and solid 
 ## Architecture
 
 ```
-config.toml [theme] section
+config.toml [ui] section
          │
          ▼
-ThemeConfig struct (config.rs)
+UiConfig struct (config)
     ├── theme: Theme enum
     ├── background: Background enum
     └── per-color overrides (Option<String> hex)
          │
          ▼
-AppThemeColors::from_config(&ThemeConfig)
+AppThemeColors::from_config(&UiConfig)
     ├── Theme enum → graf/themes.rs → ThemeColors palette
     ├── Apply per-color overrides
     └── Return AppThemeColors struct
@@ -125,11 +124,10 @@ Each theme defines an 8-color palette for nodes plus chrome, title, text, foregr
 ---
 
 ## Theme Config Options
-
-All in `[theme]` section of `config.toml`:
+All options live in the `[ui]` section of `config.toml`:
 
 ```toml
-[theme]
+[ui]
 theme = "tokyo_night"           # Theme name
 background = "transparent"      # "transparent" or "solid"
 
@@ -245,8 +243,7 @@ impl AppThemeColors {
 There are two ways to add a theme. The **preferred path requires no recompile**.
 
 ### Preferred: No-Recompile Custom TOML (see "Custom Themes" above)
-
-Drop a TOML file into `~/.config/clin/themes/<name>.toml` with the schema documented in the [Custom Themes](#custom-themes) section above. The theme name is the filename (without `.toml`). Select it by setting `theme = "<name>"` in `config.toml` — no Rust code changes, no recompilation.
+Drop a TOML file into the active configuration directory’s `themes/<name>.toml` with the schema documented in the [Custom Themes](#custom-themes) section above. The theme name is the filename (without `.toml`). Select it by setting `theme = "<name>"` under `[ui]` in `config.toml` — no Rust code changes or recompilation.
 
 ### Fallback: Built-in Theme (recompile required)
 
@@ -281,16 +278,14 @@ See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 
 ---
 
-## Statusline and Powerline Interaction
+## Statusline Interaction
 
-Custom statusline text (configured via `[statusline]` section in `config.toml`) interacts with the theme system depending on the `hint_bar_style` setting:
-- **Classic / Accent modes:** Text segments are formatted as plain strings. In `Accent` mode, text segments are tinted with the theme's `accent` color.
-- **Powerline modes:** If `hint_bar_style` is set to `powerline_sharp`, `powerline_rounded`, or `powerline_slanted`, segments separated by ` | ` in statusline templates are automatically converted to colored powerline cells. These cells use a rotating background palette built from the theme's colors: `[accent, folder, tag, warning, success]` (with `highlight_fg` text). Composite variables (like `{hints}`) are pre-rendered with their own styling and transition separators, remaining opaque to powerline splitting.
+Custom statusline text (configured via `[statusline]` in `config.toml`) uses the active theme in every `hint_bar_style`. `classic` is the default; the remaining built-in styles are `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, and `hexagon`.
 
 ---
 ## Connections
 
-- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — `[theme]` config section
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — `[ui]` theme options
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how `AppThemeColors` flows through the rendering pipeline
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — graf theme palettes
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `SwitchThemeAction`

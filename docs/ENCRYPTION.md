@@ -6,7 +6,7 @@ Technical docs for the on-demand encryption system — encrypt/decrypt individua
 
 ## Overview
 
-clin provides on-demand encryption for individual notes. Encrypted notes use the `.clin` extension and are decrypted back to `.md` on demand. The key never leaves the user's machine and is stored in the config directory, outside the versioned vault.
+clin provides on-demand encryption for individual notes. Encrypted notes use the `.clin` extension and are decrypted back to `.md` on demand. The key never leaves the user's machine and is stored in the application data-local directory, outside the versioned vault.
 
 **Source:** `src/storage.rs` (encrypt/decrypt methods) + `src/actions/encrypt.rs`, `src/actions/decrypt.rs`
 
@@ -27,9 +27,11 @@ clin provides on-demand encryption for individual notes. Encrypted notes use the
 
 ### Location
 
+```text
+<application-data-local-dir>/key.bin
 ```
-~/.config/clin/key.bin
-```
+
+`AppPaths::data_local_dir()` resolves this platform-specific directory.
 
 ### Key Generation
 

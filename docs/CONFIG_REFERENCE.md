@@ -4,13 +4,14 @@ Full reference of all configuration options for clin-rs.
 
 ---
 
-## Configuration (`~/.config/clin/config.toml`)
+## Configuration
 
+Run `clin config show` to print the active configuration file path.
 ### `[core]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `storage_path` | `PathBuf` | `~/.local/share/clin` | Custom vault storage path. Supports `~` and `$VAR`/`${VAR}` expansion (e.g., `~/notes`, `$HOME/vault`) |
+| `storage_path` | `PathBuf` | platform default | Custom vault storage path. Supports `~` and `$VAR`/`${VAR}` expansion (e.g., `~/notes`, `$HOME/vault`) |
 | `mouse_enabled` | `bool` | `true` | Enable mouse support (clicking, scrolling, panning) |
 | `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
@@ -22,7 +23,7 @@ Full reference of all configuration options for clin-rs.
 | `preview_wrap_indicator` | `bool` | `false` | Append a `┄` continuation glyph at the end of soft-wrapped preview lines |
 | `link_url_max_length` | `usize` | `80` | Middle-truncate link/image URLs longer than this; `0` disables |
 | `keybind_preset` | `enum` | `"default"` | Keybind preset: `"default"`, `"helix"`, `"vim"`, `"emacs"`. Applies to navigation, never text editing |
-| `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Requires a preset that uses them |
+| `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Sequence-capable presets enable them automatically |
 | `preview_expand_mode` | `enum` | `"inline"` | Ctrl+e behavior: `"inline"` (maximize the preview pane) or `"external"` (run `preview_command` on the note) |
 | `preview_command` | `String` | — | Command for external preview (Ctrl+e when `preview_expand_mode = "external"`). Shell-split with the note's temp file appended; falls back to `$PAGER`, then `less` |
 | `auto_refresh` | `bool` | `true` | Reload notes list on external file changes (notify watcher) |
@@ -34,28 +35,27 @@ Full reference of all configuration options for clin-rs.
 | `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
 | `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
 | `preview_encryption` | `bool` | `false` | Show previews of encrypted notes |
-| `show_date_in_list` | `bool` | `true` | Show modification date in the notes list |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
-| `date_format` | `String` | `"%Y-%m-%d"` | Date format for the notes list (chrono format) |
+| `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
 | `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
-| `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
-| `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
+| `default_sort_field` | `enum` | — | Optional initial sort field: `"title"` or `"modified"` |
+| `default_sort_order` | `enum` | — | Optional initial sort order: `"ascending"` or `"descending"` |
 | `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
-| `pinned_on_top` | `bool` | `true` | Keep pinned notes at the top of the list |
-| `calendar_enabled` | `bool` | `true` | Show a month calendar with note activity at the bottom of the notes list |
+| `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
+| `calendar_enabled` | `bool` | `true` | Show rolling-week note activity in the notes list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
 | `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
+| `skip_dirs` | `array` | `[]` | Directory-name patterns to omit from the notes list |
 | `folders_first` | `bool` | `true` | Show subfolders before files in the notes list (Tree and Grid layouts) |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
-| `week_start` | `enum` | `"sunday"` | Start day for the rolling-weeks calendar: `"sunday"` or `"monday"` |
-| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`. `calendar_enabled` controls strip on/off |
+| `week_start` | `enum` | `"sunday"` | Start day for rolling-week activity: `"sunday"` or `"monday"` |
+| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf` |
 | `smart_folders_enabled` | `bool` | `false` | Enable virtual smart folders (Today, This Week, Untagged) |
-| `folder_graph_preview` | `bool` | `true` | Show folder graph preview for all folders |
+| `folder_graph_preview` | `bool` | `false` | Show graph preview for folders |
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
-| `expanded_folders` | `array` | `[]` | List of always-expanded folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
 | `custom_smart_folders` | `array` | `[]` | User-defined smart folder rules. Each entry: `{name, tags=[], title_contains=..., folder_prefix=..., updated_within_days=...}` |
 
@@ -83,7 +83,7 @@ Full reference of all configuration options for clin-rs.
 | `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
 | `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
 | `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
-| `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"accent"`, `"powerline_sharp"`, `"powerline_rounded"`, `"powerline_slanted"` |
+| `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blur"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |
 | `accent` | `String` | — | Hex color override for accent (#ff6600) |
 | `heading` | `String` | — | Hex color override for headings |
 | `success` | `String` | — | Hex color override for success indicators |
@@ -143,7 +143,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{theme}`: Active theme name
 - `{preset}`: Keybind preset (`default`, `helix`, `vim`, `emacs`)
 - `{icon_mode}`: Icon mode (`nerd`, `unicode`, `none`)
-- `{hint_bar_style}`: Style variant (`classic`, `accent`, `powerline_sharp`, `powerline_rounded`, `powerline_slanted`)
+- `{hint_bar_style}`: Style variant (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
 - `{background}`: Background style (`transparent`, `solid`)
 
 ##### Goals (all views)
@@ -170,7 +170,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{select_mode}`: `on`/`off` depending on selection mode
 - `{tag_to_assign}`: Name of tag to assign, or empty
 - `{search}`: Active search query text
-- `{grep}`: Search grep mode status (`on`/`off`)
+- `{grep}`: Search content-mode status (`on`/`off`)
 - `{tag_filter}`, `{folder_filter}`: Active query filter parameters
 - `{pinned_count}`: Total pinned notes
 - `{pinned_on_top}`, `{folders_first}`, `{list_preview}`, `{calendar}`, `{layout_edit}`: Config and view states (`on`/`off`)
@@ -385,7 +385,6 @@ confirm_on_delete = true
 preview_enabled = true
 preview_position = "right"
 preview_encryption = false
-show_date_in_list = true
 show_file_size = false
 date_format = "%Y-%m-%d"
 density = "comfortable"
@@ -454,9 +453,9 @@ max_visible = 10
 
 ---
 
-## Keybinds (`~/.config/clin/keybinds.toml`)
+## Keybinds
 
-Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Alt+x"`, `"Super+c"`. Supported modifiers: `Ctrl`/`Control`, `Shift`, `Alt`, `Super`/`Meta`/`Cmd`.
+Keybind files are stored under the active configuration directory at `keybinds/<preset>.toml`. Runtime help shows the active preset path.
 
 ### List Actions (`[list]`)
 
@@ -537,7 +536,7 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `scroll_down` | `Down`, `j` | Scroll down |
 | `search` | `/`, `Ctrl+f` | Search help |
 
-> Note: digits `1`–`7` jump directly to the first seven help tabs (Notes→Templates); the eighth tab (About) is reached via `Tab`/`Right`. These are fixed and not configurable in `keybinds.toml`.
+> Note: digits `1`–`8` jump directly to the eight help tabs (Notes→About). These are fixed and not configurable in keybind files.
 
 ### Graph Actions (`[graph]`)
 

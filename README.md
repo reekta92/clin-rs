@@ -82,7 +82,7 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
 - **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
-- **Custom themes** — drop-in TOML themes in `~/.config/clin/themes/`, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
+- **Custom themes** — drop-in TOML themes in the active configuration directory’s `themes/` subdirectory, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
 
 - **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
@@ -289,7 +289,7 @@ cp -r /Volumes/clin/clin.app /Applications/
 hdiutil detach /Volumes/clin
 
 # Or using .tar.gz
-tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf clin-rs-aarch64-apple-darwin.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/
@@ -335,25 +335,24 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
 | **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
-| **Help** | In-app keybind + feature reference | Tabbed (Notes/Editor/Graph/Draw/Canvas/Backup/Outline/Setup/Templates/About), search, popup accordion, preset-aware tips |
+| **Help** | In-app keybind + feature reference | Eight tabs (Notes/Editor/Graph/Draw/Canvas/Backup/Templates/About), search, popup accordion, preset-aware tips |
 
 | Feature | Description |
 |---|---|
 | **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph |
 | **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt, zero-knowledge |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
-| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, powerline/classic hint bar styles |
+| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, 13 hint-bar styles |
 | **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
 | **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
-| **Keybinds** | Fully customizable via keybinds.toml, with Helix/Vim/Emacs presets |
+| **Keybinds** | Fully customizable through active-preset keybind files, with Helix/Vim/Emacs presets |
 | **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
 
 ---
 
 ## Configuration
 
-`~/.config/clin/config.toml` -> main configuration file (includes theme, graph settings, etc.)
-`~/.config/clin/keybinds.toml` -> keybind configuration file
+Run `clin config show` to print the active configuration file path. Active-preset keybinds live at `<config-dir>/keybinds/<preset>.toml`.
 
 See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all available options and [keybind presets](docs/KEYBIND_PRESETS.md) for editor-style presets.
 
@@ -378,14 +377,13 @@ hint_bar_style = "classic"
 preview_enabled = true
 preview_position = "right"
 preview_encryption = false
-show_date_in_list = true
 show_file_size = false
 date_format = "%Y-%m-%d"
 density = "comfortable"
 default_view = "grid"
-default_sort_field = "title"
-default_sort_order = "ascending"
-pinned_on_top = true
+# default_sort_field = "title"
+# default_sort_order = "ascending"
+pinned_on_top = false
 calendar_enabled = true
 
 [editor]
@@ -469,7 +467,7 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 - [Architecture](docs/ARCHITECTURE.md) — system overview, event loop, threading model
 - [List View](docs/LIST_VIEW.md) — notes list view: Grid/Tree layout, format chooser, preview pane
 
-- [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and keybinds.toml options
+- [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and preset keybind-file options
 - [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
 - [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
 - [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view

@@ -1689,6 +1689,7 @@ impl App {
                 &self.keybinds,
                 &self.app_theme,
                 &self.config,
+                &self.storage,
             );
             self.list.help_text_cache = Some(rows);
         }

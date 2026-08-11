@@ -20,7 +20,7 @@ The outline parser (`src/outline/parse.rs`) reads the Markdown content line-by-l
 
 - **Header**: Matches ATX headers (`#` through `######`). The header level determines hierarchy. Note titles are treated as the root (depth 0).
 - **ListItem**: Matches list item bullets (`-`, `*`, `+`) and ordered list numbers (`1.`, `2)`, etc.).
-- **Paragraph**: Blocks of prose prose paragraphs. The parser keeps a preview of the first line (up to 60 characters with trailing ellipsis `…`).
+- **Paragraph**: Blocks of prose. The parser keeps a preview of the first line (up to 60 characters with trailing ellipsis `…`).
 - **CodeBlock**: Collapses entire fenced code blocks (delimited by ```` ``` ```` or `~~~`) into a single node with the block's language specifier.
 
 ### Hierarchy & Depth Rules
@@ -43,7 +43,7 @@ The view state (`src/outline/state.rs`) keeps track of:
 
 ## Key Bindings
 
-The following default actions are supported and configured in `keybinds.toml` under the `[outline]` section:
+The following default actions are supported and configured in the active preset’s keybind file under the `[outline]` section:
 
 | Action | Default Keys | Description |
 |---|---|---|

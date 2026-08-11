@@ -398,7 +398,7 @@ pub struct ListConfig {
     pub default_sort_order: Option<crate::app::SortOrder>,
     #[serde(default = "default_true")]
     pub inline_info: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub pinned_on_top: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
@@ -444,7 +444,7 @@ impl Default for ListConfig {
             default_sort_field: None,
             default_sort_order: None,
             inline_info: default_true(),
-            pinned_on_top: default_true(),
+            pinned_on_top: false,
             show_hidden_files: false,
             show_all_files: false,
             skip_dirs: Vec::new(),

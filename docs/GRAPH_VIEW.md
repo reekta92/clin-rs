@@ -134,8 +134,9 @@ The simulation is considered "settled" when total kinetic energy drops below `0.
 ### Preview Pane
 
 The Graph view supports a preview pane identically to the List view. When enabled, it renders the contents of the currently selected node.
-+ **Positioning**: The preview pane respects the `list.preview_position` setting (right, bottom, etc.).
-+ **Toggling**: Can be toggled on/off independently of the List view's preview state.
+
+- **Positioning**: The preview pane uses the list preview position (`"left"` or `"right"`).
+- **Toggling**: It can be toggled independently of the List view's preview state.
 
 
 ### Keyboard

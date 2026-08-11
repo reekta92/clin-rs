@@ -6,7 +6,7 @@ Technical docs for the note template system — reusable templates with variable
 
 ## Overview
 
-Templates allow users to create notes from predefined structures. They are TOML files stored in `~/.config/clin/templates/`. Templates can include dynamic variables (`{date}`, `{time}`, etc.) that are substituted at creation time.
+Templates allow users to create notes from predefined structures. In native storage, templates live in its `templates/` directory; for a custom vault, they live in `<vault>/.clin/templates/`. Templates can include dynamic variables (`{date}`, `{time}`, etc.) that are substituted at creation time.
 
 **Source:** `src/templates/` module — `Template`, `TemplateVariables`, `TemplateManager`
 
@@ -19,8 +19,10 @@ Templates allow users to create notes from predefined structures. They are TOML 
 
 ## Directory
 
-```
-~/.config/clin/templates/
+Native storage:
+
+```text
+<native-storage>/templates/
 ├── default.toml     (auto-loaded on new note if present)
 ├── meeting.toml
 ├── todo.toml
@@ -28,7 +30,7 @@ Templates allow users to create notes from predefined structures. They are TOML 
 └── ... (any .toml file)
 ```
 
-Users can create templates at this path manually or via `clin templates init`.
+For a custom vault, use `<vault>/.clin/templates/` instead. Create templates there manually or with `clin templates init`.
 
 ---
 

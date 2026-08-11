@@ -8,14 +8,14 @@ These presets apply to all navigation surfaces throughout the application (such 
 
 ## Configuration
 
-To enable a preset, add the following options under the `[core]` section of your `~/.config/clin/config.toml`:
+Set the preset under `[core]` in the active configuration file; `clin config show` prints its path. Keybind files are stored at `<config-dir>/keybinds/<preset>.toml`.
 
 ```toml
 [core]
 # Choose from: "default", "helix", "vim", "emacs"
 keybind_preset = "helix"
 
-# Enable multi-key sequences (required for Vim prefix commands and Helix space menu)
+# Optional for the default preset. Vim, Helix, and Emacs enable their sequences automatically.
 enable_key_sequences = true
 ```
 

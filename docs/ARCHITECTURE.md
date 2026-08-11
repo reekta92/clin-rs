@@ -217,7 +217,7 @@ src/
 │   └── clin.rs           — Binary entry point; main() calls lib::run()
 ├── lib.rs                — Crate root: entry point, TUI loop, CLI dispatch
 ├── app.rs                — Central App struct, ViewMode enum, top-level API
-├── app_theme.rs          — AppThemeColors derivation from ThemeConfig
+├── app_theme.rs          — AppThemeColors derivation from UiConfig
 ├── calendar.rs           — GitHub-style activity heatmap
 ├── cli.rs                — CLI argument definitions (clap-derive)
 ├── console.rs            — Colored CLI output and clap theme
@@ -419,7 +419,7 @@ Actions are registered in a `Lazy<Vec<Box<dyn Action>>>` in `actions/mod.rs`. Th
 
 ### Theme System
 
-`ThemeConfig` from config.toml → `AppThemeColors` derived at load time. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details.
+`UiConfig` from `[ui]` in config.toml → `AppThemeColors` derived at load time. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details.
 
 ### Storage / Encryption
 
