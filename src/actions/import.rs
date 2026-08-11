@@ -204,10 +204,36 @@ pub fn file_stem_title(path: &str) -> String {
         .unwrap_or_else(|| "Imported Note".to_string())
 }
 
+fn sanitize_import_content(content: String) -> String {
+    if !content
+        .chars()
+        .any(|ch| ch == '\r' || (ch.is_control() && !matches!(ch, '\n' | '\t')))
+    {
+        return content;
+    }
+
+    let mut sanitized = String::with_capacity(content.len());
+    let mut chars = content.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                sanitized.push('\n');
+            }
+            '\n' | '\t' => sanitized.push(ch),
+            _ if ch.is_control() => {}
+            _ => sanitized.push(ch),
+        }
+    }
+    sanitized
+}
+
 fn sanitized(title: String, content: String) -> (String, String) {
     (
         crate::sanitize::sanitize_for_terminal(&title).into_owned(),
-        crate::sanitize::sanitize_for_terminal(&content).into_owned(),
+        sanitize_import_content(content),
     )
 }
 
@@ -486,6 +512,14 @@ mod tests {
     use std::io::Write;
 
     #[test]
+    fn import_sanitization_preserves_structure() {
+        let (title, body) = sanitized("Ti\x07tle".into(), "α\r\nβ\rγ\n\tδ\x07".into());
+        assert_eq!(title, "Title");
+        assert_eq!(body, "α\nβ\nγ\n\tδ");
+        assert_eq!(sanitize_import_content("\nbody\n".into()), "\nbody\n");
+    }
+
+    #[test]
     fn test_csv_conversion() -> Result<()> {
         let mut tmp = NamedTempFile::new()?;
         writeln!(tmp, "a,b,c")?;
@@ -494,11 +528,16 @@ mod tests {
 
         let (title, md) = convert_csv(tmp.path().to_str().unwrap())?;
         assert!(title.contains("tmp"));
-        println!("MD: {md:?}");
-        assert!(md.contains("| a | b | c |") || md.contains("| a | b | c |"));
-        assert!(md.contains("| --- | --- | --- |"));
-        assert!(md.contains("| 1 | 2 | 3 |"));
-        assert!(md.contains("| 4 | 5\\|x | 6 |"));
+        assert_eq!(
+            md.lines().collect::<Vec<_>>(),
+            [
+                "| a | b | c |",
+                "| --- | --- | --- |",
+                "| 1 | 2 | 3 |",
+                "| 4 | 5\\|x | 6 |",
+            ]
+        );
+        assert!(md.ends_with('\n'));
         Ok(())
     }
 
@@ -511,9 +550,15 @@ mod tests {
         )?;
 
         let (_, md) = convert_json(tmp.path().to_str().unwrap())?;
-        assert!(md.contains("| a | b | c |"));
-        assert!(md.contains("| 1 | x |  |"));
-        assert!(md.contains("| 2 |  | true |"));
+        assert_eq!(
+            md.lines().collect::<Vec<_>>(),
+            [
+                "| a | b | c |",
+                "| --- | --- | --- |",
+                "| 1 | x |  |",
+                "| 2 |  | true |",
+            ]
+        );
         Ok(())
     }
 
@@ -523,8 +568,7 @@ mod tests {
         write!(tmp, "{{\"not\": \"array\"}}")?;
 
         let (_, md) = convert_json(tmp.path().to_str().unwrap())?;
-        assert!(md.starts_with("```json"));
-        assert!(md.contains("\"not\": \"array\""));
+        assert_eq!(md, "```json\n{\n  \"not\": \"array\"\n}\n```");
         Ok(())
     }
 
