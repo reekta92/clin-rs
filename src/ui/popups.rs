@@ -189,7 +189,7 @@ pub fn draw_info_popup(
                 constraints.push(Constraint::Length(1 + body_lines));
             }
             crate::popups::InfoItem::Tags(tags) => {
-                let total: usize = tags.iter().map(|t| t.chars().count() + 2).sum::<usize>().max(0);
+                let total: usize = tags.iter().map(|t| t.chars().count() + 2).sum();
                 let lines = if tags.is_empty() { 1 } else { (total / width).max(1) as u16 + 1 };
                 constraints.push(Constraint::Length(1 + lines));
             }
@@ -1472,20 +1472,25 @@ pub fn draw_confirm_popup_frame(
     title: &str,
     size: PopupSize,
     is_destructive: bool,
-    hints: PopupHints<'_>,
+    hints: Option<PopupHints<'_>>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);
     frame.render_widget(Clear, popup_area);
     draw_popup_banner(frame, popup_area, title, theme);
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(popup_area);
-
-    let hint_line = popup_footer_hints(theme, hints);
-    draw_popup_footer(frame, chunks[1], theme, &hint_line);
+    let content_area = match hints {
+        Some(h) => {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(1)])
+                .split(popup_area);
+            let hint_line = popup_footer_hints(theme, h);
+            draw_popup_footer(frame, chunks[1], theme, &hint_line);
+            chunks[0]
+        }
+        None => popup_area,
+    };
 
     let border_color = if is_destructive {
         theme.destructive
@@ -1496,8 +1501,8 @@ pub fn draw_confirm_popup_frame(
         .style(theme.bg_style())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
-    let inner = block.inner(chunks[0]);
-    frame.render_widget(block, chunks[0]);
+    let inner = block.inner(content_area);
+    frame.render_widget(block, content_area);
     inner
 }
 
@@ -1508,24 +1513,13 @@ pub fn draw_confirm_popup(
     theme: &AppThemeColors,
     literal_yes_no: bool,
 ) {
-    let hints = if literal_yes_no {
-        [
-            ("y".to_string(), popup.confirm_label.as_str()),
-            ("n".to_string(), "cancel"),
-        ]
-    } else {
-        [
-            ("Enter".to_string(), popup.confirm_label.as_str()),
-            ("Esc".to_string(), "cancel"),
-        ]
-    };
     let inner = draw_confirm_popup_frame(
         frame,
         area,
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
-        PopupHints::Keybinds(&hints),
+        None,
         theme,
     );
 

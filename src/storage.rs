@@ -160,8 +160,8 @@ pub(crate) fn is_existing_vault(dir: &Path) -> bool {
                     || name == "key.bin"
                     || name == "state.json"
                 {
+                    continue;
                 }
-                return true; // Any other content → vault
             }
             false
         }

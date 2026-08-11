@@ -670,7 +670,7 @@ fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
         "Exit setup?",
         crate::ui::PopupSize::Confirm,
         false,
-        crate::ui::PopupHints::Text(""),
+        None,
         theme,
     );
     let chunks = Layout::default()
