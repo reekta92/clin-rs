@@ -615,6 +615,40 @@ pub fn is_cancel_popup(
         || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfirmKeyAction {
+    SelectConfirm,
+    SelectCancel,
+    ToggleSelection,
+    ActivateSelection,
+    Confirm,
+    Cancel,
+    Unhandled,
+}
+
+fn route_confirm_key(key: &KeyEvent, keybinds: &crate::keybinds::Keybinds) -> ConfirmKeyAction {
+    let literal_modifier = key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT;
+    if literal_modifier && matches!(key.code, KeyCode::Char('y' | 'Y')) {
+        ConfirmKeyAction::Confirm
+    } else if literal_modifier && matches!(key.code, KeyCode::Char('n' | 'N')) {
+        ConfirmKeyAction::Cancel
+    } else if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
+        ConfirmKeyAction::SelectConfirm
+    } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
+        ConfirmKeyAction::SelectCancel
+    } else if key.code == KeyCode::Tab {
+        ConfirmKeyAction::ToggleSelection
+    } else if key.code == KeyCode::Enter {
+        ConfirmKeyAction::ActivateSelection
+    } else if is_cancel_popup(keybinds, key, false) {
+        ConfirmKeyAction::Cancel
+    } else if keybinds.matches_list(crate::keybinds::ListAction::Confirm, key) {
+        ConfirmKeyAction::Confirm
+    } else {
+        ConfirmKeyAction::Unhandled
+    }
+}
+
 // True for a bare (no-modifier) q or Esc — the universal back/quit keys.
 /// Used by the override-proof intercept in each view handler. Callers that
 /// must exclude q (text entry: Edit) check Esc inline instead.
@@ -792,26 +826,14 @@ pub fn handle_global_popups_and_palette(
     // Standalone confirm overlay (layers over group-B popups or nothing).
     if app.popups.confirm.is_some() {
         app.seq_matcher.clear();
-        if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
-            app.confirm_popup_select_confirm();
-        } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
-            app.confirm_popup_select_cancel();
-        } else if key.code == KeyCode::Tab {
-            app.confirm_popup_toggle_button();
-        } else if key.code == KeyCode::Enter {
-            app.confirm_popup_activate();
-        } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-            app.cancel_confirm();
-        } else if app
-            .keybinds
-            .matches_list(crate::keybinds::ListAction::Confirm, &key)
-        {
-            app.confirm_action();
-        } else if app
-            .keybinds
-            .matches_list(crate::keybinds::ListAction::Cancel, &key)
-        {
-            app.cancel_confirm();
+        match route_confirm_key(&key, &app.keybinds) {
+            ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
+            ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
+            ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
+            ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
+            ConfirmKeyAction::Confirm => app.confirm_action(),
+            ConfirmKeyAction::Cancel => app.cancel_confirm(),
+            ConfirmKeyAction::Unhandled => {}
         }
         return true;
     }
@@ -872,22 +894,14 @@ impl crate::popups::ActivePopup {
             ActivePopup::Tag(mut popup) => {
                 if app.popups.confirm.is_some() {
                     app.popups.active = Some(ActivePopup::Tag(popup));
-                    if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
-                        app.confirm_popup_select_confirm();
-                    } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
-                        app.confirm_popup_select_cancel();
-                    } else if key.code == KeyCode::Tab {
-                        app.confirm_popup_toggle_button();
-                    } else if key.code == KeyCode::Enter
-                        || key.code == KeyCode::Char('y')
-                        || key.code == KeyCode::Char('Y')
-                    {
-                        app.confirm_popup_activate();
-                    } else if key.code == KeyCode::Char('n')
-                        || key.code == KeyCode::Char('N')
-                        || crate::events::is_cancel_popup(&app.keybinds, &key, false)
-                    {
-                        app.cancel_confirm();
+                    match route_confirm_key(&key, &app.keybinds) {
+                        ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
+                        ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
+                        ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
+                        ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
+                        ConfirmKeyAction::Confirm => app.confirm_action(),
+                        ConfirmKeyAction::Cancel => app.cancel_confirm(),
+                        ConfirmKeyAction::Unhandled => {}
                     }
                     return true;
                 }
@@ -1867,24 +1881,25 @@ impl crate::popups::ActivePopup {
                             .confirm
                             .as_mut()
                             .expect("confirm popup should be Some");
-                        match key.code {
-                            KeyCode::Left | KeyCode::Char('h') => {
+                        match route_confirm_key(&key, &app.keybinds) {
+                            ConfirmKeyAction::SelectConfirm => {
                                 confirm.selected_button = 0;
                                 None
                             }
-                            KeyCode::Right | KeyCode::Char('l') => {
+                            ConfirmKeyAction::SelectCancel => {
                                 confirm.selected_button = 1;
                                 None
                             }
-                            KeyCode::Tab => {
+                            ConfirmKeyAction::ToggleSelection => {
                                 confirm.selected_button = (confirm.selected_button + 1) % 2;
                                 None
                             }
-                            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                            ConfirmKeyAction::ActivateSelection => {
                                 Some(confirm.selected_button == 0)
                             }
-                            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some(false),
-                            _ => None,
+                            ConfirmKeyAction::Confirm => Some(true),
+                            ConfirmKeyAction::Cancel => Some(false),
+                            ConfirmKeyAction::Unhandled => None,
                         }
                     };
                     match action {
@@ -2020,6 +2035,268 @@ mod tests {
             KeyCode::Char('x'),
             KeyModifiers::NONE
         )));
+    }
+
+    fn test_app() -> (tempfile::TempDir, crate::app::App) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        for path in [
+            &storage.data_dir,
+            &storage.config_dir,
+            &storage.notes_dir,
+            &storage.templates_dir,
+        ] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        (temp_dir, crate::app::App::new(storage).unwrap())
+    }
+
+    #[test]
+    fn confirm_key_router_reserves_literal_yes_no() {
+        let keybinds = crate::keybinds::Keybinds::default();
+        for (code, modifiers) in [
+            (KeyCode::Char('y'), KeyModifiers::NONE),
+            (KeyCode::Char('Y'), KeyModifiers::SHIFT),
+        ] {
+            assert_eq!(
+                route_confirm_key(&key(code, modifiers), &keybinds),
+                ConfirmKeyAction::Confirm
+            );
+        }
+        for (code, modifiers) in [
+            (KeyCode::Char('n'), KeyModifiers::NONE),
+            (KeyCode::Char('N'), KeyModifiers::SHIFT),
+        ] {
+            assert_eq!(
+                route_confirm_key(&key(code, modifiers), &keybinds),
+                ConfirmKeyAction::Cancel
+            );
+        }
+        for modifier in [KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::META] {
+            assert_eq!(
+                route_confirm_key(&key(KeyCode::Char('y'), modifier), &keybinds),
+                ConfirmKeyAction::Unhandled
+            );
+            assert_eq!(
+                route_confirm_key(&key(KeyCode::Char('n'), modifier), &keybinds),
+                ConfirmKeyAction::Unhandled
+            );
+        }
+    }
+
+    #[test]
+    fn confirm_key_router_preserves_selection_controls() {
+        let keybinds = crate::keybinds::Keybinds::default();
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Left, KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::SelectConfirm
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Char('h'), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::SelectConfirm
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Right, KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::SelectCancel
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Char('l'), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::SelectCancel
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Tab, KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::ToggleSelection
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Enter, KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::ActivateSelection
+        );
+    }
+
+    #[test]
+    fn confirm_key_router_keeps_configured_fallbacks() {
+        use crate::keybinds::{KeyCombo, ListAction};
+
+        let mut keybinds = crate::keybinds::Keybinds::default();
+        keybinds
+            .list
+            .insert(ListAction::Confirm, vec![KeyCombo::simple(KeyCode::F(6))]);
+        keybinds
+            .list
+            .insert(ListAction::Cancel, vec![KeyCombo::simple(KeyCode::F(7))]);
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::F(6), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::Confirm
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::F(7), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::Cancel
+        );
+
+        keybinds
+            .list
+            .insert(ListAction::Confirm, vec![KeyCombo::simple(KeyCode::F(8))]);
+        keybinds
+            .list
+            .insert(ListAction::Cancel, vec![KeyCombo::simple(KeyCode::F(8))]);
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::F(8), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::Cancel
+        );
+
+        keybinds.list.insert(
+            ListAction::Cancel,
+            vec![KeyCombo::simple(KeyCode::Char('y'))],
+        );
+        keybinds.list.insert(
+            ListAction::Confirm,
+            vec![KeyCombo::simple(KeyCode::Char('n'))],
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Char('y'), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::Confirm
+        );
+        assert_eq!(
+            route_confirm_key(&key(KeyCode::Char('n'), KeyModifiers::NONE), &keybinds),
+            ConfirmKeyAction::Cancel
+        );
+    }
+
+    #[test]
+    fn confirm_standalone_yes_bypasses_cancel_selection() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = test_app();
+        app.show_confirm(crate::popups::ConfirmAction::QuitApp);
+        assert_eq!(app.popups.confirm.as_ref().unwrap().selected_button, 1);
+        handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(key(KeyCode::Char('y'), KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert!(app.should_quit);
+
+        app.should_quit = false;
+        app.show_confirm(crate::popups::ConfirmAction::QuitApp);
+        handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(key(KeyCode::Char('n'), KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert!(app.popups.confirm.is_none());
+        assert!(!app.should_quit);
+
+        app.show_confirm(crate::popups::ConfirmAction::QuitApp);
+        handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(key(KeyCode::Enter, KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert!(app.popups.confirm.is_none());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn confirm_tag_yes_bypasses_cancel_selection() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = test_app();
+        let note = crate::storage::Note {
+            title: "Tagged".into(),
+            content: String::new(),
+            updated_at: 0,
+            tags: vec!["obsolete".into()],
+        };
+        let note_id = app.storage.save_note("tagged.md", &note).unwrap();
+        app.popups.active = Some(crate::popups::ActivePopup::Tag(crate::popups::TagPopup {
+            note_id: note_id.clone(),
+            batch_note_ids: None,
+            input: ratatui_textarea::TextArea::default(),
+            all_tags: vec![],
+            suggestions: vec![],
+            suggestion_index: 0,
+            focus: crate::popups::TagPopupFocus::Input,
+            all_tags_selected: 0,
+            scroll_offset: 0,
+            last_scroll: None,
+        }));
+
+        app.begin_delete_tag_with_name("obsolete".into());
+        assert_eq!(app.popups.confirm.as_ref().unwrap().selected_button, 1);
+        handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(key(KeyCode::Char('y'), KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert!(app.storage.load_note(&note_id).unwrap().tags.is_empty());
+
+        app.storage.save_note(&note_id, &note).unwrap();
+        app.begin_delete_tag_with_name("obsolete".into());
+        handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(key(KeyCode::Char('n'), KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert_eq!(app.storage.load_note(&note_id).unwrap().tags, ["obsolete"]);
+
+        app.begin_delete_tag_with_name("obsolete".into());
+        handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(key(KeyCode::Enter, KeyModifiers::NONE)),
+            Rect::default(),
+        );
+        assert_eq!(app.storage.load_note(&note_id).unwrap().tags, ["obsolete"]);
+    }
+
+    fn remove_tags_popup() -> crate::popups::RemoveTagsPopup {
+        crate::popups::RemoveTagsPopup {
+            tags: vec![],
+            selected: std::collections::HashSet::new(),
+            cursor: 0,
+            scroll_offset: 0,
+            last_scroll: None,
+            confirm: Some(crate::popups::ConfirmPopup {
+                action: crate::popups::ConfirmAction::RemoveAllTagsFromSelected,
+                message: "Remove ALL tags from selected notes?".into(),
+                detail: Some("This cannot be undone.".into()),
+                confirm_label: "Remove All".into(),
+                is_destructive: true,
+                selected_button: 1,
+            }),
+            tag_counts: vec![],
+            total_selected: 0,
+        }
+    }
+
+    #[test]
+    fn confirm_remove_tags_yes_bypasses_cancel_selection() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        for (key_code, expect_closed) in [
+            (KeyCode::Char('y'), true),
+            (KeyCode::Char('n'), false),
+            (KeyCode::Enter, false),
+        ] {
+            let (_temp_dir, mut app) = test_app();
+            app.popups.active = Some(crate::popups::ActivePopup::RemoveTags(remove_tags_popup()));
+            handle_global_popups_and_palette(
+                &mut app,
+                crossterm::event::Event::Key(key(key_code, KeyModifiers::NONE)),
+                Rect::default(),
+            );
+            assert_eq!(app.popups.active.is_none(), expect_closed);
+            if !expect_closed {
+                assert!(matches!(
+                    &app.popups.active,
+                    Some(crate::popups::ActivePopup::RemoveTags(popup))
+                        if popup.confirm.is_none()
+                ));
+            }
+        }
     }
 
     #[test]
