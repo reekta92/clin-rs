@@ -1472,17 +1472,26 @@ pub fn draw_confirm_popup(
     popup: &ConfirmPopup,
     area: Rect,
     theme: &AppThemeColors,
+    literal_yes_no: bool,
 ) {
+    let hints = if literal_yes_no {
+        [
+            ("y".to_string(), popup.confirm_label.as_str()),
+            ("n".to_string(), "cancel"),
+        ]
+    } else {
+        [
+            ("Enter".to_string(), "select"),
+            ("Esc".to_string(), "cancel"),
+        ]
+    };
     let inner = draw_confirm_popup_frame(
         frame,
         area,
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
-        PopupHints::Keybinds(&[
-            ("y".to_string(), &popup.confirm_label),
-            ("n".to_string(), "cancel"),
-        ]),
+        PopupHints::Keybinds(&hints),
         theme,
     );
 
@@ -1536,10 +1545,18 @@ pub fn draw_confirm_popup(
         (confirm, cancel)
     };
 
+    let (confirm_key, cancel_key) = if literal_yes_no {
+        ("y", "n")
+    } else {
+        ("Enter", "Esc")
+    };
     let buttons = Line::from(vec![
-        Span::styled(format!(" {} (y) ", popup.confirm_label), confirm_style),
+        Span::styled(
+            format!(" {} ({confirm_key}) ", popup.confirm_label),
+            confirm_style,
+        ),
         Span::raw("   "),
-        Span::styled(" Cancel (n) ", cancel_style),
+        Span::styled(format!(" Cancel ({cancel_key}) "), cancel_style),
     ]);
     let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
     frame.render_widget(buttons_para, chunks[3]);

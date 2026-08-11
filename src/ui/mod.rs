@@ -591,7 +591,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         );
 
         if let Some(confirm) = &popup.confirm {
-            draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme);
+            draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme, true);
         }
     }
 
@@ -1432,7 +1432,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Confirm popup
     if let Some(popup) = &app.popups.confirm {
-        draw_confirm_popup(frame, popup, frame.area(), &app.app_theme);
+        let literal_yes_no =
+            !matches!(&app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
+        draw_confirm_popup(frame, popup, frame.area(), &app.app_theme, literal_yes_no);
     }
 
     if let Some(popup) = &mut app.popups.active {
