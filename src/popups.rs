@@ -275,6 +275,8 @@ pub enum InfoItem {
     Text { heading: String, body: String },
     /// Visual separation.
     Spacer,
+    /// A list of tags rendered as colored chips.
+    Tags(Vec<String>),
 }
 
 pub struct InfoPopup {

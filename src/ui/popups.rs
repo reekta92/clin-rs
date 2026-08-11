@@ -188,6 +188,11 @@ pub fn draw_info_popup(
                     .sum();
                 constraints.push(Constraint::Length(1 + body_lines));
             }
+            crate::popups::InfoItem::Tags(tags) => {
+                let total: usize = tags.iter().map(|t| t.chars().count() + 2).sum::<usize>().max(0);
+                let lines = if tags.is_empty() { 1 } else { (total / width).max(1) as u16 + 1 };
+                constraints.push(Constraint::Length(1 + lines));
+            }
         }
     }
     constraints.push(Constraint::Min(0)); // consume remaining space
@@ -237,6 +242,32 @@ pub fn draw_info_popup(
                 let body_para = Paragraph::new(body.as_str())
                     .style(Style::default().fg(theme.fg))
                     .wrap(Wrap { trim: true });
+                frame.render_widget(body_para, text_chunks[1]);
+            }
+            crate::popups::InfoItem::Tags(tags) => {
+                let text_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Min(0)])
+                    .split(item_area);
+                let heading_para =
+                    Paragraph::new("Tags").style(Style::default().fg(theme.accent));
+                frame.render_widget(heading_para, text_chunks[0]);
+                let body_line: Line<'_> = if tags.is_empty() {
+                    Line::from(Span::styled("(none)", Style::default().fg(theme.muted)))
+                } else {
+                    let mut spans: Vec<Span<'_>> = Vec::new();
+                    for (i, tag) in tags.iter().enumerate() {
+                        if i > 0 {
+                            spans.push(Span::raw("  "));
+                        }
+                        spans.push(Span::styled(
+                            tag.as_str(),
+                            Style::default().fg(theme.tag).add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                    Line::from(spans)
+                };
+                let body_para = Paragraph::new(body_line).wrap(Wrap { trim: true });
                 frame.render_widget(body_para, text_chunks[1]);
             }
         }

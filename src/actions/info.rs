@@ -114,6 +114,8 @@ impl Action for ShowInfoAction {
                     heading: "Folder Path".to_string(),
                     body: summary.folder.clone(),
                 },
+                InfoItem::Spacer,
+                InfoItem::Tags(summary.tags.clone()),
                 InfoItem::Text {
                     heading: "Top Words".to_string(),
                     body: top_5.join(", "),
