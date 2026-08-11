@@ -310,18 +310,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.area(),
             title,
             PopupSize::Prompt,
-            PopupHints::Keybinds(&[
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Confirm),
-                    "confirm",
-                ),
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Cancel),
-                    "cancel",
-                ),
-            ]),
+            PopupHints::Keybinds(&text_input_hints("confirm")),
             &app.app_theme,
         );
         popup.input.set_block(
@@ -882,18 +871,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.area(),
             "RENAME",
             PopupSize::Prompt,
-            PopupHints::Keybinds(&[
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Confirm),
-                    "rename",
-                ),
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Cancel),
-                    "cancel",
-                ),
-            ]),
+            PopupHints::Keybinds(&text_input_hints("rename")),
             &app.app_theme,
         );
 
@@ -954,18 +932,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.area(),
             title,
             PopupSize::Prompt,
-            PopupHints::Keybinds(&[
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Confirm),
-                    "create",
-                ),
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Cancel),
-                    "cancel",
-                ),
-            ]),
+            PopupHints::Keybinds(&text_input_hints("create")),
             &app.app_theme,
         );
         popup.input.set_block(popup_block("", &app.app_theme));
@@ -986,18 +953,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.area(),
             title,
             PopupSize::Large,
-            PopupHints::Keybinds(&[
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Confirm),
-                    "import",
-                ),
-                (
-                    app.keybinds
-                        .display_list(crate::keybinds::ListAction::Cancel),
-                    "cancel",
-                ),
-            ]),
+            PopupHints::Keybinds(&text_input_hints("import")),
             &app.app_theme,
         );
         popup.input.set_block(

@@ -1967,10 +1967,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.area(),
             title,
             PopupSize::Prompt,
-            PopupHints::Keybinds(&[
-                (kb.display_list(ListAction::Confirm), "confirm"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ]),
+            PopupHints::Keybinds(&crate::ui::text_input_hints("confirm")),
             &app.app_theme,
         );
 
@@ -2449,10 +2446,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.area(),
             "RENAME",
             PopupSize::Prompt,
-            PopupHints::Keybinds(&[
-                (kb.display_list(ListAction::Confirm), "rename"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ]),
+            PopupHints::Keybinds(&crate::ui::text_input_hints("rename")),
             &app.app_theme,
         );
 
@@ -2506,10 +2500,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.area(),
             title,
             PopupSize::Prompt,
-            PopupHints::Keybinds(&[
-                (kb.display_list(ListAction::Confirm), "create"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ]),
+            PopupHints::Keybinds(&crate::ui::text_input_hints("create")),
             &app.app_theme,
         );
         popup.input.set_block(popup_block("", &app.app_theme));
@@ -2529,10 +2520,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.area(),
             title,
             PopupSize::Large,
-            PopupHints::Keybinds(&[
-                (kb.display_list(ListAction::Confirm), "import"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ]),
+            PopupHints::Keybinds(&crate::ui::text_input_hints("import")),
             &app.app_theme,
         );
         popup.input.set_block(

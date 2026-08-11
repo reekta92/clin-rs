@@ -1432,6 +1432,9 @@ pub fn popup_hint_line(theme: &AppThemeColors, text: &str) -> Line<'static> {
     ))
 }
 
+pub(crate) fn text_input_hints(action: &str) -> [(String, &str); 2] {
+    [("Enter".to_string(), action), ("Esc".to_string(), "cancel")]
+}
 pub fn draw_confirm_popup_frame(
     frame: &mut Frame,
     area: Rect,
@@ -1746,6 +1749,17 @@ mod tests {
         assert!(
             has_mod(key_span.style, Modifier::BOLD),
             "keybind key should be bold"
+        );
+    }
+
+    #[test]
+    fn text_input_hints_use_enter_and_escape() {
+        assert_eq!(
+            text_input_hints("import"),
+            [
+                ("Enter".to_string(), "import"),
+                ("Esc".to_string(), "cancel"),
+            ]
         );
     }
 }
