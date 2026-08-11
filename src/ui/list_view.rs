@@ -1492,19 +1492,28 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let total_len = app.list.visual_list.len();
             let viewport_len = list_area.height.saturating_sub(2) as usize;
 
-            let mut offset = app.list.list_state.offset();
-            if offset > total_len.saturating_sub(viewport_len) {
-                offset = total_len.saturating_sub(viewport_len);
-            }
-            if app.list.visual_index < offset {
-                offset = app.list.visual_index;
-            } else if app.list.visual_index >= offset + viewport_len {
-                offset = app
-                    .list
-                    .visual_index
-                    .saturating_add(1)
-                    .saturating_sub(viewport_len);
-            }
+            let max_off = total_len.saturating_sub(viewport_len);
+
+            let offset = if app.config.ui.scrollbar_pan_mode
+                && let Some(off) = app.list.list_viewport_offset
+            {
+                off.min(max_off)
+            } else {
+                let mut o = app.list.list_state.offset();
+                if o > max_off {
+                    o = max_off;
+                }
+                if app.list.visual_index < o {
+                    o = app.list.visual_index;
+                } else if app.list.visual_index >= o + viewport_len {
+                    o = app
+                        .list
+                        .visual_index
+                        .saturating_add(1)
+                        .saturating_sub(viewport_len);
+                }
+                o
+            };
             *app.list.list_state.offset_mut() = offset;
 
             let end = (offset + viewport_len).min(total_len);
@@ -1563,9 +1572,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     items.push(item);
                 }
             }
-            let relative_selected = app.list.visual_index.saturating_sub(offset);
             let mut rel_state = ListState::default();
-            rel_state.select(Some(relative_selected));
+            if (offset..end).contains(&app.list.visual_index) {
+                rel_state.select(Some(app.list.visual_index - offset));
+            } else {
+                rel_state.select(None);
+            }
 
             let list = List::new(items)
                 .block(
@@ -1589,13 +1601,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             };
             app.list.last_scroll = Some(meta);
             if app.config.ui.scrollbars {
+                let (pos, max_pos) = if app.config.ui.scrollbar_pan_mode {
+                    (offset, max_off)
+                } else {
+                    (app.list.visual_index, total_len.saturating_sub(1))
+                };
                 crate::ui::scrollbar::draw_scrollbar(
                     frame,
                     list_area,
                     content_len,
                     viewport_len,
-                    app.list.visual_index,
-                    content_len.saturating_sub(1),
+                    pos,
+                    max_pos,
                     &app.app_theme,
                 );
             }

@@ -266,6 +266,11 @@ pub struct UiConfig {
     /// Show mouse-draggable scrollbars on scrollable regions.
     #[serde(default = "default_true")]
     pub scrollbars: bool,
+    /// When true, dragging/clicking the notes-list scrollbar pans the viewport
+    /// without moving the selection; any key snaps the viewport back to the
+    /// selection (first press is consumed).
+    #[serde(default)]
+    pub scrollbar_pan_mode: bool,
     #[serde(default)]
     pub hint_bar_style: HintBarStyle,
 }
@@ -289,6 +294,7 @@ impl Default for UiConfig {
             tab_icons_only: false,
             icon_mode: IconMode::default(),
             scrollbars: default_true(),
+            scrollbar_pan_mode: false,
             hint_bar_style: HintBarStyle::default(),
         }
     }

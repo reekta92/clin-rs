@@ -275,6 +275,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleGhostSyntaxAction),
         Box::new(settings::ToggleExtendedMarkdownAction),
         Box::new(settings::ToggleScrollbarsAction),
+        Box::new(settings::ToggleScrollbarPanModeAction),
         Box::new(settings::ToggleSyntaxHighlightingAction),
         Box::new(settings::ToggleCodeLineNumbersAction),
         Box::new(settings::ToggleShowFileSizeAction),

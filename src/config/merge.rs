@@ -233,6 +233,11 @@ show_status_bar = true
 # Show mouse-draggable scrollbars on scrollable regions.
 scrollbars = true
 
+# When true, dragging the notes-list scrollbar pans the viewport instead of
+# moving the selection; pressing any key snaps the viewport back to the
+# selection.
+# scrollbar_pan_mode = false
+
 # Icon mode ("nerd", "unicode", "none"). Controls icon rendering throughout the app.
 icon_mode = "nerd"
 

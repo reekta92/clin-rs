@@ -12,6 +12,7 @@ struct SmartFolderData {
 }
 impl App {
     pub fn refresh_visual_list(&mut self) {
+        self.list.list_viewport_offset = None;
         let mut visual = Vec::new();
         // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
         let subnotes_cache = if self.subnotes_view_cache_sig

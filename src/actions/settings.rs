@@ -373,6 +373,23 @@ toggle_action!(
 );
 
 toggle_action!(
+    ToggleScrollbarPanModeAction,
+    "settings.scrollbar_pan_mode",
+    "Toggle Scrollbar Pan Mode",
+    "Scrollbar pans the viewport instead of moving selection; any key snaps back",
+    ActionCategory::Settings,
+    "\u{f878}",
+    "\u{1f4d7}",
+    toggle_scrollbar_pan_mode,
+    app,
+    if app.config.ui.scrollbar_pan_mode {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
     ToggleSyntaxHighlightingAction,
     "settings.syntax_highlighting",
     "Toggle Syntax Highlighting",
