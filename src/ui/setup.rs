@@ -737,18 +737,14 @@ mod tests {
         let logo = render_logo(true);
         let group_x = (COL_WIDTH - (LOGO_WIDTH + LOGO_CURSOR_GAP + LOGO_CURSOR_WIDTH)) / 2;
 
-        // The top of `l` occupies the same columns as its stem.
-        for x in group_x + 11..=group_x + 12 {
-            assert_eq!(logo.cell((x, 0)).unwrap().symbol(), "█", "top x={x}");
-            assert_eq!(logo.cell((x, 1)).unwrap().symbol(), "█", "stem x={x}");
-        }
-        // The only other top-row glyph is the dot directly above `i`.
-        for x in group_x + 16..=group_x + 17 {
-            assert_eq!(logo.cell((x, 0)).unwrap().symbol(), "█");
-            assert_eq!(logo.cell((x, 2)).unwrap().symbol(), "█");
-        }
-        for x in group_x..group_x + 11 {
-            assert_eq!(logo.cell((x, 0)).unwrap().symbol(), " ");
+        for (y, line) in CLIN_ASCII.lines().enumerate() {
+            for (x, glyph) in line.chars().enumerate() {
+                assert_eq!(
+                    logo.cell((group_x + x as u16, y as u16)).unwrap().symbol(),
+                    glyph.to_string(),
+                    "logo glyph at row {y}, column {x} shifted",
+                );
+            }
         }
     }
 }

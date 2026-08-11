@@ -647,34 +647,43 @@ fn about_help_text(
     tab: HelpTab,
 ) -> Vec<HelpRow> {
     let mut rows = Vec::new();
-    rows.push(help_raw_row(
-        Row::new(vec![Cell::from(Line::from(vec![
-            Span::styled(
-                "clin",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!("  v{}", env!("CARGO_PKG_VERSION")),
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]))]),
-        &format!("clin v{}", env!("CARGO_PKG_VERSION")),
-        &format!("clin v{}", env!("CARGO_PKG_VERSION")),
-        "About",
-        tab,
-    ));
-    rows.push(help_empty_row(tab));
-    rows.push(help_item_dyn(
-        "Feature-packed terminal note management app",
-        None,
-        theme,
-        "About",
-        tab,
-    ));
+    for (line_index, line) in crate::setup::CLIN_ASCII.lines().enumerate() {
+        let version = if line_index == 2 {
+            Some(format!("v{}", env!("CARGO_PKG_VERSION")))
+        } else {
+            None
+        };
+        let search_text = version.as_deref().map_or_else(
+            || line.to_owned(),
+            |version| format!("{line} clin {version}"),
+        );
+        let version_cell = version.map_or_else(
+            || Cell::from(""),
+            |version| {
+                Cell::from(Line::from(Span::styled(
+                    version,
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                )))
+            },
+        );
+        rows.push(help_raw_row(
+            Row::new(vec![
+                Cell::from(Line::from(Span::styled(
+                    line,
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ))),
+                version_cell,
+            ]),
+            &search_text,
+            line,
+            "About",
+            tab,
+        ));
+    }
     rows.push(help_empty_row(tab));
 
     if config.counts_enabled() {
@@ -1560,5 +1569,31 @@ mod tests {
                 "Token '{token}' should resolve to a non-empty string"
             );
         }
+    }
+
+    #[test]
+    fn about_help_includes_the_shared_clin_logo() {
+        let keybinds = Keybinds::default();
+        let theme = AppThemeColors::default();
+        let config = crate::config::ClinConfig::default();
+        let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About);
+        let displays: Vec<&str> = rows.iter().map(|row| row.display.as_str()).collect();
+
+        for line in crate::setup::CLIN_ASCII.lines() {
+            assert!(
+                displays.contains(&line),
+                "About page is missing logo row: {line:?}"
+            );
+        }
+        assert!(
+            rows.iter().any(|row| row
+                .search_text
+                .contains(&format!("clin v{}", env!("CARGO_PKG_VERSION")))),
+            "About page is missing the version beside the logo"
+        );
+        assert!(
+            !displays.contains(&"Feature-packed terminal note management app"),
+            "About page still contains the removed tagline"
+        );
     }
 }
