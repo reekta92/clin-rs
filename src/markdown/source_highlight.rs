@@ -272,15 +272,13 @@ impl SourceHighlighter {
     /// Style a task-list line.
     fn task_line_styles(&self, chars: &[char], task_marker_end: usize) -> Vec<Style> {
         // task_marker_end points past: `\s*[-*+]\s+\[[xX ]\]\s`
-        // Find the `[ ]` / `[x]` part
-        let s: String = chars.iter().collect();
-        let bracket_start = s.rfind('[').unwrap_or(0);
-        let bracket_end = s[bracket_start..]
-            .find(']')
-            .map(|e| bracket_start + e + 1)
+        // Find the `[ ]` / `[x]` part using character indices.
+        let bracket_start = chars.iter().rposition(|&ch| ch == '[').unwrap_or(0);
+        let bracket_end = find_char(&chars[bracket_start..], ']')
+            .map(|offset| bracket_start + offset + 1)
             .unwrap_or(task_marker_end);
 
-        let is_checked = bracket_start + 1 < s.len()
+        let is_checked = bracket_start + 1 < chars.len()
             && (chars[bracket_start + 1] == 'x' || chars[bracket_start + 1] == 'X');
         let task_style = if is_checked {
             self.theme.task_checked
@@ -393,8 +391,7 @@ impl SourceHighlighter {
 
             // Image `![alt](url)`
             if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '[' {
-                let slice: String = chars[i..].iter().collect();
-                if let Some(close_b) = slice.find(']') {
+                if let Some(close_b) = find_char(&chars[i..], ']') {
                     if i + close_b + 1 < chars.len() && chars[i + close_b + 1] == '(' {
                         if ghost {
                             // Ghost: ![ and ]( and ) get ghost, alt gets link_text, url gets link_url
@@ -405,7 +402,7 @@ impl SourceHighlighter {
                             }
                             styles[i + close_b] = self.theme.ghost_syntax; // ]
                             styles[i + close_b + 1] = self.theme.ghost_syntax; // (
-                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                            if let Some(url_end) = find_char(&chars[i + close_b + 1..], ')') {
                                 let url_total = close_b + 1 + url_end;
                                 for j in close_b + 2..url_total {
                                     styles[i + j] = self.theme.link_url;
@@ -419,7 +416,7 @@ impl SourceHighlighter {
                             for j in 0..=close_b {
                                 styles[i + j] = self.theme.link_text;
                             }
-                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                            if let Some(url_end) = find_char(&chars[i + close_b + 1..], ')') {
                                 let url_total = close_b + 1 + url_end;
                                 for j in close_b + 1..=url_total {
                                     styles[i + j] = self.theme.link_url;
@@ -434,8 +431,7 @@ impl SourceHighlighter {
 
             // Wikilink `[[...]]`
             if chars[i] == '[' && i + 1 < chars.len() && chars[i + 1] == '[' {
-                let slice: String = chars[i..].iter().collect();
-                if let Some(end) = slice.find("]]") {
+                if let Some(end) = find_subsequence(&chars[i..], &[']', ']']) {
                     if ghost {
                         // Ghost: [[ and ]] get ghost, content gets wikilink
                         styles[i] = self.theme.ghost_syntax;
@@ -478,8 +474,7 @@ impl SourceHighlighter {
 
             // Footnote ref `[^...]`
             if chars[i] == '[' && i + 1 < chars.len() && chars[i + 1] == '^' {
-                let slice: String = chars[i..].iter().collect();
-                if let Some(end) = slice.find(']') {
+                if let Some(end) = find_char(&chars[i..], ']') {
                     if ghost {
                         // Ghost: [^ and ] get ghost, content gets footnote_ref
                         styles[i] = self.theme.ghost_syntax;
@@ -501,8 +496,7 @@ impl SourceHighlighter {
 
             // Link `[text](url)`
             if chars[i] == '[' {
-                let slice: String = chars[i..].iter().collect();
-                if let Some(close_b) = slice.find(']') {
+                if let Some(close_b) = find_char(&chars[i..], ']') {
                     if i + close_b + 1 < chars.len() && chars[i + close_b + 1] == '(' {
                         if ghost {
                             // Ghost: [ and ] and ( and ) get ghost, text gets link_text, url gets link_url
@@ -512,7 +506,7 @@ impl SourceHighlighter {
                             }
                             styles[i + close_b] = self.theme.ghost_syntax; // ]
                             styles[i + close_b + 1] = self.theme.ghost_syntax; // (
-                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                            if let Some(url_end) = find_char(&chars[i + close_b + 1..], ')') {
                                 let url_total = close_b + 1 + url_end;
                                 for j in close_b + 2..url_total {
                                     styles[i + j] = self.theme.link_url;
@@ -526,7 +520,7 @@ impl SourceHighlighter {
                             for j in 0..=close_b {
                                 styles[i + j] = self.theme.link_text;
                             }
-                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                            if let Some(url_end) = find_char(&chars[i + close_b + 1..], ')') {
                                 let url_total = close_b + 1 + url_end;
                                 for j in close_b + 1..=url_total {
                                     styles[i + j] = self.theme.link_url;
@@ -561,9 +555,8 @@ impl SourceHighlighter {
                         && chars[i + 1] == '_'
                         && chars[i + 2] == '_'))
             {
-                let delim = if chars[i] == '*' { "***" } else { "___" };
-                let slice: String = chars[i + 3..].iter().collect();
-                if let Some(end) = slice.find(delim) {
+                let delimiter = [chars[i]; 3];
+                if let Some(end) = find_subsequence(&chars[i + 3..], &delimiter) {
                     let delim_style = if ghost {
                         self.theme.ghost_syntax
                     } else {
@@ -587,9 +580,8 @@ impl SourceHighlighter {
             if (chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '*')
                 || (chars[i] == '_' && i + 1 < chars.len() && chars[i + 1] == '_')
             {
-                let delim = if chars[i] == '*' { "**" } else { "__" };
-                let slice: String = chars[i + 2..].iter().collect();
-                if let Some(end) = slice.find(delim) {
+                let delimiter = [chars[i]; 2];
+                if let Some(end) = find_subsequence(&chars[i + 2..], &delimiter) {
                     // Works same in both modes: delimiters get paragraph, content gets bold
                     let delim_style = if ghost {
                         self.theme.ghost_syntax
@@ -614,9 +606,8 @@ impl SourceHighlighter {
                     && ((chars[i] == '*' && chars[i + 1] == '*')
                         || (chars[i] == '_' && chars[i + 1] == '_')))
             {
-                let slice: String = chars[i + 1..].iter().collect();
-                if let Some(end) = slice.find(chars[i]) {
-                    // Works same in both modes: delimiter gets paragraph, content gets italic
+                if let Some(end) = find_char(&chars[i + 1..], chars[i]) {
+                    // Works same in both modes: delimiters get paragraph, content gets italic
                     let delim_style = if ghost {
                         self.theme.ghost_syntax
                     } else {
@@ -634,8 +625,7 @@ impl SourceHighlighter {
 
             // Strikethrough `~~`
             if chars[i] == '~' && i + 1 < chars.len() && chars[i + 1] == '~' {
-                let slice: String = chars[i + 2..].iter().collect();
-                if let Some(end) = slice.find("~~") {
+                if let Some(end) = find_subsequence(&chars[i + 2..], &['~', '~']) {
                     // Works same in both modes: delimiters get paragraph, content gets crossed
                     let delim_style = if ghost {
                         self.theme.ghost_syntax
@@ -660,9 +650,10 @@ impl SourceHighlighter {
                 while i + bt_count < chars.len() && chars[i + bt_count] == '`' {
                     bt_count += 1;
                 }
-                let delim: String = std::iter::repeat_n('`', bt_count).collect();
-                let slice: String = chars[i + bt_count..].iter().collect();
-                if let Some(end) = slice.find(&delim) {
+                if let Some(end) = chars[i + bt_count..]
+                    .windows(bt_count)
+                    .position(|window| window.iter().all(|&ch| ch == '`'))
+                {
                     let mut code_style = base_style;
                     if let Some(fg) = self.theme.code_inline.fg {
                         code_style = code_style.fg(fg);
@@ -810,18 +801,29 @@ fn ends_in_fence(line: &str, record: &LineRecord) -> bool {
 // Helper functions
 // ---------------------------------------------------------------------------
 
+fn find_char(chars: &[char], target: char) -> Option<usize> {
+    chars.iter().position(|&ch| ch == target)
+}
+
+fn find_subsequence(chars: &[char], target: &[char]) -> Option<usize> {
+    chars
+        .windows(target.len())
+        .position(|window| window == target)
+}
+
 /// Try to detect an autolink `<https?://...>` starting at position `i`.
 /// Returns `Some(end_index)` where `end_index` is the position of `>` relative to `i`.
 fn try_autolink(chars: &[char], i: usize) -> Option<usize> {
     if chars[i] != '<' || i + 8 >= chars.len() {
         return None;
     }
-    let slice: String = chars[i..].iter().collect();
-    if !slice[1..].starts_with("http://") && !slice[1..].starts_with("https://") {
+    let scheme = &chars[i + 1..];
+    if !scheme.starts_with(&['h', 't', 't', 'p', ':', '/', '/'])
+        && !scheme.starts_with(&['h', 't', 't', 'p', 's', ':', '/', '/'])
+    {
         return None;
     }
-    let end = slice.find('>')?;
-    Some(end)
+    find_char(&chars[i..], '>')
 }
 
 /// Try to detect a bare URL `http://` or `https://` starting at position `i`.
@@ -1230,6 +1232,47 @@ mod tests {
             assert_eq!(styles_h2_nested[6].bg, Some(bg));
             // Verify that the italic text 'italic' (index 7) has the background color
             assert_eq!(styles_h2_nested[7].bg, Some(bg));
+        }
+    }
+
+    #[test]
+    fn unicode_inside_bold_delimiter_uses_character_offsets() {
+        let colors = AppThemeColors::default();
+        let mut highlighter = SourceHighlighter::new(&colors, false, false);
+        let line = "**boéld**";
+        highlighter.rescan(&[line.to_string()]);
+
+        let styles = highlighter.highlight_line(line, 0);
+        assert_eq!(styles.len(), line.chars().count());
+        assert_eq!(
+            styles[2],
+            highlighter.theme.paragraph.add_modifier(Modifier::BOLD)
+        );
+    }
+
+    #[test]
+    fn url_import_unicode_markdown_highlights_without_panicking() {
+        let colors = AppThemeColors::default();
+        let mut highlighter = SourceHighlighter::new(&colors, true, true);
+        let document = [
+            "**Résumé d'été**",
+            "*café* and ~~façade~~",
+            "[naïve](https://example.test/café)",
+            "![café](https://example.test/image-é.png)",
+            "[[café|Résumé]] and [^référence]",
+            "`const café = 1;`",
+            "<https://example.test/café>",
+            "- [x] café",
+        ];
+        let lines = document.iter().map(ToString::to_string).collect::<Vec<_>>();
+        highlighter.rescan(&lines);
+
+        for (row, line) in document.iter().enumerate() {
+            assert_eq!(
+                highlighter.highlight_line(line, row).len(),
+                line.chars().count(),
+                "style count for {line:?}"
+            );
         }
     }
 
