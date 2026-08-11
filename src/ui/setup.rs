@@ -301,7 +301,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     .constraints([Constraint::Length(2), Constraint::Length(1)])
                     .split(content);
                 frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), chunks[0]);
-                frame.render_widget(&*input, chunks[1]);
+                frame.render_widget(&**input, chunks[1]);
             }
             crate::setup::SetupVaultModal::ConfirmNonEmpty { path } => {
                 frame.render_widget(

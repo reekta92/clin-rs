@@ -1865,9 +1865,11 @@ pub(crate) fn editor_visual_rows(
     line_numbers: bool,
     tab_len: u8,
 ) -> Vec<crate::editor::EditorVisualRow> {
-    let reserved = line_numbers
-        .then(|| lines.len().max(1).to_string().len() + 2)
-        .unwrap_or(0);
+    let reserved = if line_numbers {
+        lines.len().max(1).to_string().len() + 2
+    } else {
+        0
+    };
     let width = if usize::from(total_width) > reserved {
         usize::from(total_width) - reserved
     } else {
@@ -2206,6 +2208,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_visual_row_highlight(
     buf: &mut ratatui::prelude::Buffer,
     y: u16,

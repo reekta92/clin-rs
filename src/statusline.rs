@@ -1939,7 +1939,7 @@ fn suppress_list_fields(template: &str, hidden: &[ListHeaderField]) -> String {
         }
         let mut name = String::new();
         let mut closed = false;
-        while let Some(next) = chars.next() {
+        for next in chars.by_ref() {
             if next == '}' {
                 closed = true;
                 break;
@@ -2188,8 +2188,10 @@ mod tests {
             crate::config::HintBarStyle::RoundedGradient,
             crate::config::HintBarStyle::SlantedGradient,
         ] {
-            let mut theme = AppThemeColors::default();
-            theme.hint_bar_style = style;
+            let theme = AppThemeColors {
+                hint_bar_style: style,
+                ..Default::default()
+            };
 
             let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
             assert!(left.width() > 0);
@@ -2202,23 +2204,24 @@ mod tests {
         let config = ClinConfig::default();
         let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
 
-        for style in [crate::config::HintBarStyle::Hexagon] {
-            let mut theme = AppThemeColors::default();
-            theme.hint_bar_style = style;
+        let style = crate::config::HintBarStyle::Hexagon;
+        let theme = AppThemeColors {
+            hint_bar_style: style,
+            ..Default::default()
+        };
 
-            let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
-            assert!(left.width() > 0);
-            assert!(right.is_none());
+        let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
+        assert!(left.width() > 0);
+        assert!(right.is_none());
 
-            // format_keybind_hints
-            let items = vec![("g".to_string(), "Go"), ("q".to_string(), "Quit")];
-            let hints_line = crate::ui::format_keybind_hints(&theme, &items);
-            assert!(hints_line.width() > 0);
+        // format_keybind_hints
+        let items = vec![("g".to_string(), "Go"), ("q".to_string(), "Quit")];
+        let hints_line = crate::ui::format_keybind_hints(&theme, &items);
+        assert!(hints_line.width() > 0);
 
-            // ext_badge_spans
-            let badge_spans = crate::ui::ext_badge_spans(true, &theme, None);
-            assert!(!badge_spans.is_empty());
-        }
+        // ext_badge_spans
+        let badge_spans = crate::ui::ext_badge_spans(true, &theme, None);
+        assert!(!badge_spans.is_empty());
     }
     #[test]
     fn list_header_relative_time_boundaries() {

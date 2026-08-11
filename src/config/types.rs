@@ -645,7 +645,7 @@ mod tests {
         }
         // Names must be unique.
         let mut names: Vec<&str> = HintBarStyle::ALL.iter().map(|s| s.name()).collect();
-        names.sort();
+        names.sort_unstable();
         names.dedup();
         assert_eq!(
             names.len(),
@@ -657,7 +657,7 @@ mod tests {
             .iter()
             .map(|s| s.as_config_str())
             .collect();
-        cfg.sort();
+        cfg.sort_unstable();
         cfg.dedup();
         assert_eq!(
             cfg.len(),

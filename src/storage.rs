@@ -403,7 +403,6 @@ impl Storage {
         self.config_dir.join("key.bin")
     }
 
-
     pub fn ensure_key(&mut self) -> Result<()> {
         if self.key != [0_u8; 32] {
             return Ok(());

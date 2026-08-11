@@ -355,10 +355,7 @@ fn continuous_scroll_clamps() {
 
 #[test]
 fn code_block_highlighting_patches_match() {
-    let content = include_str!(concat!(
-        env!("HOME"),
-        "/.local/share/clin/notes/clin_dir_TEST.md"
-    ));
+    let content = "# Hello World\n\nSome paragraph text here.\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n";
     let theme = crate::app_theme::AppThemeColors::default();
     let opts = MdRenderOpts::default();
     let mut renderer = MarkdownRenderer::new();

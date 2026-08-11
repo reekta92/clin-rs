@@ -15,7 +15,9 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
         match modal {
             crate::setup::SetupVaultModal::PathInput { input, .. } => match key.code {
                 KeyCode::Esc => {
-                    app.setup_state.as_mut().unwrap().vault_modal = None;
+                    if let Some(state) = app.setup_state.as_mut() {
+                        state.vault_modal = None;
+                    }
                     return;
                 }
                 KeyCode::Enter => {
@@ -46,7 +48,9 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
                     }
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                    app.setup_state.as_mut().unwrap().vault_modal = None;
+                    if let Some(state) = app.setup_state.as_mut() {
+                        state.vault_modal = None;
+                    }
                 }
                 _ => {}
             },

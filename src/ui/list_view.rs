@@ -3458,7 +3458,8 @@ mod tests {
             terminal
                 .backend()
                 .buffer()
-                .get(meta.track.x, bottom)
+                .cell((meta.track.x, bottom))
+                .unwrap()
                 .symbol(),
             "█"
         );
@@ -4076,8 +4077,10 @@ mod tests {
             crate::config::HintBarStyle::Brackets,
             crate::config::HintBarStyle::Hexagon,
         ] {
-            let mut theme = AppThemeColors::default();
-            theme.hint_bar_style = style;
+            let theme = AppThemeColors {
+                hint_bar_style: style,
+                ..Default::default()
+            };
             let full = render_list_header_right(&app, &theme, None).expect("full header");
             assert!(full.to_string().contains("1.5 KB"));
             let without_size =
@@ -4104,8 +4107,8 @@ mod tests {
                 Some(without_sort.width().saturating_sub(1) as u16),
             )
             .expect("literal header");
-            assert!(literals_only.to_string().contains("L"), "{style:?}");
-            assert!(literals_only.to_string().contains("R"), "{style:?}");
+            assert!(literals_only.to_string().contains('L'), "{style:?}");
+            assert!(literals_only.to_string().contains('R'), "{style:?}");
         }
 
         app.config

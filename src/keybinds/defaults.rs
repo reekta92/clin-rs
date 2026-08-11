@@ -936,22 +936,6 @@ impl Default for Keybinds {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crossterm::event::{KeyEvent, KeyModifiers};
-
-    #[test]
-    fn ctrl_shift_a_matches_select_all() {
-        let keybinds = Keybinds::default();
-        let event = KeyEvent::new(
-            KeyCode::Char('A'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        );
-        assert!(keybinds.matches_edit(EditAction::SelectAll, &event));
-    }
-}
-
 impl KeybindPreset {
     /// Returns true if this preset's base bindings include any multi-key sequences.
     pub fn uses_sequences(&self) -> bool {
@@ -2169,5 +2153,21 @@ impl KeybindPreset {
                 kb
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    #[test]
+    fn ctrl_shift_a_matches_select_all() {
+        let keybinds = Keybinds::default();
+        let event = KeyEvent::new(
+            KeyCode::Char('A'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        assert!(keybinds.matches_edit(EditAction::SelectAll, &event));
     }
 }

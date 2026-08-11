@@ -795,7 +795,9 @@ template = """
     pub fn open_setup_vault_input(&mut self, path: std::path::PathBuf, notice: Option<String>) {
         if let Some(state) = self.setup_state.as_mut() {
             state.vault_modal = Some(crate::setup::SetupVaultModal::PathInput {
-                input: ratatui_textarea::TextArea::from([path.display().to_string()]),
+                input: Box::new(ratatui_textarea::TextArea::from([path
+                    .display()
+                    .to_string()])),
                 notice,
             });
             state.vault_error = None;

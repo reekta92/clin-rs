@@ -89,9 +89,9 @@ impl SourceHighlighter {
         } else {
             ends_in_fence(&source[start - 1], &self.lines[start - 1])
         };
-        for row in start..source.len() {
-            let record = line_record(&source[row], in_fence);
-            in_fence = ends_in_fence(&source[row], &record);
+        for (row, item) in source.iter().enumerate().skip(start) {
+            let record = line_record(item, in_fence);
+            in_fence = ends_in_fence(item, &record);
             let converged = row >= new.end && self.lines[row] == record;
             self.lines[row] = record;
             if converged {

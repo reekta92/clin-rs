@@ -1944,7 +1944,12 @@ mod tests {
         app.list.last_preview_pane_height = 24;
         app.update_preview();
         app.list.last_preview_pane_width = 100;
-        app.list.pending_markdown_resize = Some((100, Instant::now() - Duration::from_millis(51)));
+        app.list.pending_markdown_resize = Some((
+            100,
+            Instant::now()
+                .checked_sub(Duration::from_millis(51))
+                .unwrap(),
+        ));
         app.poll_renderers();
         assert_eq!(
             app.list.preview_content_width,
@@ -1959,8 +1964,12 @@ mod tests {
         app.editor.last_preview_pane_height = 24;
         app.update_editor_markdown_preview();
         app.editor.last_preview_pane_width = 100;
-        app.editor.pending_markdown_resize =
-            Some((100, Instant::now() - Duration::from_millis(51)));
+        app.editor.pending_markdown_resize = Some((
+            100,
+            Instant::now()
+                .checked_sub(Duration::from_millis(51))
+                .unwrap(),
+        ));
         app.poll_editor_renderers();
         assert_eq!(
             app.editor.preview_content_width,

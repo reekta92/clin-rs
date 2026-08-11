@@ -104,7 +104,7 @@ pub(crate) struct SetupRebootstrapRequest {
 #[derive(Debug)]
 pub enum SetupVaultModal {
     PathInput {
-        input: ratatui_textarea::TextArea<'static>,
+        input: Box<ratatui_textarea::TextArea<'static>>,
         notice: Option<String>,
     },
     ConfirmNonEmpty {
