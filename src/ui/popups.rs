@@ -1481,7 +1481,7 @@ pub fn draw_confirm_popup(
         ]
     } else {
         [
-            ("Enter".to_string(), "select"),
+            ("Enter".to_string(), popup.confirm_label.as_str()),
             ("Esc".to_string(), "cancel"),
         ]
     };

@@ -288,7 +288,7 @@ impl App {
             detail: Some(detail),
             confirm_label: "Delete".into(),
             is_destructive: true,
-            selected_button: 1,
+            selected_button: 0,
         });
     }
 

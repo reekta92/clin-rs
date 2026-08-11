@@ -631,13 +631,18 @@ fn route_confirm_key(
     keybinds: &crate::keybinds::Keybinds,
     text_input_context: bool,
 ) -> ConfirmKeyAction {
+    if text_input_context {
+        return match key.code {
+            KeyCode::Enter => ConfirmKeyAction::Confirm,
+            KeyCode::Esc => ConfirmKeyAction::Cancel,
+            _ => ConfirmKeyAction::Unhandled,
+        };
+    }
+
     let literal_modifier = key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT;
-    if !text_input_context && literal_modifier && matches!(key.code, KeyCode::Char('y' | 'Y')) {
+    if literal_modifier && matches!(key.code, KeyCode::Char('y' | 'Y')) {
         ConfirmKeyAction::Confirm
-    } else if !text_input_context
-        && literal_modifier
-        && matches!(key.code, KeyCode::Char('n' | 'N'))
-    {
+    } else if literal_modifier && matches!(key.code, KeyCode::Char('n' | 'N')) {
         ConfirmKeyAction::Cancel
     } else if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
         ConfirmKeyAction::SelectConfirm
@@ -647,13 +652,9 @@ fn route_confirm_key(
         ConfirmKeyAction::ToggleSelection
     } else if key.code == KeyCode::Enter {
         ConfirmKeyAction::ActivateSelection
-    } else if text_input_context && key.code == KeyCode::Esc {
+    } else if is_cancel_popup(keybinds, key, false) {
         ConfirmKeyAction::Cancel
-    } else if !text_input_context && is_cancel_popup(keybinds, key, false) {
-        ConfirmKeyAction::Cancel
-    } else if !text_input_context
-        && keybinds.matches_list(crate::keybinds::ListAction::Confirm, key)
-    {
+    } else if keybinds.matches_list(crate::keybinds::ListAction::Confirm, key) {
         ConfirmKeyAction::Confirm
     } else {
         ConfirmKeyAction::Unhandled
@@ -2217,7 +2218,7 @@ mod tests {
         );
         assert_eq!(
             route_confirm_key(&key(KeyCode::Enter, KeyModifiers::NONE), &keybinds, true),
-            ConfirmKeyAction::ActivateSelection
+            ConfirmKeyAction::Confirm
         );
         assert_eq!(
             route_confirm_key(&key(KeyCode::Esc, KeyModifiers::NONE), &keybinds, true),
@@ -2283,7 +2284,7 @@ mod tests {
         }));
 
         app.begin_delete_tag_with_name("obsolete".into());
-        assert_eq!(app.popups.confirm.as_ref().unwrap().selected_button, 1);
+        assert_eq!(app.popups.confirm.as_ref().unwrap().selected_button, 0);
         for key_code in [KeyCode::Char('y'), KeyCode::Char('n')] {
             handle_global_popups_and_palette(
                 &mut app,
@@ -2302,11 +2303,6 @@ mod tests {
         assert_eq!(app.storage.load_note(&note_id).unwrap().tags, ["obsolete"]);
 
         app.begin_delete_tag_with_name("obsolete".into());
-        handle_global_popups_and_palette(
-            &mut app,
-            crossterm::event::Event::Key(key(KeyCode::Left, KeyModifiers::NONE)),
-            Rect::default(),
-        );
         handle_global_popups_and_palette(
             &mut app,
             crossterm::event::Event::Key(key(KeyCode::Enter, KeyModifiers::NONE)),
