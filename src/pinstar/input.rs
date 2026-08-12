@@ -713,17 +713,25 @@ pub fn handle_pinstar_event(
         return true;
     }
 
-    // Connection mode: Enter/i completes the connection to the selected node.
-    // Checked explicitly because Enter also binds to RenameConfirm/MenuSelect/
-    // ConfirmResize, making resolve_canvas non-deterministic for Enter.
-    if state.connection_source_id.is_some()
-        && keybinds.matches_canvas(CanvasAction::EditOrConnect, &key)
-    {
-        if let Some(target_id) = state.selected_node_id.clone() {
-            state.finish_connection(&target_id);
+    // Connection / delete-connection mode: Enter/i completes the operation on
+    // the selected node. Checked explicitly because Enter also binds to
+    // RenameConfirm/MenuSelect/ConfirmResize, making resolve_canvas
+    // non-deterministic for Enter.
+    if keybinds.matches_canvas(CanvasAction::EditOrConnect, &key) {
+        if state.connection_source_id.is_some() {
+            if let Some(target_id) = state.selected_node_id.clone() {
+                state.finish_connection(&target_id);
+            }
+            sync_mode_status(app, state);
+            return true;
         }
-        sync_mode_status(app, state);
-        return true;
+        if state.deleting_connection_source_id.is_some() {
+            if let Some(target_id) = state.selected_node_id.clone() {
+                state.finish_delete_connection(&target_id);
+            }
+            sync_mode_status(app, state);
+            return true;
+        }
     }
 
     let seq = config.sequences_enabled();
