@@ -1007,7 +1007,7 @@ pub fn draw_graph_view(
     }
 
     if let Some(menu) = &state.context_menu {
-        draw_context_menu(frame, canvas_area, menu, app_theme);
+        draw_context_menu(frame, canvas_area, menu, app_theme, mouse_pos);
     }
 }
 fn draw_grid(
@@ -1286,7 +1286,7 @@ pub fn compute_context_menu_rect(menu: &GrafContextMenu, area: Rect) -> Rect {
         .max()
         .unwrap_or(0);
     let width = (max_label + 6) as u16;
-    let height = (menu.items.len() + 2) as u16;
+    let height = menu.items.len() as u16;
     let x = menu.x.min(area.x + area.width.saturating_sub(width));
     let y = menu.y.min(area.y + area.height.saturating_sub(height));
     Rect::new(x, y, width, height)
@@ -1297,6 +1297,7 @@ fn draw_context_menu(
     area: Rect,
     menu: &GrafContextMenu,
     app_theme: &crate::app_theme::AppThemeColors,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let rect = compute_context_menu_rect(menu, area);
     frame.render_widget(Clear, rect);
@@ -1306,21 +1307,63 @@ fn draw_context_menu(
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
 
+    let hovered_row = mouse_pos.and_then(|(col, row)| {
+        if col >= inner.x && col < inner.x + inner.width {
+            let r = row as i64 - inner.y as i64;
+            if r >= 0 && (r as usize) < menu.items.len() {
+                Some(r as usize)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    });
+
     for (i, item) in menu.items.iter().enumerate() {
         let row = inner.y + i as u16;
         let label = menu_item_label(*item);
         let shortcut = menu_item_shortcut_char(*item);
-        let style = if i == menu.selected {
+        let is_selected = i == menu.selected;
+        let is_hovered = hovered_row == Some(i) && !is_selected;
+        let style = if is_selected {
             Style::default()
                 .fg(app_theme.highlight_fg)
                 .bg(app_theme.highlight_bg)
                 .add_modifier(Modifier::BOLD)
+        } else if is_hovered {
+            app_theme.hover_style()
         } else {
             Style::default().fg(app_theme.fg)
         };
-        let text = format!("  {label}  {shortcut} ");
-        let para = Paragraph::new(ratatui::text::Line::from(Span::styled(text, style)));
-        frame.render_widget(para, Rect::new(inner.x, row, inner.width, 1));
+
+        // Layout: "  " + label + pad + shortcut + " " (single trailing space).
+        let label_w = label.chars().count();
+        let width = inner.width as usize;
+        let left_pad = 2;
+        let right_pad = 1;
+        let shortcut_w = 1;
+        let pad = width.saturating_sub(left_pad + label_w + shortcut_w + right_pad);
+
+        let mut spans: Vec<Span> = Vec::with_capacity(5);
+        spans.push(Span::styled("  ", style));
+        spans.push(Span::styled(label.to_string(), style));
+        if pad > 0 {
+            spans.push(Span::styled(" ".repeat(pad), style));
+        }
+        let hint_style = Style::default().fg(app_theme.muted).bg(if is_selected {
+            app_theme.highlight_bg
+        } else {
+            Color::Reset
+        });
+        spans.push(Span::styled(shortcut.to_string(), hint_style));
+        spans.push(Span::styled(" ", style));
+
+        let line = ratatui::text::Line::from(spans);
+        frame.render_widget(
+            Paragraph::new(line),
+            Rect::new(inner.x, row, inner.width, 1),
+        );
     }
 }
 
