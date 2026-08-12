@@ -76,6 +76,28 @@ fn get_edge_color(color: Option<&str>, selected: bool, theme: &AppThemeColors) -
         _ => theme.muted,
     }
 }
+
+/// Color for an edge's text in the overlay: the edge's own color when set,
+/// else the default text color.
+fn edge_overlay_color(color: Option<&str>, theme: &AppThemeColors) -> Color {
+    match color {
+        Some(s) if s.starts_with('#') && s.len() == 7 => {
+            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
+            Color::Rgb(r, g, b)
+        }
+        _ => theme.text,
+    }
+}
+
+/// A resolved row for the edge-list overlay.
+struct OverlayEdgeRow {
+    index: usize,
+    from_title: Option<String>,
+    to_title: Option<String>,
+    color: Option<String>,
+}
 #[allow(clippy::too_many_arguments)]
 fn draw_braille_segment(
     buf: &mut ratatui::buffer::Buffer,
@@ -737,20 +759,45 @@ pub fn draw_pinstar_view(
             }
         }
     }
-
     // Edge-list overlay: when a node is selected, list its connected edges
-    // (1..n with from->to) in a bottom-right legend panel for keyboard/mouse
-    // edge access.
+    // (1..n) in a bottom-right legend panel, titles colored by edge color.
     if state.selected_node_id.is_some() {
         let edges = state.selected_node_edges();
         if !edges.is_empty() {
-            let max_len = edges
+            let no_title = "(no title)".to_string();
+            let resolved: Vec<OverlayEdgeRow> = edges
                 .iter()
                 .enumerate()
                 .map(|(i, e)| {
-                    format!("{} {} → {}", i + 1, e.from_node, e.to_node)
-                        .chars()
-                        .count()
+                    let title_of = |id: &str| {
+                        state
+                            .data
+                            .nodes
+                            .iter()
+                            .find(|n| n.id() == id)
+                            .and_then(|n| n.title())
+                            .map(|t| t.to_string())
+                    };
+                    OverlayEdgeRow {
+                        index: i,
+                        from_title: title_of(&e.from_node),
+                        to_title: title_of(&e.to_node),
+                        color: e.color.clone(),
+                    }
+                })
+                .collect();
+
+            let max_len = resolved
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{} {} → {}",
+                        r.index + 1,
+                        r.from_title.as_deref().unwrap_or(no_title.as_str()),
+                        r.to_title.as_deref().unwrap_or(no_title.as_str())
+                    )
+                    .chars()
+                    .count()
                 })
                 .max()
                 .unwrap_or(0);
@@ -762,24 +809,37 @@ pub fn draw_pinstar_view(
                 overlay_width,
                 overlay_height,
             );
-            let rows: Vec<ratatui::text::Line> = edges
-                .iter()
-                .enumerate()
-                .map(|(i, e)| {
-                    ratatui::text::Line::from(vec![
-                        Span::styled(
-                            format!("{} ", i + 1),
+            let rows: Vec<ratatui::text::Line> =
+                resolved
+                    .iter()
+                    .map(|r| {
+                        let edge_color = edge_overlay_color(r.color.as_deref(), theme);
+                        let mut spans = vec![Span::styled(
+                            format!("{} ", r.index + 1),
                             Style::default()
                                 .fg(theme.accent)
                                 .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            format!("{} → {}", e.from_node, e.to_node),
-                            Style::default().fg(theme.text),
-                        ),
-                    ])
-                })
-                .collect();
+                        )];
+                        match &r.from_title {
+                            Some(title) => spans
+                                .push(Span::styled(title.clone(), Style::default().fg(edge_color))),
+                            None => spans.push(Span::styled(
+                                no_title.clone(),
+                                Style::default().fg(theme.muted),
+                            )),
+                        }
+                        spans.push(Span::styled(" → ", Style::default().fg(theme.muted)));
+                        match &r.to_title {
+                            Some(title) => spans
+                                .push(Span::styled(title.clone(), Style::default().fg(edge_color))),
+                            None => spans.push(Span::styled(
+                                no_title.clone(),
+                                Style::default().fg(theme.muted),
+                            )),
+                        }
+                        ratatui::text::Line::from(spans)
+                    })
+                    .collect();
             let overlay = Paragraph::new(rows).block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -789,6 +849,21 @@ pub fn draw_pinstar_view(
             );
             frame.render_widget(Clear, overlay_rect);
             frame.render_widget(overlay, overlay_rect);
+            // Hover highlight on overlay rows.
+            let hover_inner = Rect::new(
+                overlay_rect.x + 1,
+                overlay_rect.y + 1,
+                overlay_rect.width.saturating_sub(2),
+                overlay_rect.height.saturating_sub(2),
+            );
+            crate::ui::paint_list_hover(
+                frame,
+                hover_inner,
+                &ratatui::widgets::ListState::default(),
+                edges.len(),
+                mouse_pos,
+                theme.hover_style(),
+            );
             state.edge_overlay_rect = Some(overlay_rect);
         }
     }
