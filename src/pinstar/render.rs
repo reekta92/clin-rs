@@ -127,7 +127,7 @@ fn menu_shortcut(
     menu_type: crate::pinstar::state::PinstarMenuType,
     item: &str,
 ) -> Option<String> {
-    crate::pinstar::state::menu_item_shortcut_char(menu_type, item).map(|c| format!("[{c}]"))
+    crate::pinstar::state::menu_item_shortcut_char(menu_type, item).map(|c| format!("{c}"))
 }
 pub fn draw_pinstar_view(
     frame: &mut Frame,
@@ -852,7 +852,7 @@ pub fn draw_pinstar_view(
                 };
                 let color_square = i < menu.color_hints.len() && menu.color_hints[i].is_some();
                 let label = format!("  {item}  ");
-                let hint_str = shortcut.as_ref().map(|k| format!("[{k}]"));
+                let hint_str = shortcut.as_ref().map(|k| format!("{k}"));
                 let hint_width = hint_str.as_ref().map_or(0, |h| h.len());
                 let padding = menu_width.saturating_sub(label.len() + hint_width);
                 let hint_style = Style::default().fg(theme.muted).bg(if is_selected {
