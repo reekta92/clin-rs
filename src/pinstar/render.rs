@@ -664,6 +664,7 @@ pub fn draw_pinstar_view(
         }
     }
     state.floating_editor_rect = None;
+    state.edge_overlay_rect = None;
 
     if let Some(editor) = &mut state.floating_editor
         && let Some(node_id) = &state.selected_node_id
@@ -734,6 +735,61 @@ pub fn draw_pinstar_view(
                     cell.set_bg(muted_accent);
                 }
             }
+        }
+    }
+
+    // Edge-list overlay: when a node is selected, list its connected edges
+    // (1..n with from->to) in a bottom-right legend panel for keyboard/mouse
+    // edge access.
+    if state.selected_node_id.is_some() {
+        let edges = state.selected_node_edges();
+        if !edges.is_empty() {
+            let max_len = edges
+                .iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    format!("{} {} → {}", i + 1, e.from_node, e.to_node)
+                        .chars()
+                        .count()
+                })
+                .max()
+                .unwrap_or(0);
+            let overlay_width = (max_len + 4) as u16;
+            let overlay_height = (edges.len() + 2) as u16;
+            let overlay_rect = Rect::new(
+                canvas_area.x + canvas_area.width.saturating_sub(overlay_width),
+                canvas_area.y + canvas_area.height.saturating_sub(overlay_height),
+                overlay_width,
+                overlay_height,
+            );
+            let rows: Vec<ratatui::text::Line> = edges
+                .iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    ratatui::text::Line::from(vec![
+                        Span::styled(
+                            format!("{} ", i + 1),
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("{} → {}", e.from_node, e.to_node),
+                            Style::default().fg(theme.text),
+                        ),
+                    ])
+                })
+                .collect();
+            let overlay = Paragraph::new(rows).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" EDGES ")
+                    .border_style(Style::default().fg(theme.accent))
+                    .style(theme.bg_style()),
+            );
+            frame.render_widget(Clear, overlay_rect);
+            frame.render_widget(overlay, overlay_rect);
+            state.edge_overlay_rect = Some(overlay_rect);
         }
     }
 

@@ -32,6 +32,7 @@ pub struct PinstarState {
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
     pub(crate) text_selection_target: Option<PinstarTextField>,
     pub(crate) floating_editor_rect: Option<ratatui::layout::Rect>,
+    pub edge_overlay_rect: Option<ratatui::layout::Rect>,
     pub show_grid: bool,
     pub help_requested: bool,
     pub footer_hint: String,
@@ -165,6 +166,7 @@ impl PinstarState {
             mouse_selection: crate::text_edit::MouseTextSelection::default(),
             text_selection_target: None,
             floating_editor_rect: None,
+            edge_overlay_rect: None,
             help_requested: false,
             footer_hint: String::new(),
             keybinds,
@@ -426,6 +428,48 @@ impl PinstarState {
             menu_type: PinstarMenuType::EdgeMenu,
             color_hints: Vec::new(),
         });
+    }
+
+    /// Opens the edge context menu centered in the given view area.
+    pub fn open_edge_menu_centered(&mut self, area: ratatui::layout::Rect) {
+        let menu_x = (area.width / 2).saturating_sub(12);
+        let menu_y = area.height;
+        self.open_edge_context_menu(menu_x, menu_y);
+    }
+
+    /// Edges connected to the currently selected node, in stable storage
+    /// order. Used by the edge-list overlay and number-key selection.
+    pub fn selected_node_edges(&self) -> Vec<&crate::pinstar::data::CanvasEdge> {
+        let Some(node_id) = &self.selected_node_id else {
+            return Vec::new();
+        };
+        self.data
+            .edges
+            .iter()
+            .filter(|e| e.from_node == *node_id || e.to_node == *node_id)
+            .collect()
+    }
+
+    /// Selects the edge at the given 1-based index among the selected node's
+    /// connected edges (deselecting the node). Returns its id, or None if out
+    /// of range / no node selected.
+    pub fn select_edge_of_selected_node(&mut self, index: usize) -> Option<String> {
+        let edge_id = {
+            let edges = self.selected_node_edges();
+            if index >= 1 && index <= edges.len() {
+                Some(edges[index - 1].id.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(edge_id) = edge_id {
+            self.selected_edge_id = Some(edge_id.clone());
+            self.selected_node_id = None;
+            self.selected_node_ids.clear();
+            Some(edge_id)
+        } else {
+            None
+        }
     }
 
     pub fn save(&self) -> Result<()> {
@@ -1003,5 +1047,86 @@ mod tests {
         s.start_delete_connection();
         s.finish_delete_connection("a");
         assert_eq!(s.data.edges.len(), 0);
+    }
+
+    #[test]
+    fn edge_overlay_lists_and_selects_connected_edges() {
+        use crate::pinstar::data::{CanvasData, CanvasEdge, CanvasNode, EdgeStyle, TextNode};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.canvas");
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "a".into(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 50.0,
+                    text: "".into(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "b".into(),
+                    x: 200.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 50.0,
+                    text: "".into(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "c".into(),
+                    x: 0.0,
+                    y: 200.0,
+                    width: 100.0,
+                    height: 50.0,
+                    text: "".into(),
+                    title: None,
+                    color: None,
+                }),
+            ],
+            edges: vec![
+                CanvasEdge {
+                    id: "e1".into(),
+                    from_node: "a".into(),
+                    from_side: None,
+                    to_node: "b".into(),
+                    to_side: None,
+                    label: None,
+                    color: None,
+                    style: EdgeStyle::Solid,
+                },
+                CanvasEdge {
+                    id: "e2".into(),
+                    from_node: "a".into(),
+                    from_side: None,
+                    to_node: "c".into(),
+                    to_side: None,
+                    label: None,
+                    color: None,
+                    style: EdgeStyle::Solid,
+                },
+            ],
+        };
+        std::fs::write(&path, serde_json::to_string(&data).unwrap()).unwrap();
+        let mut s = PinstarState::load(
+            &path,
+            crate::keybinds::Keybinds::default(),
+            crate::keybinds::KeyMatcher::new(),
+        )
+        .unwrap();
+        s.selected_node_id = Some("a".into());
+        let edges = s.selected_node_edges();
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].id, "e1");
+        assert_eq!(edges[1].id, "e2");
+        assert_eq!(s.select_edge_of_selected_node(2).as_deref(), Some("e2"));
+        assert_eq!(s.selected_edge_id.as_deref(), Some("e2"));
+        assert_eq!(s.selected_node_id, None);
+        // out of range -> None
+        s.selected_node_id = Some("a".into());
+        assert_eq!(s.select_edge_of_selected_node(3), None);
     }
 }

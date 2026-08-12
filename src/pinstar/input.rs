@@ -173,6 +173,21 @@ pub fn handle_pinstar_mouse(
                 return true;
             }
 
+            // Edge-list overlay: clicking a row selects that edge and opens its
+            // context menu. Only when no menu is already open.
+            if state.context_menu.is_none()
+                && let Some(ov) = state.edge_overlay_rect
+                && mouse.column > ov.x
+                && mouse.column < ov.x + ov.width.saturating_sub(1)
+                && mouse.row > ov.y
+                && mouse.row < ov.y + ov.height.saturating_sub(1)
+            {
+                let row = mouse.row as usize - ov.y as usize - 1;
+                if state.select_edge_of_selected_node(row + 1).is_some() {
+                    state.open_edge_menu_centered(area);
+                }
+                return true;
+            }
             if let Some(floating_area) = state.floating_editor_rect
                 && let Some(editor) = &mut state.floating_editor
                 && crate::events::contains_cell(floating_area, mouse.column, mouse.row)
@@ -713,6 +728,21 @@ pub fn handle_pinstar_event(
         return true;
     }
 
+    // Edge-list overlay shortcuts: digits 1..n select the corresponding edge
+    // connected to the selected node and open its context menu. Only when not
+    // in a transient mode.
+    if let crossterm::event::KeyCode::Char(c) = key.code
+        && c.is_ascii_digit()
+        && state.connection_source_id.is_none()
+        && state.deleting_connection_source_id.is_none()
+        && state.resizing_node_id.is_none()
+    {
+        let idx = (c as u8 - b'0') as usize;
+        if state.select_edge_of_selected_node(idx).is_some() {
+            state.open_edge_menu_centered(area);
+            return true;
+        }
+    }
     // Connection / delete-connection mode: Enter/i completes the operation on
     // the selected node. Checked explicitly because Enter also binds to
     // RenameConfirm/MenuSelect/ConfirmResize, making resolve_canvas
