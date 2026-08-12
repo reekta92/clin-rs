@@ -76,7 +76,7 @@ fn get_edge_color(color: Option<&str>, selected: bool, theme: &AppThemeColors) -
         _ => theme.muted,
     }
 }
-
+#[allow(clippy::too_many_arguments)]
 fn draw_braille_segment(
     buf: &mut ratatui::buffer::Buffer,
     x1: f64,
@@ -308,28 +308,28 @@ pub fn draw_pinstar_view(
     }
 
     // Select-rect pass: drawn BEFORE group/node passes so subsequent clears paint over it
-    if state.mouse_selecting {
-        if let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end) {
-            let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
-            let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
-            let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
-            let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
-            let rect = Rect::new(
-                min_x
-                    .max(canvas_area.left() as f64)
-                    .min(canvas_area.right() as f64) as u16,
-                min_y
-                    .max(canvas_area.top() as f64)
-                    .min(canvas_area.bottom() as f64) as u16,
-                ((max_x - min_x).max(1.0)) as u16,
-                ((max_y - min_y).max(1.0)) as u16,
-            );
-            frame.render_widget(Clear, rect);
-            frame.render_widget(
-                Paragraph::new("").style(Style::default().bg(theme.highlight_bg)),
-                rect,
-            );
-        }
+    if state.mouse_selecting
+        && let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end)
+    {
+        let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
+        let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
+        let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
+        let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
+        let rect = Rect::new(
+            min_x
+                .max(canvas_area.left() as f64)
+                .min(canvas_area.right() as f64) as u16,
+            min_y
+                .max(canvas_area.top() as f64)
+                .min(canvas_area.bottom() as f64) as u16,
+            ((max_x - min_x).max(1.0)) as u16,
+            ((max_y - min_y).max(1.0)) as u16,
+        );
+        frame.render_widget(Clear, rect);
+        frame.render_widget(
+            Paragraph::new("").style(Style::default().bg(theme.highlight_bg)),
+            rect,
+        );
     }
 
     for (idx, p) in proj.iter().enumerate() {

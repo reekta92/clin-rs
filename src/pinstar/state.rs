@@ -200,7 +200,7 @@ impl PinstarState {
             .map(|n| n.id().to_string())
             .collect();
         if !ids.is_empty() {
-            self.selected_node_id = Some(ids.iter().next().unwrap().clone());
+            self.selected_node_id = Some(ids.iter().next().expect("non-empty ids").clone());
         }
         self.selected_node_ids = ids;
     }
@@ -540,7 +540,7 @@ impl PinstarState {
         if let Some(text) = editor_text {
             if self.selected_node_id.is_some() {
                 self.record_undo_state();
-                let node_id = self.selected_node_id.as_ref().unwrap();
+                let node_id = self.selected_node_id.as_ref().expect("checked is_some above");
                 for node in &mut self.data.nodes {
                     if node.id() == node_id {
                         node.set_text(text);
