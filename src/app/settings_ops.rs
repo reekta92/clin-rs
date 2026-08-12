@@ -715,6 +715,22 @@ impl App {
         }
     }
 
+    pub fn toggle_scrollbar_pan_mode(&mut self) {
+        self.config.ui.scrollbar_pan_mode = !self.config.ui.scrollbar_pan_mode;
+        self.list.list_viewport_offset = None;
+        self.set_temporary_status_static(if self.config.ui.scrollbar_pan_mode {
+            "Scrollbar pan mode on"
+        } else {
+            "Scrollbar pan mode off"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
+            config.ui.scrollbar_pan_mode = self.config.ui.scrollbar_pan_mode;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_syntax_highlighting(&mut self) {
         self.config.core.syntax_highlighting = !self.config.core.syntax_highlighting;
         self.set_temporary_status_static(if self.config.core.syntax_highlighting {

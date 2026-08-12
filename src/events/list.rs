@@ -8,6 +8,11 @@ use crate::list_view::ListMode;
 use super::contains_cell;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    // Snap-only: first key after scrollbar pan snaps viewport back to
+    // selection and is consumed.
+    if app.list.list_viewport_offset.take().is_some() {
+        return true;
+    }
     if app.layout_edit {
         match key.code {
             KeyCode::Esc => {
@@ -563,19 +568,42 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         && let Some(meta) = app.list.last_scroll
     {
         let content_len = meta.content_len;
-        let frac = app.list.visual_index as f32 / content_len.max(1).saturating_sub(1) as f32;
-        if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
-            &mouse_event,
-            meta,
-            frac,
-            &mut app.list.scroll_drag,
-        ) {
-            let max_pos = content_len.saturating_sub(1);
-            let pos = (new_frac * max_pos as f32).round() as usize;
-            app.list.list_state.select(Some(pos.min(max_pos)));
-            app.list.visual_index = pos.min(max_pos);
-            app.request_preview_update_immediate();
-            return;
+        let viewport_len = meta.viewport_len;
+        let max_off = content_len.saturating_sub(viewport_len);
+
+        if app.config.ui.scrollbar_pan_mode {
+            // Pan viewport only; leave visual_index + list_state untouched.
+            let cur_off = app
+                .list
+                .list_viewport_offset
+                .unwrap_or(app.list.list_state.offset())
+                .min(max_off);
+            let frac = cur_off as f32 / max_off.max(1) as f32;
+            if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                &mouse_event,
+                meta,
+                frac,
+                &mut app.list.scroll_drag,
+            ) {
+                let off = ((new_frac * max_off as f32).round() as usize).min(max_off);
+                app.list.list_viewport_offset = Some(off);
+                return;
+            }
+        } else {
+            let frac = app.list.visual_index as f32 / content_len.max(1).saturating_sub(1) as f32;
+            if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                &mouse_event,
+                meta,
+                frac,
+                &mut app.list.scroll_drag,
+            ) {
+                let max_pos = content_len.saturating_sub(1);
+                let pos = (new_frac * max_pos as f32).round() as usize;
+                app.list.list_state.select(Some(pos.min(max_pos)));
+                app.list.visual_index = pos.min(max_pos);
+                app.request_preview_update_immediate();
+                return;
+            }
         }
     }
 
@@ -770,6 +798,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if mouse_event.kind == MouseEventKind::ScrollUp {
+        app.list.list_viewport_offset = None;
         let current = app.list.list_state.selected().unwrap_or(0);
         app.list.list_state.select(Some(current.saturating_sub(1)));
 
@@ -778,6 +807,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if mouse_event.kind == MouseEventKind::ScrollDown {
+        app.list.list_viewport_offset = None;
         handle_list_keys(app, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         return;
     }
@@ -991,6 +1021,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         ) else {
             return;
         };
+        app.list.list_viewport_offset = None;
         app.list.visual_index = clicked_visual_index;
         app.request_preview_update_immediate();
         if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
@@ -1019,6 +1050,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         ) else {
             return;
         };
+        app.list.list_viewport_offset = None;
         if app.list.notes_layout == crate::config::NotesLayout::Tree
             && let Some(crate::list_view::VisualItem::Note { .. }) =
                 app.list.visual_list.get(clicked_visual_index)
