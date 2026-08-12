@@ -217,6 +217,31 @@ pub fn draw_pinstar_view(
         }
     }
 
+    // Select-rect pass: drawn BEFORE group/node passes so subsequent clears paint over it
+    if state.mouse_selecting {
+        if let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end) {
+            let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
+            let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
+            let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
+            let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
+            let rect = Rect::new(
+                min_x
+                    .max(canvas_area.left() as f64)
+                    .min(canvas_area.right() as f64) as u16,
+                min_y
+                    .max(canvas_area.top() as f64)
+                    .min(canvas_area.bottom() as f64) as u16,
+                ((max_x - min_x).max(1.0)) as u16,
+                ((max_y - min_y).max(1.0)) as u16,
+            );
+            frame.render_widget(Clear, rect);
+            frame.render_widget(
+                Paragraph::new("").style(Style::default().bg(theme.highlight_bg)),
+                rect,
+            );
+        }
+    }
+
     for (idx, p) in proj.iter().enumerate() {
         if !p.is_group {
             continue;
@@ -248,8 +273,9 @@ pub fn draw_pinstar_view(
             (bottom - top) as u16,
         );
 
-        let is_selected = state.selected_node_id.as_deref() == Some(g.id.as_str());
-        let is_editing = is_selected && state.floating_editor.is_some();
+        let is_primary = state.selected_node_id.as_deref() == Some(g.id.as_str());
+        let is_selected = is_primary || state.selected_node_ids.contains(g.id.as_str());
+        let is_editing = is_primary && state.floating_editor.is_some();
         let base_color = get_node_color(g.color.as_deref(), theme);
         let border_color = if is_editing { theme.accent } else { base_color };
 
@@ -469,8 +495,10 @@ pub fn draw_pinstar_view(
 
         frame.render_widget(Clear, node_rect);
 
-        let is_selected = state.selected_node_id.as_deref() == Some(node.id());
-        let is_editing = is_selected && state.floating_editor.is_some();
+        // Multi-select: check both single-selection and multi-selection
+        let is_primary = state.selected_node_id.as_deref() == Some(node.id());
+        let is_selected = is_primary || state.selected_node_ids.contains(node.id());
+        let is_editing = is_primary && state.floating_editor.is_some();
 
         let node_color_attr = match node {
             crate::pinstar::data::CanvasNode::Text(n) => n.color.as_deref(),

@@ -53,7 +53,41 @@ pub fn handle_pinstar_mouse(
 
             let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
             state.select_node_at(cx, cy);
-            state.open_context_menu(mouse.column, mouse.row, cx, cy);
+            state.mouse_dragged = false;
+            state.select_rect_start = Some((cx, cy));
+            state.drag_start_pos = Some((cx, cy));
+            true
+        }
+        MouseEventKind::Drag(MouseButton::Right) => {
+            state.mouse_dragged = true;
+            if state.connection_source_id.is_none()
+                && state.deleting_connection_source_id.is_none()
+                && state.resizing_node_id.is_none()
+                && state.selected_node_id.is_none()
+            {
+                let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
+                state.mouse_selecting = true;
+                state.select_rect_end = Some((cx, cy));
+                if let Some(start) = state.select_rect_start {
+                    state.select_nodes_in_rect(start.0, start.1, cx, cy);
+                }
+            }
+            true
+        }
+        MouseEventKind::Up(MouseButton::Right) => {
+            if state.mouse_selecting {
+                state.mouse_selecting = false;
+                state.select_rect_start = None;
+                state.select_rect_end = None;
+                state.drag_start_pos = None;
+                return true;
+            }
+            if !state.mouse_dragged {
+                let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
+                state.select_node_at(cx, cy);
+                state.open_context_menu(mouse.column, mouse.row, cx, cy);
+            }
+            state.drag_start_pos = None;
             true
         }
         MouseEventKind::Down(MouseButton::Middle) => {
@@ -427,16 +461,7 @@ fn execute_menu_action(
                 });
             }
             5 => state.delete_node_connections(),
-            6 => {
-                let id_clone = id.clone();
-                state.data.nodes.retain(|n| n.id() != id_clone);
-                state
-                    .data
-                    .edges
-                    .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
-                state.selected_node_id = None;
-                let _ = state.save();
-            }
+            6 => state.delete_selected_node(),
             _ => {}
         }
     } else {

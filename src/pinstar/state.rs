@@ -42,9 +42,13 @@ pub struct PinstarState {
     pub image_picker: Option<ratatui_image::picker::Picker>,
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub is_panning: bool,
-    pub last_zoom_at: Option<std::time::Instant>,
     pub undo_stack: Vec<PinstarSnapshot>,
     pub redo_stack: Vec<PinstarSnapshot>,
+    pub select_rect_start: Option<(f64, f64)>,
+    pub select_rect_end: Option<(f64, f64)>,
+    pub mouse_selecting: bool,
+    pub mouse_dragged: bool,
+    pub last_zoom_at: Option<std::time::Instant>,
 }
 
 #[derive(Clone)]
@@ -122,6 +126,10 @@ impl PinstarState {
             last_zoom_at: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            select_rect_start: None,
+            select_rect_end: None,
+            mouse_selecting: false,
+            mouse_dragged: false,
         })
     }
 
@@ -161,6 +169,47 @@ impl PinstarState {
             self.sync_to_raw_editor();
         }
         Ok(())
+    }
+
+    pub fn all_selected_node_ids(&self) -> std::collections::HashSet<String> {
+        let mut ids = self.selected_node_ids.clone();
+        if let Some(id) = &self.selected_node_id {
+            ids.insert(id.clone());
+        }
+        ids
+    }
+    pub fn select_nodes_in_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
+        let (min_x, max_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
+        let (min_y, max_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };
+        let ids: std::collections::HashSet<String> = self
+            .data
+            .nodes
+            .iter()
+            .filter(|n| {
+                let (nx, ny) = n.pos();
+                let (nw, nh) = n.size();
+                nx + nw > min_x && nx < max_x && ny + nh > min_y && ny < max_y
+            })
+            .map(|n| n.id().to_string())
+            .collect();
+        if !ids.is_empty() {
+            self.selected_node_id = Some(ids.iter().next().unwrap().clone());
+        }
+        self.selected_node_ids = ids;
+    }
+    pub fn delete_selected_node(&mut self) {
+        let ids = self.all_selected_node_ids();
+        if ids.is_empty() {
+            return;
+        }
+        self.record_undo_state();
+        self.data.nodes.retain(|n| !ids.contains(n.id()));
+        self.data
+            .edges
+            .retain(|e| !ids.contains(&e.from_node) && !ids.contains(&e.to_node));
+        self.selected_node_id = None;
+        self.selected_node_ids.clear();
+        let _ = self.save();
     }
 
     pub fn save(&self) -> Result<()> {
@@ -424,34 +473,34 @@ impl PinstarState {
     }
 
     pub fn delete_node_connections(&mut self) {
-        let id = self.selected_node_id.clone();
-        if let Some(id) = id {
-            self.record_undo_state();
-            let id_clone = id.clone();
-            self.data
-                .edges
-                .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
-            let _ = self.save();
+        let ids = self.all_selected_node_ids();
+        if ids.is_empty() {
+            return;
         }
+        self.record_undo_state();
+        self.data
+            .edges
+            .retain(|e| !ids.contains(&e.from_node) && !ids.contains(&e.to_node));
+        let _ = self.save();
     }
 
     pub fn set_node_color(&mut self, color: Option<String>) {
-        let id = self.selected_node_id.clone();
-        if let Some(id) = id {
-            self.record_undo_state();
-            for node in &mut self.data.nodes {
-                if node.id() == id {
-                    match node {
-                        crate::pinstar::data::CanvasNode::Text(n) => n.color = color.clone(),
-                        crate::pinstar::data::CanvasNode::File(n) => n.color = color.clone(),
-                        crate::pinstar::data::CanvasNode::Link(n) => n.color = color.clone(),
-                        crate::pinstar::data::CanvasNode::Group(n) => n.color = color.clone(),
-                    }
-                    break;
+        let ids = self.all_selected_node_ids();
+        if ids.is_empty() {
+            return;
+        }
+        self.record_undo_state();
+        for node in &mut self.data.nodes {
+            if ids.contains(node.id()) {
+                match node {
+                    crate::pinstar::data::CanvasNode::Text(n) => n.color = color.clone(),
+                    crate::pinstar::data::CanvasNode::File(n) => n.color = color.clone(),
+                    crate::pinstar::data::CanvasNode::Link(n) => n.color = color.clone(),
+                    crate::pinstar::data::CanvasNode::Group(n) => n.color = color.clone(),
                 }
             }
-            let _ = self.save();
         }
+        let _ = self.save();
     }
 
     pub fn add_text_node(&mut self, x: f64, y: f64) {
