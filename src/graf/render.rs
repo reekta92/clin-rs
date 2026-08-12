@@ -1397,9 +1397,11 @@ pub fn draw_looking_glass(
         return;
     };
 
+    let bg = colors.background_color.unwrap_or(Color::Black);
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(colors.minimap_border_color));
+        .border_style(Style::default().fg(colors.minimap_border_color))
+        .style(Style::default().bg(bg));
     let inner = block.inner(overlay);
     frame.render_widget(block, overlay);
     if inner.width < 4 || inner.height < 4 {
@@ -1450,7 +1452,7 @@ pub fn draw_looking_glass(
         color: node_color,
         radius,
         extra_tag_colors,
-        is_selected: true,
+        is_selected: false,
         is_hovered: false,
         selection_ring_color: colors.selected_indicator_color,
         shape: config.graf.visual.node_shape,
@@ -1463,6 +1465,7 @@ pub fn draw_looking_glass(
     let half_w = half_h * crate::graf::viewport::CELL_ASPECT * aspect;
 
     let canvas = Canvas::default()
+        .background_color(bg)
         .marker(ratatui::symbols::Marker::from(
             config.graf.visual.canvas_marker,
         ))
