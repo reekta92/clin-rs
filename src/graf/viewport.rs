@@ -61,6 +61,16 @@ impl Viewport {
         (clamp_world(wx), clamp_world(wy))
     }
 
+    pub fn world_to_screen(&self, wx: f64, wy: f64, area: Rect) -> (f64, f64) {
+        let aspect = area.width as f64 / area.height as f64;
+        let [x_left, x_right] = self.x_bounds(aspect);
+        let [y_bottom, y_top] = self.y_bounds(aspect);
+
+        let col = area.x as f64 + ((wx - x_left) / (x_right - x_left)) * area.width as f64;
+        let row = area.y as f64 + ((y_top - wy) / (y_top - y_bottom)) * area.height as f64;
+        (col, row)
+    }
+
     #[must_use]
     pub fn auto_fit_from_graph(
         &self,
@@ -340,6 +350,7 @@ mod tests {
             simulation: Simulation::from_graph(graph, SimulationParameters::default()),
             viewport: Viewport::default(),
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
@@ -350,6 +361,15 @@ mod tests {
             spatial_grid: SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            focus_filter: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
 
         for (i, &idx) in idxs.iter().enumerate() {

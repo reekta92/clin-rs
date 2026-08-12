@@ -173,6 +173,17 @@ pub enum GraphAction {
     Refresh,
     ReloadConfig,
     TogglePreview,
+    OpenContextMenu,
+    CreateConnection,
+    DeleteConnection,
+    LocalGraph,
+    ShowGroup,
+    DeleteNode,
+    MenuClose,
+    MenuUp,
+    MenuDown,
+    MenuSelect,
+    LookingGlass,
 }
 
 #[derive(

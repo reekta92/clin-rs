@@ -514,6 +514,14 @@ label_offset = 4.0
 # Number of grid divisions.
 grid_divisions = 10
 
+
+# Show enlarged selected-node overlay ("looking glass") in graph view.
+show_looking_glass = true
+
+# Looking glass dimensions.
+looking_glass_width = 24
+looking_glass_height = 12
+
 [graf.visual.colors]
 # Custom colors for graph elements (hex strings).
 # node_color = "#ffffff"

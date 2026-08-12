@@ -5,14 +5,17 @@ use crate::app::ViewMode;
 use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
 };
-use crate::graf::graph::GraphState;
+use crate::graf::graph::{
+    FocusFilter, GrafContextMenu, GraphState, menu_item_label, menu_item_shortcut_char,
+};
 use crate::graf::spatial::SpatialGrid;
 use crate::graf::viewport::Viewport;
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
@@ -274,6 +277,7 @@ pub struct FeatureFlags {
     pub show_grid: bool,
     pub show_minimap: bool,
     pub show_status_bar: bool,
+    pub show_looking_glass: bool,
 }
 
 pub struct RenderCache {
@@ -301,6 +305,16 @@ pub struct RenderCache {
 impl Default for RenderCache {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn node_passes_filter(idx: NodeIndex, filter: Option<&FocusFilter>) -> bool {
+    match filter {
+        None => true,
+        Some(FocusFilter::Local { anchor, neighbors }) => {
+            idx == *anchor || neighbors.contains(&idx)
+        }
+        Some(FocusFilter::Group(set)) => set.contains(&idx),
     }
 }
 
@@ -432,6 +446,7 @@ impl RenderCache {
         config: &ClinConfig,
         edge_color: Color,
         tier: LodTier,
+        filter: &Option<FocusFilter>,
     ) {
         self.edges.clear();
 
@@ -442,9 +457,10 @@ impl RenderCache {
 
         let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
-            // Skip edge if neither endpoint is visible
-            if !self.visible_nodes.contains(&edge.source()) {
-                self.visible_nodes.contains(&edge.target());
+            if !node_passes_filter(edge.source(), filter.as_ref())
+                || !node_passes_filter(edge.target(), filter.as_ref())
+            {
+                continue;
             }
 
             let src = &graph[edge.source()];
@@ -485,11 +501,13 @@ impl RenderCache {
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
+        selected_nodes: &HashSet<NodeIndex>,
         selection_ring_color: Color,
         hovered_node: Option<NodeIndex>,
         spatial_grid: &SpatialGrid,
         x_bounds: [f64; 2],
         y_bounds: [f64; 2],
+        filter: &Option<FocusFilter>,
     ) -> LodTier {
         self.nodes.clear();
         self.visible_nodes.clear();
@@ -498,19 +516,30 @@ impl RenderCache {
             self.visible_nodes.insert(idx);
         });
 
-        // Always include selected node even if off-screen
+        // Always include selected node(s) even if off-screen
         if let Some(sel) = selected_node {
             self.visible_nodes.insert(sel);
         }
+        for idx in selected_nodes {
+            self.visible_nodes.insert(*idx);
+        }
 
-        // Determine LOD tier from visible node count
-        let tier = match self.visible_nodes.len() {
+        // Determine LOD tier from visible node count (after focus filter)
+        let filtered_count = self
+            .visible_nodes
+            .iter()
+            .filter(|idx| node_passes_filter(**idx, filter.as_ref()))
+            .count();
+        let tier = match filtered_count {
             0..=200 => LodTier::Full,
             201..=1000 => LodTier::Medium,
             _ => LodTier::Minimal,
         };
 
         for &idx in &self.visible_nodes {
+            if !node_passes_filter(idx, filter.as_ref()) {
+                continue;
+            }
             let node = &graph[idx];
             let primary_color = self
                 .node_own_color
@@ -530,7 +559,7 @@ impl RenderCache {
                 }
             };
 
-            let is_selected = selected_node == Some(idx);
+            let is_selected = selected_node == Some(idx) || selected_nodes.contains(&idx);
             let is_hovered = hovered_node == Some(idx) && !is_selected;
 
             match tier {
@@ -595,8 +624,10 @@ impl RenderCache {
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
+        selected_nodes: &HashSet<NodeIndex>,
         min_offset_y: f64,
         tier: LodTier,
+        filter: &Option<FocusFilter>,
     ) {
         self.labels.clear();
 
@@ -650,9 +681,11 @@ impl RenderCache {
 
         let should_show = |idx: NodeIndex| -> bool {
             match config.graf.visual.label_mode {
-                LabelMode::Selected => selected_node == Some(idx),
+                LabelMode::Selected => selected_node == Some(idx) || selected_nodes.contains(&idx),
                 LabelMode::Neighbors => {
-                    selected_node == Some(idx) || self.selected_neighbors.contains(&idx)
+                    selected_node == Some(idx)
+                        || selected_nodes.contains(&idx)
+                        || self.selected_neighbors.contains(&idx)
                 }
                 LabelMode::All => true,
                 LabelMode::None => false,
@@ -660,7 +693,7 @@ impl RenderCache {
         };
 
         for &idx in &self.visible_nodes {
-            if !should_show(idx) {
+            if !node_passes_filter(idx, filter.as_ref()) || !should_show(idx) {
                 continue;
             }
             let node = &graph[idx];
@@ -712,25 +745,38 @@ pub fn draw_graph_view(
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
 
+    let selected_set: HashSet<NodeIndex> = {
+        let mut s = state.selected_nodes.clone();
+        if let Some(idx) = state.selected_node {
+            s.insert(idx);
+        }
+        s
+    };
+    let filter = &state.focus_filter;
+
     let tier = cache.fill_nodes(
         graph,
         config,
         state.selected_node,
+        &selected_set,
         colors.selected_indicator_color,
         hovered_node,
         &state.spatial_grid,
         x_bounds,
         y_bounds,
+        filter,
     );
-    cache.fill_edges(graph, config, colors.edge_color, tier);
+    cache.fill_edges(graph, config, colors.edge_color, tier, filter);
     let cell_world_height =
         (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
     cache.fill_labels(
         graph,
         config,
         state.selected_node,
+        &selected_set,
         cell_world_height * 1.5,
         tier,
+        filter,
     );
     let edges_ref = &cache.edges;
     let nodes_ref = &cache.nodes;
@@ -892,6 +938,7 @@ pub fn draw_graph_view(
                 graph_bounds: state.graph_bounds,
                 node_colors: &cache.node_own_color,
                 colors: &colors,
+                filter,
             },
             &mut minimap_grid,
             cache.minimap_dirty,
@@ -899,6 +946,68 @@ pub fn draw_graph_view(
 
         cache.minimap_grid = minimap_grid;
         cache.minimap_dirty = false;
+    }
+
+    // Right-drag box-select rectangle.
+    if let (Some(start), Some(curr)) = (state.box_select_start, state.box_select_curr)
+        && state.right_down_pos.is_some()
+    {
+        let (col0, row0) = viewport.world_to_screen(start.0, start.1, canvas_area);
+        let (col1, row1) = viewport.world_to_screen(curr.0, curr.1, canvas_area);
+        let min_col = col0.min(col1).floor().max(canvas_area.x as f64) as u16;
+        let max_col = col0
+            .max(col1)
+            .ceil()
+            .min((canvas_area.x + canvas_area.width - 1) as f64) as u16;
+        let min_row = row0.min(row1).floor().max(canvas_area.y as f64) as u16;
+        let max_row = row0
+            .max(row1)
+            .ceil()
+            .min((canvas_area.y + canvas_area.height - 1) as f64) as u16;
+        let style = Style::default().fg(colors.selected_indicator_color);
+        let buf = frame.buffer_mut();
+        for c in min_col..=max_col {
+            if let Some(cell) = buf.cell_mut((c, min_row)) {
+                cell.set_symbol("─").set_style(style);
+            }
+            if let Some(cell) = buf.cell_mut((c, max_row)) {
+                cell.set_symbol("─").set_style(style);
+            }
+        }
+        for r in min_row..=max_row {
+            if let Some(cell) = buf.cell_mut((min_col, r)) {
+                cell.set_symbol("│").set_style(style);
+            }
+            if let Some(cell) = buf.cell_mut((max_col, r)) {
+                cell.set_symbol("│").set_style(style);
+            }
+        }
+        for (col, row, sym) in [
+            (min_col, min_row, "┌"),
+            (max_col, min_row, "┐"),
+            (min_col, max_row, "└"),
+            (max_col, max_row, "┘"),
+        ] {
+            if let Some(cell) = buf.cell_mut((col, row)) {
+                cell.set_symbol(sym).set_style(style);
+            }
+        }
+    }
+
+    if flags.show_looking_glass && state.selected_node.is_some() {
+        draw_looking_glass(
+            frame,
+            canvas_area,
+            state,
+            config,
+            &colors,
+            app_theme,
+            &cache,
+        );
+    }
+
+    if let Some(menu) = &state.context_menu {
+        draw_context_menu(frame, canvas_area, menu, app_theme);
     }
 }
 fn draw_grid(
@@ -989,6 +1098,7 @@ struct MinimapParams<'a> {
     graph_bounds: (f64, f64, f64, f64),
     node_colors: &'a HashMap<NodeIndex, Color>,
     colors: &'a crate::config::ThemeColors,
+    filter: &'a Option<FocusFilter>,
 }
 fn draw_minimap(
     frame: &mut ratatui::Frame,
@@ -1046,8 +1156,10 @@ fn draw_minimap(
     if dirty || grid.len() != grid_size {
         grid.resize(grid_size, None);
         grid.fill(None);
-
         for idx in params.graph.node_indices() {
+            if !node_passes_filter(idx, params.filter.as_ref()) {
+                continue;
+            }
             let node = &params.graph[idx];
             let nx = node.location.x as f64;
             let ny = node.location.y as f64;
@@ -1166,6 +1278,198 @@ fn draw_minimap(
     }
 }
 
+pub fn compute_context_menu_rect(menu: &GrafContextMenu, area: Rect) -> Rect {
+    let max_label = menu
+        .items
+        .iter()
+        .map(|i| menu_item_label(*i).len())
+        .max()
+        .unwrap_or(0);
+    let width = (max_label + 6) as u16;
+    let height = (menu.items.len() + 2) as u16;
+    let x = menu.x.min(area.x + area.width.saturating_sub(width));
+    let y = menu.y.min(area.y + area.height.saturating_sub(height));
+    Rect::new(x, y, width, height)
+}
+
+fn draw_context_menu(
+    frame: &mut ratatui::Frame,
+    area: Rect,
+    menu: &GrafContextMenu,
+    app_theme: &crate::app_theme::AppThemeColors,
+) {
+    let rect = compute_context_menu_rect(menu, area);
+    frame.render_widget(Clear, rect);
+    let block = Block::default()
+        .borders(Borders::NONE)
+        .style(app_theme.preview_bg_style());
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+
+    for (i, item) in menu.items.iter().enumerate() {
+        let row = inner.y + i as u16;
+        let label = menu_item_label(*item);
+        let shortcut = menu_item_shortcut_char(*item);
+        let style = if i == menu.selected {
+            Style::default()
+                .fg(app_theme.highlight_fg)
+                .bg(app_theme.highlight_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(app_theme.fg)
+        };
+        let text = format!("  {label}  {shortcut} ");
+        let para = Paragraph::new(ratatui::text::Line::from(Span::styled(text, style)));
+        frame.render_widget(para, Rect::new(inner.x, row, inner.width, 1));
+    }
+}
+
+fn compute_looking_glass_area(area: Rect, config: &ClinConfig) -> Option<Rect> {
+    let w = config.graf.visual.looking_glass_width;
+    let h = config.graf.visual.looking_glass_height;
+    let minimap_w = config.graf.visual.minimap_width;
+    if area.width < w.saturating_add(minimap_w).saturating_add(2) {
+        return None;
+    }
+    Some(Rect::new(area.x + 1, area.y + 1, w, h))
+}
+
+pub fn draw_looking_glass(
+    frame: &mut ratatui::Frame,
+    area: Rect,
+    state: &GraphState,
+    config: &ClinConfig,
+    colors: &crate::config::ThemeColors,
+    app_theme: &crate::app_theme::AppThemeColors,
+    cache: &RenderCache,
+) {
+    let Some(idx) = state.selected_node else {
+        return;
+    };
+    let graph = state.simulation.get_graph();
+    let Some(node) = graph.node_weight(idx) else {
+        return;
+    };
+    let Some(overlay) = compute_looking_glass_area(area, config) else {
+        return;
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(colors.minimap_border_color))
+        .title(" Looking Glass ");
+    let inner = block.inner(overlay);
+    frame.render_widget(block, overlay);
+    if inner.width < 4 || inner.height < 4 {
+        return;
+    }
+
+    let sub_w = inner.width as usize * 2;
+    let sub_h = inner.height as usize * 4;
+    let mut canvas: Vec<Option<Color>> = vec![None; sub_w * sub_h];
+
+    let cx = sub_w as f64 / 2.0;
+    let cy = sub_h as f64 / 2.0;
+    let radius = (sub_w.min(sub_h) as f64) * 0.4;
+    let node_color = cache
+        .node_own_color
+        .get(&idx)
+        .copied()
+        .unwrap_or(Color::Gray);
+
+    let shape_inside = |x: f64, y: f64| -> bool {
+        let dx = (x - cx).abs();
+        let dy = (y - cy).abs();
+        match config.graf.visual.node_shape {
+            NodeShape::Circle => {
+                let r = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+                r <= radius
+            }
+            NodeShape::Square => dx <= radius && dy <= radius,
+            NodeShape::Diamond => dx + dy <= radius,
+        }
+    };
+
+    for sy in 0..sub_h {
+        for sx in 0..sub_w {
+            let x = sx as f64 + 0.5;
+            let y = sy as f64 + 0.5;
+            if shape_inside(x, y) {
+                canvas[sy * sub_w + sx] = Some(node_color);
+            }
+        }
+    }
+
+    let ring_margin = (radius * 0.35).max(1.5);
+    for sy in 0..sub_h {
+        for sx in 0..sub_w {
+            let x = sx as f64 + 0.5;
+            let y = sy as f64 + 0.5;
+            let d = match config.graf.visual.node_shape {
+                NodeShape::Circle => ((x - cx).powi(2) + (y - cy).powi(2)).sqrt(),
+                NodeShape::Square => (x - cx).abs().max((y - cy).abs()),
+                NodeShape::Diamond => (x - cx).abs() + (y - cy).abs(),
+            };
+            if d > radius && d <= radius + ring_margin {
+                canvas[sy * sub_w + sx] = Some(colors.selected_indicator_color);
+            }
+        }
+    }
+
+    let tags: Vec<Color> = node
+        .data
+        .tags
+        .iter()
+        .skip(1)
+        .filter_map(|t| cache.tag_colors.get(t).copied())
+        .take(8)
+        .collect();
+    let orbit = radius + 2.0;
+    for (i, color) in tags.iter().enumerate() {
+        let angle = (i as f64) * std::f64::consts::TAU / (tags.len().max(1) as f64)
+            - std::f64::consts::FRAC_PI_2;
+        let ox = cx + orbit * angle.cos();
+        let oy = cy + orbit * angle.sin();
+        let sx = ox.round() as isize;
+        let sy = oy.round() as isize;
+        if sx >= 0 && sy >= 0 && (sx as usize) < sub_w && (sy as usize) < sub_h {
+            canvas[sy as usize * sub_w + sx as usize] = Some(*color);
+        }
+    }
+
+    let buf = frame.buffer_mut();
+    for cell_row in 0..inner.height as usize {
+        for cell_col in 0..inner.width as usize {
+            let x = inner.x + cell_col as u16;
+            let y = inner.y + cell_row as u16;
+            for dot_y in 0..4u16 {
+                let sy = cell_row * 4 + dot_y as usize;
+                for dot_x in 0..2u16 {
+                    let sx = cell_col * 2 + dot_x as usize;
+                    if let Some(color) = canvas[sy * sub_w + sx] {
+                        crate::ui::braille::set_braille_dot(buf, x, y, dot_x, dot_y, color);
+                    }
+                }
+            }
+        }
+    }
+
+    let title =
+        crate::graf::util::truncate(&node.data.title, (inner.width.saturating_sub(2)) as usize);
+    let meta = format!("{} links · {}", node.data.link_count, node.data.folder);
+    let lines = vec![
+        ratatui::text::Line::from(Span::styled(title, Style::default().fg(colors.label_color))),
+        ratatui::text::Line::from(Span::styled(meta, Style::default().fg(app_theme.muted))),
+    ];
+    let text_rect = Rect::new(
+        inner.x,
+        inner.y + inner.height.saturating_sub(2),
+        inner.width,
+        2,
+    );
+    frame.render_widget(Paragraph::new(lines), text_rect);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1220,6 +1524,8 @@ mod tests {
         let mut cache = RenderCache::new();
         let mut config = ClinConfig::default();
         let grid = setup_spatial_grid(&graph);
+        let selected_nodes = std::collections::HashSet::new();
+        let filter: Option<crate::graf::graph::FocusFilter> = None;
 
         // 1. LabelMode::None
         config.graf.visual.label_mode = crate::config::LabelMode::None;
@@ -1227,13 +1533,23 @@ mod tests {
             &graph,
             &config,
             Some(idx1),
+            &selected_nodes,
             ratatui::style::Color::Red,
             None,
             &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
+            &filter,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        cache.fill_labels(
+            &graph,
+            &config,
+            Some(idx1),
+            &selected_nodes,
+            0.0,
+            _tier,
+            &filter,
+        );
         assert!(cache.labels.is_empty());
 
         // 2. LabelMode::All
@@ -1242,13 +1558,23 @@ mod tests {
             &graph,
             &config,
             Some(idx1),
+            &selected_nodes,
             ratatui::style::Color::Red,
             None,
             &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
+            &filter,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        cache.fill_labels(
+            &graph,
+            &config,
+            Some(idx1),
+            &selected_nodes,
+            0.0,
+            _tier,
+            &filter,
+        );
         assert_eq!(cache.labels.len(), 3);
 
         // 3. LabelMode::Selected
@@ -1257,13 +1583,23 @@ mod tests {
             &graph,
             &config,
             Some(idx1),
+            &selected_nodes,
             ratatui::style::Color::Red,
             None,
             &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
+            &filter,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        cache.fill_labels(
+            &graph,
+            &config,
+            Some(idx1),
+            &selected_nodes,
+            0.0,
+            _tier,
+            &filter,
+        );
         assert_eq!(cache.labels.len(), 1);
         assert_eq!(
             cache.label_texts.get(&cache.labels[0].node_idx).unwrap(),
@@ -1276,13 +1612,23 @@ mod tests {
             &graph,
             &config,
             Some(idx1),
+            &selected_nodes,
             ratatui::style::Color::Red,
             None,
             &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
+            &filter,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
+        cache.fill_labels(
+            &graph,
+            &config,
+            Some(idx1),
+            &selected_nodes,
+            0.0,
+            _tier,
+            &filter,
+        );
         // Node 1 (selected) and Node 2 (neighbor) should have labels. Node 3 (distant) should not.
         assert_eq!(cache.labels.len(), 2);
         let mut names: Vec<String> = cache
@@ -1298,14 +1644,24 @@ mod tests {
             &graph,
             &config,
             Some(idx1),
+            &selected_nodes,
             ratatui::style::Color::Red,
             None,
             &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
+            &filter,
         );
         config.graf.visual.label_mode = crate::config::LabelMode::Selected;
-        cache.fill_labels(&graph, &config, Some(idx1), 10.0, _tier);
+        cache.fill_labels(
+            &graph,
+            &config,
+            Some(idx1),
+            &selected_nodes,
+            10.0,
+            _tier,
+            &filter,
+        );
         assert_eq!(cache.labels.len(), 1);
         let label = &cache.labels[0];
         let node_y = graph[idx1].location.y as f64;
@@ -1317,7 +1673,15 @@ mod tests {
         // The default label_offset is 4.0, but min_offset_y is 10.0. The actual offset should be 10.0.
         assert_eq!(label.y, node_y + radius + 10.0);
 
-        cache.fill_labels(&graph, &config, Some(idx1), 1.0, _tier);
+        cache.fill_labels(
+            &graph,
+            &config,
+            Some(idx1),
+            &selected_nodes,
+            1.0,
+            _tier,
+            &filter,
+        );
         let label = &cache.labels[0];
         // The default label_offset is 4.0, which is larger than min_offset_y of 1.0. The actual offset should be 4.0.
         assert_eq!(label.y, node_y + radius + 4.0);

@@ -46,6 +46,7 @@ use fdg_sim::petgraph::graph::NodeIndex;
 use crossterm::event::KeyCode;
 
 use crate::config::ClinConfig;
+use crate::graf::graph::{FocusFilter, GrafMenuItem, ModeBanner};
 use crate::graf::input::GraphMouseState;
 use crate::keybinds::Keybinds;
 use crate::list_view::PreviewContent;
@@ -64,6 +65,7 @@ pub struct GrafAppState {
     pub show_legend: bool,
     pub show_grid: bool,
     pub show_status_bar: bool,
+    pub show_looking_glass: bool,
     pub config_reload_msg: Option<String>,
 
     pub preview_enabled: bool,
@@ -116,6 +118,7 @@ impl GrafAppState {
             show_legend: config.graf.visual.show_legend,
             show_grid: config.graf.visual.show_grid,
             show_status_bar: config.ui.show_status_bar,
+            show_looking_glass: config.graf.visual.show_looking_glass,
             config_reload_msg: None,
 
             preview_enabled: config.graf.preview_enabled,
@@ -423,6 +426,200 @@ impl crate::overlay::OverlayView for GrafAppState {
     }
 }
 
+fn graph_area(
+    app_state: &GrafAppState,
+    config: &ClinConfig,
+    term_area: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
+    let outer = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            ratatui::layout::Constraint::Length(1),
+            ratatui::layout::Constraint::Min(0),
+        ])
+        .split(term_area);
+    let content_area = outer[1];
+    let mut area = if app_state.preview_enabled {
+        let (constraints, main_idx) = match config.list.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    ratatui::layout::Constraint::Ratio(43, 100),
+                    ratatui::layout::Constraint::Length(1),
+                    ratatui::layout::Constraint::Min(0),
+                ],
+                2,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    ratatui::layout::Constraint::Min(0),
+                    ratatui::layout::Constraint::Length(1),
+                    ratatui::layout::Constraint::Ratio(43, 100),
+                ],
+                0,
+            ),
+        };
+        let chunks = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints(constraints)
+            .split(content_area);
+        chunks[main_idx]
+    } else {
+        content_area
+    };
+    // A mode banner occupies the top row; keep mouse hit-testing in sync.
+    if app_state
+        .graph_state
+        .as_ref()
+        .is_some_and(|g| g.read().mode_banner.is_some())
+    {
+        area = ratatui::layout::Rect::new(
+            area.x,
+            area.y + 1,
+            area.width,
+            area.height.saturating_sub(1),
+        );
+    }
+    area
+}
+
+fn add_wikilink_to_note(
+    storage: &mut Storage,
+    note_id: &str,
+    target_title: &str,
+) -> anyhow::Result<()> {
+    let mut note = storage.load_note(note_id)?;
+    let link = format!("[[{target_title}]]");
+    if !note.content.contains(&link) {
+        if let Some(idx) = note.content.find("\n## Links\n") {
+            note.content
+                .insert_str(idx + "\n## Links\n".len(), &format!("{link}\n"));
+        } else {
+            note.content.push_str(&format!("\n\n## Links\n{link}\n"));
+        }
+        let time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(note.updated_at);
+        note.updated_at = time;
+        storage.save_note(note_id, &note)?;
+    }
+    Ok(())
+}
+
+fn remove_wikilink_from_note(
+    storage: &mut Storage,
+    note_id: &str,
+    target_title: &str,
+) -> anyhow::Result<()> {
+    let mut note = storage.load_note(note_id)?;
+    let pattern = format!("[[{target_title}");
+    let mut changed = false;
+    let mut out = String::with_capacity(note.content.len());
+    let mut rest = note.content.as_str();
+    while let Some(start) = rest.find(&pattern) {
+        let after = &rest[start + 2..];
+        if let Some(end) = after.find("]]") {
+            let inner = &after[..end];
+            let name = match inner.find('|') {
+                Some(p) => &inner[..p],
+                None => inner,
+            }
+            .trim();
+            if name.eq_ignore_ascii_case(target_title) {
+                out.push_str(rest[..start].trim_end_matches(['\n', ' ']));
+                rest = &after[end + 2..];
+                changed = true;
+                continue;
+            }
+        }
+        out.push_str(&rest[..start + pattern.len()]);
+        rest = &rest[start + pattern.len()..];
+    }
+    out.push_str(rest);
+    note.content = out;
+    if changed {
+        storage.save_note(note_id, &note)?;
+    }
+    Ok(())
+}
+
+fn refresh_note_summaries(storage: &Storage) -> Vec<crate::storage::NoteSummary> {
+    storage
+        .list_note_ids(false, false)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|id| storage.load_note_summary(&id).ok())
+        .collect()
+}
+
+fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: GrafMenuItem) {
+    use GrafMenuItem::{CreateConnection, DeleteConnection, DeleteNode, LocalGraph, ShowGroup};
+    let Some(graph) = state.graph_state.as_ref() else {
+        return;
+    };
+    match item {
+        CreateConnection => {
+            let mut g = graph.write();
+            if let Some(src) = g.selected_node {
+                g.connection_source = Some(src);
+                g.mode_banner = Some(ModeBanner::CreateConnection);
+                g.context_menu = None;
+            }
+        }
+        DeleteConnection => {
+            let mut g = graph.write();
+            if let Some(src) = g.selected_node {
+                g.deleting_connection_source = Some(src);
+                g.mode_banner = Some(ModeBanner::DeleteConnection);
+                g.context_menu = None;
+            }
+        }
+        LocalGraph => {
+            let mut g = graph.write();
+            if let Some(anchor) = g.selected_node {
+                let neighbors: std::collections::HashSet<fdg_sim::petgraph::graph::NodeIndex> =
+                    g.simulation.get_graph().neighbors(anchor).collect();
+                g.focus_filter = Some(FocusFilter::Local { anchor, neighbors });
+                g.mode_banner = Some(ModeBanner::LocalGraph);
+                g.context_menu = None;
+            }
+        }
+        ShowGroup => {
+            let mut g = graph.write();
+            if !g.selected_nodes.is_empty() {
+                g.focus_filter = Some(FocusFilter::Group(g.selected_nodes.clone()));
+                g.mode_banner = Some(ModeBanner::GroupedGraph);
+                g.context_menu = None;
+            }
+        }
+        DeleteNode => {
+            let ids: Vec<String> = {
+                let g = graph.read();
+                let mut v = Vec::new();
+                if let Some(idx) = g.selected_node
+                    && let Some(n) = g.simulation.get_graph().node_weight(idx)
+                {
+                    v.push(n.data.note_id.clone());
+                }
+                for idx in &g.selected_nodes {
+                    if let Some(n) = g.simulation.get_graph().node_weight(*idx) {
+                        let id = n.data.note_id.clone();
+                        if !v.contains(&id) {
+                            v.push(id);
+                        }
+                    }
+                }
+                v
+            };
+            for id in ids {
+                let _ = state.storage.trash_note(&id);
+            }
+            state.notes = refresh_note_summaries(&state.storage);
+            state.refresh_simulation(config);
+        }
+    }
+}
+
 fn handle_event(
     ev: crossterm::event::Event,
     app_state: &mut GrafAppState,
@@ -461,6 +658,7 @@ fn handle_event(
                     _ => {}
                 }
             }
+            let graph_area = graph_area(app_state, config, term_area);
             if let Some(graph_state) = &app_state.graph_state
                 && let Some(action) = crate::graf::input::handle_graph_keys(
                     graph_state,
@@ -468,6 +666,7 @@ fn handle_event(
                     keybinds,
                     config,
                     &mut app_state.seq_matcher,
+                    graph_area,
                 )
             {
                 use crate::graf::input::GraphInputAction;
@@ -499,6 +698,10 @@ fn handle_event(
                         app_state.show_status_bar = !app_state.show_status_bar;
                         return Ok(None);
                     }
+                    GraphInputAction::ToggleLookingGlass => {
+                        app_state.show_looking_glass = !app_state.show_looking_glass;
+                        return Ok(None);
+                    }
                     GraphInputAction::OpenFile(path) => {
                         return Ok(Some(EventAction::OpenFile(path)));
                     }
@@ -517,6 +720,30 @@ fn handle_event(
                             app_state.preview_content = None;
                             app_state.preview_note_id = None;
                             app_state.preview_request_key = None;
+                        }
+                        return Ok(None);
+                    }
+                    GraphInputAction::MenuAction(item) => {
+                        execute_menu_action(app_state, config, item);
+                        return Ok(None);
+                    }
+                    GraphInputAction::ConnectionEvent {
+                        source_id,
+                        target_title,
+                        create,
+                    } => {
+                        let result = if create {
+                            add_wikilink_to_note(&mut app_state.storage, &source_id, &target_title)
+                        } else {
+                            remove_wikilink_from_note(
+                                &mut app_state.storage,
+                                &source_id,
+                                &target_title,
+                            )
+                        };
+                        if result.is_ok() {
+                            app_state.notes = refresh_note_summaries(&app_state.storage);
+                            app_state.refresh_simulation(config);
                         }
                         return Ok(None);
                     }
@@ -581,42 +808,7 @@ fn handle_event(
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
-                let full_area = term_area;
-                let outer = ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Vertical)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(1),
-                        ratatui::layout::Constraint::Min(0),
-                    ])
-                    .split(full_area);
-                let content_area = outer[1];
-                let graph_area = if app_state.preview_enabled {
-                    let (constraints, main_idx) = match config.list.preview_position {
-                        crate::config::PreviewPosition::Left => (
-                            [
-                                ratatui::layout::Constraint::Ratio(43, 100),
-                                ratatui::layout::Constraint::Length(1),
-                                ratatui::layout::Constraint::Min(0),
-                            ],
-                            2,
-                        ),
-                        crate::config::PreviewPosition::Right => (
-                            [
-                                ratatui::layout::Constraint::Min(0),
-                                ratatui::layout::Constraint::Length(1),
-                                ratatui::layout::Constraint::Ratio(43, 100),
-                            ],
-                            0,
-                        ),
-                    };
-                    let chunks = ratatui::layout::Layout::default()
-                        .direction(ratatui::layout::Direction::Horizontal)
-                        .constraints(constraints)
-                        .split(content_area);
-                    chunks[main_idx]
-                } else {
-                    content_area
-                };
+                let graph_area = graph_area(app_state, config, term_area);
 
                 if let Some(action) = crate::graf::input::handle_graph_mouse(
                     graph_state,
@@ -626,8 +818,39 @@ fn handle_event(
                     config,
                 ) {
                     use crate::graf::input::GraphInputAction;
-                    if let GraphInputAction::OpenFile(path) = action {
-                        return Ok(Some(EventAction::OpenFile(path)));
+                    match action {
+                        GraphInputAction::OpenFile(path) => {
+                            return Ok(Some(EventAction::OpenFile(path)));
+                        }
+                        GraphInputAction::MenuAction(item) => {
+                            execute_menu_action(app_state, config, item);
+                            return Ok(None);
+                        }
+                        GraphInputAction::ConnectionEvent {
+                            source_id,
+                            target_title,
+                            create,
+                        } => {
+                            let result = if create {
+                                add_wikilink_to_note(
+                                    &mut app_state.storage,
+                                    &source_id,
+                                    &target_title,
+                                )
+                            } else {
+                                remove_wikilink_from_note(
+                                    &mut app_state.storage,
+                                    &source_id,
+                                    &target_title,
+                                )
+                            };
+                            if result.is_ok() {
+                                app_state.notes = refresh_note_summaries(&app_state.storage);
+                                app_state.refresh_simulation(config);
+                            }
+                            return Ok(None);
+                        }
+                        _ => {}
                     }
                 }
             }

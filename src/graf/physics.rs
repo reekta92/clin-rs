@@ -489,6 +489,7 @@ mod tests {
             ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: false,
@@ -499,6 +500,15 @@ mod tests {
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: true,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            focus_filter: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
         let state_0 = Arc::new(RwLock::new(gs_0));
         let handle_0 = start_physics(state_0.clone(), &config);
@@ -529,6 +539,7 @@ mod tests {
             ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: false,
@@ -539,6 +550,15 @@ mod tests {
             spatial_grid: crate::graf::spatial::SpatialGrid::new(80.0),
             physics_worker_active: true,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            focus_filter: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
         let state_1001 = Arc::new(RwLock::new(gs_1001));
         let handle_1001 = start_physics(state_1001.clone(), &config);
@@ -590,6 +610,7 @@ mod tests {
             ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: false,
@@ -600,6 +621,15 @@ mod tests {
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            focus_filter: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
         let state_1 = Arc::new(RwLock::new(gs_1));
         let handle_1 = start_physics(state_1.clone(), &config);

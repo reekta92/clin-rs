@@ -42,6 +42,12 @@ pub fn default_minimap_width() -> u16 {
 pub fn default_minimap_height() -> u16 {
     12
 }
+pub fn default_looking_glass_width() -> u16 {
+    24
+}
+pub fn default_looking_glass_height() -> u16 {
+    12
+}
 pub fn default_label_offset() -> f64 {
     4.0
 }
