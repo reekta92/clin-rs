@@ -718,19 +718,10 @@ impl Default for Keybinds {
             CanvasAction::MenuClose,
             vec![KeyCombo::simple(KeyCode::Esc)],
         );
-        canvas.insert(
-            CanvasAction::MenuUp,
-            vec![
-                KeyCombo::simple(KeyCode::Up),
-                KeyCombo::simple(KeyCode::Char('k')),
-            ],
-        );
+        canvas.insert(CanvasAction::MenuUp, vec![KeyCombo::simple(KeyCode::Up)]);
         canvas.insert(
             CanvasAction::MenuDown,
-            vec![
-                KeyCombo::simple(KeyCode::Down),
-                KeyCombo::simple(KeyCode::Char('j')),
-            ],
+            vec![KeyCombo::simple(KeyCode::Down)],
         );
         canvas.insert(
             CanvasAction::MenuSelect,
