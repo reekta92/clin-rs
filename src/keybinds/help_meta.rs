@@ -499,6 +499,14 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
 
 pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
     match a {
+        CanvasAction::Undo => HelpMeta {
+            group: "Editing",
+            description: "Undo last canvas edit",
+        },
+        CanvasAction::Redo => HelpMeta {
+            group: "Editing",
+            description: "Redo canvas edit",
+        },
         CanvasAction::MoveUp => HelpMeta {
             group: "Navigation",
             description: "Move up",

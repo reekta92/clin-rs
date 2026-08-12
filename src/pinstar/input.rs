@@ -600,6 +600,12 @@ pub fn handle_pinstar_event(
             CanvasAction::Save => {
                 let _ = state.save();
             }
+            CanvasAction::Undo => {
+                let _ = state.undo();
+            }
+            CanvasAction::Redo => {
+                let _ = state.redo();
+            }
             CanvasAction::ZoomFineIn => {
                 state.zoom_in();
             }

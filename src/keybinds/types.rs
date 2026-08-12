@@ -221,6 +221,8 @@ pub enum DrawAction {
 #[serde(rename_all = "snake_case")]
 pub enum CanvasAction {
     Quit,
+    Undo,
+    Redo,
     Save,
     ZoomFineIn,
     ZoomFineOut,

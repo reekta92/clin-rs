@@ -567,6 +567,14 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
+        canvas.insert(CanvasAction::Undo, vec![KeyCombo::ctrl(KeyCode::Char('z'))]);
+        canvas.insert(
+            CanvasAction::Redo,
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('y')),
+                KeyCombo::ctrl_shift(KeyCode::Char('z')),
+            ],
+        );
         canvas.insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
         canvas.insert(
             CanvasAction::ZoomFineIn,

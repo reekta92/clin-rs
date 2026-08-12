@@ -10,6 +10,8 @@ pub struct PinstarState {
     pub viewport_y: f64,
     pub zoom: f64,
     pub selected_node_id: Option<String>,
+    pub selected_node_ids: std::collections::HashSet<String>,
+    pub selected_edge_id: Option<String>,
     pub floating_editor: Option<TextArea<'static>>,
     pub raw_editor: TextArea<'static>,
     pub editor_focus: bool,
@@ -41,6 +43,13 @@ pub struct PinstarState {
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub is_panning: bool,
     pub last_zoom_at: Option<std::time::Instant>,
+    pub undo_stack: Vec<PinstarSnapshot>,
+    pub redo_stack: Vec<PinstarSnapshot>,
+}
+
+#[derive(Clone)]
+pub struct PinstarSnapshot {
+    pub data: CanvasData,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +87,8 @@ impl PinstarState {
             viewport_y: 0.0,
             zoom: 0.1,
             selected_node_id: None,
+            selected_node_ids: std::collections::HashSet::new(),
+            selected_edge_id: None,
             floating_editor: None,
             raw_editor: TextArea::from(content.lines().map(String::from).collect::<Vec<_>>()),
             editor_focus: false,
@@ -109,7 +120,47 @@ impl PinstarState {
             image_decode_tx: None,
             is_panning: false,
             last_zoom_at: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         })
+    }
+
+    pub fn record_undo_state(&mut self) {
+        self.undo_stack.push(PinstarSnapshot {
+            data: self.data.clone(),
+        });
+        if self.undo_stack.len() > 20 {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+    pub fn undo(&mut self) -> Result<()> {
+        if let Some(snapshot) = self.undo_stack.pop() {
+            self.redo_stack.push(PinstarSnapshot {
+                data: self.data.clone(),
+            });
+            self.data = snapshot.data;
+            self.selected_node_id = None;
+            self.selected_node_ids.clear();
+            self.selected_edge_id = None;
+            self.save()?;
+            self.sync_to_raw_editor();
+        }
+        Ok(())
+    }
+    pub fn redo(&mut self) -> Result<()> {
+        if let Some(snapshot) = self.redo_stack.pop() {
+            self.undo_stack.push(PinstarSnapshot {
+                data: self.data.clone(),
+            });
+            self.data = snapshot.data;
+            self.selected_node_id = None;
+            self.selected_node_ids.clear();
+            self.selected_edge_id = None;
+            self.save()?;
+            self.sync_to_raw_editor();
+        }
+        Ok(())
     }
 
     pub fn save(&self) -> Result<()> {
@@ -138,6 +189,7 @@ impl PinstarState {
     pub fn sync_from_raw_editor(&mut self) -> Result<()> {
         let content = self.raw_editor.lines().join("\n");
         if let Ok(data) = serde_json::from_str::<CanvasData>(&content) {
+            self.record_undo_state();
             self.data = data;
             let _ = self.save();
             Ok(())
@@ -275,9 +327,15 @@ impl PinstarState {
     }
 
     pub fn toggle_editor(&mut self) {
-        if let Some(editor) = &self.floating_editor {
-            if let Some(node_id) = &self.selected_node_id {
-                let text = editor.lines().join("\n");
+        let editor_text = if let Some(editor) = &self.floating_editor {
+            Some(editor.lines().join("\n"))
+        } else {
+            None
+        };
+        if let Some(text) = editor_text {
+            if self.selected_node_id.is_some() {
+                self.record_undo_state();
+                let node_id = self.selected_node_id.as_ref().unwrap();
                 for node in &mut self.data.nodes {
                     if node.id() == node_id {
                         node.set_text(text);
@@ -328,7 +386,9 @@ impl PinstarState {
     }
 
     pub fn start_resize(&mut self) {
-        if let Some(id) = &self.selected_node_id {
+        let id = self.selected_node_id.clone();
+        if let Some(id) = id {
+            self.record_undo_state();
             self.resizing_node_id = Some(id.clone());
             self.context_menu = None;
         }
@@ -342,7 +402,9 @@ impl PinstarState {
     }
 
     pub fn rename_node(&mut self, new_title: String) {
-        if let Some(node_id) = &self.selected_node_id {
+        let node_id = self.selected_node_id.clone();
+        if let Some(node_id) = node_id {
+            self.record_undo_state();
             let trimmed = new_title.trim().to_string();
             let title = if trimmed.is_empty() {
                 None
@@ -362,7 +424,9 @@ impl PinstarState {
     }
 
     pub fn delete_node_connections(&mut self) {
-        if let Some(id) = &self.selected_node_id {
+        let id = self.selected_node_id.clone();
+        if let Some(id) = id {
+            self.record_undo_state();
             let id_clone = id.clone();
             self.data
                 .edges
@@ -372,7 +436,9 @@ impl PinstarState {
     }
 
     pub fn set_node_color(&mut self, color: Option<String>) {
-        if let Some(id) = &self.selected_node_id {
+        let id = self.selected_node_id.clone();
+        if let Some(id) = id {
+            self.record_undo_state();
             for node in &mut self.data.nodes {
                 if node.id() == id {
                     match node {
@@ -389,6 +455,7 @@ impl PinstarState {
     }
 
     pub fn add_text_node(&mut self, x: f64, y: f64) {
+        self.record_undo_state();
         let id = format!("node_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         self.data.nodes.push(crate::pinstar::data::CanvasNode::Text(
             crate::pinstar::data::TextNode {
@@ -408,6 +475,7 @@ impl PinstarState {
     }
 
     pub fn add_group(&mut self, x: f64, y: f64) {
+        self.record_undo_state();
         let id = format!("group_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         self.data.nodes.insert(
             0,
@@ -430,6 +498,7 @@ impl PinstarState {
             Ok(Some(p)) => p,
             _ => return,
         };
+        self.record_undo_state();
         let id = format!("node_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         self.data.nodes.push(crate::pinstar::data::CanvasNode::File(
             crate::pinstar::data::FileNode {
@@ -460,6 +529,7 @@ impl PinstarState {
             && source_id != target_id
         {
             let edge_id = format!("edge_{source_id}_{target_id}");
+            self.record_undo_state();
             if !self
                 .data
                 .edges
@@ -485,6 +555,7 @@ impl PinstarState {
         if let Some(source_id) = self.deleting_connection_source_id.take()
             && source_id != target_id
         {
+            self.record_undo_state();
             self.data
                 .edges
                 .retain(|e| !(e.from_node == source_id && e.to_node == target_id));
