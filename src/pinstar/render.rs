@@ -979,7 +979,15 @@ pub fn draw_pinstar_view(
                 let label = format!("  {item}  ");
                 let hint_str = shortcut.as_ref().map(|k| format!("{k} "));
                 let hint_width = hint_str.as_ref().map_or(0, |h| h.len());
-                let padding = menu_width.saturating_sub(label.len() + hint_width);
+                // Color-square rows render "  ■ {item}  " which is 2 chars
+                // wider than the plain label; account for that so the hint is
+                // not clipped off the menu's right edge.
+                let content_width = if color_square {
+                    item.len() + 6
+                } else {
+                    label.len()
+                };
+                let padding = menu_width.saturating_sub(content_width + hint_width);
                 let hint_style = Style::default().fg(theme.muted).bg(if is_selected {
                     theme.highlight_bg
                 } else {
