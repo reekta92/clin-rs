@@ -91,6 +91,15 @@ fn edge_overlay_color(color: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
+/// Dimmed variant of a color, so "(no title)" text stays muted but still
+/// hints at the edge's own color.
+fn muted_edge_color(color: Color) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => Color::Rgb(r / 2, g / 2, b / 2),
+        _ => color,
+    }
+}
+
 /// A resolved row for the edge-list overlay.
 struct OverlayEdgeRow {
     index: usize,
@@ -825,7 +834,7 @@ pub fn draw_pinstar_view(
                                 .push(Span::styled(title.clone(), Style::default().fg(edge_color))),
                             None => spans.push(Span::styled(
                                 no_title.clone(),
-                                Style::default().fg(theme.muted),
+                                Style::default().fg(muted_edge_color(edge_color)),
                             )),
                         }
                         spans.push(Span::styled(" → ", Style::default().fg(theme.muted)));
@@ -834,7 +843,7 @@ pub fn draw_pinstar_view(
                                 .push(Span::styled(title.clone(), Style::default().fg(edge_color))),
                             None => spans.push(Span::styled(
                                 no_title.clone(),
-                                Style::default().fg(theme.muted),
+                                Style::default().fg(muted_edge_color(edge_color)),
                             )),
                         }
                         ratatui::text::Line::from(spans)
