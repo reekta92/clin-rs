@@ -1329,14 +1329,16 @@ fn draw_context_menu(
     }
 }
 
-fn compute_looking_glass_area(area: Rect, config: &ClinConfig) -> Option<Rect> {
+fn compute_looking_glass_area(area: Rect, config: &ClinConfig, height: u16) -> Option<Rect> {
     let w = config.graf.visual.looking_glass_width;
-    let h = config.graf.visual.looking_glass_height;
     let minimap_w = config.graf.visual.minimap_width;
     if area.width < w.saturating_add(minimap_w).saturating_add(2) {
         return None;
     }
-    Some(Rect::new(area.x + 1, area.y + 1, w, h))
+    if height < 4 {
+        return None;
+    }
+    Some(Rect::new(area.x + 1, area.y + 1, w, height))
 }
 
 pub fn draw_looking_glass(
@@ -1355,11 +1357,44 @@ pub fn draw_looking_glass(
     let Some(node) = graph.node_weight(idx) else {
         return;
     };
-    let Some(overlay) = compute_looking_glass_area(area, config) else {
+
+    let bg = colors.background_color.unwrap_or(Color::Black);
+
+    // Tags render below the fixed-size visual; the glass grows downward.
+    let tags: Vec<(String, Color)> = node
+        .data
+        .tags
+        .iter()
+        .map(|t| {
+            (
+                t.clone(),
+                cache
+                    .tag_colors
+                    .get(t)
+                    .copied()
+                    .unwrap_or(colors.label_color),
+            )
+        })
+        .collect();
+
+    // Fixed visual height = the configured looking_glass_height (border
+    // included). The link-count line + tag list extend the glass downward.
+    let base_h = config.graf.visual.looking_glass_height;
+    let meta_h = 1u16;
+    let max_tags = area
+        .height
+        .saturating_sub(1)
+        .saturating_sub(base_h)
+        .saturating_sub(meta_h) as usize;
+    let tag_count = tags.len().min(max_tags);
+    let overlay_h = base_h
+        .saturating_add(meta_h)
+        .saturating_add(tag_count as u16)
+        .min(area.height.saturating_sub(1));
+    let Some(overlay) = compute_looking_glass_area(area, config, overlay_h) else {
         return;
     };
 
-    let bg = colors.background_color.unwrap_or(Color::Black);
     let title =
         crate::graf::util::truncate(&node.data.title, overlay.width.saturating_sub(4) as usize);
     let block = Block::default()
@@ -1376,35 +1411,10 @@ pub fn draw_looking_glass(
         return;
     }
 
-    // Tags render as a vertical list below the node visual.
-    let tags: Vec<(String, Color)> = node
-        .data
-        .tags
-        .iter()
-        .map(|t| {
-            (
-                t.clone(),
-                cache
-                    .tag_colors
-                    .get(t)
-                    .copied()
-                    .unwrap_or(colors.label_color),
-            )
-        })
-        .collect();
-    // Footer: link-count line above the tag list. Leave at least 4 rows for
-    // the visual; cap the tag list to whatever remains.
-    let meta_h = 1u16;
-    let max_tag_rows = inner.height.saturating_sub(4 + meta_h) as usize;
-    let tag_count = tags.len().min(max_tag_rows);
-    let tags_h = tag_count as u16;
-    let footer_h = meta_h + tags_h;
-    let canvas_area = Rect::new(
-        inner.x,
-        inner.y,
-        inner.width,
-        inner.height.saturating_sub(footer_h),
-    );
+    // The node visual keeps its configured size; the footer (link count +
+    // tags) occupies whatever remains below it.
+    let visual_inner_h = base_h.saturating_sub(2).min(inner.height);
+    let canvas_area = Rect::new(inner.x, inner.y, inner.width, visual_inner_h);
 
     // Radius matches the simulation's node-size computation exactly.
     let radius = match config.graf.visual.node_size_mode {
@@ -1466,22 +1476,32 @@ pub fn draw_looking_glass(
             });
         });
     frame.render_widget(canvas, canvas_area);
-    let footer_y = inner.y + inner.height.saturating_sub(footer_h);
+    let footer_y = inner.y + visual_inner_h;
+    let footer_h = inner.height.saturating_sub(visual_inner_h);
+    if footer_h == 0 {
+        return;
+    }
     let link_label = if node.data.link_count == 1 {
         "1 link".to_string()
     } else {
         format!("{} links", node.data.link_count)
     };
-    let meta_rect = Rect::new(inner.x, footer_y, inner.width, meta_h);
     frame.render_widget(
         Paragraph::new(ratatui::text::Line::from(Span::styled(
             link_label,
             Style::default().fg(app_theme.muted),
         ))),
-        meta_rect,
+        Rect::new(inner.x, footer_y, inner.width, meta_h.min(footer_h)),
     );
-    if tag_count > 0 {
-        let tags_rect = Rect::new(inner.x, footer_y + meta_h, inner.width, tags_h);
+    let tags_h = tag_count as u16;
+    let avail_tags_h = footer_h.saturating_sub(meta_h);
+    if tags_h > 0 && avail_tags_h > 0 {
+        let tags_rect = Rect::new(
+            inner.x,
+            footer_y + meta_h,
+            inner.width,
+            tags_h.min(avail_tags_h),
+        );
         let lines: Vec<ratatui::text::Line> = tags
             .iter()
             .take(tag_count)
