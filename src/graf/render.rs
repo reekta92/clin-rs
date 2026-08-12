@@ -207,6 +207,73 @@ fn draw_outlined_shape(
     }
 }
 
+fn draw_regular_polygon(
+    painter: &mut Painter,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    sides: u32,
+    rotation: f64,
+    color: Color,
+) {
+    for i in 0..sides {
+        let a1 = rotation + (i as f64) * std::f64::consts::TAU / (sides as f64);
+        let a2 = rotation + ((i + 1) as f64) * std::f64::consts::TAU / (sides as f64);
+        Line {
+            x1: cx + radius * a1.cos(),
+            y1: cy + radius * a1.sin(),
+            x2: cx + radius * a2.cos(),
+            y2: cy + radius * a2.sin(),
+            color,
+        }
+        .draw(painter);
+    }
+}
+
+/// Small outlined geometric marker for an orbiting tag, keyed by its orbit
+/// index so the tags around a node read as distinct shapes.
+fn draw_tag_marker(
+    painter: &mut Painter,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    index: usize,
+    color: Color,
+) {
+    match index % 6 {
+        0 => draw_outlined_shape(painter, cx, cy, radius, NodeShape::Circle, color),
+        1 => draw_regular_polygon(
+            painter,
+            cx,
+            cy,
+            radius,
+            3,
+            -std::f64::consts::FRAC_PI_2,
+            color,
+        ),
+        2 => draw_outlined_shape(painter, cx, cy, radius, NodeShape::Square, color),
+        3 => draw_outlined_shape(painter, cx, cy, radius, NodeShape::Diamond, color),
+        4 => draw_regular_polygon(
+            painter,
+            cx,
+            cy,
+            radius,
+            5,
+            -std::f64::consts::FRAC_PI_2,
+            color,
+        ),
+        _ => draw_regular_polygon(
+            painter,
+            cx,
+            cy,
+            radius,
+            6,
+            -std::f64::consts::FRAC_PI_2,
+            color,
+        ),
+    }
+}
+
 impl Shape for GraphNodesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
         for node in self.nodes {
@@ -233,19 +300,7 @@ impl Shape for GraphNodesShape<'_> {
                     - std::f64::consts::FRAC_PI_2;
                 let cx = node.x + orbit_radius * angle.cos();
                 let cy = node.y + orbit_radius * angle.sin();
-                let dot_steps = 8u32;
-                for j in 0..dot_steps {
-                    let a1 = (j as f64) * std::f64::consts::TAU / (dot_steps as f64);
-                    let a2 = ((j + 1) as f64) * std::f64::consts::TAU / (dot_steps as f64);
-                    Line {
-                        x1: cx + indicator_radius * a1.cos(),
-                        y1: cy + indicator_radius * a1.sin(),
-                        x2: cx + indicator_radius * a2.cos(),
-                        y2: cy + indicator_radius * a2.sin(),
-                        color,
-                    }
-                    .draw(painter);
-                }
+                draw_tag_marker(painter, cx, cy, indicator_radius, i, color);
             }
 
             if node.is_selected {
