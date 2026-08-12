@@ -552,6 +552,54 @@ fn refresh_note_summaries(storage: &Storage) -> Vec<crate::storage::NoteSummary>
         .collect()
 }
 
+/// Persist a wikilink edit and apply the resulting edge change to the live
+/// simulation without rebuilding it (positions/viewport/physics preserved).
+fn apply_connection(state: &mut GrafAppState, source_id: &str, target_title: &str, create: bool) {
+    let result = if create {
+        add_wikilink_to_note(&mut state.storage, source_id, target_title)
+    } else {
+        remove_wikilink_from_note(&mut state.storage, source_id, target_title)
+    };
+    if result.is_err() {
+        return;
+    }
+    // Keep state.notes in sync (used by the search popup and a later manual rebuild).
+    if let Some(src_summary) = state.notes.iter_mut().find(|n| n.id == source_id) {
+        if create {
+            if !src_summary
+                .links
+                .iter()
+                .any(|l| l.eq_ignore_ascii_case(target_title))
+            {
+                src_summary.links.push(target_title.to_string());
+            }
+        } else {
+            src_summary
+                .links
+                .retain(|l| !l.eq_ignore_ascii_case(target_title));
+        }
+    }
+    // Mutate the live graph; do NOT rebuild the simulation.
+    let Some(gs) = state.graph_state.as_ref() else {
+        return;
+    };
+    let (src_idx, tgt_idx) = {
+        let g = gs.read();
+        let graph = g.simulation.get_graph();
+        let src = graph
+            .node_indices()
+            .find(|i| graph[*i].data.note_id == source_id);
+        let tgt = graph
+            .node_indices()
+            .find(|i| graph[*i].data.title.eq_ignore_ascii_case(target_title));
+        (src, tgt)
+    };
+    if let (Some(s), Some(t)) = (src_idx, tgt_idx) {
+        let mut g = gs.write();
+        g.apply_connection_change(s, t, create);
+    }
+}
+
 fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: GrafMenuItem) {
     use GrafMenuItem::{CreateConnection, DeleteConnection, DeleteNode, LocalGraph, ShowGroup};
     let Some(graph) = state.graph_state.as_ref() else {
@@ -732,19 +780,7 @@ fn handle_event(
                         target_title,
                         create,
                     } => {
-                        let result = if create {
-                            add_wikilink_to_note(&mut app_state.storage, &source_id, &target_title)
-                        } else {
-                            remove_wikilink_from_note(
-                                &mut app_state.storage,
-                                &source_id,
-                                &target_title,
-                            )
-                        };
-                        if result.is_ok() {
-                            app_state.notes = refresh_note_summaries(&app_state.storage);
-                            app_state.refresh_simulation(config);
-                        }
+                        apply_connection(app_state, &source_id, &target_title, create);
                         return Ok(None);
                     }
                 }
@@ -831,23 +867,7 @@ fn handle_event(
                             target_title,
                             create,
                         } => {
-                            let result = if create {
-                                add_wikilink_to_note(
-                                    &mut app_state.storage,
-                                    &source_id,
-                                    &target_title,
-                                )
-                            } else {
-                                remove_wikilink_from_note(
-                                    &mut app_state.storage,
-                                    &source_id,
-                                    &target_title,
-                                )
-                            };
-                            if result.is_ok() {
-                                app_state.notes = refresh_note_summaries(&app_state.storage);
-                                app_state.refresh_simulation(config);
-                            }
+                            apply_connection(app_state, &source_id, &target_title, create);
                             return Ok(None);
                         }
                         _ => {}

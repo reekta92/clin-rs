@@ -617,6 +617,52 @@ impl GraphState {
         self.context_menu = None;
     }
 
+    /// Apply a connection change to the live graph without rebuilding the
+    /// simulation: adds/removes the edge, dirties the render cache, lightly
+    /// reheats physics. Returns true if the graph topology changed.
+    pub fn apply_connection_change(
+        &mut self,
+        src: NodeIndex,
+        tgt: NodeIndex,
+        create: bool,
+    ) -> bool {
+        let graph = self.simulation.get_graph_mut();
+        let existing = graph.find_edge(src, tgt);
+        if create {
+            if existing.is_none() {
+                graph.add_edge(src, tgt, ());
+            } else {
+                return false;
+            }
+        } else {
+            match existing {
+                Some(e) => {
+                    graph.remove_edge(e);
+                }
+                None => return false,
+            }
+        }
+        // node.link_count in GraphNodeData is stale; update for both endpoints.
+        let src_count = graph.edges(src).count();
+        let tgt_count = graph.edges(tgt).count();
+        if let Some(n) = graph.node_weight_mut(src) {
+            n.data.link_count = src_count;
+        }
+        if let Some(n) = graph.node_weight_mut(tgt) {
+            n.data.link_count = tgt_count;
+        }
+        {
+            let mut cache = self.render_cache.lock();
+            cache.topology_dirty = true;
+            cache.minimap_dirty = true;
+        }
+        self.is_settled = false;
+        if self.physics_worker_active {
+            self.reheat(0.3);
+        }
+        true
+    }
+
     pub(crate) fn apply_static_cluster_layout(&mut self, ideal_distance: f64) -> bool {
         let graph = self.simulation.get_graph();
         let node_count = graph.node_count();
