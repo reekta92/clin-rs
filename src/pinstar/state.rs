@@ -185,6 +185,20 @@ impl PinstarState {
         })
     }
 
+    /// Returns the header-bar status message for the active transient mode
+    /// (connection / delete-connection / resize), or None when idle.
+    pub fn active_mode_message(&self) -> Option<&'static str> {
+        if self.connection_source_id.is_some() {
+            Some("CONNECTION MODE: Select target node with mouse or Enter")
+        } else if self.deleting_connection_source_id.is_some() {
+            Some("DELETE CONNECTION MODE: Select target node to remove link")
+        } else if self.resizing_node_id.is_some() {
+            Some("RESIZE MODE: Drag mouse to resize, Left-click to confirm")
+        } else {
+            None
+        }
+    }
+
     pub fn record_undo_state(&mut self) {
         self.undo_stack.push(PinstarSnapshot {
             data: self.data.clone(),

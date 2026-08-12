@@ -743,22 +743,7 @@ pub fn draw_pinstar_view(
         total_area.width,
         1,
     );
-    let hint_line = if state.connection_source_id.is_some() {
-        Line::from(vec![Span::styled(
-            "CONNECTION MODE: Select target node with mouse or Enter",
-            Style::default().fg(theme.muted),
-        )])
-    } else if state.deleting_connection_source_id.is_some() {
-        Line::from(vec![Span::styled(
-            "DELETE CONNECTION MODE: Select target node to remove link",
-            Style::default().fg(theme.muted),
-        )])
-    } else if state.resizing_node_id.is_some() {
-        Line::from(vec![Span::styled(
-            "RESIZE MODE: Drag mouse to resize, Left-click to confirm",
-            Style::default().fg(theme.muted),
-        )])
-    } else if state.footer_hint.is_empty() {
+    let hint_line = if state.footer_hint.is_empty() {
         let hints_items = vec![
             (
                 format!(
@@ -821,7 +806,7 @@ pub fn draw_pinstar_view(
             .iter()
             .map(|s| {
                 let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, s);
-                s.len() + shortcut.map_or(0, |k| k.len() + 3) + 4
+                s.len() + shortcut.map_or(0, |k| k.len() + 4) + 4
             })
             .max()
             .unwrap_or(25);
@@ -852,7 +837,7 @@ pub fn draw_pinstar_view(
                 };
                 let color_square = i < menu.color_hints.len() && menu.color_hints[i].is_some();
                 let label = format!("  {item}  ");
-                let hint_str = shortcut.as_ref().map(|k| format!("{k}"));
+                let hint_str = shortcut.as_ref().map(|k| format!("{k} "));
                 let hint_width = hint_str.as_ref().map_or(0, |h| h.len());
                 let padding = menu_width.saturating_sub(label.len() + hint_width);
                 let hint_style = Style::default().fg(theme.muted).bg(if is_selected {

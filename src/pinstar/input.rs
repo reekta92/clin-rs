@@ -4,6 +4,23 @@ use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::{Input, TextArea};
 
+/// Sync the header-bar status with the active canvas mode (connection /
+/// delete-connection / resize). Called after any mode transition.
+fn sync_mode_status(app: &mut crate::app::App, state: &PinstarState) {
+    const MODE_MESSAGES: [&str; 3] = [
+        "CONNECTION MODE: Select target node with mouse or Enter",
+        "DELETE CONNECTION MODE: Select target node to remove link",
+        "RESIZE MODE: Drag mouse to resize, Left-click to confirm",
+    ];
+    if let Some(msg) = state.active_mode_message() {
+        app.status = std::borrow::Cow::Borrowed(msg);
+        app.status_until = None;
+    } else if MODE_MESSAGES.contains(&app.status.as_ref()) {
+        // Clear a stale mode message only; leave temporary statuses alone.
+        app.set_default_status();
+    }
+}
+
 pub fn handle_pinstar_mouse(
     state: &mut PinstarState,
     mouse: MouseEvent,
@@ -39,6 +56,7 @@ pub fn handle_pinstar_mouse(
                 state.is_dragging_resize_handle = false;
                 let _ = state.save();
                 state.sync_to_raw_editor();
+                sync_mode_status(app, state);
                 return true;
             }
 
@@ -151,6 +169,7 @@ pub fn handle_pinstar_mouse(
 
             if let Some((selected, menu_type, mx, my)) = menu_action {
                 execute_menu_action(state, selected, menu_type, mx, my);
+                sync_mode_status(app, state);
                 return true;
             }
 
@@ -208,6 +227,7 @@ pub fn handle_pinstar_mouse(
                 } else {
                     state.connection_source_id = None;
                 }
+                sync_mode_status(app, state);
                 return true;
             }
 
@@ -217,6 +237,7 @@ pub fn handle_pinstar_mouse(
                 } else {
                     state.deleting_connection_source_id = None;
                 }
+                sync_mode_status(app, state);
                 return true;
             }
 
@@ -623,6 +644,7 @@ pub fn handle_pinstar_event(
 
     if let Some((selected, menu_type, mx, my)) = menu_action {
         execute_menu_action(state, selected, menu_type, mx, my);
+        sync_mode_status(app, state);
         return true;
     } else if close_menu {
         return true;
@@ -671,6 +693,7 @@ pub fn handle_pinstar_event(
                 state.resizing_node_id = None;
                 state.is_dragging_resize_handle = false;
                 let _ = state.save();
+                sync_mode_status(app, state);
                 return true;
             }
             _ => {}
@@ -698,6 +721,7 @@ pub fn handle_pinstar_event(
         } else {
             *running = false;
         }
+        sync_mode_status(app, state);
         return true;
     }
 
@@ -945,5 +969,6 @@ pub fn handle_pinstar_event(
         crate::keybinds::MatchOutcome::NoMatch => return false,
     }
 
+    sync_mode_status(app, state);
     true
 }
