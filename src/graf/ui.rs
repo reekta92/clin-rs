@@ -1,6 +1,5 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Color;
-use ratatui::widgets::Clear;
 
 use ratatui::Frame;
 
@@ -56,45 +55,6 @@ pub fn draw_ui(
 
     if let Some(graph_state) = &state.graph_state {
         let guard = graph_state.read();
-        let banner = guard.mode_banner;
-        let mut draw_area = graph_area;
-        if let Some(mode) = banner {
-            let text = match mode {
-                crate::graf::graph::ModeBanner::CreateConnection => {
-                    " CONNECTION MODE \u{2014} select target "
-                }
-                crate::graf::graph::ModeBanner::DeleteConnection => {
-                    " DELETE CONNECTION MODE \u{2014} select target "
-                }
-                crate::graf::graph::ModeBanner::LocalGraph => " LOCAL GRAPH ONLY ",
-                crate::graf::graph::ModeBanner::GroupedGraph => " GROUPED GRAPH ONLY ",
-                crate::graf::graph::ModeBanner::BoxSelect => " BOX SELECT \u{2014} drag, release ",
-            };
-            let w = text.chars().count() as u16;
-            let x = graph_area.x + graph_area.width.saturating_sub(w) / 2;
-            frame.render_widget(
-                Clear,
-                Rect::new(graph_area.x, graph_area.y, graph_area.width, 1),
-            );
-            frame.render_widget(
-                ratatui::widgets::Paragraph::new(ratatui::text::Line::from(
-                    ratatui::text::Span::styled(
-                        text,
-                        ratatui::style::Style::default()
-                            .fg(theme.highlight_fg)
-                            .bg(theme.accent)
-                            .add_modifier(ratatui::style::Modifier::BOLD),
-                    ),
-                )),
-                Rect::new(x, graph_area.y, w, 1),
-            );
-            draw_area = Rect::new(
-                graph_area.x,
-                graph_area.y + 1,
-                graph_area.width,
-                graph_area.height.saturating_sub(1),
-            );
-        }
         let flags = crate::graf::render::FeatureFlags {
             show_legend: state.show_legend,
             show_grid: state.show_grid,
@@ -104,7 +64,7 @@ pub fn draw_ui(
         };
         crate::graf::render::draw_graph_view(
             frame,
-            draw_area,
+            graph_area,
             &guard,
             config,
             &flags,
