@@ -645,6 +645,18 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
             group: "Editing",
             description: "Delete selected node(s)",
         },
+        CanvasAction::AddTextNode => HelpMeta {
+            group: "Editing",
+            description: "Add text node at cursor",
+        },
+        CanvasAction::AddGroup => HelpMeta {
+            group: "Editing",
+            description: "Add group at cursor",
+        },
+        CanvasAction::AddImageNode => HelpMeta {
+            group: "Editing",
+            description: "Add image node at cursor",
+        },
         CanvasAction::Help => HelpMeta {
             group: "General",
             description: "Help",

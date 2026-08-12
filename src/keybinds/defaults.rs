@@ -672,6 +672,18 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('b'))],
         );
         canvas.insert(
+            CanvasAction::AddTextNode,
+            vec![KeyCombo::simple(KeyCode::Char('t'))],
+        );
+        canvas.insert(
+            CanvasAction::AddGroup,
+            vec![KeyCombo::simple(KeyCode::Char('g'))],
+        );
+        canvas.insert(
+            CanvasAction::AddImageNode,
+            vec![KeyCombo::simple(KeyCode::Char('m'))],
+        );
+        canvas.insert(
             CanvasAction::ToggleGrid,
             vec![KeyCombo::shift(KeyCode::Char('G'))],
         );

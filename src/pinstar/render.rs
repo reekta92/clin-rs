@@ -137,10 +137,9 @@ fn menu_shortcut(
             "Set Color..." => Some(CanvasAction::SetColor),
             "Delete All Connections" => Some(CanvasAction::DeleteAllConnections),
             "Delete Node" => Some(CanvasAction::DeleteNode),
-            _ => None,
-        },
-        crate::pinstar::state::PinstarMenuType::EdgeMenu => match item {
-            "Set Color..." => Some(CanvasAction::SetColor),
+            "Add Text Node" => Some(CanvasAction::AddTextNode),
+            "Add Group" => Some(CanvasAction::AddGroup),
+            "Add Image Node" => Some(CanvasAction::AddImageNode),
             _ => None,
         },
         _ => None,
@@ -306,31 +305,9 @@ pub fn draw_pinstar_view(
             cur_x += grid_step_x;
         }
     }
-
-    // Select-rect pass: drawn BEFORE group/node passes so subsequent clears paint over it
-    if state.mouse_selecting
-        && let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end)
-    {
-        let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
-        let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
-        let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
-        let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
-        let rect = Rect::new(
-            min_x
-                .max(canvas_area.left() as f64)
-                .min(canvas_area.right() as f64) as u16,
-            min_y
-                .max(canvas_area.top() as f64)
-                .min(canvas_area.bottom() as f64) as u16,
-            ((max_x - min_x).max(1.0)) as u16,
-            ((max_y - min_y).max(1.0)) as u16,
-        );
-        frame.render_widget(Clear, rect);
-        frame.render_widget(
-            Paragraph::new("").style(Style::default().bg(theme.highlight_bg)),
-            rect,
-        );
-    }
+    // Select-rect pass: drawn AFTER group/node passes.
+    // Uses buffer-cell bg mutation to avoid destroying node/edge characters.
+    // Done later, after all rendering — see below.
 
     for (idx, p) in proj.iter().enumerate() {
         if !p.is_group {
@@ -747,6 +724,38 @@ pub fn draw_pinstar_view(
 
             frame.render_widget(Clear, editor_rect);
             frame.render_widget(&*editor, editor_rect);
+        }
+    }
+
+    // Select-rect overlay: drawn AFTER all nodes/edges/editor.
+    // Uses buffer-cell bg mutation so node characters stay visible.
+    if state.mouse_selecting
+        && let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end)
+    {
+        let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
+        let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
+        let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
+        let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
+        let left = (min_x
+            .max(canvas_area.left() as f64)
+            .min(canvas_area.right() as f64)) as u16;
+        let top = (min_y
+            .max(canvas_area.top() as f64)
+            .min(canvas_area.bottom() as f64)) as u16;
+        let width = ((max_x - min_x).max(1.0)) as u16;
+        let height = ((max_y - min_y).max(1.0)) as u16;
+        // Muted accent: divide each channel by 4 for a dark translucent effect
+        let muted_accent = match theme.accent {
+            Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
+            _ => theme.highlight_bg,
+        };
+        let buf = frame.buffer_mut();
+        for row in top..(top + height).min(buf.area.height) {
+            for col in left..(left + width).min(buf.area.width) {
+                if let Some(cell) = buf.cell_mut((col, row)) {
+                    cell.set_bg(muted_accent);
+                }
+            }
         }
     }
 

@@ -86,6 +86,10 @@ pub fn handle_pinstar_mouse(
                     state.open_edge_context_menu(mouse.column, mouse.row);
                 } else {
                     state.select_node_at(cx, cy);
+                    if state.selected_node_id.is_none() {
+                        state.selected_node_ids.clear();
+                        state.selected_edge_id = None;
+                    }
                     state.open_context_menu(mouse.column, mouse.row, cx, cy);
                 }
             }
@@ -271,6 +275,8 @@ pub fn handle_pinstar_mouse(
                 state.capture_drag_nodes();
                 state.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
             } else {
+                state.selected_node_ids.clear();
+                state.selected_edge_id = None;
                 state.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
             }
 
@@ -627,6 +633,18 @@ fn handle_direct_action(
         }
         CanvasAction::DeleteAllConnections => {
             state.delete_node_connections();
+            state.sync_to_raw_editor();
+        }
+        CanvasAction::AddTextNode => {
+            state.add_text_node(state.viewport_x, state.viewport_y);
+            state.sync_to_raw_editor();
+        }
+        CanvasAction::AddGroup => {
+            state.add_group(state.viewport_x, state.viewport_y);
+            state.sync_to_raw_editor();
+        }
+        CanvasAction::AddImageNode => {
+            state.add_image_node(state.viewport_x, state.viewport_y);
             state.sync_to_raw_editor();
         }
         _ => {}
@@ -1004,6 +1022,18 @@ pub fn handle_pinstar_event(
             }
             CanvasAction::DeleteAllConnections => {
                 state.delete_node_connections();
+                state.sync_to_raw_editor();
+            }
+            CanvasAction::AddTextNode => {
+                state.add_text_node(state.viewport_x, state.viewport_y);
+                state.sync_to_raw_editor();
+            }
+            CanvasAction::AddGroup => {
+                state.add_group(state.viewport_x, state.viewport_y);
+                state.sync_to_raw_editor();
+            }
+            CanvasAction::AddImageNode => {
+                state.add_image_node(state.viewport_x, state.viewport_y);
                 state.sync_to_raw_editor();
             }
             _ => {

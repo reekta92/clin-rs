@@ -258,6 +258,9 @@ pub enum CanvasAction {
     SetColor,
     DeleteNode,
     DeleteAllConnections,
+    AddTextNode,
+    AddGroup,
+    AddImageNode,
 }
 
 #[derive(
