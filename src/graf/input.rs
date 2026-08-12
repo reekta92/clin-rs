@@ -290,6 +290,34 @@ pub fn handle_graph_mouse(
             if !inside_area {
                 return None;
             }
+            // Context menu: click inside activates a row, click outside dismisses.
+            {
+                let guard = state.read();
+                if let Some(menu) = &guard.context_menu {
+                    let rect = super::render::compute_context_menu_rect(menu, area);
+                    let inside_menu = mouse_event.column >= rect.x
+                        && mouse_event.column < rect.x + rect.width
+                        && mouse_event.row >= rect.y
+                        && mouse_event.row < rect.y + rect.height;
+                    if inside_menu {
+                        let row = (mouse_event.row - rect.y) as usize;
+                        if row < menu.items.len() {
+                            let item = menu.items[row];
+                            drop(guard);
+                            let mut g = state.write();
+                            g.close_menu();
+                            return Some(GraphInputAction::MenuAction(item));
+                        }
+                        drop(guard);
+                        return None;
+                    }
+                    // Outside the menu rect: dismiss and consume the click.
+                    drop(guard);
+                    let mut g = state.write();
+                    g.close_menu();
+                    return None;
+                }
+            }
             // Connection mode: clicking a target completes (or cancels) the link.
             {
                 let mut conn_action: Option<GraphInputAction> = None;
@@ -335,29 +363,6 @@ pub fn handle_graph_mouse(
                         return Some(a);
                     }
                     return None;
-                }
-            }
-            // Context menu click: activate the clicked row.
-            {
-                let guard = state.read();
-                if let Some(menu) = &guard.context_menu {
-                    let rect = super::render::compute_context_menu_rect(menu, area);
-                    let inside_menu = mouse_event.column >= rect.x
-                        && mouse_event.column < rect.x + rect.width
-                        && mouse_event.row >= rect.y
-                        && mouse_event.row < rect.y + rect.height;
-                    if inside_menu {
-                        let row = mouse_event.row.saturating_sub(rect.y) as usize;
-                        if row >= 1 && row - 1 < menu.items.len() {
-                            let item = menu.items[row - 1];
-                            drop(guard);
-                            let mut g = state.write();
-                            g.close_menu();
-                            return Some(GraphInputAction::MenuAction(item));
-                        }
-                        drop(guard);
-                        return None;
-                    }
                 }
             }
             if in_minimap {
