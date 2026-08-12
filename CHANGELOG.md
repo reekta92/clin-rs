@@ -2,6 +2,23 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.1] - 2026-08-12
+
+### Added
+
+- Add scrollbar pan mode for notes list
+- Add colored Tags section to note info popup
+
+### CI
+
+- Fixed formatting issues
+
+### Fixed
+
+- Remove redundant footer bar from confirm popups
+- Remove full date from selected tree row
+- Ignore key.bin and state.json in is_existing_vault
+- Use help_tabs with glyphs for mouse tab hit-testing
 ## [0.10.0] - 2026-08-11
 
 ### Added
@@ -44,6 +61,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.10.0
 - V0.10.0
 ## [0.10.0-rc.7] - 2026-08-05
 
