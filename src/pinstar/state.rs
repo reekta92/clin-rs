@@ -474,6 +474,7 @@ impl PinstarState {
                     to_side: Some("left".to_string()),
                     label: None,
                     color: None,
+                    style: crate::pinstar::data::EdgeStyle::Solid,
                 });
                 let _ = self.save();
             }
