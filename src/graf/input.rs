@@ -411,9 +411,8 @@ pub fn handle_graph_mouse(
                     }
                 } else {
                     let mut guard = state.write();
-                    if is_double_click {
-                        guard.selected_node = None;
-                    }
+                    guard.selected_node = None;
+                    guard.selected_nodes.clear();
                     guard.dragging_node = None;
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                     mouse_state.is_panning = true;
@@ -525,7 +524,9 @@ pub fn handle_graph_mouse(
                         .screen_to_world(mouse_event.column, mouse_event.row, area)
                 };
                 let mut guard = state.write();
-                guard.mode_banner = Some(ModeBanner::BoxSelect);
+                if guard.mode_banner.is_none() {
+                    guard.mode_banner = Some(ModeBanner::BoxSelect);
+                }
                 guard.box_select_curr = Some((wx, wy));
                 guard.context_menu = None;
             }
@@ -568,7 +569,6 @@ pub fn handle_graph_mouse(
                 } else {
                     guard.open_context_menu(mouse_event.column, mouse_event.row, (0.0, 0.0));
                 }
-                guard.mode_banner = None;
             } else if let (Some(start_world), Some(curr_world)) = (start_world, curr_world) {
                 // Box-select commit: collect enclosed nodes.
                 let min_x = start_world.0.min(curr_world.0);
@@ -592,7 +592,9 @@ pub fn handle_graph_mouse(
                     guard.selected_nodes.insert(idx);
                 }
                 guard.selected_node = guard.selected_nodes.iter().next().copied();
-                guard.mode_banner = None;
+                if guard.mode_banner == Some(ModeBanner::BoxSelect) {
+                    guard.mode_banner = None;
+                }
             }
         }
         _ => {}
