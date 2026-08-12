@@ -30,6 +30,7 @@ pub enum GraphInputAction {
         target_title: String,
         create: bool,
     },
+    ClearFocus,
 }
 
 /// Right-click movement (Manhattan cells) below which a release is treated as
@@ -93,19 +94,24 @@ pub fn handle_graph_keys(
         return dispatch;
     }
 
-    // Escape clears transient modes before quitting.
+    // Escape: cancel connection modes, clear the focus filter (full rebuild),
+    // or clear multi-select — before falling through to quit.
     if key.code == KeyCode::Esc {
-        let transient = guard.focus_filter.is_some()
-            || guard.mode_banner.is_some()
-            || !guard.selected_nodes.is_empty()
-            || guard.connection_source.is_some()
-            || guard.deleting_connection_source.is_some();
-        if transient {
-            guard.focus_filter = None;
-            guard.mode_banner = None;
-            guard.selected_nodes.clear();
+        if guard.connection_source.is_some() || guard.deleting_connection_source.is_some() {
             guard.connection_source = None;
             guard.deleting_connection_source = None;
+            guard.mode_banner = None;
+            return None;
+        }
+        if matches!(
+            guard.mode_banner,
+            Some(ModeBanner::LocalGraph | ModeBanner::GroupedGraph)
+        ) {
+            return Some(GraphInputAction::ClearFocus);
+        }
+        if !guard.selected_nodes.is_empty() {
+            guard.selected_nodes.clear();
+            guard.mode_banner = None;
             return None;
         }
     }

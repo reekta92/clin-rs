@@ -2163,7 +2163,6 @@ mod tests {
             context_menu_screen: (0, 0),
             connection_source: None,
             deleting_connection_source: None,
-            focus_filter: None,
             box_select_start: None,
             box_select_curr: None,
             right_down_pos: None,

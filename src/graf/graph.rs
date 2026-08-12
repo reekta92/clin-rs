@@ -62,15 +62,6 @@ pub fn menu_item_label(item: GrafMenuItem) -> &'static str {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum FocusFilter {
-    Local {
-        anchor: NodeIndex,
-        neighbors: HashSet<NodeIndex>,
-    },
-    Group(HashSet<NodeIndex>),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeBanner {
     CreateConnection,
@@ -99,7 +90,6 @@ pub struct GraphState {
     pub context_menu_screen: (u16, u16),
     pub connection_source: Option<NodeIndex>,
     pub deleting_connection_source: Option<NodeIndex>,
-    pub focus_filter: Option<FocusFilter>,
     pub box_select_start: Option<(f64, f64)>,
     pub box_select_curr: Option<(f64, f64)>,
     pub right_down_pos: Option<(u16, u16)>,
@@ -565,7 +555,6 @@ impl GraphState {
             context_menu_screen: (0, 0),
             connection_source: None,
             deleting_connection_source: None,
-            focus_filter: None,
             box_select_start: None,
             box_select_curr: None,
             right_down_pos: None,
@@ -1429,7 +1418,6 @@ mod tests {
             context_menu_screen: (0, 0),
             connection_source: None,
             deleting_connection_source: None,
-            focus_filter: None,
             box_select_start: None,
             box_select_curr: None,
             right_down_pos: None,

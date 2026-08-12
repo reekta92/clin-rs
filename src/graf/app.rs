@@ -46,7 +46,7 @@ use fdg_sim::petgraph::graph::NodeIndex;
 use crossterm::event::KeyCode;
 
 use crate::config::ClinConfig;
-use crate::graf::graph::{FocusFilter, GrafMenuItem, ModeBanner};
+use crate::graf::graph::{GrafMenuItem, ModeBanner};
 use crate::graf::input::GraphMouseState;
 use crate::keybinds::Keybinds;
 use crate::list_view::PreviewContent;
@@ -59,6 +59,7 @@ pub struct GrafAppState {
     pub graph_mouse_state: GraphMouseState,
     pub storage: Storage,
     pub notes: Vec<crate::storage::NoteSummary>,
+    pub focus_note_ids: Option<std::collections::HashSet<String>>,
     pub config_errors: Vec<String>,
     pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
@@ -111,6 +112,7 @@ impl GrafAppState {
             graph_mouse_state: GraphMouseState::default(),
             storage,
             notes: summaries,
+            focus_note_ids: None,
 
             config_errors,
             search_popup: None,
@@ -152,13 +154,47 @@ impl GrafAppState {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
-        if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.notes, config) {
+        let filtered;
+        let notes: &[crate::storage::NoteSummary] = match &self.focus_note_ids {
+            Some(ids) => {
+                filtered = self
+                    .notes
+                    .iter()
+                    .filter(|n| ids.contains(&n.id))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                &filtered
+            }
+            None => &self.notes,
+        };
+        if let Ok(graph_state) = crate::graf::graph::GraphState::new(notes, config) {
             let state = Arc::new(RwLock::new(graph_state));
             let graph_kill_tx = crate::graf::physics::start_physics(state.clone(), config);
             self.graph_state = Some(state);
             self.graph_kill_tx = graph_kill_tx;
             self.search_popup = None;
         }
+    }
+
+    /// Enter a focus mode (local graph or group): rebuild the simulation with
+    /// only the given subset of note ids, then mark the active mode banner.
+    pub fn enter_focus(
+        &mut self,
+        config: &ClinConfig,
+        ids: std::collections::HashSet<String>,
+        mode: ModeBanner,
+    ) {
+        self.focus_note_ids = Some(ids);
+        self.refresh_simulation(config);
+        if let Some(gs) = &self.graph_state {
+            gs.write().mode_banner = Some(mode);
+        }
+    }
+
+    /// Exit focus mode: rebuild the full graph.
+    pub fn exit_focus(&mut self, config: &ClinConfig) {
+        self.focus_note_ids = None;
+        self.refresh_simulation(config);
     }
 
     pub fn shutdown(&mut self) {
@@ -439,7 +475,7 @@ fn graph_area(
         ])
         .split(term_area);
     let content_area = outer[1];
-    let mut area = if app_state.preview_enabled {
+    if app_state.preview_enabled {
         let (constraints, main_idx) = match config.list.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
@@ -465,21 +501,7 @@ fn graph_area(
         chunks[main_idx]
     } else {
         content_area
-    };
-    // A mode banner occupies the top row; keep mouse hit-testing in sync.
-    if app_state
-        .graph_state
-        .as_ref()
-        .is_some_and(|g| g.read().mode_banner.is_some())
-    {
-        area = ratatui::layout::Rect::new(
-            area.x,
-            area.y + 1,
-            area.width,
-            area.height.saturating_sub(1),
-        );
     }
-    area
 }
 
 fn add_wikilink_to_note(
@@ -623,21 +645,37 @@ fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: Graf
             }
         }
         LocalGraph => {
-            let mut g = graph.write();
-            if let Some(anchor) = g.selected_node {
-                let neighbors: std::collections::HashSet<fdg_sim::petgraph::graph::NodeIndex> =
-                    g.simulation.get_graph().neighbors(anchor).collect();
-                g.focus_filter = Some(FocusFilter::Local { anchor, neighbors });
-                g.mode_banner = Some(ModeBanner::LocalGraph);
-                g.context_menu = None;
+            let ids: std::collections::HashSet<String> = {
+                let g = graph.read();
+                let mut ids = std::collections::HashSet::new();
+                if let Some(anchor) = g.selected_node {
+                    let graph_ref = g.simulation.get_graph();
+                    if let Some(n) = graph_ref.node_weight(anchor) {
+                        ids.insert(n.data.note_id.clone());
+                    }
+                    for nbr in graph_ref.neighbors(anchor) {
+                        if let Some(n) = graph_ref.node_weight(nbr) {
+                            ids.insert(n.data.note_id.clone());
+                        }
+                    }
+                }
+                ids
+            };
+            if !ids.is_empty() {
+                state.enter_focus(config, ids, ModeBanner::LocalGraph);
             }
         }
         ShowGroup => {
-            let mut g = graph.write();
-            if !g.selected_nodes.is_empty() {
-                g.focus_filter = Some(FocusFilter::Group(g.selected_nodes.clone()));
-                g.mode_banner = Some(ModeBanner::GroupedGraph);
-                g.context_menu = None;
+            let ids: std::collections::HashSet<String> = {
+                let g = graph.read();
+                g.selected_nodes
+                    .iter()
+                    .filter_map(|idx| g.simulation.get_graph().node_weight(*idx))
+                    .map(|n| n.data.note_id.clone())
+                    .collect()
+            };
+            if !ids.is_empty() {
+                state.enter_focus(config, ids, ModeBanner::GroupedGraph);
             }
         }
         DeleteNode => {
@@ -781,6 +819,10 @@ fn handle_event(
                         create,
                     } => {
                         apply_connection(app_state, &source_id, &target_title, create);
+                        return Ok(None);
+                    }
+                    GraphInputAction::ClearFocus => {
+                        app_state.exit_focus(config);
                         return Ok(None);
                     }
                 }
