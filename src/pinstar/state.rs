@@ -49,6 +49,7 @@ pub struct PinstarState {
     pub mouse_selecting: bool,
     pub mouse_dragged: bool,
     pub last_zoom_at: Option<std::time::Instant>,
+    pub orthogonal_connections: bool,
 }
 
 #[derive(Clone)]
@@ -56,16 +57,21 @@ pub struct PinstarSnapshot {
     pub data: CanvasData,
 }
 
+#[derive(Clone, Copy)]
+pub struct EdgeSegments(pub [(f64, f64, f64, f64); 3], pub usize);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PinstarTextField {
     Raw,
     Floating,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PinstarMenuType {
     Canvas,
     ColorPicker,
+    EdgeMenu,
+    EdgeColorPicker,
+    EdgeStylePicker,
 }
 
 pub struct PinstarContextMenu {
@@ -130,6 +136,7 @@ impl PinstarState {
             select_rect_end: None,
             mouse_selecting: false,
             mouse_dragged: false,
+            orthogonal_connections: false,
         })
     }
 
@@ -210,6 +217,155 @@ impl PinstarState {
         self.selected_node_id = None;
         self.selected_node_ids.clear();
         let _ = self.save();
+    }
+
+    pub fn get_edge_segments(
+        &self,
+        edge: &crate::pinstar::data::CanvasEdge,
+    ) -> Option<EdgeSegments> {
+        let from_idx = self
+            .data
+            .nodes
+            .iter()
+            .position(|n| n.id() == edge.from_node)?;
+        let to_idx = self
+            .data
+            .nodes
+            .iter()
+            .position(|n| n.id() == edge.to_node)?;
+        let from = &self.data.nodes[from_idx];
+        let to = &self.data.nodes[to_idx];
+        let (fx, fy, fw, fh) = (from.pos().0, from.pos().1, from.size().0, from.size().1);
+        let (tx, ty, tw, th) = (to.pos().0, to.pos().1, to.size().0, to.size().1);
+        let scx = fx + fw / 2.0;
+        let scy = fy + fh / 2.0;
+        let tcx = tx + tw / 2.0;
+        let tcy = ty + th / 2.0;
+        let dx = tcx - scx;
+        let dy = tcy - scy;
+
+        let (ax, ay) = if dx.abs() > dy.abs() {
+            if dx > 0.0 { (fx + fw, scy) } else { (fx, scy) }
+        } else if dy > 0.0 {
+            (scx, fy + fh)
+        } else {
+            (scx, fy)
+        };
+        let (bx, by) = if dx.abs() > dy.abs() {
+            if dx > 0.0 { (tx, tcy) } else { (tx + tw, tcy) }
+        } else if dy > 0.0 {
+            (tcx, ty)
+        } else {
+            (tcx, ty + th)
+        };
+
+        let segs = if self.orthogonal_connections {
+            let is_horiz = dx.abs() > dy.abs();
+            if is_horiz {
+                let mid_x = (ax + bx) / 2.0;
+                [
+                    (ax, ay, mid_x, ay),
+                    (mid_x, ay, mid_x, by),
+                    (mid_x, by, bx, by),
+                ]
+            } else {
+                let mid_y = (ay + by) / 2.0;
+                [
+                    (ax, ay, ax, mid_y),
+                    (ax, mid_y, bx, mid_y),
+                    (bx, mid_y, bx, by),
+                ]
+            }
+        } else {
+            [(ax, ay, bx, by), (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)]
+        };
+        let count = if self.orthogonal_connections { 3 } else { 1 };
+        Some(EdgeSegments(segs, count))
+    }
+
+    pub fn select_edge_at(&mut self, cx: f64, cy: f64) -> Option<String> {
+        let tolerance = 5.0 / self.zoom;
+        let mut best: Option<(String, f64)> = None;
+        for edge in &self.data.edges {
+            let Some(seg) = self.get_edge_segments(edge) else {
+                continue;
+            };
+            for &(sx, sy, ex, ey) in seg.0.iter().take(seg.1) {
+                let dx = ex - sx;
+                let dy = ey - sy;
+                let len_sq = dx * dx + dy * dy;
+                if len_sq == 0.0 {
+                    let dist = ((cx - sx).powi(2) + (cy - sy).powi(2)).sqrt();
+                    if dist < tolerance {
+                        match &best {
+                            Some((_, bd)) if dist >= *bd => {}
+                            _ => best = Some((edge.id.clone(), dist)),
+                        }
+                    }
+                    continue;
+                }
+                let t = ((cx - sx) * dx + (cy - sy) * dy) / len_sq;
+                let t_clamped = t.clamp(0.0, 1.0);
+                let px = sx + t_clamped * dx;
+                let py = sy + t_clamped * dy;
+                let dist = ((cx - px).powi(2) + (cy - py).powi(2)).sqrt();
+                if dist < tolerance {
+                    match &best {
+                        Some((_, bd)) if dist >= *bd => {}
+                        _ => best = Some((edge.id.clone(), dist)),
+                    }
+                }
+            }
+        }
+        if let Some((id, _)) = best {
+            self.selected_edge_id = Some(id.clone());
+            self.selected_node_id = None;
+            self.selected_node_ids.clear();
+            Some(id)
+        } else {
+            self.selected_edge_id = None;
+            None
+        }
+    }
+
+    pub fn set_edge_color(&mut self, color: Option<String>) {
+        if let Some(id) = &self.selected_edge_id {
+            let id = id.clone();
+            self.record_undo_state();
+            for edge in &mut self.data.edges {
+                if edge.id == id {
+                    edge.color = color;
+                    break;
+                }
+            }
+            let _ = self.save();
+            self.sync_to_raw_editor();
+        }
+    }
+
+    pub fn set_edge_style(&mut self, style: crate::pinstar::data::EdgeStyle) {
+        if let Some(id) = &self.selected_edge_id {
+            let id = id.clone();
+            self.record_undo_state();
+            for edge in &mut self.data.edges {
+                if edge.id == id {
+                    edge.style = style;
+                    break;
+                }
+            }
+            let _ = self.save();
+            self.sync_to_raw_editor();
+        }
+    }
+
+    pub fn open_edge_context_menu(&mut self, x: u16, y: u16) {
+        self.context_menu = Some(PinstarContextMenu {
+            x,
+            y,
+            selected: 0,
+            items: vec!["Set Color...".to_string(), "Set Style...".to_string()],
+            menu_type: PinstarMenuType::EdgeMenu,
+        });
     }
 
     pub fn save(&self) -> Result<()> {

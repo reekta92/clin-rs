@@ -62,6 +62,66 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
+fn get_edge_color(color: Option<&str>, selected: bool, theme: &AppThemeColors) -> Color {
+    if selected {
+        return theme.accent;
+    }
+    match color {
+        Some(s) if s.starts_with('#') && s.len() == 7 => {
+            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
+            Color::Rgb(r, g, b)
+        }
+        _ => theme.muted,
+    }
+}
+
+fn draw_braille_segment(
+    buf: &mut ratatui::buffer::Buffer,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    view_left: f64,
+    view_right: f64,
+    view_top: f64,
+    view_bottom: f64,
+    style: crate::pinstar::data::EdgeStyle,
+    color: Color,
+) {
+    let mut current_x = x1;
+    let mut current_y = y1;
+    let dist = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+    let steps = (dist * 4.0) as usize;
+    if steps == 0 {
+        return;
+    }
+    let ddx = (x2 - x1) / steps as f64;
+    let ddy = (y2 - y1) / steps as f64;
+    for step in 0..=steps {
+        let draw = match style {
+            crate::pinstar::data::EdgeStyle::Solid => true,
+            crate::pinstar::data::EdgeStyle::Dashed => step % 16 < 8,
+            crate::pinstar::data::EdgeStyle::Dotted => step % 8 == 0,
+        };
+        if draw
+            && current_x >= view_left
+            && current_x < view_right
+            && current_y >= view_top
+            && current_y < view_bottom
+        {
+            let cell_x = current_x as u16;
+            let cell_y = current_y as u16;
+            let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
+            let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
+            crate::ui::braille::set_braille_dot(buf, cell_x, cell_y, dot_x, dot_y, color);
+        }
+        current_x += ddx;
+        current_y += ddy;
+    }
+}
+
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,
@@ -372,96 +432,42 @@ pub fn draw_pinstar_view(
     }
 
     {
-        use std::collections::HashMap;
-        // Keys borrow state.data.nodes; map drops at end of this block,
-        // before the non-group pass takes &mut state.image_cache.
-        let id_index: HashMap<&str, usize> = state
-            .data
-            .nodes
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.id(), i))
-            .collect();
-
         for edge in &state.data.edges {
-            let Some(&ia) = id_index.get(edge.from_node.as_str()) else {
+            let Some(seg) = state.get_edge_segments(edge) else {
                 continue;
             };
-            let Some(&ib) = id_index.get(edge.to_node.as_str()) else {
-                continue;
-            };
-            let pf = &proj[ia];
-            let pt = &proj[ib];
-
-            let (fx, fy, fw, fh) = (pf.pos.0, pf.pos.1, pf.size.0, pf.size.1);
-            let (tx, ty, tw, th) = (pt.pos.0, pt.pos.1, pt.size.0, pt.size.1);
-
-            let scx = fx + fw / 2.0;
-            let scy = fy + fh / 2.0;
-            let tcx = tx + tw / 2.0;
-            let tcy = ty + th / 2.0;
-            let dx = tcx - scx;
-            let dy = tcy - scy;
-
-            let (ax, ay) = if dx.abs() > dy.abs() {
-                if dx > 0.0 { (fx + fw, scy) } else { (fx, scy) }
-            } else if dy > 0.0 {
-                (scx, fy + fh)
-            } else {
-                (scx, fy)
-            };
-
-            let (bx, by) = if dx.abs() > dy.abs() {
-                if dx > 0.0 { (tx, tcy) } else { (tx + tw, tcy) }
-            } else if dy > 0.0 {
-                (tcx, ty)
-            } else {
-                (tcx, ty + th)
-            };
-
-            let sfx = (ax - vx) * z + origin_x;
-            let sfy = (ay - vy) * z + origin_y;
-            let stx = (bx - vx) * z + origin_x;
-            let sty = (by - vy) * z + origin_y;
-
-            // Cull edges whose screen bbox is entirely outside canvas
-            let min_x = sfx.min(stx);
-            let max_x = sfx.max(stx);
-            let min_y = sfy.min(sty);
-            let max_y = sfy.max(sty);
-            if max_x < view_left || min_x > view_right || max_y < view_top || min_y > view_bottom {
-                continue;
-            }
-
-            let mut current_x = sfx;
-            let mut current_y = sfy;
-            let dist = ((stx - sfx).powi(2) + (sty - sfy).powi(2)).sqrt();
-            let steps = (dist * 4.0) as usize;
-            if steps > 0 {
-                let ddx = (stx - sfx) / steps as f64;
-                let ddy = (sty - sfy) / steps as f64;
-                for _ in 0..=steps {
-                    if current_x >= view_left
-                        && current_x < view_right
-                        && current_y >= view_top
-                        && current_y < view_bottom
-                    {
-                        let cell_x = current_x as u16;
-                        let cell_y = current_y as u16;
-                        let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
-                        let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
-                        crate::ui::braille::set_braille_dot(
-                            frame.buffer_mut(),
-                            cell_x,
-                            cell_y,
-                            dot_x,
-                            dot_y,
-                            theme.muted,
-                        );
-                    }
-                    current_x += ddx;
-                    current_y += ddy;
+            let is_edge_selected = state.selected_edge_id.as_deref() == Some(edge.id.as_str());
+            let edge_color = get_edge_color(edge.color.as_deref(), is_edge_selected, theme);
+            for &(sx, sy, ex, ey) in seg.0.iter().take(seg.1) {
+                let sfx = (sx - vx) * z + origin_x;
+                let sfy = (sy - vy) * z + origin_y;
+                let stx = (ex - vx) * z + origin_x;
+                let sty = (ey - vy) * z + origin_y;
+                // Cull per segment
+                let min_x = sfx.min(stx);
+                let max_x = sfx.max(stx);
+                let min_y = sfy.min(sty);
+                let max_y = sfy.max(sty);
+                if max_x < view_left
+                    || min_x > view_right
+                    || max_y < view_top
+                    || min_y > view_bottom
+                {
+                    continue;
                 }
+                draw_braille_segment(
+                    frame.buffer_mut(),
+                    sfx,
+                    sfy,
+                    stx,
+                    sty,
+                    view_left,
+                    view_right,
+                    view_top,
+                    view_bottom,
+                    edge.style,
+                    edge_color,
+                );
             }
         }
     } // end edge-pass block

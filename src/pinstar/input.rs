@@ -84,8 +84,13 @@ pub fn handle_pinstar_mouse(
             }
             if !state.mouse_dragged {
                 let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
-                state.select_node_at(cx, cy);
-                state.open_context_menu(mouse.column, mouse.row, cx, cy);
+                // Edge hit takes precedence over node hit
+                if state.select_edge_at(cx, cy).is_some() {
+                    state.open_edge_context_menu(mouse.column, mouse.row);
+                } else {
+                    state.select_node_at(cx, cy);
+                    state.open_context_menu(mouse.column, mouse.row, cx, cy);
+                }
             }
             state.drag_start_pos = None;
             true
@@ -412,6 +417,68 @@ fn execute_menu_action(
             state.set_node_color(Some(entry.1.to_string()));
         }
         state.sync_to_raw_editor();
+        return;
+    }
+
+    if menu_type == PinstarMenuType::EdgeMenu {
+        match selected_index {
+            0 => {
+                let mut items = vec!["Default".to_string()];
+                for (name, _, _) in crate::pinstar::COLOR_PICKER_PALETTE {
+                    let capitalized = name
+                        .chars()
+                        .next()
+                        .unwrap_or(' ')
+                        .to_uppercase()
+                        .to_string()
+                        + &name[1..];
+                    items.push(capitalized);
+                }
+                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
+                    x: menu_x,
+                    y: menu_y,
+                    selected: 0,
+                    items,
+                    menu_type: PinstarMenuType::EdgeColorPicker,
+                });
+            }
+            1 => {
+                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
+                    x: menu_x,
+                    y: menu_y,
+                    selected: 0,
+                    items: vec![
+                        "Solid".to_string(),
+                        "Dashed".to_string(),
+                        "Dotted".to_string(),
+                    ],
+                    menu_type: PinstarMenuType::EdgeStylePicker,
+                });
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    if menu_type == PinstarMenuType::EdgeColorPicker {
+        if selected_index == 0 {
+            state.set_edge_color(None);
+        } else if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE.get(selected_index - 1) {
+            state.set_edge_color(Some(entry.1.to_string()));
+        }
+        state.selected_edge_id = None;
+        return;
+    }
+
+    if menu_type == PinstarMenuType::EdgeStylePicker {
+        let style = match selected_index {
+            0 => crate::pinstar::data::EdgeStyle::Solid,
+            1 => crate::pinstar::data::EdgeStyle::Dashed,
+            2 => crate::pinstar::data::EdgeStyle::Dotted,
+            _ => return,
+        };
+        state.set_edge_style(style);
+        state.selected_edge_id = None;
         return;
     }
 
