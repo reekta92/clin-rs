@@ -496,10 +496,6 @@ impl Default for Keybinds {
             vec![KeyCombo::shift(KeyCode::Char('P'))],
         );
         graph.insert(
-            GraphAction::OpenContextMenu,
-            vec![KeyCombo::simple(KeyCode::Char('m'))],
-        );
-        graph.insert(
             GraphAction::CreateConnection,
             vec![KeyCombo::simple(KeyCode::Char('c'))],
         );
