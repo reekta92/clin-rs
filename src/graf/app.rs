@@ -154,6 +154,12 @@ impl GrafAppState {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
+        let mut effective_config = config.clone();
+        if self.focus_note_ids.is_some() {
+            // Focus (local/group) subsets must render every selected node,
+            // including ones without connections, regardless of show_orphan.
+            effective_config.graf.filter.show_orphan = true;
+        }
         let filtered;
         let notes: &[crate::storage::NoteSummary] = match &self.focus_note_ids {
             Some(ids) => {
@@ -167,9 +173,10 @@ impl GrafAppState {
             }
             None => &self.notes,
         };
-        if let Ok(graph_state) = crate::graf::graph::GraphState::new(notes, config) {
+        if let Ok(graph_state) = crate::graf::graph::GraphState::new(notes, &effective_config) {
             let state = Arc::new(RwLock::new(graph_state));
-            let graph_kill_tx = crate::graf::physics::start_physics(state.clone(), config);
+            let graph_kill_tx =
+                crate::graf::physics::start_physics(state.clone(), &effective_config);
             self.graph_state = Some(state);
             self.graph_kill_tx = graph_kill_tx;
             self.search_popup = None;
