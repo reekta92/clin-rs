@@ -24,6 +24,7 @@ pub fn canvas_group_order() -> &'static [&'static str] {
     &[
         "Navigation",
         "Editing",
+        "Display",
         "Interface",
         "Menus & Popups",
         "General",
@@ -554,6 +555,10 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
         CanvasAction::RenameConfirm => HelpMeta {
             group: "Editing",
             description: "Rename confirm",
+        },
+        CanvasAction::ToggleOrthogonal => HelpMeta {
+            group: "Display",
+            description: "Toggle orthogonal edge routing",
         },
         CanvasAction::RenameCancel => HelpMeta {
             group: "Editing",

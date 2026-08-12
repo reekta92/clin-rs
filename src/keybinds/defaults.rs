@@ -649,6 +649,10 @@ impl Default for Keybinds {
             vec![KeyCombo::shift(KeyCode::Char('G'))],
         );
         canvas.insert(
+            CanvasAction::ToggleOrthogonal,
+            vec![KeyCombo::ctrl(KeyCode::Char('o'))],
+        );
+        canvas.insert(
             CanvasAction::ToggleEditorPane,
             vec![KeyCombo::ctrl(KeyCode::Char('e'))],
         );

@@ -766,6 +766,30 @@ pub fn handle_pinstar_event(
             CanvasAction::ToggleGrid => {
                 state.show_grid = !state.show_grid;
             }
+            CanvasAction::ToggleOrthogonal => {
+                state.orthogonal_connections = !state.orthogonal_connections;
+                state.footer_hint = if state.orthogonal_connections {
+                    "arrow:on".into()
+                } else {
+                    "arrow:off".into()
+                };
+                // Persist per-vault
+                if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir)
+                {
+                    let vault_key = vault_id.to_string_lossy().into_owned();
+                    if let Ok(paths) = crate::paths::AppPaths::discover(
+                        crate::config::ClinConfig::config_path().unwrap_or_default(),
+                    ) {
+                        let _ = crate::local_state::LocalState::update(&paths.state_path(), |s| {
+                            s.vaults
+                                .entry(vault_key.clone())
+                                .or_default()
+                                .canvas_orthogonal = state.orthogonal_connections;
+                            Ok(())
+                        });
+                    }
+                }
+            }
             CanvasAction::ToggleEditorPane => {
                 state.show_editor_pane = !state.show_editor_pane;
                 if !state.show_editor_pane {

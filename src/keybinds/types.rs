@@ -235,6 +235,7 @@ pub enum CanvasAction {
     EditOrConnect,
     OpenContextMenu,
     ToggleGrid,
+    ToggleOrthogonal,
     ToggleEditorPane,
     CycleFocus,
     Help,

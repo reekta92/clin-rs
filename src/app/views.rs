@@ -191,6 +191,21 @@ impl App {
                     crate::image_render::cache::ImageCache::new(self.config.image.cache_size);
                 state.image_picker = self.image_picker.clone();
                 state.image_decode_tx = self.image_decode_tx.clone();
+                // Load per-vault orthogonal preference
+                if let Ok(vault_id) =
+                    crate::local_state::vault_identity_path(&self.storage.data_dir)
+                {
+                    let vault_key = vault_id.to_string_lossy().into_owned();
+                    if let Ok(paths) = crate::paths::AppPaths::discover(
+                        crate::config::ClinConfig::config_path().unwrap_or_default(),
+                    ) {
+                        if let Ok(st) = crate::local_state::LocalState::load(&paths.state_path()) {
+                            if let Some(vs) = st.vaults.get(&vault_key) {
+                                state.orthogonal_connections = vs.canvas_orthogonal;
+                            }
+                        }
+                    }
+                }
                 self.canvas_state = Some(state);
                 self.set_default_status();
             } else {
