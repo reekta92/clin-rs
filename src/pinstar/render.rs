@@ -122,6 +122,36 @@ fn draw_braille_segment(
     }
 }
 
+fn menu_shortcut(
+    keybinds: &crate::keybinds::Keybinds,
+    menu_type: crate::pinstar::state::PinstarMenuType,
+    item: &str,
+) -> Option<String> {
+    use crate::keybinds::CanvasAction;
+    let action = match menu_type {
+        crate::pinstar::state::PinstarMenuType::Canvas => match item {
+            "Create Connection" => Some(CanvasAction::CreateConnection),
+            "Delete Connection" => Some(CanvasAction::DeleteConnection),
+            "Rename Node" => Some(CanvasAction::RenameNode),
+            "Resize Node" => Some(CanvasAction::ResizeMode),
+            "Set Color..." => Some(CanvasAction::SetColor),
+            "Delete All Connections" => Some(CanvasAction::DeleteAllConnections),
+            "Delete Node" => Some(CanvasAction::DeleteNode),
+            _ => None,
+        },
+        crate::pinstar::state::PinstarMenuType::EdgeMenu => match item {
+            "Set Color..." => Some(CanvasAction::SetColor),
+            _ => None,
+        },
+        _ => None,
+    };
+    action.and_then(|a| {
+        let display = keybinds.canvas_keys_display(a);
+        let first = display.split('/').next().unwrap_or("").trim().to_string();
+        if first.is_empty() { None } else { Some(first) }
+    })
+}
+
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,
@@ -802,9 +832,12 @@ pub fn draw_pinstar_view(
         let menu_width = menu
             .items
             .iter()
-            .map(|s| s.len() as u16 + 4)
+            .map(|s| {
+                let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, s);
+                s.len() + shortcut.map_or(0, |k| k.len() + 3) + 4
+            })
             .max()
-            .unwrap_or(25);
+            .unwrap_or(25) as u16;
         let menu_height = menu.items.len() as u16;
         let menu_rect = Rect::new(
             area.x + menu.x.min(area.width.saturating_sub(menu_width)),
@@ -820,6 +853,12 @@ pub fn draw_pinstar_view(
             .iter()
             .enumerate()
             .map(|(i, item)| {
+                let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, item);
+                let text = if let Some(k) = shortcut {
+                    format!("  {item}  [{k}]")
+                } else {
+                    format!("  {item}  ")
+                };
                 let style = if i == menu.selected {
                     Style::default()
                         .fg(theme.highlight_fg)
@@ -828,7 +867,7 @@ pub fn draw_pinstar_view(
                 } else {
                     Style::default().fg(theme.text)
                 };
-                ListItem::new(format!("  {item}  ")).style(style)
+                ListItem::new(text).style(style)
             })
             .collect();
 

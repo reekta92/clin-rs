@@ -251,6 +251,13 @@ pub enum CanvasAction {
     CancelResize,
     EditorUnfocus,
     EditorSyncRaw,
+    CreateConnection,
+    DeleteConnection,
+    RenameNode,
+    ResizeMode,
+    SetColor,
+    DeleteNode,
+    DeleteAllConnections,
 }
 
 #[derive(

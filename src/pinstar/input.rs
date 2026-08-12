@@ -805,6 +805,79 @@ pub fn handle_pinstar_event(
                 state.help_requested = true;
                 *running = false;
             }
+            CanvasAction::CreateConnection => {
+                if state.selected_node_id.is_some() {
+                    state.start_connection();
+                } else {
+                    app.set_temporary_status("Select a node first to create a connection");
+                }
+            }
+            CanvasAction::DeleteConnection => {
+                if state.selected_node_id.is_some() {
+                    state.start_delete_connection();
+                } else {
+                    app.set_temporary_status("Select a node first to delete connections");
+                }
+            }
+            CanvasAction::RenameNode => {
+                if let Some(id) = state.selected_node_id.clone() {
+                    let current_title = state
+                        .data
+                        .nodes
+                        .iter()
+                        .find(|n| n.id() == id)
+                        .and_then(|n| n.title())
+                        .unwrap_or("")
+                        .to_string();
+                    let mut textarea = TextArea::from(vec![current_title]);
+                    textarea.set_cursor_line_style(ratatui::style::Style::default());
+                    textarea.set_block(
+                        ratatui::widgets::Block::default()
+                            .borders(ratatui::widgets::Borders::ALL)
+                            .title(" Rename Node - Enter to confirm, Esc to cancel "),
+                    );
+                    state.rename_popup = Some(textarea);
+                } else {
+                    app.set_temporary_status("Select a node first to rename");
+                }
+            }
+            CanvasAction::ResizeMode => {
+                if state.selected_node_id.is_some() {
+                    state.start_resize();
+                } else {
+                    app.set_temporary_status("Select a node first to resize");
+                }
+            }
+            CanvasAction::SetColor => {
+                let menu_x = (area.width / 2).saturating_sub(12);
+                let menu_y = area.height;
+                let mut items = vec!["Default".to_string()];
+                for (name, _, _) in crate::pinstar::COLOR_PICKER_PALETTE {
+                    let capitalized = name
+                        .chars()
+                        .next()
+                        .unwrap_or(' ')
+                        .to_uppercase()
+                        .to_string()
+                        + &name[1..];
+                    items.push(capitalized);
+                }
+                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
+                    x: menu_x,
+                    y: menu_y,
+                    selected: 0,
+                    items,
+                    menu_type: PinstarMenuType::ColorPicker,
+                });
+            }
+            CanvasAction::DeleteNode => {
+                state.delete_selected_node();
+                state.sync_to_raw_editor();
+            }
+            CanvasAction::DeleteAllConnections => {
+                state.delete_node_connections();
+                state.sync_to_raw_editor();
+            }
             _ => {
                 if keybinds.matches_canvas(CanvasAction::Quit, &key) {
                     *running = false;

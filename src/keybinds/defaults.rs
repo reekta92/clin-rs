@@ -637,12 +637,39 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::simple(KeyCode::Char('i')),
                 KeyCombo::simple(KeyCode::Enter),
-                KeyCombo::simple(KeyCode::Char('o')),
             ],
         );
         canvas.insert(
             CanvasAction::OpenContextMenu,
             vec![KeyCombo::simple(KeyCode::Char('a'))],
+        );
+        canvas.insert(
+            CanvasAction::CreateConnection,
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        canvas.insert(
+            CanvasAction::DeleteConnection,
+            vec![KeyCombo::simple(KeyCode::Char('d'))],
+        );
+        canvas.insert(
+            CanvasAction::RenameNode,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        canvas.insert(
+            CanvasAction::ResizeMode,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        canvas.insert(
+            CanvasAction::SetColor,
+            vec![KeyCombo::simple(KeyCode::Char('o'))],
+        );
+        canvas.insert(
+            CanvasAction::DeleteNode,
+            vec![KeyCombo::simple(KeyCode::Char('x'))],
+        );
+        canvas.insert(
+            CanvasAction::DeleteAllConnections,
+            vec![KeyCombo::simple(KeyCode::Char('b'))],
         );
         canvas.insert(
             CanvasAction::ToggleGrid,

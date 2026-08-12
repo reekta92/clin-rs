@@ -24,6 +24,7 @@ pub fn canvas_group_order() -> &'static [&'static str] {
     &[
         "Navigation",
         "Editing",
+        "Connections",
         "Display",
         "Interface",
         "Menus & Popups",
@@ -615,6 +616,34 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
         CanvasAction::CancelResize => HelpMeta {
             group: "Menus & Popups",
             description: "Resize cancel",
+        },
+        CanvasAction::CreateConnection => HelpMeta {
+            group: "Connections",
+            description: "Create connection from selected node",
+        },
+        CanvasAction::DeleteConnection => HelpMeta {
+            group: "Connections",
+            description: "Delete connection from selected node",
+        },
+        CanvasAction::DeleteAllConnections => HelpMeta {
+            group: "Connections",
+            description: "Delete all connections on selected node",
+        },
+        CanvasAction::RenameNode => HelpMeta {
+            group: "Editing",
+            description: "Rename selected node",
+        },
+        CanvasAction::ResizeMode => HelpMeta {
+            group: "Editing",
+            description: "Enter resize mode",
+        },
+        CanvasAction::SetColor => HelpMeta {
+            group: "Editing",
+            description: "Set color of selected node(s)",
+        },
+        CanvasAction::DeleteNode => HelpMeta {
+            group: "Editing",
+            description: "Delete selected node(s)",
         },
         CanvasAction::Help => HelpMeta {
             group: "General",
