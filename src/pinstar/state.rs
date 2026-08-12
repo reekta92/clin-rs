@@ -79,6 +79,7 @@ pub struct PinstarContextMenu {
     pub y: u16,
     pub selected: usize,
     pub items: Vec<String>,
+    pub color_hints: Vec<Option<ratatui::style::Color>>,
     pub menu_type: PinstarMenuType,
 }
 
@@ -365,6 +366,7 @@ impl PinstarState {
             selected: 0,
             items: vec!["Set Color...".to_string(), "Set Style...".to_string()],
             menu_type: PinstarMenuType::EdgeMenu,
+            color_hints: Vec::new(),
         });
     }
 
@@ -540,7 +542,10 @@ impl PinstarState {
         if let Some(text) = editor_text {
             if self.selected_node_id.is_some() {
                 self.record_undo_state();
-                let node_id = self.selected_node_id.as_ref().expect("checked is_some above");
+                let node_id = self
+                    .selected_node_id
+                    .as_ref()
+                    .expect("checked is_some above");
                 for node in &mut self.data.nodes {
                     if node.id() == node_id {
                         node.set_text(text);
@@ -587,6 +592,7 @@ impl PinstarState {
             selected: 0,
             items,
             menu_type: PinstarMenuType::Canvas,
+            color_hints: Vec::new(),
         });
     }
 

@@ -829,7 +829,7 @@ pub fn draw_pinstar_view(
     crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 
     if let Some(menu) = &state.context_menu {
-        let menu_width = menu
+        let menu_width: usize = menu
             .items
             .iter()
             .map(|s| {
@@ -837,12 +837,12 @@ pub fn draw_pinstar_view(
                 s.len() + shortcut.map_or(0, |k| k.len() + 3) + 4
             })
             .max()
-            .unwrap_or(25) as u16;
+            .unwrap_or(25);
         let menu_height = menu.items.len() as u16;
         let menu_rect = Rect::new(
-            area.x + menu.x.min(area.width.saturating_sub(menu_width)),
+            area.x + menu.x.min(area.width.saturating_sub(menu_width as u16)),
             area.y + menu.y.min(area.height.saturating_sub(menu_height)),
-            menu_width,
+            menu_width as u16,
             menu_height,
         );
 
@@ -854,12 +854,8 @@ pub fn draw_pinstar_view(
             .enumerate()
             .map(|(i, item)| {
                 let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, item);
-                let text = if let Some(k) = shortcut {
-                    format!("  {item}  [{k}]")
-                } else {
-                    format!("  {item}  ")
-                };
-                let style = if i == menu.selected {
+                let is_selected = i == menu.selected;
+                let base_style = if is_selected {
                     Style::default()
                         .fg(theme.highlight_fg)
                         .bg(theme.highlight_bg)
@@ -867,10 +863,34 @@ pub fn draw_pinstar_view(
                 } else {
                     Style::default().fg(theme.text)
                 };
-                ListItem::new(text).style(style)
+                let color_square = i < menu.color_hints.len() && menu.color_hints[i].is_some();
+                let label = format!("  {item}  ");
+                let hint_str = shortcut.as_ref().map(|k| format!("[{k}]"));
+                let hint_width = hint_str.as_ref().map_or(0, |h| h.len());
+                let padding = menu_width.saturating_sub(label.len() + hint_width);
+                let hint_style = Style::default().fg(theme.muted).bg(if is_selected {
+                    theme.highlight_bg
+                } else {
+                    Color::Reset
+                });
+                let mut spans: Vec<Span> = Vec::new();
+                if color_square {
+                    let sq_color = menu.color_hints[i].unwrap_or(Color::Reset);
+                    spans.push(Span::styled("  ", base_style));
+                    spans.push(Span::styled("■ ", base_style.fg(sq_color)));
+                    spans.push(Span::styled(format!("{item}  "), base_style));
+                } else {
+                    spans.push(Span::styled(label.clone(), base_style));
+                }
+                if padding > 0 {
+                    spans.push(Span::styled(" ".repeat(padding), base_style));
+                }
+                if let Some(h) = hint_str {
+                    spans.push(Span::styled(h, hint_style));
+                }
+                ListItem::new(Line::from(spans))
             })
             .collect();
-
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::NONE)

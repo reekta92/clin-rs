@@ -198,8 +198,7 @@ impl App {
                     let vault_key = vault_id.to_string_lossy().into_owned();
                     if let Ok(paths) = crate::paths::AppPaths::discover(
                         crate::config::ClinConfig::config_path().unwrap_or_default(),
-                    )
-                        && let Ok(st) = crate::local_state::LocalState::load(&paths.state_path())
+                    ) && let Ok(st) = crate::local_state::LocalState::load(&paths.state_path())
                         && let Some(vs) = st.vaults.get(&vault_key)
                     {
                         state.orthogonal_connections = vs.canvas_orthogonal;
