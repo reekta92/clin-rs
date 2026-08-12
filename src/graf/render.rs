@@ -1345,7 +1345,7 @@ pub fn draw_looking_glass(
     state: &GraphState,
     config: &ClinConfig,
     colors: &crate::config::ThemeColors,
-    _app_theme: &crate::app_theme::AppThemeColors,
+    app_theme: &crate::app_theme::AppThemeColors,
     cache: &RenderCache,
 ) {
     let Some(idx) = state.selected_node else {
@@ -1392,15 +1392,18 @@ pub fn draw_looking_glass(
             )
         })
         .collect();
-    // Leave at least 4 rows for the visual; cap the tag list to the rest.
-    let max_tag_rows = inner.height.saturating_sub(4) as usize;
+    // Footer: link-count line above the tag list. Leave at least 4 rows for
+    // the visual; cap the tag list to whatever remains.
+    let meta_h = 1u16;
+    let max_tag_rows = inner.height.saturating_sub(4 + meta_h) as usize;
     let tag_count = tags.len().min(max_tag_rows);
     let tags_h = tag_count as u16;
+    let footer_h = meta_h + tags_h;
     let canvas_area = Rect::new(
         inner.x,
         inner.y,
         inner.width,
-        inner.height.saturating_sub(tags_h),
+        inner.height.saturating_sub(footer_h),
     );
 
     // Radius matches the simulation's node-size computation exactly.
@@ -1463,14 +1466,22 @@ pub fn draw_looking_glass(
             });
         });
     frame.render_widget(canvas, canvas_area);
-
+    let footer_y = inner.y + inner.height.saturating_sub(footer_h);
+    let link_label = if node.data.link_count == 1 {
+        "1 link".to_string()
+    } else {
+        format!("{} links", node.data.link_count)
+    };
+    let meta_rect = Rect::new(inner.x, footer_y, inner.width, meta_h);
+    frame.render_widget(
+        Paragraph::new(ratatui::text::Line::from(Span::styled(
+            link_label,
+            Style::default().fg(app_theme.muted),
+        ))),
+        meta_rect,
+    );
     if tag_count > 0 {
-        let tags_rect = Rect::new(
-            inner.x,
-            inner.y + inner.height.saturating_sub(tags_h),
-            inner.width,
-            tags_h,
-        );
+        let tags_rect = Rect::new(inner.x, footer_y + meta_h, inner.width, tags_h);
         let lines: Vec<ratatui::text::Line> = tags
             .iter()
             .take(tag_count)
