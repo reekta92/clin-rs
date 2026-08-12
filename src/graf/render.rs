@@ -1345,7 +1345,7 @@ pub fn draw_looking_glass(
     state: &GraphState,
     config: &ClinConfig,
     colors: &crate::config::ThemeColors,
-    app_theme: &crate::app_theme::AppThemeColors,
+    _app_theme: &crate::app_theme::AppThemeColors,
     cache: &RenderCache,
 ) {
     let Some(idx) = state.selected_node else {
@@ -1360,23 +1360,47 @@ pub fn draw_looking_glass(
     };
 
     let bg = colors.background_color.unwrap_or(Color::Black);
+    let title =
+        crate::graf::util::truncate(&node.data.title, overlay.width.saturating_sub(4) as usize);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(colors.minimap_border_color))
-        .style(Style::default().bg(bg));
+        .style(Style::default().bg(bg))
+        .title(ratatui::text::Line::from(Span::styled(
+            format!(" {title} "),
+            Style::default().fg(colors.label_color),
+        )));
     let inner = block.inner(overlay);
     frame.render_widget(block, overlay);
     if inner.width < 4 || inner.height < 4 {
         return;
     }
 
-    // Reserve the bottom two rows for title/meta text when there is room.
-    let text_h = if inner.height >= 6 { 2 } else { 0 };
+    // Tags render as a vertical list below the node visual.
+    let tags: Vec<(String, Color)> = node
+        .data
+        .tags
+        .iter()
+        .map(|t| {
+            (
+                t.clone(),
+                cache
+                    .tag_colors
+                    .get(t)
+                    .copied()
+                    .unwrap_or(colors.label_color),
+            )
+        })
+        .collect();
+    // Leave at least 4 rows for the visual; cap the tag list to the rest.
+    let max_tag_rows = inner.height.saturating_sub(4) as usize;
+    let tag_count = tags.len().min(max_tag_rows);
+    let tags_h = tag_count as u16;
     let canvas_area = Rect::new(
         inner.x,
         inner.y,
         inner.width,
-        inner.height.saturating_sub(text_h),
+        inner.height.saturating_sub(tags_h),
     );
 
     // Radius matches the simulation's node-size computation exactly.
@@ -1440,21 +1464,26 @@ pub fn draw_looking_glass(
         });
     frame.render_widget(canvas, canvas_area);
 
-    if text_h > 0 {
-        let title =
-            crate::graf::util::truncate(&node.data.title, (inner.width.saturating_sub(2)) as usize);
-        let meta = format!("{} links · {}", node.data.link_count, node.data.folder);
-        let lines = vec![
-            ratatui::text::Line::from(Span::styled(title, Style::default().fg(colors.label_color))),
-            ratatui::text::Line::from(Span::styled(meta, Style::default().fg(app_theme.muted))),
-        ];
-        let text_rect = Rect::new(
+    if tag_count > 0 {
+        let tags_rect = Rect::new(
             inner.x,
-            inner.y + inner.height.saturating_sub(2),
+            inner.y + inner.height.saturating_sub(tags_h),
             inner.width,
-            2,
+            tags_h,
         );
-        frame.render_widget(Paragraph::new(lines), text_rect);
+        let lines: Vec<ratatui::text::Line> = tags
+            .iter()
+            .take(tag_count)
+            .map(|(tag, color)| {
+                let label =
+                    crate::graf::util::truncate(tag, inner.width.saturating_sub(2) as usize);
+                ratatui::text::Line::from(Span::styled(
+                    format!("#{label}"),
+                    Style::default().fg(*color),
+                ))
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), tags_rect);
     }
 }
 
