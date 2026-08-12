@@ -828,31 +828,42 @@ impl PinstarState {
                     }
                 }
             }
+            // Also capture multi-selected nodes
+            for nid in &self.selected_node_ids {
+                self.drag_captured_nodes.insert(nid.clone());
+            }
+        } else {
+            // When no primary node but multi-selected nodes exist, capture all of them
+            for nid in &self.selected_node_ids {
+                self.drag_captured_nodes.insert(nid.clone());
+            }
         }
     }
-
     pub fn move_selected_node(&mut self, dx: f64, dy: f64) {
-        if let Some(id) = &self.selected_node_id {
-            for node in &mut self.data.nodes {
-                let nid = node.id();
-                if nid == id || self.drag_captured_nodes.contains(nid) {
-                    match node {
-                        crate::pinstar::data::CanvasNode::Text(n) => {
-                            n.x += dx;
-                            n.y += dy;
-                        }
-                        crate::pinstar::data::CanvasNode::File(n) => {
-                            n.x += dx;
-                            n.y += dy;
-                        }
-                        crate::pinstar::data::CanvasNode::Link(n) => {
-                            n.x += dx;
-                            n.y += dy;
-                        }
-                        crate::pinstar::data::CanvasNode::Group(n) => {
-                            n.x += dx;
-                            n.y += dy;
-                        }
+        let primary = self.selected_node_id.clone();
+        let captured = self.drag_captured_nodes.clone();
+        if primary.is_none() && captured.is_empty() {
+            return;
+        }
+        for node in &mut self.data.nodes {
+            let nid = node.id();
+            if primary.as_deref() == Some(nid) || captured.contains(nid) {
+                match node {
+                    crate::pinstar::data::CanvasNode::Text(n) => {
+                        n.x += dx;
+                        n.y += dy;
+                    }
+                    crate::pinstar::data::CanvasNode::File(n) => {
+                        n.x += dx;
+                        n.y += dy;
+                    }
+                    crate::pinstar::data::CanvasNode::Link(n) => {
+                        n.x += dx;
+                        n.y += dy;
+                    }
+                    crate::pinstar::data::CanvasNode::Group(n) => {
+                        n.x += dx;
+                        n.y += dy;
                     }
                 }
             }

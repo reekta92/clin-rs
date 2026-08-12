@@ -603,6 +603,13 @@ fn handle_direct_action(
             }
         }
         CanvasAction::SetColor => {
+            if state.selected_node_id.is_none()
+                && state.selected_edge_id.is_none()
+                && state.selected_node_ids.is_empty()
+            {
+                app.set_temporary_status("Select a node or edge first to set color");
+                return true;
+            }
             let menu_x = (area.width / 2).saturating_sub(12);
             let menu_y = area.height;
             let mut items = vec!["Default".to_string()];
@@ -730,6 +737,18 @@ pub fn handle_pinstar_event(
             _ if keybinds.matches_canvas(CanvasAction::DeleteAllConnections, &key) => {
                 close_menu = true;
                 direct_action = Some(CanvasAction::DeleteAllConnections);
+            }
+            _ if keybinds.matches_canvas(CanvasAction::AddTextNode, &key) => {
+                close_menu = true;
+                direct_action = Some(CanvasAction::AddTextNode);
+            }
+            _ if keybinds.matches_canvas(CanvasAction::AddGroup, &key) => {
+                close_menu = true;
+                direct_action = Some(CanvasAction::AddGroup);
+            }
+            _ if keybinds.matches_canvas(CanvasAction::AddImageNode, &key) => {
+                close_menu = true;
+                direct_action = Some(CanvasAction::AddImageNode);
             }
             _ => {}
         }
@@ -911,11 +930,12 @@ pub fn handle_pinstar_event(
             }
             CanvasAction::ToggleOrthogonal => {
                 state.orthogonal_connections = !state.orthogonal_connections;
-                state.footer_hint = if state.orthogonal_connections {
-                    "arrow:on".into()
+                let status = if state.orthogonal_connections {
+                    "Orthogonal connections: on"
                 } else {
-                    "arrow:off".into()
+                    "Orthogonal connections: off"
                 };
+                app.set_temporary_status(status);
                 // Persist per-vault
                 if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir)
                 {
@@ -992,29 +1012,36 @@ pub fn handle_pinstar_event(
                 }
             }
             CanvasAction::SetColor => {
-                let menu_x = (area.width / 2).saturating_sub(12);
-                let menu_y = area.height;
-                let mut items = vec!["Default".to_string()];
-                let mut color_hints: Vec<Option<ratatui::style::Color>> = vec![None];
-                for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
-                    let capitalized = name
-                        .chars()
-                        .next()
-                        .unwrap_or(' ')
-                        .to_uppercase()
-                        .to_string()
-                        + &name[1..];
-                    items.push(capitalized);
-                    color_hints.push(Some(*color));
+                if state.selected_node_id.is_none()
+                    && state.selected_edge_id.is_none()
+                    && state.selected_node_ids.is_empty()
+                {
+                    app.set_temporary_status("Select a node or edge first to set color");
+                } else {
+                    let menu_x = (area.width / 2).saturating_sub(12);
+                    let menu_y = area.height;
+                    let mut items = vec!["Default".to_string()];
+                    let mut color_hints: Vec<Option<ratatui::style::Color>> = vec![None];
+                    for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
+                        let capitalized = name
+                            .chars()
+                            .next()
+                            .unwrap_or(' ')
+                            .to_uppercase()
+                            .to_string()
+                            + &name[1..];
+                        items.push(capitalized);
+                        color_hints.push(Some(*color));
+                    }
+                    state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
+                        x: menu_x,
+                        y: menu_y,
+                        selected: 0,
+                        items,
+                        color_hints,
+                        menu_type: PinstarMenuType::ColorPicker,
+                    });
                 }
-                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
-                    x: menu_x,
-                    y: menu_y,
-                    selected: 0,
-                    items,
-                    color_hints,
-                    menu_type: PinstarMenuType::ColorPicker,
-                });
             }
             CanvasAction::DeleteNode => {
                 state.delete_selected_node();
