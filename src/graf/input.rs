@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKin
 use ratatui::layout::Rect;
 
 use super::graph::{GrafMenuItem, GraphState, ModeBanner, menu_item_shortcut_char};
-use super::viewport::CELL_ASPECT;
+
 use crate::config::ClinConfig;
 use crate::keybinds::{GraphAction, Keybinds};
 
@@ -259,8 +259,9 @@ pub fn handle_graph_mouse(
     mouse_state: &mut GraphMouseState,
     config: &ClinConfig,
 ) -> Option<GraphInputAction> {
+    let canvas = super::render::canvas_area(area, config.ui.show_status_bar);
     let minimap_area = if config.graf.visual.show_minimap {
-        Some(super::render::compute_minimap_area(area, config))
+        Some(super::render::compute_minimap_area(canvas, config))
     } else {
         None
     };
@@ -272,10 +273,10 @@ pub fn handle_graph_mouse(
             && mouse_event.row < ma.y + ma.height
     });
 
-    let inside_area = mouse_event.column >= area.x
-        && mouse_event.column < area.x + area.width
-        && mouse_event.row >= area.y
-        && mouse_event.row < area.y + area.height;
+    let inside_area = mouse_event.column >= canvas.x
+        && mouse_event.column < canvas.x + canvas.width
+        && mouse_event.row >= canvas.y
+        && mouse_event.row < canvas.y + canvas.height;
 
     match mouse_event.kind {
         MouseEventKind::ScrollUp => {
@@ -300,7 +301,7 @@ pub fn handle_graph_mouse(
             {
                 let guard = state.read();
                 if let Some(menu) = &guard.context_menu {
-                    let rect = super::render::compute_context_menu_rect(menu, area);
+                    let rect = super::render::compute_context_menu_rect(menu, canvas);
                     let inside_menu = mouse_event.column >= rect.x
                         && mouse_event.column < rect.x + rect.width
                         && mouse_event.row >= rect.y
@@ -340,9 +341,11 @@ pub fn handle_graph_mouse(
                         let (wx, wy) = guard.viewport.screen_to_world(
                             mouse_event.column,
                             mouse_event.row,
-                            area,
+                            canvas,
                         );
-                        let target_idx = guard.viewport.hit_test(wx, wy, &guard);
+                        let max_lc = guard.render_cache.lock().max_link_count;
+                        let target_idx =
+                            guard.viewport.hit_test(wx, wy, &guard, config, canvas, max_lc);
                         if let (Some(src), Some(source_id), Some(tidx)) =
                             (src_idx, source_id, target_idx)
                             && src != tidx
@@ -389,12 +392,13 @@ pub fn handle_graph_mouse(
                     let guard = state.read();
                     guard
                         .viewport
-                        .screen_to_world(mouse_event.column, mouse_event.row, area)
+                        .screen_to_world(mouse_event.column, mouse_event.row, canvas)
                 };
 
                 let hit = {
                     let guard = state.read();
-                    guard.viewport.hit_test(wx, wy, &guard)
+                    let max_lc = guard.render_cache.lock().max_link_count;
+                    guard.viewport.hit_test(wx, wy, &guard, config, canvas, max_lc)
                 };
 
                 let is_double_click = mouse_state
@@ -443,12 +447,14 @@ pub fn handle_graph_mouse(
                 }
             } else if mouse_state.is_panning {
                 let mut guard = state.write();
-                let dx_col = -(mouse_event.column as f64 - orig_col as f64);
-                let dy_row = mouse_event.row as f64 - orig_row as f64;
-                let vp = &guard.viewport;
-                let world_dx = dx_col * 200.0 / (vp.zoom * area.width as f64)
+                let aspect = canvas.width as f64 / canvas.height.max(1) as f64;
+                let [xl, xr] = guard.viewport.x_bounds(aspect);
+                let [yb, yt] = guard.viewport.y_bounds(aspect);
+                let world_per_col = ((xr - xl) / canvas.width.max(1) as f64).abs();
+                let world_per_row = ((yt - yb) / canvas.height.max(1) as f64).abs();
+                let world_dx = -world_per_col * (mouse_event.column as f64 - orig_col as f64)
                     * config.graf.interaction.drag_sensitivity;
-                let world_dy = dy_row * 200.0 * CELL_ASPECT / (vp.zoom * area.height as f64)
+                let world_dy = world_per_row * (mouse_event.row as f64 - orig_row as f64)
                     * config.graf.interaction.drag_sensitivity;
                 guard.viewport.pan_by(world_dx, world_dy);
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
@@ -457,7 +463,7 @@ pub fn handle_graph_mouse(
                     let guard = state.read();
                     guard
                         .viewport
-                        .screen_to_world(mouse_event.column, mouse_event.row, area)
+                        .screen_to_world(mouse_event.column, mouse_event.row, canvas)
                 };
 
                 let mut guard = state.write();
@@ -507,7 +513,7 @@ pub fn handle_graph_mouse(
                 let guard = state.read();
                 guard
                     .viewport
-                    .screen_to_world(mouse_event.column, mouse_event.row, area)
+                    .screen_to_world(mouse_event.column, mouse_event.row, canvas)
             };
             let mut guard = state.write();
             guard.right_down_pos = Some((mouse_event.column, mouse_event.row));
@@ -527,7 +533,7 @@ pub fn handle_graph_mouse(
                     let guard = state.read();
                     guard
                         .viewport
-                        .screen_to_world(mouse_event.column, mouse_event.row, area)
+                        .screen_to_world(mouse_event.column, mouse_event.row, canvas)
                 };
                 let mut guard = state.write();
                 if guard.mode_banner.is_none() {
@@ -567,8 +573,9 @@ pub fn handle_graph_mouse(
                     let (wx, wy) =
                         guard
                             .viewport
-                            .screen_to_world(mouse_event.column, mouse_event.row, area);
-                    if let Some(idx) = guard.viewport.hit_test(wx, wy, &guard) {
+                            .screen_to_world(mouse_event.column, mouse_event.row, canvas);
+                    let max_lc = guard.render_cache.lock().max_link_count;
+                    if let Some(idx) = guard.viewport.hit_test(wx, wy, &guard, config, canvas, max_lc) {
                         guard.selected_node = Some(idx);
                     }
                     guard.open_context_menu(mouse_event.column, mouse_event.row, (wx, wy));

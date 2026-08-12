@@ -11,11 +11,11 @@ use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::config::{
-    ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
+    ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape,
 };
 use crate::graf::graph::{GrafContextMenu, GraphState, menu_item_label, menu_item_shortcut_char};
 use crate::graf::spatial::SpatialGrid;
-use crate::graf::viewport::Viewport;
+use crate::graf::viewport::{Viewport, node_world_radius};
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
     if palette_len == 0 {
@@ -573,18 +573,7 @@ impl RenderCache {
                 .get(&idx)
                 .copied()
                 .unwrap_or(Color::Gray);
-            let radius = match config.graf.visual.node_size_mode {
-                NodeSizeMode::Fixed => config.graf.visual.node_size,
-                NodeSizeMode::LinkCount => {
-                    if self.max_link_count == 0 {
-                        config.graf.visual.node_size
-                    } else {
-                        config.graf.visual.node_size
-                            * (1.0
-                                + (node.data.link_count as f64 / self.max_link_count as f64) * 1.5)
-                    }
-                }
-            };
+            let radius = node_world_radius(config, self.max_link_count, node.data.link_count);
 
             let is_selected = selected_node == Some(idx) || selected_nodes.contains(&idx);
             let is_hovered = hovered_node == Some(idx) && !is_selected;
@@ -747,10 +736,7 @@ pub fn draw_graph_view(
     pending: Option<&str>,
     mouse_pos: Option<(u16, u16)>,
 ) {
-    let mut canvas_area = area;
-    if flags.show_status_bar {
-        canvas_area.height = canvas_area.height.saturating_sub(1);
-    }
+    let canvas_area = canvas_area(area, flags.show_status_bar);
     let aspect = canvas_area.width as f64 / canvas_area.height as f64;
     let viewport = &state.viewport;
     let colors = config.theme_colors();
@@ -765,7 +751,7 @@ pub fn draw_graph_view(
     // Compute hovered node from mouse_pos
     let hovered_node = mouse_pos.and_then(|(col, row)| {
         let (wx, wy) = viewport.screen_to_world(col, row, canvas_area);
-        viewport.hit_test(wx, wy, state)
+        viewport.hit_test(wx, wy, state, config, canvas_area, cache.max_link_count)
     });
 
     let x_bounds = viewport.x_bounds(aspect);
@@ -1061,6 +1047,18 @@ fn draw_grid(
             color,
         });
     }
+}
+
+
+/// Rect passed to Canvas drawing and geometry: `area` with the bottom status-bar
+/// row removed when it is shown. Render and input MUST use this same rect so
+/// hover and click map mouse→world identically.
+pub fn canvas_area(area: Rect, show_status_bar: bool) -> Rect {
+    let mut c = area;
+    if show_status_bar {
+        c.height = c.height.saturating_sub(1);
+    }
+    c
 }
 
 pub fn compute_minimap_area(frame_area: Rect, config: &ClinConfig) -> Rect {
@@ -1472,17 +1470,7 @@ pub fn draw_looking_glass(
     let canvas_area = Rect::new(inner.x, inner.y, inner.width, visual_inner_h);
 
     // Radius matches the simulation's node-size computation exactly.
-    let radius = match config.graf.visual.node_size_mode {
-        NodeSizeMode::Fixed => config.graf.visual.node_size,
-        NodeSizeMode::LinkCount => {
-            if cache.max_link_count == 0 {
-                config.graf.visual.node_size
-            } else {
-                config.graf.visual.node_size
-                    * (1.0 + (node.data.link_count as f64 / cache.max_link_count as f64) * 1.5)
-            }
-        }
-    };
+    let radius = node_world_radius(config, cache.max_link_count, node.data.link_count);
     let node_color = cache
         .node_own_color
         .get(&idx)
