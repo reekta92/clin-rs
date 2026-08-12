@@ -1377,6 +1377,38 @@ fn compute_looking_glass_area(area: Rect, config: &ClinConfig) -> Option<Rect> {
     Some(Rect::new(area.x + 1, area.y + 1, w, h))
 }
 
+fn draw_sub_line(
+    canvas: &mut [Option<Color>],
+    w: usize,
+    h: usize,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    color: Color,
+) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist = (dx * dx + dy * dy).sqrt();
+    let steps = (dist * 2.0) as usize;
+    if steps == 0 {
+        return;
+    }
+    let sx = dx / steps as f64;
+    let sy = dy / steps as f64;
+    let mut x = x1;
+    let mut y = y1;
+    for _ in 0..=steps {
+        let px = x.round() as isize;
+        let py = y.round() as isize;
+        if px >= 0 && py >= 0 && (px as usize) < w && (py as usize) < h {
+            canvas[py as usize * w + px as usize] = Some(color);
+        }
+        x += sx;
+        y += sy;
+    }
+}
+
 pub fn draw_looking_glass(
     frame: &mut ratatui::Frame,
     area: Rect,
@@ -1420,40 +1452,54 @@ pub fn draw_looking_glass(
         .copied()
         .unwrap_or(Color::Gray);
 
-    let shape_inside = |x: f64, y: f64| -> bool {
-        let dx = (x - cx).abs();
-        let dy = (y - cy).abs();
-        match config.graf.visual.node_shape {
-            NodeShape::Circle => {
-                let r = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
-                r <= radius
-            }
-            NodeShape::Square => dx <= radius && dy <= radius,
-            NodeShape::Diamond => dx + dy <= radius,
-        }
-    };
-
-    for sy in 0..sub_h {
-        for sx in 0..sub_w {
-            let x = sx as f64 + 0.5;
-            let y = sy as f64 + 0.5;
-            if shape_inside(x, y) {
-                canvas[sy * sub_w + sx] = Some(node_color);
-            }
+    // Incident edges radiate outward from the node center.
+    let node_loc = node.location;
+    for nbr_idx in graph.neighbors(idx) {
+        if let Some(nw) = graph.node_weight(nbr_idx) {
+            let dx = (nw.location.x - node_loc.x) as f64;
+            let dy = (nw.location.y - node_loc.y) as f64;
+            let mag = (dx * dx + dy * dy).sqrt().max(0.001);
+            let ux = dx / mag;
+            let uy = dy / mag;
+            let extent = ((sub_w.min(sub_h) as f64) * 0.5).min(cx).min(cy) - 1.0;
+            draw_sub_line(
+                &mut canvas,
+                sub_w,
+                sub_h,
+                cx,
+                cy,
+                cx + ux * extent,
+                cy + uy * extent,
+                colors.edge_color,
+            );
         }
     }
 
-    let ring_margin = (radius * 0.35).max(1.5);
+    // Outlined shape (hollow) + selection ring.
+    let t = 1.2;
+    let sel_r = radius + 2.5;
     for sy in 0..sub_h {
         for sx in 0..sub_w {
             let x = sx as f64 + 0.5;
             let y = sy as f64 + 0.5;
-            let d = match config.graf.visual.node_shape {
-                NodeShape::Circle => ((x - cx).powi(2) + (y - cy).powi(2)).sqrt(),
-                NodeShape::Square => (x - cx).abs().max((y - cy).abs()),
-                NodeShape::Diamond => (x - cx).abs() + (y - cy).abs(),
+            let dx = x - cx;
+            let dy = y - cy;
+            let on_ring = match config.graf.visual.node_shape {
+                NodeShape::Circle => ((dx * dx + dy * dy).sqrt() - radius).abs() <= t,
+                NodeShape::Square => {
+                    (dx.abs() - radius).abs() <= t || (dy.abs() - radius).abs() <= t
+                }
+                NodeShape::Diamond => (dx.abs() + dy.abs() - radius).abs() <= t,
             };
-            if d > radius && d <= radius + ring_margin {
+            if on_ring {
+                canvas[sy * sub_w + sx] = Some(node_color);
+            }
+            let on_sel = match config.graf.visual.node_shape {
+                NodeShape::Circle => ((dx * dx + dy * dy).sqrt() - sel_r).abs() <= t,
+                NodeShape::Square => (dx.abs() - sel_r).abs() <= t || (dy.abs() - sel_r).abs() <= t,
+                NodeShape::Diamond => (dx.abs() + dy.abs() - sel_r).abs() <= t,
+            };
+            if on_sel {
                 canvas[sy * sub_w + sx] = Some(colors.selected_indicator_color);
             }
         }
