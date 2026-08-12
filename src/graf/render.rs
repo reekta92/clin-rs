@@ -1377,38 +1377,6 @@ fn compute_looking_glass_area(area: Rect, config: &ClinConfig) -> Option<Rect> {
     Some(Rect::new(area.x + 1, area.y + 1, w, h))
 }
 
-fn draw_sub_line(
-    canvas: &mut [Option<Color>],
-    w: usize,
-    h: usize,
-    x1: f64,
-    y1: f64,
-    x2: f64,
-    y2: f64,
-    color: Color,
-) {
-    let dx = x2 - x1;
-    let dy = y2 - y1;
-    let dist = (dx * dx + dy * dy).sqrt();
-    let steps = (dist * 2.0) as usize;
-    if steps == 0 {
-        return;
-    }
-    let sx = dx / steps as f64;
-    let sy = dy / steps as f64;
-    let mut x = x1;
-    let mut y = y1;
-    for _ in 0..=steps {
-        let px = x.round() as isize;
-        let py = y.round() as isize;
-        if px >= 0 && py >= 0 && (px as usize) < w && (py as usize) < h {
-            canvas[py as usize * w + px as usize] = Some(color);
-        }
-        x += sx;
-        y += sy;
-    }
-}
-
 pub fn draw_looking_glass(
     frame: &mut ratatui::Frame,
     area: Rect,
@@ -1431,132 +1399,98 @@ pub fn draw_looking_glass(
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(colors.minimap_border_color))
-        .title(" Looking Glass ");
+        .border_style(Style::default().fg(colors.minimap_border_color));
     let inner = block.inner(overlay);
     frame.render_widget(block, overlay);
     if inner.width < 4 || inner.height < 4 {
         return;
     }
 
-    let sub_w = inner.width as usize * 2;
-    let sub_h = inner.height as usize * 4;
-    let mut canvas: Vec<Option<Color>> = vec![None; sub_w * sub_h];
+    // Reserve the bottom two rows for title/meta text when there is room.
+    let text_h = if inner.height >= 6 { 2 } else { 0 };
+    let canvas_area = Rect::new(
+        inner.x,
+        inner.y,
+        inner.width,
+        inner.height.saturating_sub(text_h),
+    );
 
-    let cx = sub_w as f64 / 2.0;
-    let cy = sub_h as f64 / 2.0;
-    let radius = (sub_w.min(sub_h) as f64) * 0.4;
+    // Radius matches the simulation's node-size computation exactly.
+    let radius = match config.graf.visual.node_size_mode {
+        NodeSizeMode::Fixed => config.graf.visual.node_size,
+        NodeSizeMode::LinkCount => {
+            if cache.max_link_count == 0 {
+                config.graf.visual.node_size
+            } else {
+                config.graf.visual.node_size
+                    * (1.0 + (node.data.link_count as f64 / cache.max_link_count as f64) * 1.5)
+            }
+        }
+    };
     let node_color = cache
         .node_own_color
         .get(&idx)
         .copied()
         .unwrap_or(Color::Gray);
+    let extra_tag_colors: Vec<Color> = if node.data.tags.is_empty() {
+        Vec::new()
+    } else {
+        node.data
+            .tags
+            .iter()
+            .skip(1)
+            .filter_map(|t| cache.tag_colors.get(t).copied())
+            .take(8)
+            .collect()
+    };
 
-    // Incident edges radiate outward from the node center.
-    let node_loc = node.location;
-    for nbr_idx in graph.neighbors(idx) {
-        if let Some(nw) = graph.node_weight(nbr_idx) {
-            let dx = (nw.location.x - node_loc.x) as f64;
-            let dy = (nw.location.y - node_loc.y) as f64;
-            let mag = (dx * dx + dy * dy).sqrt().max(0.001);
-            let ux = dx / mag;
-            let uy = dy / mag;
-            let extent = ((sub_w.min(sub_h) as f64) * 0.5).min(cx).min(cy) - 1.0;
-            draw_sub_line(
-                &mut canvas,
-                sub_w,
-                sub_h,
-                cx,
-                cy,
-                cx + ux * extent,
-                cy + uy * extent,
-                colors.edge_color,
-            );
-        }
+    let node_render = NodeRenderData {
+        x: 0.0,
+        y: 0.0,
+        color: node_color,
+        radius,
+        extra_tag_colors,
+        is_selected: true,
+        is_hovered: false,
+        selection_ring_color: colors.selected_indicator_color,
+        shape: config.graf.visual.node_shape,
+    };
+
+    // Bounds fit the node + tag orbit + selection ring, with the same
+    // terminal-aspect correction the main canvas uses.
+    let aspect = canvas_area.width as f64 / canvas_area.height as f64;
+    let half_h = radius + 4.0;
+    let half_w = half_h * crate::graf::viewport::CELL_ASPECT * aspect;
+
+    let canvas = Canvas::default()
+        .marker(ratatui::symbols::Marker::from(
+            config.graf.visual.canvas_marker,
+        ))
+        .x_bounds([-half_w, half_w])
+        .y_bounds([-half_h, half_h])
+        .paint(|ctx| {
+            ctx.draw(&GraphNodesShape {
+                nodes: std::slice::from_ref(&node_render),
+            });
+        });
+    frame.render_widget(canvas, canvas_area);
+
+    if text_h > 0 {
+        let title =
+            crate::graf::util::truncate(&node.data.title, (inner.width.saturating_sub(2)) as usize);
+        let meta = format!("{} links · {}", node.data.link_count, node.data.folder);
+        let lines = vec![
+            ratatui::text::Line::from(Span::styled(title, Style::default().fg(colors.label_color))),
+            ratatui::text::Line::from(Span::styled(meta, Style::default().fg(app_theme.muted))),
+        ];
+        let text_rect = Rect::new(
+            inner.x,
+            inner.y + inner.height.saturating_sub(2),
+            inner.width,
+            2,
+        );
+        frame.render_widget(Paragraph::new(lines), text_rect);
     }
-
-    // Outlined shape (hollow) + selection ring.
-    let t = 1.2;
-    let sel_r = radius + 2.5;
-    for sy in 0..sub_h {
-        for sx in 0..sub_w {
-            let x = sx as f64 + 0.5;
-            let y = sy as f64 + 0.5;
-            let dx = x - cx;
-            let dy = y - cy;
-            let on_ring = match config.graf.visual.node_shape {
-                NodeShape::Circle => ((dx * dx + dy * dy).sqrt() - radius).abs() <= t,
-                NodeShape::Square => {
-                    (dx.abs() - radius).abs() <= t || (dy.abs() - radius).abs() <= t
-                }
-                NodeShape::Diamond => (dx.abs() + dy.abs() - radius).abs() <= t,
-            };
-            if on_ring {
-                canvas[sy * sub_w + sx] = Some(node_color);
-            }
-            let on_sel = match config.graf.visual.node_shape {
-                NodeShape::Circle => ((dx * dx + dy * dy).sqrt() - sel_r).abs() <= t,
-                NodeShape::Square => (dx.abs() - sel_r).abs() <= t || (dy.abs() - sel_r).abs() <= t,
-                NodeShape::Diamond => (dx.abs() + dy.abs() - sel_r).abs() <= t,
-            };
-            if on_sel {
-                canvas[sy * sub_w + sx] = Some(colors.selected_indicator_color);
-            }
-        }
-    }
-
-    let tags: Vec<Color> = node
-        .data
-        .tags
-        .iter()
-        .skip(1)
-        .filter_map(|t| cache.tag_colors.get(t).copied())
-        .take(8)
-        .collect();
-    let orbit = radius + 2.0;
-    for (i, color) in tags.iter().enumerate() {
-        let angle = (i as f64) * std::f64::consts::TAU / (tags.len().max(1) as f64)
-            - std::f64::consts::FRAC_PI_2;
-        let ox = cx + orbit * angle.cos();
-        let oy = cy + orbit * angle.sin();
-        let sx = ox.round() as isize;
-        let sy = oy.round() as isize;
-        if sx >= 0 && sy >= 0 && (sx as usize) < sub_w && (sy as usize) < sub_h {
-            canvas[sy as usize * sub_w + sx as usize] = Some(*color);
-        }
-    }
-
-    let buf = frame.buffer_mut();
-    for cell_row in 0..inner.height as usize {
-        for cell_col in 0..inner.width as usize {
-            let x = inner.x + cell_col as u16;
-            let y = inner.y + cell_row as u16;
-            for dot_y in 0..4u16 {
-                let sy = cell_row * 4 + dot_y as usize;
-                for dot_x in 0..2u16 {
-                    let sx = cell_col * 2 + dot_x as usize;
-                    if let Some(color) = canvas[sy * sub_w + sx] {
-                        crate::ui::braille::set_braille_dot(buf, x, y, dot_x, dot_y, color);
-                    }
-                }
-            }
-        }
-    }
-
-    let title =
-        crate::graf::util::truncate(&node.data.title, (inner.width.saturating_sub(2)) as usize);
-    let meta = format!("{} links · {}", node.data.link_count, node.data.folder);
-    let lines = vec![
-        ratatui::text::Line::from(Span::styled(title, Style::default().fg(colors.label_color))),
-        ratatui::text::Line::from(Span::styled(meta, Style::default().fg(app_theme.muted))),
-    ];
-    let text_rect = Rect::new(
-        inner.x,
-        inner.y + inner.height.saturating_sub(2),
-        inner.width,
-        2,
-    );
-    frame.render_widget(Paragraph::new(lines), text_rect);
 }
 
 #[cfg(test)]
