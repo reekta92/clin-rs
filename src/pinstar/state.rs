@@ -83,6 +83,50 @@ pub struct PinstarContextMenu {
     pub menu_type: PinstarMenuType,
 }
 
+/// Returns the single-letter keyboard shortcut for a context-menu item, if any.
+/// Single source of truth shared by render (hint display) and input (key matching).
+pub fn menu_item_shortcut_char(menu_type: PinstarMenuType, item: &str) -> Option<char> {
+    match menu_type {
+        PinstarMenuType::Canvas => match item {
+            "Create Connection" => Some('c'),
+            "Delete Connection" => Some('d'),
+            "Rename Node" => Some('r'),
+            "Resize Node" => Some('s'),
+            "Set Color..." => Some('o'),
+            "Delete All Connections" => Some('b'),
+            "Delete Node" => Some('x'),
+            "Add Text Node" => Some('t'),
+            "Add Group" => Some('g'),
+            "Add Image Node" => Some('m'),
+            _ => None,
+        },
+        PinstarMenuType::EdgeMenu => match item {
+            "Set Color..." => Some('o'),
+            "Set Style..." => Some('s'),
+            _ => None,
+        },
+        PinstarMenuType::ColorPicker | PinstarMenuType::EdgeColorPicker => match item {
+            "Default" => Some('d'),
+            "Red" => Some('r'),
+            "Orange" => Some('o'),
+            "Yellow" => Some('y'),
+            "Green" => Some('g'),
+            "Cyan" => Some('c'),
+            "Purple" => Some('p'),
+            "Blue" => Some('b'),
+            "Magenta" => Some('m'),
+            "White" => Some('w'),
+            _ => None,
+        },
+        PinstarMenuType::EdgeStylePicker => match item {
+            "Solid" => Some('s'),
+            "Dashed" => Some('d'),
+            "Dotted" => Some('t'),
+            _ => None,
+        },
+    }
+}
+
 impl PinstarState {
     pub fn load(
         path: &Path,

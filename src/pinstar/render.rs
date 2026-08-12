@@ -123,34 +123,12 @@ fn draw_braille_segment(
 }
 
 fn menu_shortcut(
-    keybinds: &crate::keybinds::Keybinds,
+    _keybinds: &crate::keybinds::Keybinds,
     menu_type: crate::pinstar::state::PinstarMenuType,
     item: &str,
 ) -> Option<String> {
-    use crate::keybinds::CanvasAction;
-    let action = match menu_type {
-        crate::pinstar::state::PinstarMenuType::Canvas => match item {
-            "Create Connection" => Some(CanvasAction::CreateConnection),
-            "Delete Connection" => Some(CanvasAction::DeleteConnection),
-            "Rename Node" => Some(CanvasAction::RenameNode),
-            "Resize Node" => Some(CanvasAction::ResizeMode),
-            "Set Color..." => Some(CanvasAction::SetColor),
-            "Delete All Connections" => Some(CanvasAction::DeleteAllConnections),
-            "Delete Node" => Some(CanvasAction::DeleteNode),
-            "Add Text Node" => Some(CanvasAction::AddTextNode),
-            "Add Group" => Some(CanvasAction::AddGroup),
-            "Add Image Node" => Some(CanvasAction::AddImageNode),
-            _ => None,
-        },
-        _ => None,
-    };
-    action.and_then(|a| {
-        let display = keybinds.canvas_keys_display(a);
-        let first = display.split('/').next().unwrap_or("").trim().to_string();
-        if first.is_empty() { None } else { Some(first) }
-    })
+    crate::pinstar::state::menu_item_shortcut_char(menu_type, item).map(|c| format!("[{c}]"))
 }
-
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,

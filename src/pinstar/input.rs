@@ -552,113 +552,6 @@ fn execute_menu_action(
     state.sync_to_raw_editor();
 }
 
-fn handle_direct_action(
-    state: &mut PinstarState,
-    action: CanvasAction,
-    app: &mut crate::app::App,
-    area: ratatui::layout::Rect,
-) -> bool {
-    match action {
-        CanvasAction::CreateConnection => {
-            if state.selected_node_id.is_some() {
-                state.start_connection();
-            } else {
-                app.set_temporary_status("Select a node first to create a connection");
-            }
-        }
-        CanvasAction::DeleteConnection => {
-            if state.selected_node_id.is_some() {
-                state.start_delete_connection();
-            } else {
-                app.set_temporary_status("Select a node first to delete connections");
-            }
-        }
-        CanvasAction::RenameNode => {
-            if let Some(id) = state.selected_node_id.clone() {
-                let current_title = state
-                    .data
-                    .nodes
-                    .iter()
-                    .find(|n| n.id() == id)
-                    .and_then(|n| n.title())
-                    .unwrap_or("")
-                    .to_string();
-                let mut textarea = TextArea::from(vec![current_title]);
-                textarea.set_cursor_line_style(ratatui::style::Style::default());
-                textarea.set_block(
-                    ratatui::widgets::Block::default()
-                        .borders(ratatui::widgets::Borders::ALL)
-                        .title(" Rename Node - Enter to confirm, Esc to cancel "),
-                );
-                state.rename_popup = Some(textarea);
-            } else {
-                app.set_temporary_status("Select a node first to rename");
-            }
-        }
-        CanvasAction::ResizeMode => {
-            if state.selected_node_id.is_some() {
-                state.start_resize();
-            } else {
-                app.set_temporary_status("Select a node first to resize");
-            }
-        }
-        CanvasAction::SetColor => {
-            if state.selected_node_id.is_none()
-                && state.selected_edge_id.is_none()
-                && state.selected_node_ids.is_empty()
-            {
-                app.set_temporary_status("Select a node or edge first to set color");
-                return true;
-            }
-            let menu_x = (area.width / 2).saturating_sub(12);
-            let menu_y = area.height;
-            let mut items = vec!["Default".to_string()];
-            let mut color_hints: Vec<Option<ratatui::style::Color>> = vec![None];
-            for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
-                let capitalized = name
-                    .chars()
-                    .next()
-                    .unwrap_or(' ')
-                    .to_uppercase()
-                    .to_string()
-                    + &name[1..];
-                items.push(capitalized);
-                color_hints.push(Some(*color));
-            }
-            state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
-                x: menu_x,
-                y: menu_y,
-                selected: 0,
-                items,
-                color_hints,
-                menu_type: PinstarMenuType::ColorPicker,
-            });
-        }
-        CanvasAction::DeleteNode => {
-            state.delete_selected_node();
-            state.sync_to_raw_editor();
-        }
-        CanvasAction::DeleteAllConnections => {
-            state.delete_node_connections();
-            state.sync_to_raw_editor();
-        }
-        CanvasAction::AddTextNode => {
-            state.add_text_node(state.viewport_x, state.viewport_y);
-            state.sync_to_raw_editor();
-        }
-        CanvasAction::AddGroup => {
-            state.add_group(state.viewport_x, state.viewport_y);
-            state.sync_to_raw_editor();
-        }
-        CanvasAction::AddImageNode => {
-            state.add_image_node(state.viewport_x, state.viewport_y);
-            state.sync_to_raw_editor();
-        }
-        _ => {}
-    }
-    true
-}
-
 pub fn handle_pinstar_event(
     state: &mut PinstarState,
     key: KeyEvent,
@@ -690,7 +583,6 @@ pub fn handle_pinstar_event(
 
     let mut menu_action = None;
     let mut close_menu = false;
-    let mut direct_action: Option<CanvasAction> = None;
 
     if let Some(menu) = &mut state.context_menu {
         state.seq_matcher.clear();
@@ -710,47 +602,18 @@ pub fn handle_pinstar_event(
                 menu_action = Some((menu.selected, menu.menu_type, menu.x, menu.y));
                 close_menu = true;
             }
-            _ if keybinds.matches_canvas(CanvasAction::CreateConnection, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::CreateConnection);
+            _ => {
+                if let crossterm::event::KeyCode::Char(c) = key.code {
+                    let c = c.to_ascii_lowercase();
+                    if let Some(index) = menu.items.iter().position(|item| {
+                        crate::pinstar::state::menu_item_shortcut_char(menu.menu_type, item)
+                            == Some(c)
+                    }) {
+                        menu_action = Some((index, menu.menu_type, menu.x, menu.y));
+                        close_menu = true;
+                    }
+                }
             }
-            _ if keybinds.matches_canvas(CanvasAction::DeleteConnection, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::DeleteConnection);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::RenameNode, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::RenameNode);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::ResizeMode, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::ResizeMode);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::SetColor, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::SetColor);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::DeleteNode, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::DeleteNode);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::DeleteAllConnections, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::DeleteAllConnections);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::AddTextNode, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::AddTextNode);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::AddGroup, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::AddGroup);
-            }
-            _ if keybinds.matches_canvas(CanvasAction::AddImageNode, &key) => {
-                close_menu = true;
-                direct_action = Some(CanvasAction::AddImageNode);
-            }
-            _ => {}
         }
     }
 
@@ -761,12 +624,8 @@ pub fn handle_pinstar_event(
     if let Some((selected, menu_type, mx, my)) = menu_action {
         execute_menu_action(state, selected, menu_type, mx, my);
         return true;
-    } else if close_menu && direct_action.is_none() {
+    } else if close_menu {
         return true;
-    }
-
-    if let Some(action) = direct_action {
-        return handle_direct_action(state, action, app, area);
     }
 
     if state.context_menu.is_some() {
@@ -1033,23 +892,36 @@ pub fn handle_pinstar_event(
                         items.push(capitalized);
                         color_hints.push(Some(*color));
                     }
+                    let picker_type = if state.selected_edge_id.is_some() {
+                        PinstarMenuType::EdgeColorPicker
+                    } else {
+                        PinstarMenuType::ColorPicker
+                    };
                     state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
                         x: menu_x,
                         y: menu_y,
                         selected: 0,
                         items,
                         color_hints,
-                        menu_type: PinstarMenuType::ColorPicker,
+                        menu_type: picker_type,
                     });
                 }
             }
             CanvasAction::DeleteNode => {
-                state.delete_selected_node();
-                state.sync_to_raw_editor();
+                if state.all_selected_node_ids().is_empty() {
+                    app.set_temporary_status("Select a node first to delete");
+                } else {
+                    state.delete_selected_node();
+                    state.sync_to_raw_editor();
+                }
             }
             CanvasAction::DeleteAllConnections => {
-                state.delete_node_connections();
-                state.sync_to_raw_editor();
+                if state.all_selected_node_ids().is_empty() {
+                    app.set_temporary_status("Select a node first to clear connections");
+                } else {
+                    state.delete_node_connections();
+                    state.sync_to_raw_editor();
+                }
             }
             CanvasAction::AddTextNode => {
                 state.add_text_node(state.viewport_x, state.viewport_y);
