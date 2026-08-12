@@ -162,7 +162,7 @@ pub fn build_graph(
             note_id: summary.id.clone(),
             title: summary.title.clone(),
             tags: summary.tags.clone(),
-            link_count: summary.links.len(),
+            link_count: 0, // filled in below from total degree
             folder: summary.folder.clone(),
         };
 
@@ -205,6 +205,16 @@ pub fn build_graph(
         to_remove.sort_unstable_by(|a, b| b.cmp(a));
         for idx in to_remove {
             graph.remove_node(idx);
+        }
+    }
+
+    // link_count = total degree (outgoing wikilinks + backlinks), not just the
+    // note's outgoing links. Matches GraphState::apply_connection_change.
+    let indices: Vec<NodeIndex> = graph.node_indices().collect();
+    for idx in indices {
+        let degree = graph.edges(idx).count();
+        if let Some(n) = graph.node_weight_mut(idx) {
+            n.data.link_count = degree;
         }
     }
 
