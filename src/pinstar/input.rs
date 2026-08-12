@@ -713,6 +713,19 @@ pub fn handle_pinstar_event(
         return true;
     }
 
+    // Connection mode: Enter/i completes the connection to the selected node.
+    // Checked explicitly because Enter also binds to RenameConfirm/MenuSelect/
+    // ConfirmResize, making resolve_canvas non-deterministic for Enter.
+    if state.connection_source_id.is_some()
+        && keybinds.matches_canvas(CanvasAction::EditOrConnect, &key)
+    {
+        if let Some(target_id) = state.selected_node_id.clone() {
+            state.finish_connection(&target_id);
+        }
+        sync_mode_status(app, state);
+        return true;
+    }
+
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
     if crate::events::is_universal_quit_key(&key) {

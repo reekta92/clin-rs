@@ -825,9 +825,10 @@ impl PinstarState {
             && source_id != target_id
         {
             self.record_undo_state();
-            self.data
-                .edges
-                .retain(|e| !(e.from_node == source_id && e.to_node == target_id));
+            self.data.edges.retain(|e| {
+                !((e.from_node == source_id && e.to_node == target_id)
+                    || (e.from_node == target_id && e.to_node == source_id))
+            });
             let _ = self.save();
         }
     }
@@ -952,5 +953,55 @@ mod tests {
             state.context_menu.as_ref().map(|menu| menu.menu_type),
             Some(PinstarMenuType::Canvas)
         ));
+    }
+
+    #[test]
+    fn connection_flow_and_delete_both_ways() {
+        use crate::pinstar::data::{CanvasData, CanvasNode, TextNode};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.canvas");
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "a".into(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 50.0,
+                    text: "".into(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "b".into(),
+                    x: 200.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 50.0,
+                    text: "".into(),
+                    title: None,
+                    color: None,
+                }),
+            ],
+            edges: vec![],
+        };
+        std::fs::write(&path, serde_json::to_string(&data).unwrap()).unwrap();
+        let mut s = PinstarState::load(
+            &path,
+            crate::keybinds::Keybinds::default(),
+            crate::keybinds::KeyMatcher::new(),
+        )
+        .unwrap();
+        s.selected_node_id = Some("a".into());
+        s.start_connection();
+        s.select_node_in_direction(1.0, 0.0);
+        assert_eq!(s.selected_node_id.as_deref(), Some("b"));
+        s.finish_connection("b");
+        assert_eq!(s.data.edges.len(), 1);
+        // delete both ways: source=b, target=a should remove a->b
+        s.selected_node_id = Some("b".into());
+        s.start_delete_connection();
+        s.finish_delete_connection("a");
+        assert_eq!(s.data.edges.len(), 0);
     }
 }
