@@ -227,8 +227,9 @@ mod tests {
     use super::*;
 
     fn setup_mock_graph(nodes: &[(&str, &[&str])]) -> super::GraphState {
-        let summaries: Vec<_> = nodes.iter().map(|(id, links)| {
-            crate::storage::NoteSummary {
+        let summaries: Vec<_> = nodes
+            .iter()
+            .map(|(id, links)| crate::storage::NoteSummary {
                 id: id.to_string(),
                 title: id.to_string(),
                 updated_at: 0,
@@ -237,8 +238,8 @@ mod tests {
                 pinned: false,
                 links: links.iter().map(|s| s.to_string()).collect(),
                 size_bytes: 0,
-            }
-        }).collect();
+            })
+            .collect();
         let config = crate::config::ClinConfig::default();
         super::GraphState::new(&summaries, &config).unwrap()
     }
@@ -297,7 +298,8 @@ mod tests {
     }
     #[test]
     fn test_simulation_step_caps_displacement() {
-        let mut gs = setup_mock_graph(&[("a", &["b", "c"]), ("b", &["a", "c"]), ("c", &["a", "b"])]);
+        let mut gs =
+            setup_mock_graph(&[("a", &["b", "c"]), ("b", &["a", "c"]), ("c", &["a", "b"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
@@ -622,7 +624,8 @@ mod tests {
     }
     #[test]
     fn test_nan_reset_scatters_coincident_nodes() {
-        let mut gs = setup_mock_graph(&[("a", &["b", "c"]), ("b", &["a", "c"]), ("c", &["a", "b"])]);
+        let mut gs =
+            setup_mock_graph(&[("a", &["b", "c"]), ("b", &["a", "c"]), ("c", &["a", "b"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
