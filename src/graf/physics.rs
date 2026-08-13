@@ -225,6 +225,23 @@ pub fn start_physics(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn setup_mock_graph(nodes: &[(&str, &[&str])]) -> super::GraphState {
+        let summaries: Vec<_> = nodes.iter().map(|(id, links)| {
+            crate::storage::NoteSummary {
+                id: id.to_string(),
+                title: id.to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: links.iter().map(|s| s.to_string()).collect(),
+                size_bytes: 0,
+            }
+        }).collect();
+        let config = crate::config::ClinConfig::default();
+        super::GraphState::new(&summaries, &config).unwrap()
+    }
     use fdg_sim::ForceGraphHelper;
 
     fn should_stop(res: Result<(), mpsc::TryRecvError>) -> bool {
@@ -241,33 +258,7 @@ mod tests {
     #[test]
     fn test_simulation_step_converges() {
         // Create minimal storage with two linked notes
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
 
         // Run simulation steps
         for _ in 0..300 {
@@ -288,33 +279,7 @@ mod tests {
 
     #[test]
     fn test_simulation_step_enforces_drag_target() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
         assert!(!node_indices.is_empty());
@@ -332,35 +297,7 @@ mod tests {
     }
     #[test]
     fn test_simulation_step_caps_displacement() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        // 3 connected nodes so the graph has structure
-        std::fs::write(notes_dir.join("a.md"), "[[b]]\n[[c]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]\n[[c]]").unwrap();
-        std::fs::write(notes_dir.join("c.md"), "[[a]]\n[[b]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b", "c"]), ("b", &["a", "c"]), ("c", &["a", "b"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
@@ -399,33 +336,7 @@ mod tests {
 
     #[test]
     fn test_simulation_step_displacement_clamp_skips_dragged_node() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
@@ -444,32 +355,7 @@ mod tests {
     }
     #[test]
     fn test_continuous_simulation_step() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
 
         gs.alpha = 0.001;
         continuous_simulation_step(&mut gs, 0.12);
@@ -627,32 +513,7 @@ mod tests {
 
     #[test]
     fn test_static_node_drag_regression() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
 
         gs.physics_worker_active = false;
         gs.is_settled = true;
@@ -691,33 +552,7 @@ mod tests {
 
     #[test]
     fn test_non_finite_node_is_healed() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
         assert!(!node_indices.is_empty());
@@ -739,33 +574,7 @@ mod tests {
     #[test]
     fn test_simulation_step_clamps_runaway_node() {
         // Reuse the 2-note tempdir + Storage + GraphState::new builder pattern.
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
         gs.physics_worker_active = true;
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
         let victim = node_indices[0];
@@ -813,34 +622,7 @@ mod tests {
     }
     #[test]
     fn test_nan_reset_scatters_coincident_nodes() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]\n[[c]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]\n[[c]]").unwrap();
-        std::fs::write(notes_dir.join("c.md"), "[[a]]\n[[b]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b", "c"]), ("b", &["a", "c"]), ("c", &["a", "b"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
@@ -893,33 +675,7 @@ mod tests {
 
     #[test]
     fn test_dragged_nan_node_is_reset() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
@@ -944,33 +700,7 @@ mod tests {
 
     #[test]
     fn test_nan_does_not_cascade_while_dragging() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let notes_dir = temp_dir.path().join("notes");
-        let config_dir = temp_dir.path().join("config");
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-
-        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
-        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
-
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir,
-            notes_dir,
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        std::fs::create_dir_all(&storage.data_dir).unwrap();
-        std::fs::create_dir_all(&storage.templates_dir).unwrap();
-
-        let config = crate::config::ClinConfig::default();
-        let note_ids = storage.list_note_ids(true, false).unwrap();
-        let summaries: Vec<_> = note_ids
-            .iter()
-            .filter_map(|id| storage.load_note_summary(id).ok())
-            .collect();
-        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        let mut gs = setup_mock_graph(&[("a", &["b"]), ("b", &["a"])]);
         gs.alpha = 1.0;
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
