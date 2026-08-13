@@ -15,7 +15,7 @@ pub fn edit_group_order() -> &'static [&'static str] {
     &["Navigation", "Editing", "Preview", "Panels", "General"]
 }
 pub fn graph_group_order() -> &'static [&'static str] {
-    &["Navigation", "Display", "System"]
+    &["Navigation", "Actions", "Display", "Menu", "System"]
 }
 pub fn draw_group_order() -> &'static [&'static str] {
     &["Tools", "Shape Selector", "Text Editor", "General"]
@@ -422,6 +422,50 @@ pub fn graph_action_meta(a: GraphAction) -> HelpMeta {
         GraphAction::TogglePreview => HelpMeta {
             group: "Display",
             description: "Toggle preview",
+        },
+        GraphAction::OpenContextMenu => HelpMeta {
+            group: "Menu",
+            description: "Open context menu",
+        },
+        GraphAction::CreateConnection => HelpMeta {
+            group: "Actions",
+            description: "Create connection",
+        },
+        GraphAction::DeleteConnection => HelpMeta {
+            group: "Actions",
+            description: "Delete connection",
+        },
+        GraphAction::LocalGraph => HelpMeta {
+            group: "Actions",
+            description: "Local graph",
+        },
+        GraphAction::ShowGroup => HelpMeta {
+            group: "Actions",
+            description: "Show group",
+        },
+        GraphAction::DeleteNode => HelpMeta {
+            group: "Actions",
+            description: "Delete node",
+        },
+        GraphAction::MenuClose => HelpMeta {
+            group: "Menu",
+            description: "Close menu",
+        },
+        GraphAction::MenuUp => HelpMeta {
+            group: "Menu",
+            description: "Menu up",
+        },
+        GraphAction::MenuDown => HelpMeta {
+            group: "Menu",
+            description: "Menu down",
+        },
+        GraphAction::MenuSelect => HelpMeta {
+            group: "Menu",
+            description: "Select menu item",
+        },
+        GraphAction::LookingGlass => HelpMeta {
+            group: "Display",
+            description: "Toggle looking glass",
         },
         GraphAction::Refresh => HelpMeta {
             group: "System",

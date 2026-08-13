@@ -2148,6 +2148,7 @@ mod tests {
             ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
@@ -2158,6 +2159,14 @@ mod tests {
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
         ctx.graph = Some(&graph_state);
         let segs_scale = render_segments("{scale}", &ctx, &theme);

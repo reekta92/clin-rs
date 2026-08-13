@@ -100,7 +100,44 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
 
-                {
+                let banner = graf
+                    .graph_state
+                    .as_ref()
+                    .and_then(|gs| gs.read().mode_banner);
+                if let Some(mode) = banner {
+                    // Cover the header bar, exactly like Notes SELECT MODE.
+                    let text: &'static str = match mode {
+                        crate::graf::graph::ModeBanner::CreateConnection => {
+                            " CONNECTION MODE \u{2014} select target "
+                        }
+                        crate::graf::graph::ModeBanner::DeleteConnection => {
+                            " DELETE CONNECTION MODE \u{2014} select target "
+                        }
+                        crate::graf::graph::ModeBanner::LocalGraph => " LOCAL GRAPH ONLY ",
+                        crate::graf::graph::ModeBanner::GroupedGraph => " GROUPED GRAPH ONLY ",
+                        crate::graf::graph::ModeBanner::BoxSelect => {
+                            " BOX SELECT \u{2014} drag, release "
+                        }
+                    };
+                    let header_rect = outer[0];
+                    frame.render_widget(Clear, header_rect);
+                    frame.render_widget(
+                        Block::default().style(Style::default().bg(app.app_theme.accent)),
+                        header_rect,
+                    );
+                    let w = text.chars().count() as u16;
+                    let x = header_rect.x + (header_rect.width.saturating_sub(w)) / 2;
+                    frame.render_widget(
+                        Paragraph::new(Line::from(Span::styled(
+                            text,
+                            Style::default()
+                                .fg(app.app_theme.highlight_fg)
+                                .bg(app.app_theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ))),
+                        Rect::new(x, header_rect.y, w, 1),
+                    );
+                } else {
                     let guard;
                     let mut ctx = crate::statusline::StatuslineContext::for_overlay(
                         &app.config,

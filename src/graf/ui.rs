@@ -60,6 +60,7 @@ pub fn draw_ui(
             show_grid: state.show_grid,
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
+            show_looking_glass: state.show_looking_glass,
         };
         crate::graf::render::draw_graph_view(
             frame,

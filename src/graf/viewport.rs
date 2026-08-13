@@ -3,6 +3,7 @@ use ratatui::layout::Rect;
 use fdg_sim::petgraph::graph::NodeIndex;
 
 use super::graph::GraphState;
+use crate::config::{ClinConfig, NodeSizeMode};
 
 pub const CELL_ASPECT: f64 = 0.5;
 /// Lowest zoom-out permitted, expressed as a fraction of `auto_fit_zoom`
@@ -14,11 +15,33 @@ const MIN_SCALE: f64 = 0.15;
 /// that `x as f32` stays finite and force arithmetic never overflows f32.
 const WORLD_COORD_LIMIT: f64 = 1.0e18;
 
+/// Visual-row slop added around a node's drawn body, and the minimum click
+/// radius in screen rows so sub-pixel (zoomed-out) nodes stay clickable.
+const HIT_SLOP_ROWS: f64 = 1.5;
+const HIT_MIN_ROWS: f64 = 2.0;
+
 fn clamp_world(v: f64) -> f64 {
     if !v.is_finite() {
         return 0.0;
     }
     v.clamp(-WORLD_COORD_LIMIT, WORLD_COORD_LIMIT)
+}
+
+/// World-space radius of a node, identical to the radius used for drawing.
+/// Single source of truth for `fill_nodes`, the looking-glass preview, and
+/// `Viewport::hit_test`.
+pub fn node_world_radius(config: &ClinConfig, max_link_count: usize, link_count: usize) -> f64 {
+    match config.graf.visual.node_size_mode {
+        NodeSizeMode::Fixed => config.graf.visual.node_size,
+        NodeSizeMode::LinkCount => {
+            if max_link_count == 0 {
+                config.graf.visual.node_size
+            } else {
+                config.graf.visual.node_size
+                    * (1.0 + (link_count as f64 / max_link_count as f64) * 1.5)
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -59,6 +82,16 @@ impl Viewport {
         let wx = x_left + ((col as f64 - area.x as f64) / area.width as f64) * (x_right - x_left);
         let wy = y_top - ((row as f64 - area.y as f64) / area.height as f64) * (y_top - y_bottom);
         (clamp_world(wx), clamp_world(wy))
+    }
+
+    pub fn world_to_screen(&self, wx: f64, wy: f64, area: Rect) -> (f64, f64) {
+        let aspect = area.width as f64 / area.height as f64;
+        let [x_left, x_right] = self.x_bounds(aspect);
+        let [y_bottom, y_top] = self.y_bounds(aspect);
+
+        let col = area.x as f64 + ((wx - x_left) / (x_right - x_left)) * area.width as f64;
+        let row = area.y as f64 + ((y_top - wy) / (y_top - y_bottom)) * area.height as f64;
+        (col, row)
     }
 
     #[must_use]
@@ -217,36 +250,59 @@ impl Viewport {
         best.map(|(idx, _)| idx)
     }
 
-    pub fn hit_test(&self, world_x: f64, world_y: f64, state: &GraphState) -> Option<NodeIndex> {
-        let threshold = 8.0 / self.zoom;
-        let mut best: Option<(NodeIndex, f64)> = None;
+    pub fn hit_test(
+        &self,
+        world_x: f64,
+        world_y: f64,
+        state: &GraphState,
+        config: &ClinConfig,
+        area: Rect,
+        max_link_count: usize,
+    ) -> Option<NodeIndex> {
+        if !world_x.is_finite() || !world_y.is_finite() {
+            return None;
+        }
+        let h = (area.height as f64).max(1.0);
+        let world_per_row = (100.0 / self.zoom) / h;
+        let pad_world = HIT_SLOP_ROWS * world_per_row;
+        let min_hit_world = HIT_MIN_ROWS * world_per_row;
+
+        let max_node_radius_world = config.graf.visual.node_size * 2.5;
+        let query = max_node_radius_world + pad_world + min_hit_world;
+
         let graph = state.simulation.get_graph();
+        let mut contained: Option<(NodeIndex, f64)> = None;
+        let mut near: Option<(NodeIndex, f64)> = None;
 
         state
             .spatial_grid
-            .for_each_near(world_x, world_y, threshold, |idx| {
+            .for_each_near(world_x, world_y, query, |idx| {
                 let node = &graph[idx];
                 let dx = node.location.x as f64 - world_x;
                 let dy = node.location.y as f64 - world_y;
                 let dist = (dx * dx + dy * dy).sqrt();
-                if dist < threshold {
-                    match best {
-                        Some((best_idx, best_dist)) => {
-                            if dist < best_dist
-                                || ((dist - best_dist).abs() < 1e-9
-                                    && idx.index() < best_idx.index())
-                            {
-                                best = Some((idx, dist));
-                            }
-                        }
-                        None => {
-                            best = Some((idx, dist));
-                        }
+                if !dist.is_finite() {
+                    return;
+                }
+                let nr = node_world_radius(config, max_link_count, node.data.link_count);
+                let click_thresh = (nr + pad_world).max(min_hit_world);
+                if dist <= nr {
+                    match contained {
+                        Some((bi, bd))
+                            if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
+                        _ => contained = Some((idx, dist)),
+                    }
+                }
+                if dist <= click_thresh {
+                    match near {
+                        Some((bi, bd))
+                            if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
+                        _ => near = Some((idx, dist)),
                     }
                 }
             });
 
-        best.map(|(idx, _)| idx)
+        contained.or(near).map(|(idx, _)| idx)
     }
 }
 #[cfg(test)]
@@ -340,6 +396,7 @@ mod tests {
             simulation: Simulation::from_graph(graph, SimulationParameters::default()),
             viewport: Viewport::default(),
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
@@ -350,6 +407,14 @@ mod tests {
             spatial_grid: SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
 
         for (i, &idx) in idxs.iter().enumerate() {
@@ -366,10 +431,132 @@ mod tests {
             ..Default::default()
         };
 
-        let hit = vp.hit_test(10001.0, 10001.0, &gs).unwrap();
+        let config = ClinConfig::default();
+        let area = Rect::new(0, 0, 80, 40);
+        let max_lc = 0;
+
+        let hit = vp
+            .hit_test(10001.0, 10001.0, &gs, &config, area, max_lc)
+            .unwrap();
         assert_eq!(hit, idxs[1]);
 
-        let hit_equal = vp.hit_test(10002.5, 10002.5, &gs).unwrap();
+        let hit_equal = vp
+            .hit_test(10002.5, 10002.5, &gs, &config, area, max_lc)
+            .unwrap();
         assert_eq!(hit_equal, idxs[1]);
+    }
+
+    fn make_state(nodes: &[(f64, f64, usize)]) -> (GraphState, Vec<NodeIndex>) {
+        let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
+        let mut idxs = Vec::new();
+        for (i, &(x, y, lc)) in nodes.iter().enumerate() {
+            let data = GraphNodeData {
+                note_id: format!("{i}"),
+                title: format!("Node {i}"),
+                tags: vec![],
+                link_count: lc,
+                folder: "".to_string(),
+            };
+            let idx = graph.add_force_node(format!("Node {i}"), data);
+            graph.node_weight_mut(idx).unwrap().location.x = x as f32;
+            graph.node_weight_mut(idx).unwrap().location.y = y as f32;
+            idxs.push(idx);
+        }
+
+        let mut gs = GraphState {
+            simulation: Simulation::from_graph(graph, SimulationParameters::default()),
+            viewport: Viewport::default(),
+            selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
+            dragging_node: None,
+            drag_target: None,
+            is_settled: true,
+            alpha: 0.0,
+            graph_bounds: (0.0, 0.0, 0.0, 0.0),
+            render_cache: Mutex::new(crate::graf::render::RenderCache::new()),
+            mouse_pos: None,
+            spatial_grid: SpatialGrid::new(100.0),
+            physics_worker_active: false,
+            physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
+        };
+        // `Simulation::from_graph` re-initialises node locations; re-apply the
+        // explicit positions so the spatial grid reflects them.
+        for (i, &idx) in idxs.iter().enumerate() {
+            let (x, y, _) = nodes[i];
+            let node = gs.simulation.get_graph_mut().node_weight_mut(idx).unwrap();
+            node.location.x = x as f32;
+            node.location.y = y as f32;
+        }
+        gs.spatial_grid.rebuild(gs.simulation.get_graph());
+        (gs, idxs)
+    }
+
+    #[test]
+    fn test_hit_test_containment_prefers_body_over_neighbor() {
+        // A = large node (LinkCount max), B = small node; cursor sits inside A's
+        // body but outside B's body, yet B's center is nearer. Containment-first
+        // must return A; nearest-center (old behavior) would return B.
+        let mut config = ClinConfig::default();
+        config.graf.visual.node_size_mode = NodeSizeMode::LinkCount;
+        // node_size 2.0: A (lc=4, max=4) → r=5.0 ; B (lc=0) → r=2.0.
+        let (gs, idxs) = make_state(&[(0.0, 0.0, 4), (3.0, -2.5, 0)]);
+        let vp = Viewport {
+            zoom: 1.0,
+            ..Default::default()
+        };
+        let area = Rect::new(0, 0, 80, 40);
+        let max_lc = 4;
+
+        assert_eq!(node_world_radius(&config, 4, 4), 5.0);
+        assert_eq!(node_world_radius(&config, 4, 0), 2.0);
+
+        // Cursor (3,0): dist to A = 3 <= 5 (contained); dist to B = 2.5 > 2 (not).
+        let hit = vp.hit_test(3.0, 0.0, &gs, &config, area, max_lc).unwrap();
+        assert_eq!(hit, idxs[0]);
+    }
+
+    #[test]
+    fn test_hit_test_zoom_extremes() {
+        let (gs, idxs) = make_state(&[(0.0, 0.0, 0), (10000.0, 10000.0, 0), (10005.0, 10005.0, 0)]);
+        let config = ClinConfig::default();
+        let area = Rect::new(0, 0, 80, 40);
+        let max_lc = 0;
+
+        let vp_zoom_out = Viewport {
+            zoom: 0.15,
+            ..Default::default()
+        };
+        let vp_zoom_in = Viewport {
+            zoom: 200.0,
+            ..Default::default()
+        };
+
+        // Cursor on idx1's body (radius 2.0): (10001,10001) ~1.41 away.
+        assert_eq!(
+            vp_zoom_out.hit_test(10001.0, 10001.0, &gs, &config, area, max_lc),
+            Some(idxs[1])
+        );
+        assert_eq!(
+            vp_zoom_in.hit_test(10001.0, 10001.0, &gs, &config, area, max_lc),
+            Some(idxs[1])
+        );
+
+        // Cursor far from every node → None at both extremes.
+        assert_eq!(
+            vp_zoom_out.hit_test(50000.0, 50000.0, &gs, &config, area, max_lc),
+            None
+        );
+        assert_eq!(
+            vp_zoom_in.hit_test(50000.0, 50000.0, &gs, &config, area, max_lc),
+            None
+        );
     }
 }

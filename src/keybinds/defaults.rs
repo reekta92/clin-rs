@@ -495,6 +495,49 @@ impl Default for Keybinds {
             GraphAction::TogglePreview,
             vec![KeyCombo::shift(KeyCode::Char('P'))],
         );
+        graph.insert(
+            GraphAction::CreateConnection,
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        graph.insert(
+            GraphAction::DeleteConnection,
+            vec![KeyCombo::simple(KeyCode::Char('d'))],
+        );
+        graph.insert(
+            GraphAction::LocalGraph,
+            vec![KeyCombo::simple(KeyCode::Char('l'))],
+        );
+        graph.insert(
+            GraphAction::ShowGroup,
+            vec![KeyCombo::simple(KeyCode::Char('g'))],
+        );
+        graph.insert(
+            GraphAction::DeleteNode,
+            vec![KeyCombo::simple(KeyCode::Char('x'))],
+        );
+        graph.insert(GraphAction::MenuClose, vec![KeyCombo::simple(KeyCode::Esc)]);
+        graph.insert(
+            GraphAction::MenuUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        graph.insert(
+            GraphAction::MenuDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        graph.insert(
+            GraphAction::MenuSelect,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        graph.insert(
+            GraphAction::LookingGlass,
+            vec![KeyCombo::shift(KeyCode::Char('O'))],
+        );
 
         let mut draw = HashMap::new();
         draw.insert(

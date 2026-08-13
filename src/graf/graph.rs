@@ -15,10 +15,67 @@ pub struct GraphNodeData {
     pub folder: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrafMenuType {
+    Node,
+    MultiNode,
+    Background,
+}
+
+#[derive(Debug, Clone)]
+pub struct GrafContextMenu {
+    /// screen-col offset within graph area
+    pub x: u16,
+    /// screen-row offset within graph area
+    pub y: u16,
+    pub selected: usize,
+    pub items: Vec<GrafMenuItem>,
+    pub menu_type: GrafMenuType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrafMenuItem {
+    CreateConnection,
+    DeleteConnection,
+    LocalGraph,
+    ShowGroup,
+    DeleteNode,
+}
+
+pub fn menu_item_shortcut_char(item: GrafMenuItem) -> char {
+    match item {
+        GrafMenuItem::CreateConnection => 'c',
+        GrafMenuItem::DeleteConnection => 'd',
+        GrafMenuItem::LocalGraph => 'l',
+        GrafMenuItem::ShowGroup => 'g',
+        GrafMenuItem::DeleteNode => 'x',
+    }
+}
+
+pub fn menu_item_label(item: GrafMenuItem) -> &'static str {
+    match item {
+        GrafMenuItem::CreateConnection => "Create Connection",
+        GrafMenuItem::DeleteConnection => "Delete Connection",
+        GrafMenuItem::LocalGraph => "Local Graph",
+        GrafMenuItem::ShowGroup => "Show Group",
+        GrafMenuItem::DeleteNode => "Delete Node",
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModeBanner {
+    CreateConnection,
+    DeleteConnection,
+    BoxSelect,
+    LocalGraph,
+    GroupedGraph,
+}
+
 pub struct GraphState {
     pub simulation: Simulation<GraphNodeData, ()>,
     pub viewport: super::viewport::Viewport,
     pub selected_node: Option<NodeIndex>,
+    pub selected_nodes: HashSet<NodeIndex>,
     pub dragging_node: Option<NodeIndex>,
     pub drag_target: Option<(f32, f32)>,
     pub is_settled: bool,
@@ -29,6 +86,14 @@ pub struct GraphState {
     pub spatial_grid: super::spatial::SpatialGrid,
     pub physics_worker_active: bool,
     pub physics_ideal_distance: f64,
+    pub context_menu: Option<GrafContextMenu>,
+    pub context_menu_screen: (u16, u16),
+    pub connection_source: Option<NodeIndex>,
+    pub deleting_connection_source: Option<NodeIndex>,
+    pub box_select_start: Option<(f64, f64)>,
+    pub box_select_curr: Option<(f64, f64)>,
+    pub right_down_pos: Option<(u16, u16)>,
+    pub mode_banner: Option<ModeBanner>,
 }
 
 pub fn build_graph(
@@ -97,7 +162,7 @@ pub fn build_graph(
             note_id: summary.id.clone(),
             title: summary.title.clone(),
             tags: summary.tags.clone(),
-            link_count: summary.links.len(),
+            link_count: 0, // filled in below from total degree
             folder: summary.folder.clone(),
         };
 
@@ -140,6 +205,16 @@ pub fn build_graph(
         to_remove.sort_unstable_by(|a, b| b.cmp(a));
         for idx in to_remove {
             graph.remove_node(idx);
+        }
+    }
+
+    // link_count = total degree (outgoing wikilinks + backlinks), not just the
+    // note's outgoing links. Matches GraphState::apply_connection_change.
+    let indices: Vec<NodeIndex> = graph.node_indices().collect();
+    for idx in indices {
+        let degree = graph.edges(idx).count();
+        if let Some(n) = graph.node_weight_mut(idx) {
+            n.data.link_count = degree;
         }
     }
 
@@ -475,6 +550,7 @@ impl GraphState {
             viewport: super::viewport::Viewport::default(),
             simulation,
             selected_node: None,
+            selected_nodes: HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: false,
@@ -485,6 +561,14 @@ impl GraphState {
             spatial_grid: super::spatial::SpatialGrid::new(config.graf.physics.ideal_distance),
             physics_worker_active: false,
             physics_ideal_distance: config.graf.physics.ideal_distance,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
         state.viewport = state
             .viewport
@@ -500,6 +584,84 @@ impl GraphState {
             self.is_settled = false;
         }
     }
+
+    pub fn open_context_menu(&mut self, screen_x: u16, screen_y: u16, _world: (f64, f64)) {
+        let items = if !self.selected_nodes.is_empty() {
+            vec![GrafMenuItem::ShowGroup, GrafMenuItem::DeleteNode]
+        } else if self.selected_node.is_some() {
+            vec![
+                GrafMenuItem::CreateConnection,
+                GrafMenuItem::DeleteConnection,
+                GrafMenuItem::LocalGraph,
+                GrafMenuItem::DeleteNode,
+            ]
+        } else {
+            return;
+        };
+        self.context_menu = Some(GrafContextMenu {
+            x: screen_x,
+            y: screen_y,
+            selected: 0,
+            menu_type: if self.selected_nodes.is_empty() {
+                GrafMenuType::Node
+            } else {
+                GrafMenuType::MultiNode
+            },
+            items,
+        });
+        self.context_menu_screen = (screen_x, screen_y);
+    }
+
+    pub fn close_menu(&mut self) {
+        self.context_menu = None;
+    }
+
+    /// Apply a connection change to the live graph without rebuilding the
+    /// simulation: adds/removes the edge, dirties the render cache, lightly
+    /// reheats physics. Returns true if the graph topology changed.
+    pub fn apply_connection_change(
+        &mut self,
+        src: NodeIndex,
+        tgt: NodeIndex,
+        create: bool,
+    ) -> bool {
+        let graph = self.simulation.get_graph_mut();
+        let existing = graph.find_edge(src, tgt);
+        if create {
+            if existing.is_none() {
+                graph.add_edge(src, tgt, ());
+            } else {
+                return false;
+            }
+        } else {
+            match existing {
+                Some(e) => {
+                    graph.remove_edge(e);
+                }
+                None => return false,
+            }
+        }
+        // node.link_count in GraphNodeData is stale; update for both endpoints.
+        let src_count = graph.edges(src).count();
+        let tgt_count = graph.edges(tgt).count();
+        if let Some(n) = graph.node_weight_mut(src) {
+            n.data.link_count = src_count;
+        }
+        if let Some(n) = graph.node_weight_mut(tgt) {
+            n.data.link_count = tgt_count;
+        }
+        {
+            let mut cache = self.render_cache.lock();
+            cache.topology_dirty = true;
+            cache.minimap_dirty = true;
+        }
+        self.is_settled = false;
+        if self.physics_worker_active {
+            self.reheat(0.3);
+        }
+        true
+    }
+
     pub(crate) fn apply_static_cluster_layout(&mut self, ideal_distance: f64) -> bool {
         let graph = self.simulation.get_graph();
         let node_count = graph.node_count();
@@ -1251,6 +1413,7 @@ mod tests {
             ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
+            selected_nodes: HashSet::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: false,
@@ -1261,8 +1424,84 @@ mod tests {
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
+            context_menu: None,
+            context_menu_screen: (0, 0),
+            connection_source: None,
+            deleting_connection_source: None,
+            box_select_start: None,
+            box_select_curr: None,
+            right_down_pos: None,
+            mode_banner: None,
         };
         let success = gs_empty.apply_static_cluster_layout(80.0);
         assert!(!success);
+    }
+
+    #[test]
+    fn test_context_menu_node_and_multinode_shapes() {
+        let config = ClinConfig::default();
+        let summaries = vec![NoteSummary {
+            id: "1".to_string(),
+            title: "A".to_string(),
+            updated_at: 0,
+            folder: "".to_string(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes: 0,
+        }];
+        let mut state = GraphState::new(&summaries, &config).unwrap();
+
+        // Node menu: 4 items, LocalGraph present, ShowGroup absent
+        state.selected_node = Some(fdg_sim::petgraph::graph::NodeIndex::new(0));
+        state.open_context_menu(0, 0, (0.0, 0.0));
+        let menu = state.context_menu.as_ref().unwrap();
+        assert_eq!(menu.menu_type, GrafMenuType::Node);
+        assert_eq!(menu.items.len(), 4);
+        assert!(menu.items.contains(&GrafMenuItem::LocalGraph));
+        assert!(!menu.items.contains(&GrafMenuItem::ShowGroup));
+        assert!(menu.items.contains(&GrafMenuItem::CreateConnection));
+        assert!(menu.items.contains(&GrafMenuItem::DeleteConnection));
+        assert!(menu.items.contains(&GrafMenuItem::DeleteNode));
+
+        // MultiNode menu: 2 items, ShowGroup present, LocalGraph absent
+        state.context_menu = None;
+        state
+            .selected_nodes
+            .insert(fdg_sim::petgraph::graph::NodeIndex::new(0));
+        state.open_context_menu(0, 0, (0.0, 0.0));
+        let menu = state.context_menu.as_ref().unwrap();
+        assert_eq!(menu.menu_type, GrafMenuType::MultiNode);
+        assert_eq!(menu.items.len(), 2);
+        assert!(menu.items.contains(&GrafMenuItem::ShowGroup));
+        assert!(menu.items.contains(&GrafMenuItem::DeleteNode));
+        assert!(!menu.items.contains(&GrafMenuItem::LocalGraph));
+
+        // Background (no selection) → no menu
+        state.context_menu = None;
+        state.selected_node = None;
+        state.selected_nodes.clear();
+        state.open_context_menu(0, 0, (0.0, 0.0));
+        assert!(state.context_menu.is_none());
+    }
+
+    #[test]
+    fn test_menu_item_shortcut_round_trip() {
+        let all = [
+            GrafMenuItem::CreateConnection,
+            GrafMenuItem::DeleteConnection,
+            GrafMenuItem::LocalGraph,
+            GrafMenuItem::ShowGroup,
+            GrafMenuItem::DeleteNode,
+        ];
+        for item in all {
+            let c = menu_item_shortcut_char(item);
+            assert!(c.is_ascii_lowercase(), "{item:?} shortcut not lowercase");
+            assert!(!menu_item_label(item).is_empty());
+        }
+        // Uniqueness: no two items share a shortcut
+        let chars: std::collections::HashSet<char> =
+            all.iter().map(|&i| menu_item_shortcut_char(i)).collect();
+        assert_eq!(chars.len(), all.len());
     }
 }

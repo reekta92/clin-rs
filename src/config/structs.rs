@@ -155,6 +155,12 @@ pub struct VisualConfig {
     pub label_offset: f64,
     #[serde(default = "default_grid_divisions")]
     pub grid_divisions: usize,
+    #[serde(default = "default_true")]
+    pub show_looking_glass: bool,
+    #[serde(default = "default_looking_glass_width")]
+    pub looking_glass_width: u16,
+    #[serde(default = "default_looking_glass_height")]
+    pub looking_glass_height: u16,
     #[serde(default)]
     pub colors: ColorOverrides,
 }
@@ -180,6 +186,9 @@ impl Default for VisualConfig {
             node_shape: NodeShape::default(),
             label_offset: default_label_offset(),
             grid_divisions: default_grid_divisions(),
+            show_looking_glass: true,
+            looking_glass_width: default_looking_glass_width(),
+            looking_glass_height: default_looking_glass_height(),
             colors: ColorOverrides::default(),
         }
     }
