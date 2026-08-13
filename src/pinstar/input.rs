@@ -70,47 +70,61 @@ pub fn handle_pinstar_mouse(
             }
 
             let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
-            state.mouse_dragged = false;
-            state.select_rect_start = Some((cx, cy));
+            state.right_down_screen = Some((mouse.column, mouse.row));
+            state.marquee.on_down(cx, cy);
             true
         }
         MouseEventKind::Drag(MouseButton::Right) => {
-            state.mouse_dragged = true;
             if state.connection_source_id.is_none()
                 && state.deleting_connection_source_id.is_none()
                 && state.resizing_node_id.is_none()
             {
-                let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
-                state.mouse_selecting = true;
-                state.select_rect_end = Some((cx, cy));
-                if let Some(start) = state.select_rect_start {
-                    state.select_nodes_in_rect(start.0, start.1, cx, cy);
+                let dragging = if let Some((sx, sy)) = state.right_down_screen {
+                    state
+                        .marquee
+                        .is_dragging_screen(mouse.column, mouse.row, sx, sy)
+                } else {
+                    false
+                };
+                if dragging {
+                    let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
+                    state.marquee.on_drag(cx, cy);
+                    if let Some(start) = state.marquee.start {
+                        state.select_nodes_in_rect(start.0, start.1, cx, cy);
+                    }
                 }
             }
             true
         }
         MouseEventKind::Up(MouseButton::Right) => {
-            if state.mouse_selecting {
-                state.mouse_selecting = false;
-                state.select_rect_start = None;
-                state.select_rect_end = None;
-                state.drag_start_pos = None;
+            let dragging = if let Some((sx, sy)) = state.right_down_screen {
+                state
+                    .marquee
+                    .is_dragging_screen(mouse.column, mouse.row, sx, sy)
+            } else {
+                false
+            };
+            if state.marquee.start.is_some() && dragging {
+                state.marquee.clear();
+                state.right_down_screen = None;
                 return true;
             }
-            if !state.mouse_dragged {
+            if !dragging {
                 let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
                 // Edge hit takes precedence over node hit
                 if state.select_edge_at(cx, cy).is_some() {
                     state.open_edge_context_menu(mouse.column, mouse.row);
                 } else {
                     state.select_node_at(cx, cy);
-                    if state.selected_node_id.is_none() {
-                        state.selected_node_ids.clear();
+                    if state.selection.primary.is_none() {
+                        state.selection.clear_set();
                         state.selected_edge_id = None;
                     }
                     state.open_context_menu(mouse.column, mouse.row, cx, cy);
                 }
             }
+            state.right_down_screen = None;
+            state.marquee.clear();
             state.drag_start_pos = None;
             true
         }
@@ -141,25 +155,16 @@ pub fn handle_pinstar_mouse(
 
             if let Some(menu) = &state.context_menu {
                 close_menu = true;
-                let menu_width = menu
-                    .items
-                    .iter()
-                    .map(|s| s.len() as u16 + 4)
-                    .max()
-                    .unwrap_or(25);
-                let menu_height = menu.items.len() as u16;
-                let menu_x = area.x + menu.x.min(area.width.saturating_sub(menu_width));
-                let menu_y = area.y + menu.y.min(area.height.saturating_sub(menu_height));
-
-                if mouse.column >= menu_x
-                    && mouse.column < menu_x + menu_width
-                    && mouse.row >= menu_y
-                    && mouse.row < menu_y + menu_height
-                {
-                    let selected = (mouse.row - menu_y) as usize;
-                    if selected < menu.items.len() {
-                        menu_action = Some((selected, menu.menu_type, menu.x, menu.y));
-                    }
+                let rect = menu.rect(canvas_area);
+                if let Some(idx) = menu.row_at(rect, mouse.column, mouse.row) {
+                    menu_action = Some((
+                        idx,
+                        state
+                            .menu_kind
+                            .unwrap_or(crate::pinstar::state::PinstarMenuType::Canvas),
+                        menu.x,
+                        menu.y,
+                    ));
                 }
             }
 
@@ -277,14 +282,14 @@ pub fn handle_pinstar_mouse(
             }
 
             if state.floating_editor.is_some() {
-                let prev_selected = state.selected_node_id.clone();
+                let prev_selected = state.selection.primary.clone();
                 let hit_node = state.select_node_at(cx, cy);
 
                 if hit_node != prev_selected {
-                    state.selected_node_id = prev_selected;
+                    state.selection.primary = prev_selected;
                     state.toggle_editor();
                     state.sync_to_raw_editor();
-                    state.selected_node_id = hit_node.clone();
+                    state.selection.primary = hit_node.clone();
 
                     if hit_node.is_none() {
                         return true;
@@ -311,7 +316,7 @@ pub fn handle_pinstar_mouse(
                 state.capture_drag_nodes();
                 state.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
             } else {
-                state.selected_node_ids.clear();
+                state.selection.clear_set();
                 state.selected_edge_id = None;
                 state.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
             }
@@ -462,41 +467,20 @@ fn execute_menu_action(
     if menu_type == PinstarMenuType::EdgeMenu {
         match selected_index {
             0 => {
-                let mut items = vec!["Default".to_string()];
-                let mut color_hints: Vec<Option<ratatui::style::Color>> = vec![None];
-                for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
-                    let capitalized = name
-                        .chars()
-                        .next()
-                        .unwrap_or(' ')
-                        .to_uppercase()
-                        .to_string()
-                        + &name[1..];
-                    items.push(capitalized);
-                    color_hints.push(Some(*color));
-                }
-                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
-                    x: menu_x,
-                    y: menu_y,
-                    selected: 0,
-                    items,
-                    color_hints,
-                    menu_type: PinstarMenuType::EdgeColorPicker,
-                });
+                let specs = crate::pinstar::state::pinstar_menu_specs(
+                    PinstarMenuType::EdgeColorPicker,
+                    false,
+                );
+                state.menu_kind = Some(PinstarMenuType::EdgeColorPicker);
+                state.context_menu = Some(crate::ui::CanvasContextMenu::new(menu_x, menu_y, specs));
             }
             1 => {
-                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
-                    x: menu_x,
-                    y: menu_y,
-                    selected: 0,
-                    items: vec![
-                        "Solid".to_string(),
-                        "Dashed".to_string(),
-                        "Dotted".to_string(),
-                    ],
-                    color_hints: Vec::new(),
-                    menu_type: PinstarMenuType::EdgeStylePicker,
-                });
+                let specs = crate::pinstar::state::pinstar_menu_specs(
+                    PinstarMenuType::EdgeStylePicker,
+                    false,
+                );
+                state.menu_kind = Some(PinstarMenuType::EdgeStylePicker);
+                state.context_menu = Some(crate::ui::CanvasContextMenu::new(menu_x, menu_y, specs));
             }
             _ => {}
         }
@@ -525,7 +509,7 @@ fn execute_menu_action(
         return;
     }
 
-    let node_id = state.selected_node_id.clone();
+    let node_id = state.selection.primary.clone();
 
     if let Some(id) = node_id {
         match selected_index {
@@ -551,27 +535,10 @@ fn execute_menu_action(
             }
             3 => state.start_resize(),
             4 => {
-                let mut items = vec!["Default".to_string()];
-                let mut color_hints: Vec<Option<ratatui::style::Color>> = vec![None];
-                for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
-                    let capitalized = name
-                        .chars()
-                        .next()
-                        .unwrap_or(' ')
-                        .to_uppercase()
-                        .to_string()
-                        + &name[1..];
-                    items.push(capitalized);
-                    color_hints.push(Some(*color));
-                }
-                state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
-                    x: menu_x,
-                    y: menu_y,
-                    selected: 0,
-                    items,
-                    color_hints,
-                    menu_type: PinstarMenuType::ColorPicker,
-                });
+                let specs =
+                    crate::pinstar::state::pinstar_menu_specs(PinstarMenuType::ColorPicker, false);
+                state.menu_kind = Some(PinstarMenuType::ColorPicker);
+                state.context_menu = Some(crate::ui::CanvasContextMenu::new(menu_x, menu_y, specs));
             }
             5 => state.delete_node_connections(),
             6 => state.delete_selected_node(),
@@ -627,27 +594,35 @@ pub fn handle_pinstar_event(
                 close_menu = true;
             }
             _ if keybinds.matches_canvas(CanvasAction::MenuUp, &key) => {
-                menu.selected = menu.selected.saturating_sub(1);
+                menu.move_up();
             }
             _ if keybinds.matches_canvas(CanvasAction::MenuDown, &key) => {
-                if menu.selected + 1 < menu.items.len() {
-                    menu.selected += 1;
-                }
+                menu.move_down();
             }
             _ if keybinds.matches_canvas(CanvasAction::MenuSelect, &key) => {
-                menu_action = Some((menu.selected, menu.menu_type, menu.x, menu.y));
+                menu_action = Some((
+                    menu.selected,
+                    state
+                        .menu_kind
+                        .unwrap_or(crate::pinstar::state::PinstarMenuType::Canvas),
+                    menu.x,
+                    menu.y,
+                ));
                 close_menu = true;
             }
             _ => {
-                if let crossterm::event::KeyCode::Char(c) = key.code {
-                    let c = c.to_ascii_lowercase();
-                    if let Some(index) = menu.items.iter().position(|item| {
-                        crate::pinstar::state::menu_item_shortcut_char(menu.menu_type, item)
-                            == Some(c)
-                    }) {
-                        menu_action = Some((index, menu.menu_type, menu.x, menu.y));
-                        close_menu = true;
-                    }
+                if let crossterm::event::KeyCode::Char(c) = key.code
+                    && let Some(index) = menu.find_shortcut(c)
+                {
+                    menu_action = Some((
+                        index,
+                        state
+                            .menu_kind
+                            .unwrap_or(crate::pinstar::state::PinstarMenuType::Canvas),
+                        menu.x,
+                        menu.y,
+                    ));
+                    close_menu = true;
                 }
             }
         }
@@ -684,7 +659,7 @@ pub fn handle_pinstar_event(
                 if !apply_text_shortcuts(keybinds, editor, key) {
                     editor.input(Input::from(key));
                 }
-                if let Some(node_id) = &state.selected_node_id {
+                if let Some(node_id) = &state.selection.primary {
                     let text = editor.lines().join("\n");
                     for node in &mut state.data.nodes {
                         if node.id() == node_id {
@@ -749,14 +724,14 @@ pub fn handle_pinstar_event(
     // non-deterministic for Enter.
     if keybinds.matches_canvas(CanvasAction::EditOrConnect, &key) {
         if state.connection_source_id.is_some() {
-            if let Some(target_id) = state.selected_node_id.clone() {
+            if let Some(target_id) = state.selection.primary.clone() {
                 state.finish_connection(&target_id);
             }
             sync_mode_status(app, state);
             return true;
         }
         if state.deleting_connection_source_id.is_some() {
-            if let Some(target_id) = state.selected_node_id.clone() {
+            if let Some(target_id) = state.selection.primary.clone() {
                 state.finish_delete_connection(&target_id);
             }
             sync_mode_status(app, state);
@@ -835,7 +810,7 @@ pub fn handle_pinstar_event(
                 state.zoom_out();
             }
             CanvasAction::EditOrConnect => {
-                let target_id_opt = state.selected_node_id.clone();
+                let target_id_opt = state.selection.primary.clone();
                 if let Some(target_id) = target_id_opt {
                     if state.connection_source_id.is_some() {
                         state.finish_connection(&target_id);
@@ -851,7 +826,7 @@ pub fn handle_pinstar_event(
                 let cx = state.viewport_x;
                 let cy = state.viewport_y;
 
-                if let Some(id) = &state.selected_node_id {
+                if let Some(id) = &state.selection.primary {
                     if state.data.nodes.iter().any(|n| n.id() == id) {
                         state.open_context_menu(menu_x, menu_y, cx, cy);
                     }
@@ -903,21 +878,21 @@ pub fn handle_pinstar_event(
                 *running = false;
             }
             CanvasAction::CreateConnection => {
-                if state.selected_node_id.is_some() {
+                if state.selection.primary.is_some() {
                     state.start_connection();
                 } else {
                     app.set_temporary_status("Select a node first to create a connection");
                 }
             }
             CanvasAction::DeleteConnection => {
-                if state.selected_node_id.is_some() {
+                if state.selection.primary.is_some() {
                     state.start_delete_connection();
                 } else {
                     app.set_temporary_status("Select a node first to delete connections");
                 }
             }
             CanvasAction::RenameNode => {
-                if let Some(id) = state.selected_node_id.clone() {
+                if let Some(id) = state.selection.primary.clone() {
                     let current_title = state
                         .data
                         .nodes
@@ -939,51 +914,31 @@ pub fn handle_pinstar_event(
                 }
             }
             CanvasAction::ResizeMode => {
-                if state.selected_node_id.is_some() {
+                if state.selection.primary.is_some() {
                     state.start_resize();
                 } else {
                     app.set_temporary_status("Select a node first to resize");
                 }
             }
             CanvasAction::SetColor => {
-                if state.selected_node_id.is_none()
-                    && state.selected_edge_id.is_none()
-                    && state.selected_node_ids.is_empty()
-                {
+                if state.selection.is_empty() && state.selected_edge_id.is_none() {
                     app.set_temporary_status("Select a node or edge first to set color");
                 } else {
                     let menu_x = (area.width / 2).saturating_sub(12);
                     let menu_y = area.height;
-                    let mut items = vec!["Default".to_string()];
-                    let mut color_hints: Vec<Option<ratatui::style::Color>> = vec![None];
-                    for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
-                        let capitalized = name
-                            .chars()
-                            .next()
-                            .unwrap_or(' ')
-                            .to_uppercase()
-                            .to_string()
-                            + &name[1..];
-                        items.push(capitalized);
-                        color_hints.push(Some(*color));
-                    }
                     let picker_type = if state.selected_edge_id.is_some() {
-                        PinstarMenuType::EdgeColorPicker
+                        crate::pinstar::state::PinstarMenuType::EdgeColorPicker
                     } else {
-                        PinstarMenuType::ColorPicker
+                        crate::pinstar::state::PinstarMenuType::ColorPicker
                     };
-                    state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
-                        x: menu_x,
-                        y: menu_y,
-                        selected: 0,
-                        items,
-                        color_hints,
-                        menu_type: picker_type,
-                    });
+                    let specs = crate::pinstar::state::pinstar_menu_specs(picker_type, false);
+                    state.menu_kind = Some(picker_type);
+                    state.context_menu =
+                        Some(crate::ui::CanvasContextMenu::new(menu_x, menu_y, specs));
                 }
             }
             CanvasAction::DeleteNode => {
-                if state.all_selected_node_ids().is_empty() {
+                if state.selection.all().is_empty() {
                     app.set_temporary_status("Select a node first to delete");
                 } else {
                     state.delete_selected_node();
@@ -991,7 +946,7 @@ pub fn handle_pinstar_event(
                 }
             }
             CanvasAction::DeleteAllConnections => {
-                if state.all_selected_node_ids().is_empty() {
+                if state.selection.all().is_empty() {
                     app.set_temporary_status("Select a node first to clear connections");
                 } else {
                     state.delete_node_connections();

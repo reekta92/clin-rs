@@ -5,7 +5,7 @@ use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
-use super::graph::{GrafMenuItem, GraphState, ModeBanner, menu_item_shortcut_char};
+use super::graph::{GrafMenuItem, GraphState, ModeBanner};
 
 use crate::config::ClinConfig;
 use crate::keybinds::{GraphAction, Keybinds};
@@ -33,10 +33,6 @@ pub enum GraphInputAction {
     ClearFocus,
 }
 
-/// Right-click movement (Manhattan cells) below which a release is treated as
-/// a click (context menu) rather than a drag (box select).
-const RCLICK_THRESHOLD: u32 = 3;
-
 pub fn handle_graph_keys(
     state: &Arc<RwLock<GraphState>>,
     key: KeyEvent,
@@ -48,48 +44,35 @@ pub fn handle_graph_keys(
     let mut guard = state.write();
 
     // Context menu open: keys drive the menu exclusively.
-    if guard.context_menu.is_some() {
+    if let Some(menu) = guard.context_menu.as_mut() {
         seq_matcher.clear();
-        let items = guard
-            .context_menu
-            .as_ref()
-            .map(|m| m.items.clone())
-            .unwrap_or_default();
-        let selected = guard.context_menu.as_ref().map(|m| m.selected).unwrap_or(0);
-        let mut new_selected = selected;
         let mut dispatch: Option<GraphInputAction> = None;
         let mut close = false;
 
         if keybinds.matches_graph(GraphAction::MenuClose, &key) {
             close = true;
         } else if keybinds.matches_graph(GraphAction::MenuUp, &key) {
-            new_selected = selected.saturating_sub(1);
+            menu.move_up();
         } else if keybinds.matches_graph(GraphAction::MenuDown, &key) {
-            if selected + 1 < items.len() {
-                new_selected = selected + 1;
-            }
+            menu.move_down();
         } else if keybinds.matches_graph(GraphAction::MenuSelect, &key) {
-            if let Some(item) = items.get(selected) {
-                dispatch = Some(GraphInputAction::MenuAction(*item));
-                close = true;
-            }
-        } else if let KeyCode::Char(c) = key.code {
-            let cl = c.to_ascii_lowercase();
-            if let Some(item) = items
-                .iter()
-                .copied()
-                .find(|i| menu_item_shortcut_char(*i) == cl)
+            if let Some(spec) = menu.items.get(menu.selected)
+                && let Some(item) = crate::graf::graph::graf_menu_item_from_label(spec.label)
             {
                 dispatch = Some(GraphInputAction::MenuAction(item));
                 close = true;
             }
+        } else if let KeyCode::Char(c) = key.code
+            && let Some(idx) = menu.find_shortcut(c)
+            && let Some(spec) = menu.items.get(idx)
+            && let Some(item) = crate::graf::graph::graf_menu_item_from_label(spec.label)
+        {
+            dispatch = Some(GraphInputAction::MenuAction(item));
+            close = true;
         }
 
-        if let Some(menu) = guard.context_menu.as_mut() {
-            menu.selected = new_selected;
-        }
         if close {
-            guard.close_menu();
+            guard.context_menu = None;
         }
         return dispatch;
     }
@@ -109,8 +92,8 @@ pub fn handle_graph_keys(
         ) {
             return Some(GraphInputAction::ClearFocus);
         }
-        if !guard.selected_nodes.is_empty() {
-            guard.selected_nodes.clear();
+        if !guard.selection.extra.is_empty() {
+            guard.selection.clear_set();
             guard.mode_banner = None;
             return None;
         }
@@ -158,7 +141,7 @@ pub fn handle_graph_keys(
                 guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
             }
             GraphAction::OpenNote | GraphAction::MenuSelect => {
-                if let Some(idx) = guard.selected_node
+                if let Some(idx) = guard.selection.primary
                     && let Some(node) = guard.simulation.get_graph().node_weight(idx)
                 {
                     return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
@@ -202,7 +185,7 @@ pub fn handle_graph_keys(
                 return Some(GraphInputAction::ToggleLookingGlass);
             }
             GraphAction::OpenContextMenu => {
-                let (sx, sy) = match guard.selected_node {
+                let (sx, sy) = match guard.selection.primary {
                     Some(idx) => {
                         let node = guard.simulation.get_graph().node_weight(idx);
                         match node {
@@ -299,29 +282,16 @@ pub fn handle_graph_mouse(
             }
             // Context menu: click inside activates a row, click outside dismisses.
             {
-                let guard = state.read();
-                if let Some(menu) = &guard.context_menu {
-                    let rect = super::render::compute_context_menu_rect(menu, canvas);
-                    let inside_menu = mouse_event.column >= rect.x
-                        && mouse_event.column < rect.x + rect.width
-                        && mouse_event.row >= rect.y
-                        && mouse_event.row < rect.y + rect.height;
-                    if inside_menu {
-                        let row = (mouse_event.row - rect.y) as usize;
-                        if row < menu.items.len() {
-                            let item = menu.items[row];
-                            drop(guard);
-                            let mut g = state.write();
-                            g.close_menu();
-                            return Some(GraphInputAction::MenuAction(item));
-                        }
-                        drop(guard);
-                        return None;
+                let mut guard = state.write();
+                if let Some(menu) = guard.context_menu.take() {
+                    let rect = menu.rect(canvas);
+                    if let Some(idx) = menu.row_at(rect, mouse_event.column, mouse_event.row)
+                        && let Some(spec) = menu.items.get(idx)
+                        && let Some(item) =
+                            crate::graf::graph::graf_menu_item_from_label(spec.label)
+                    {
+                        return Some(GraphInputAction::MenuAction(item));
                     }
-                    // Outside the menu rect: dismiss and consume the click.
-                    drop(guard);
-                    let mut g = state.write();
-                    g.close_menu();
                     return None;
                 }
             }
@@ -410,7 +380,7 @@ pub fn handle_graph_mouse(
 
                 if let Some(node_idx) = hit {
                     let mut guard = state.write();
-                    guard.selected_node = Some(node_idx);
+                    guard.selection.select_only(node_idx);
                     guard.dragging_node = Some(node_idx);
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                     mouse_state.is_panning = false;
@@ -424,8 +394,7 @@ pub fn handle_graph_mouse(
                     }
                 } else {
                     let mut guard = state.write();
-                    guard.selected_node = None;
-                    guard.selected_nodes.clear();
+                    guard.selection.clear();
                     guard.dragging_node = None;
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                     mouse_state.is_panning = true;
@@ -522,8 +491,7 @@ pub fn handle_graph_mouse(
             };
             let mut guard = state.write();
             guard.right_down_pos = Some((mouse_event.column, mouse_event.row));
-            guard.box_select_start = Some((wx, wy));
-            guard.box_select_curr = Some((wx, wy));
+            guard.marquee.on_down(wx, wy);
         }
         MouseEventKind::Drag(MouseButton::Right) => {
             let start = {
@@ -531,9 +499,13 @@ pub fn handle_graph_mouse(
                 guard.right_down_pos
             };
             let (sx, sy) = start?;
-            let moved = (mouse_event.column as i32 - sx as i32).unsigned_abs()
-                + (mouse_event.row as i32 - sy as i32).unsigned_abs();
-            if moved > RCLICK_THRESHOLD {
+            let dragging = {
+                let guard = state.read();
+                guard
+                    .marquee
+                    .is_dragging_screen(mouse_event.column, mouse_event.row, sx, sy)
+            };
+            if dragging {
                 let (wx, wy) = {
                     let guard = state.read();
                     guard
@@ -544,37 +516,37 @@ pub fn handle_graph_mouse(
                 if guard.mode_banner.is_none() {
                     guard.mode_banner = Some(ModeBanner::BoxSelect);
                 }
-                guard.box_select_curr = Some((wx, wy));
+                guard.marquee.on_drag(wx, wy);
                 guard.context_menu = None;
             }
         }
         MouseEventKind::Up(MouseButton::Right) => {
-            let (start_world, curr_world, start_screen) = {
+            let start_screen = {
                 let guard = state.read();
-                (
-                    guard.box_select_start,
-                    guard.box_select_curr,
-                    guard.right_down_pos,
-                )
+                guard.right_down_pos
             };
             let Some((sx, sy)) = start_screen else {
                 let mut g = state.write();
                 g.right_down_pos = None;
-                g.box_select_start = None;
-                g.box_select_curr = None;
+                g.marquee.clear();
                 return None;
             };
-            let moved = (mouse_event.column as i32 - sx as i32).unsigned_abs()
-                + (mouse_event.row as i32 - sy as i32).unsigned_abs();
+
+            let dragging = {
+                let guard = state.read();
+                guard
+                    .marquee
+                    .is_dragging_screen(mouse_event.column, mouse_event.row, sx, sy)
+            };
 
             let mut guard = state.write();
             guard.right_down_pos = None;
-            guard.box_select_start = None;
-            guard.box_select_curr = None;
+            let commit_rect = guard.marquee.commit_rect();
+            guard.marquee.clear();
 
-            if moved <= RCLICK_THRESHOLD {
+            if !dragging {
                 // Click → context menu.
-                if guard.selected_nodes.is_empty() {
+                if guard.selection.extra.is_empty() {
                     let (wx, wy) =
                         guard
                             .viewport
@@ -584,18 +556,14 @@ pub fn handle_graph_mouse(
                         .viewport
                         .hit_test(wx, wy, &guard, config, canvas, max_lc)
                     {
-                        guard.selected_node = Some(idx);
+                        guard.selection.select_only(idx);
                     }
                     guard.open_context_menu(mouse_event.column, mouse_event.row, (wx, wy));
                 } else {
                     guard.open_context_menu(mouse_event.column, mouse_event.row, (0.0, 0.0));
                 }
-            } else if let (Some(start_world), Some(curr_world)) = (start_world, curr_world) {
+            } else if let Some((min_x, min_y, max_x, max_y)) = commit_rect {
                 // Box-select commit: collect enclosed nodes.
-                let min_x = start_world.0.min(curr_world.0);
-                let max_x = start_world.0.max(curr_world.0);
-                let min_y = start_world.1.min(curr_world.1);
-                let max_y = start_world.1.max(curr_world.1);
                 let mut enclosed: Vec<fdg_sim::petgraph::graph::NodeIndex> = Vec::new();
                 {
                     let graph = guard.simulation.get_graph();
@@ -608,11 +576,10 @@ pub fn handle_graph_mouse(
                         }
                     }
                 }
-                guard.selected_nodes.clear();
-                for idx in enclosed {
-                    guard.selected_nodes.insert(idx);
-                }
-                guard.selected_node = guard.selected_nodes.iter().next().copied();
+                let primary = enclosed.first().copied();
+                guard
+                    .selection
+                    .replace_set(enclosed.into_iter().collect(), primary);
                 if guard.mode_banner == Some(ModeBanner::BoxSelect) {
                     guard.mode_banner = None;
                 }
@@ -625,9 +592,10 @@ pub fn handle_graph_mouse(
 }
 
 fn select_in_direction(guard: &mut GraphState, dx: f64, dy: f64) {
-    if guard.selected_node.is_none() {
-        guard.selected_node = guard.viewport.nearest_to_center(guard);
-        if let Some(idx) = guard.selected_node {
+    if guard.selection.primary.is_none() {
+        let nearest = guard.viewport.nearest_to_center(guard);
+        if let Some(idx) = nearest {
+            guard.selection.select_only(idx);
             let graph = guard.simulation.get_graph();
             let node = &graph[idx];
             guard
@@ -637,7 +605,7 @@ fn select_in_direction(guard: &mut GraphState, dx: f64, dy: f64) {
         return;
     }
 
-    let Some(idx) = guard.selected_node else {
+    let Some(idx) = guard.selection.primary else {
         return;
     };
     let (ox, oy) = {
@@ -649,9 +617,9 @@ fn select_in_direction(guard: &mut GraphState, dx: f64, dy: f64) {
     if let Some(next) =
         guard
             .viewport
-            .nearest_in_direction(guard, ox, oy, dx, dy, guard.selected_node)
+            .nearest_in_direction(guard, ox, oy, dx, dy, guard.selection.primary)
     {
-        guard.selected_node = Some(next);
+        guard.selection.select_only(next);
         let graph = guard.simulation.get_graph();
         let node = &graph[next];
         guard

@@ -933,7 +933,8 @@ impl StatuslineContext<'_> {
                     "node_count" => graph_inner.node_count().to_string(),
                     "edge_count" => graph_inner.edge_count().to_string(),
                     "selected_node" => graph
-                        .selected_node
+                        .selection
+                        .primary
                         .and_then(|idx| graph_inner.node_weight(idx))
                         .map(|n| n.data.title.clone())
                         .unwrap_or_else(|| "none".to_string()),
@@ -1077,7 +1078,7 @@ impl StatuslineContext<'_> {
                     "canvas_zoom" => format!("{:.1}", canvas.zoom),
                     "canvas_pan_x" => canvas.viewport_x.to_string(),
                     "canvas_pan_y" => canvas.viewport_y.to_string(),
-                    "canvas_selected" => canvas.selected_node_id.clone().unwrap_or_default(),
+                    "canvas_selected" => canvas.selection.primary.clone().unwrap_or_default(),
                     "canvas_grid" => (if canvas.show_grid { "on" } else { "off" }).to_string(),
                     "canvas_editor" => {
                         (if canvas.show_editor_pane { "on" } else { "off" }).to_string()
@@ -2147,8 +2148,7 @@ mod tests {
                 fdg_sim::SimulationParameters::default(),
             ),
             viewport: crate::graf::viewport::Viewport::default(),
-            selected_node: None,
-            selected_nodes: std::collections::HashSet::new(),
+            selection: crate::ui::CanvasSelection::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
@@ -2160,11 +2160,9 @@ mod tests {
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
-            context_menu_screen: (0, 0),
             connection_source: None,
             deleting_connection_source: None,
-            box_select_start: None,
-            box_select_curr: None,
+            marquee: crate::ui::MarqueeDragState::new(3),
             right_down_pos: None,
             mode_banner: None,
         };

@@ -1,4 +1,5 @@
 use crate::pinstar::data::CanvasData;
+use crate::ui::CanvasSelection;
 use anyhow::Result;
 use ratatui_textarea::{TextArea, WrapMode};
 use std::path::{Path, PathBuf};
@@ -9,8 +10,7 @@ pub struct PinstarState {
     pub viewport_x: f64,
     pub viewport_y: f64,
     pub zoom: f64,
-    pub selected_node_id: Option<String>,
-    pub selected_node_ids: std::collections::HashSet<String>,
+    pub selection: CanvasSelection<String>,
     pub selected_edge_id: Option<String>,
     pub floating_editor: Option<TextArea<'static>>,
     pub raw_editor: TextArea<'static>,
@@ -18,8 +18,9 @@ pub struct PinstarState {
     pub last_mouse_pos: Option<(u16, u16)>,
     pub mouse_pos: Option<(u16, u16)>,
     pub last_click: Option<(u16, u16, std::time::Instant)>,
-    pub context_menu: Option<PinstarContextMenu>,
+    pub context_menu: Option<crate::ui::CanvasContextMenu>,
     pub context_menu_pos: (f64, f64),
+    pub menu_kind: Option<PinstarMenuType>,
     pub connection_source_id: Option<String>,
     pub resizing_node_id: Option<String>,
     pub is_dragging_resize_handle: bool,
@@ -45,10 +46,8 @@ pub struct PinstarState {
     pub is_panning: bool,
     pub undo_stack: Vec<PinstarSnapshot>,
     pub redo_stack: Vec<PinstarSnapshot>,
-    pub select_rect_start: Option<(f64, f64)>,
-    pub select_rect_end: Option<(f64, f64)>,
-    pub mouse_selecting: bool,
-    pub mouse_dragged: bool,
+    pub marquee: crate::ui::MarqueeDragState,
+    pub right_down_screen: Option<(u16, u16)>,
     pub last_zoom_at: Option<std::time::Instant>,
     pub orthogonal_connections: bool,
 }
@@ -73,15 +72,6 @@ pub enum PinstarMenuType {
     EdgeMenu,
     EdgeColorPicker,
     EdgeStylePicker,
-}
-
-pub struct PinstarContextMenu {
-    pub x: u16,
-    pub y: u16,
-    pub selected: usize,
-    pub items: Vec<String>,
-    pub color_hints: Vec<Option<ratatui::style::Color>>,
-    pub menu_type: PinstarMenuType,
 }
 
 /// Returns the single-letter keyboard shortcut for a context-menu item, if any.
@@ -128,6 +118,52 @@ pub fn menu_item_shortcut_char(menu_type: PinstarMenuType, item: &str) -> Option
     }
 }
 
+pub fn pinstar_menu_specs(
+    kind: PinstarMenuType,
+    selected_node: bool,
+) -> Vec<crate::ui::CanvasMenuItemSpec> {
+    let items = match kind {
+        PinstarMenuType::Canvas => {
+            if selected_node {
+                vec![
+                    "Create Connection",
+                    "Delete Connection",
+                    "Rename Node",
+                    "Resize Node",
+                    "Set Color...",
+                    "Delete All Connections",
+                    "Delete Node",
+                ]
+            } else {
+                vec!["Add Text Node", "Add Group", "Add Image Node"]
+            }
+        }
+        PinstarMenuType::EdgeMenu => vec!["Set Color...", "Set Style..."],
+        PinstarMenuType::EdgeStylePicker => vec!["Solid", "Dashed", "Dotted"],
+        PinstarMenuType::ColorPicker | PinstarMenuType::EdgeColorPicker => {
+            let mut specs = vec![crate::ui::CanvasMenuItemSpec::new("Default").shortcut('d')];
+            for (name, _, color) in crate::pinstar::COLOR_PICKER_PALETTE {
+                let mut spec = crate::ui::CanvasMenuItemSpec::new(name).color(*color);
+                if let Some(c) = menu_item_shortcut_char(kind, name) {
+                    spec = spec.shortcut(c);
+                }
+                specs.push(spec);
+            }
+            return specs;
+        }
+    };
+
+    let mut specs = Vec::new();
+    for label in items {
+        let mut spec = crate::ui::CanvasMenuItemSpec::new(label);
+        if let Some(c) = menu_item_shortcut_char(kind, label) {
+            spec = spec.shortcut(c);
+        }
+        specs.push(spec);
+    }
+    specs
+}
+
 impl PinstarState {
     pub fn load(
         path: &Path,
@@ -142,8 +178,7 @@ impl PinstarState {
             viewport_x: 0.0,
             viewport_y: 0.0,
             zoom: 0.1,
-            selected_node_id: None,
-            selected_node_ids: std::collections::HashSet::new(),
+            selection: CanvasSelection::new(),
             selected_edge_id: None,
             floating_editor: None,
             raw_editor: TextArea::from(content.lines().map(String::from).collect::<Vec<_>>()),
@@ -153,6 +188,7 @@ impl PinstarState {
             last_click: None,
             context_menu: None,
             context_menu_pos: (0.0, 0.0),
+            menu_kind: None,
             connection_source_id: None,
             resizing_node_id: None,
             is_dragging_resize_handle: false,
@@ -179,10 +215,8 @@ impl PinstarState {
             last_zoom_at: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-            select_rect_start: None,
-            select_rect_end: None,
-            mouse_selecting: false,
-            mouse_dragged: false,
+            marquee: crate::ui::MarqueeDragState::new(3),
+            right_down_screen: None,
             orthogonal_connections: false,
         })
     }
@@ -216,8 +250,7 @@ impl PinstarState {
                 data: self.data.clone(),
             });
             self.data = snapshot.data;
-            self.selected_node_id = None;
-            self.selected_node_ids.clear();
+            self.selection.clear();
             self.selected_edge_id = None;
             self.save()?;
             self.sync_to_raw_editor();
@@ -230,8 +263,7 @@ impl PinstarState {
                 data: self.data.clone(),
             });
             self.data = snapshot.data;
-            self.selected_node_id = None;
-            self.selected_node_ids.clear();
+            self.selection.clear();
             self.selected_edge_id = None;
             self.save()?;
             self.sync_to_raw_editor();
@@ -240,11 +272,7 @@ impl PinstarState {
     }
 
     pub fn all_selected_node_ids(&self) -> std::collections::HashSet<String> {
-        let mut ids = self.selected_node_ids.clone();
-        if let Some(id) = &self.selected_node_id {
-            ids.insert(id.clone());
-        }
-        ids
+        self.selection.all()
     }
     pub fn select_nodes_in_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
         let (min_x, max_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
@@ -260,13 +288,11 @@ impl PinstarState {
             })
             .map(|n| n.id().to_string())
             .collect();
-        if !ids.is_empty() {
-            self.selected_node_id = Some(ids.iter().next().expect("non-empty ids").clone());
-        }
-        self.selected_node_ids = ids;
+        let primary = ids.iter().next().cloned();
+        self.selection.replace_set(ids, primary);
     }
     pub fn delete_selected_node(&mut self) {
-        let ids = self.all_selected_node_ids();
+        let ids = self.selection.all();
         if ids.is_empty() {
             return;
         }
@@ -275,8 +301,7 @@ impl PinstarState {
         self.data
             .edges
             .retain(|e| !ids.contains(&e.from_node) && !ids.contains(&e.to_node));
-        self.selected_node_id = None;
-        self.selected_node_ids.clear();
+        self.selection.clear();
         let _ = self.save();
     }
 
@@ -380,8 +405,7 @@ impl PinstarState {
         }
         if let Some((id, _)) = best {
             self.selected_edge_id = Some(id.clone());
-            self.selected_node_id = None;
-            self.selected_node_ids.clear();
+            self.selection.clear();
             Some(id)
         } else {
             self.selected_edge_id = None;
@@ -420,14 +444,9 @@ impl PinstarState {
     }
 
     pub fn open_edge_context_menu(&mut self, x: u16, y: u16) {
-        self.context_menu = Some(PinstarContextMenu {
-            x,
-            y,
-            selected: 0,
-            items: vec!["Set Color...".to_string(), "Set Style...".to_string()],
-            menu_type: PinstarMenuType::EdgeMenu,
-            color_hints: Vec::new(),
-        });
+        let specs = pinstar_menu_specs(PinstarMenuType::EdgeMenu, false);
+        self.menu_kind = Some(PinstarMenuType::EdgeMenu);
+        self.context_menu = Some(crate::ui::CanvasContextMenu::new(x, y, specs));
     }
 
     /// Opens the edge context menu centered in the given view area.
@@ -440,7 +459,7 @@ impl PinstarState {
     /// Edges connected to the currently selected node, in stable storage
     /// order. Used by the edge-list overlay and number-key selection.
     pub fn selected_node_edges(&self) -> Vec<&crate::pinstar::data::CanvasEdge> {
-        let Some(node_id) = &self.selected_node_id else {
+        let Some(node_id) = &self.selection.primary else {
             return Vec::new();
         };
         self.data
@@ -464,8 +483,7 @@ impl PinstarState {
         };
         if let Some(edge_id) = edge_id {
             self.selected_edge_id = Some(edge_id.clone());
-            self.selected_node_id = None;
-            self.selected_node_ids.clear();
+            self.selection.clear();
             Some(edge_id)
         } else {
             None
@@ -515,22 +533,40 @@ impl PinstarState {
         }
     }
     pub fn pan(&mut self, dx: f64, dy: f64) {
-        self.viewport_x += dx / self.zoom;
-        self.viewport_y += dy / self.zoom;
+        if let Some((nx, ny)) = crate::ui::camera::pan_centered(
+            self.viewport_x,
+            self.viewport_y,
+            dx / self.zoom,
+            dy / self.zoom,
+        ) {
+            self.viewport_x = nx;
+            self.viewport_y = ny;
+        }
     }
 
     pub fn zoom_in(&mut self) {
-        self.zoom *= 1.1;
+        if let Some(z) =
+            crate::ui::camera::zoom_step(self.zoom, 1.1, crate::ui::camera::ZoomDir::In, 0.0)
+        {
+            self.zoom = z;
+        }
         self.last_zoom_at = Some(std::time::Instant::now());
     }
 
     pub fn zoom_out(&mut self) {
-        self.zoom /= 1.1;
+        if let Some(z) = crate::ui::camera::zoom_step(
+            self.zoom,
+            1.1,
+            crate::ui::camera::ZoomDir::Out,
+            crate::ui::camera::CANVAS_ZOOM_MIN,
+        ) {
+            self.zoom = z;
+        }
         self.last_zoom_at = Some(std::time::Instant::now());
     }
 
     pub fn center_on_selected(&mut self) {
-        if let Some(id) = &self.selected_node_id
+        if let Some(id) = &self.selection.primary
             && let Some(node) = self.data.nodes.iter().find(|n| n.id() == id)
         {
             let (nx, ny) = node.pos();
@@ -545,7 +581,10 @@ impl PinstarState {
             + self.viewport_x;
         let cy = ((sy as f64 + 0.5) - (area.y as f64 + area.height as f64 / 2.0)) / self.zoom
             + self.viewport_y;
-        (cx, cy)
+        (
+            crate::ui::camera::clamp_world(cx),
+            crate::ui::camera::clamp_world(cy),
+        )
     }
 
     pub fn select_node_at(&mut self, x: f64, y: f64) -> Option<String> {
@@ -573,22 +612,22 @@ impl PinstarState {
         }
 
         if let Some((id, _, _)) = best_hit {
-            self.selected_node_id = Some(id.clone());
+            self.selection.select_only(id.clone());
             Some(id)
         } else {
-            self.selected_node_id = None;
+            self.selection.clear();
             None
         }
     }
 
     pub fn select_node_in_direction(&mut self, dx: f64, dy: f64) {
-        let current_node = if let Some(id) = &self.selected_node_id {
+        let current_node = if let Some(id) = &self.selection.primary {
             self.data.nodes.iter().find(|n| n.id() == id)
         } else {
             None
         };
 
-        let (cur_x, cur_y) = if let Some(n) = current_node {
+        let origin = if let Some(n) = current_node {
             let (nx, ny) = n.pos();
             let (nw, nh) = n.size();
             (nx + nw / 2.0, ny + nh / 2.0)
@@ -596,42 +635,27 @@ impl PinstarState {
             (self.viewport_x, self.viewport_y)
         };
 
-        let mut best_node = None;
-        let mut min_dist = f64::MAX;
-
+        let mut ids: Vec<String> = Vec::new();
+        let mut cands: Vec<(f64, f64)> = Vec::new();
         for node in &self.data.nodes {
-            if let Some(id) = &self.selected_node_id
+            if let Some(id) = &self.selection.primary
                 && node.id() == id
             {
                 continue;
             }
-
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
-            let (tx, ty) = (nx + nw / 2.0, ny + nh / 2.0);
-
-            let v_x = tx - cur_x;
-            let v_y = ty - cur_y;
-
-            let dot = v_x * dx + v_y * dy;
-            if dot <= 0.0 {
-                continue;
-            }
-
-            let dist_sq = v_x * v_x + v_y * v_y;
-            let ortho_dist = (v_x * -dy + v_y * dx).abs();
-            let score = dist_sq + ortho_dist * ortho_dist * 2.0;
-
-            if score < min_dist {
-                min_dist = score;
-                best_node = Some(node.id().to_string());
-            }
+            ids.push(node.id().to_string());
+            cands.push((nx + nw / 2.0, ny + nh / 2.0));
         }
 
-        if let Some(id) = best_node {
-            self.selected_node_id = Some(id);
-        } else if self.selected_node_id.is_none() && !self.data.nodes.is_empty() {
-            self.selected_node_id = Some(self.data.nodes[0].id().to_string());
+        if let Some(i) =
+            crate::ui::camera::nearest_in_dir(&cands, origin, (dx, dy), std::f64::consts::FRAC_PI_3)
+        {
+            self.selection.select_only(ids[i].clone());
+        } else if self.selection.primary.is_none() && !self.data.nodes.is_empty() {
+            self.selection
+                .select_only(self.data.nodes[0].id().to_string());
         }
     }
 
@@ -642,10 +666,11 @@ impl PinstarState {
             None
         };
         if let Some(text) = editor_text {
-            if self.selected_node_id.is_some() {
+            if self.selection.primary.is_some() {
                 self.record_undo_state();
                 let node_id = self
-                    .selected_node_id
+                    .selection
+                    .primary
                     .as_ref()
                     .expect("checked is_some above");
                 for node in &mut self.data.nodes {
@@ -657,7 +682,7 @@ impl PinstarState {
                 let _ = self.save();
             }
             self.floating_editor = None;
-        } else if let Some(node_id) = &self.selected_node_id
+        } else if let Some(node_id) = &self.selection.primary
             && let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id)
         {
             let mut textarea =
@@ -669,37 +694,14 @@ impl PinstarState {
     }
 
     pub fn open_context_menu(&mut self, x: u16, y: u16, canvas_x: f64, canvas_y: f64) {
-        let items = if self.selected_node_id.is_some() {
-            vec![
-                "Create Connection".to_string(),
-                "Delete Connection".to_string(),
-                "Rename Node".to_string(),
-                "Resize Node".to_string(),
-                "Set Color...".to_string(),
-                "Delete All Connections".to_string(),
-                "Delete Node".to_string(),
-            ]
-        } else {
-            vec![
-                "Add Text Node".to_string(),
-                "Add Group".to_string(),
-                "Add Image Node".to_string(),
-            ]
-        };
-
+        let specs = pinstar_menu_specs(PinstarMenuType::Canvas, self.selection.primary.is_some());
+        self.menu_kind = Some(PinstarMenuType::Canvas);
         self.context_menu_pos = (canvas_x, canvas_y);
-        self.context_menu = Some(PinstarContextMenu {
-            x,
-            y,
-            selected: 0,
-            items,
-            menu_type: PinstarMenuType::Canvas,
-            color_hints: Vec::new(),
-        });
+        self.context_menu = Some(crate::ui::CanvasContextMenu::new(x, y, specs));
     }
 
     pub fn start_resize(&mut self) {
-        let id = self.selected_node_id.clone();
+        let id = self.selection.primary.clone();
         if let Some(id) = id {
             self.record_undo_state();
             self.resizing_node_id = Some(id.clone());
@@ -708,14 +710,14 @@ impl PinstarState {
     }
 
     pub fn start_delete_connection(&mut self) {
-        if let Some(id) = &self.selected_node_id {
+        if let Some(id) = &self.selection.primary {
             self.deleting_connection_source_id = Some(id.clone());
             self.context_menu = None;
         }
     }
 
     pub fn rename_node(&mut self, new_title: String) {
-        let node_id = self.selected_node_id.clone();
+        let node_id = self.selection.primary.clone();
         if let Some(node_id) = node_id {
             self.record_undo_state();
             let trimmed = new_title.trim().to_string();
@@ -737,7 +739,7 @@ impl PinstarState {
     }
 
     pub fn delete_node_connections(&mut self) {
-        let ids = self.all_selected_node_ids();
+        let ids = self.selection.all();
         if ids.is_empty() {
             return;
         }
@@ -749,7 +751,7 @@ impl PinstarState {
     }
 
     pub fn set_node_color(&mut self, color: Option<String>) {
-        let ids = self.all_selected_node_ids();
+        let ids = self.selection.all();
         if ids.is_empty() {
             return;
         }
@@ -782,7 +784,7 @@ impl PinstarState {
                 color: None,
             },
         ));
-        self.selected_node_id = Some(id.clone());
+        self.selection.select_only(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
     }
@@ -802,7 +804,7 @@ impl PinstarState {
                 color: None,
             }),
         );
-        self.selected_node_id = Some(id.clone());
+        self.selection.select_only(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
     }
@@ -826,12 +828,12 @@ impl PinstarState {
                 color: None,
             },
         ));
-        self.selected_node_id = Some(id.clone());
+        self.selection.select_only(id.clone());
         let _ = self.save();
     }
 
     pub fn start_connection(&mut self) {
-        if let Some(id) = &self.selected_node_id {
+        if let Some(id) = &self.selection.primary {
             self.connection_source_id = Some(id.clone());
             self.context_menu = None;
         }
@@ -907,7 +909,7 @@ impl PinstarState {
 
     pub fn capture_drag_nodes(&mut self) {
         self.drag_captured_nodes.clear();
-        if let Some(id) = &self.selected_node_id {
+        if let Some(id) = &self.selection.primary {
             let mut group_bounds = None;
             for node in &self.data.nodes {
                 if node.id() == id {
@@ -932,18 +934,18 @@ impl PinstarState {
                 }
             }
             // Also capture multi-selected nodes
-            for nid in &self.selected_node_ids {
+            for nid in &self.selection.extra {
                 self.drag_captured_nodes.insert(nid.clone());
             }
         } else {
             // When no primary node but multi-selected nodes exist, capture all of them
-            for nid in &self.selected_node_ids {
+            for nid in &self.selection.extra {
                 self.drag_captured_nodes.insert(nid.clone());
             }
         }
     }
     pub fn move_selected_node(&mut self, dx: f64, dy: f64) {
-        let primary = self.selected_node_id.clone();
+        let primary = self.selection.primary.clone();
         let captured = self.drag_captured_nodes.clone();
         if primary.is_none() && captured.is_empty() {
             return;
@@ -993,10 +995,7 @@ mod tests {
 
         state.open_context_menu(4, 5, 0.0, 0.0);
 
-        assert!(matches!(
-            state.context_menu.as_ref().map(|menu| menu.menu_type),
-            Some(PinstarMenuType::Canvas)
-        ));
+        assert!(matches!(state.menu_kind, Some(PinstarMenuType::Canvas)));
     }
 
     #[test]
@@ -1036,14 +1035,14 @@ mod tests {
             crate::keybinds::KeyMatcher::new(),
         )
         .unwrap();
-        s.selected_node_id = Some("a".into());
+        s.selection.select_only("a".into());
         s.start_connection();
         s.select_node_in_direction(1.0, 0.0);
-        assert_eq!(s.selected_node_id.as_deref(), Some("b"));
+        assert_eq!(s.selection.primary.as_deref(), Some("b"));
         s.finish_connection("b");
         assert_eq!(s.data.edges.len(), 1);
         // delete both ways: source=b, target=a should remove a->b
-        s.selected_node_id = Some("b".into());
+        s.selection.select_only("b".into());
         s.start_delete_connection();
         s.finish_delete_connection("a");
         assert_eq!(s.data.edges.len(), 0);
@@ -1117,16 +1116,16 @@ mod tests {
             crate::keybinds::KeyMatcher::new(),
         )
         .unwrap();
-        s.selected_node_id = Some("a".into());
+        s.selection.select_only("a".into());
         let edges = s.selected_node_edges();
         assert_eq!(edges.len(), 2);
         assert_eq!(edges[0].id, "e1");
         assert_eq!(edges[1].id, "e2");
         assert_eq!(s.select_edge_of_selected_node(2).as_deref(), Some("e2"));
         assert_eq!(s.selected_edge_id.as_deref(), Some("e2"));
-        assert_eq!(s.selected_node_id, None);
+        assert_eq!(s.selection.primary, None);
         // out of range -> None
-        s.selected_node_id = Some("a".into());
+        s.selection.select_only("a".into());
         assert_eq!(s.select_edge_of_selected_node(3), None);
     }
 }

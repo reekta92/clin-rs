@@ -4,28 +4,20 @@ use fdg_sim::petgraph::graph::NodeIndex;
 
 use super::graph::GraphState;
 use crate::config::{ClinConfig, NodeSizeMode};
+use crate::ui::camera::{
+    ZoomDir, clamp_world, nearest_in_dir, nearest_to_point, pan_centered, zoom_step,
+};
 
 pub const CELL_ASPECT: f64 = 0.5;
 /// Lowest zoom-out permitted, expressed as a fraction of `auto_fit_zoom`
 /// (i.e. `scale() >= MIN_SCALE`). Bounds screen_to_world so node-drag never
 /// writes coordinates large enough to destabilise the force simulation.
 const MIN_SCALE: f64 = 0.15;
-/// Max |world coordinate| returned by screen_to_world. Chosen far above any
-/// real graph span (auto-fit produces coords in the thousands) yet small enough
-/// that `x as f32` stays finite and force arithmetic never overflows f32.
-const WORLD_COORD_LIMIT: f64 = 1.0e18;
 
 /// Visual-row slop added around a node's drawn body, and the minimum click
 /// radius in screen rows so sub-pixel (zoomed-out) nodes stay clickable.
 const HIT_SLOP_ROWS: f64 = 1.5;
 const HIT_MIN_ROWS: f64 = 2.0;
-
-fn clamp_world(v: f64) -> f64 {
-    if !v.is_finite() {
-        return 0.0;
-    }
-    v.clamp(-WORLD_COORD_LIMIT, WORLD_COORD_LIMIT)
-}
 
 /// World-space radius of a node, identical to the radius used for drawing.
 /// Single source of truth for `fill_nodes`, the looking-glass preview, and
@@ -136,25 +128,15 @@ impl Viewport {
     }
 
     pub fn zoom_in(&mut self, factor: f64) {
-        if factor.is_finite() && factor > 0.0 {
-            let candidate = self.zoom * factor;
-            if candidate.is_finite() && candidate > 0.0 && (100.0 / candidate).is_finite() {
-                self.zoom = candidate;
-            }
+        if let Some(z) = zoom_step(self.zoom, factor, ZoomDir::In, 0.0) {
+            self.zoom = z;
         }
     }
 
     pub fn zoom_out(&mut self, factor: f64) {
-        if factor.is_finite() && factor > 0.0 {
-            let candidate = self.zoom / factor;
-            if candidate.is_finite() && candidate > 0.0 && (100.0 / candidate).is_finite() {
-                let min_zoom = MIN_SCALE * self.auto_fit_zoom;
-                self.zoom = if min_zoom.is_finite() && min_zoom > 0.0 {
-                    candidate.max(min_zoom)
-                } else {
-                    candidate
-                };
-            }
+        let min = MIN_SCALE * self.auto_fit_zoom;
+        if let Some(z) = zoom_step(self.zoom, factor, ZoomDir::Out, min) {
+            self.zoom = z;
         }
     }
 
@@ -175,30 +157,23 @@ impl Viewport {
     }
 
     pub fn pan_by(&mut self, dx: f64, dy: f64) {
-        if dx.is_finite() && dy.is_finite() {
-            let cx = self.center_x + dx;
-            let cy = self.center_y + dy;
-            if cx.is_finite() && cy.is_finite() {
-                self.center_x = cx;
-                self.center_y = cy;
-            }
+        if let Some((nx, ny)) = pan_centered(self.center_x, self.center_y, dx, dy) {
+            self.center_x = nx;
+            self.center_y = ny;
         }
     }
 
     pub fn nearest_to_center(&self, state: &GraphState) -> Option<NodeIndex> {
         let graph = state.simulation.get_graph();
-        let mut best: Option<(NodeIndex, f64)> = None;
-        for idx in graph.node_indices() {
-            let node = &graph[idx];
-            let dx = node.location.x as f64 - self.center_x;
-            let dy = node.location.y as f64 - self.center_y;
-            let dist = (dx * dx + dy * dy).sqrt();
-            match best {
-                Some((_, bd)) if dist >= bd => {}
-                _ => best = Some((idx, dist)),
-            }
-        }
-        best.map(|(idx, _)| idx)
+        let ids: Vec<NodeIndex> = graph.node_indices().collect();
+        let cands: Vec<(f64, f64)> = ids
+            .iter()
+            .map(|&i| {
+                let node = &graph[i];
+                (node.location.x as f64, node.location.y as f64)
+            })
+            .collect();
+        nearest_to_point(&cands, (self.center_x, self.center_y)).map(|i| ids[i])
     }
 
     pub fn nearest_in_direction(
@@ -211,43 +186,23 @@ impl Viewport {
         exclude: Option<NodeIndex>,
     ) -> Option<NodeIndex> {
         let graph = state.simulation.get_graph();
-        let dir_len = (dir_x * dir_x + dir_y * dir_y).sqrt();
-        if dir_len == 0.0 {
-            return None;
-        }
-        let ndx = dir_x / dir_len;
-        let ndy = dir_y / dir_len;
-
-        const ANGLE_THRESHOLD: f64 = std::f64::consts::FRAC_PI_3;
-        const ANGLE_WEIGHT: f64 = 80.0;
-
-        let mut best: Option<(NodeIndex, f64)> = None;
+        let mut ids: Vec<NodeIndex> = Vec::new();
+        let mut cands: Vec<(f64, f64)> = Vec::new();
         for idx in graph.node_indices() {
             if exclude == Some(idx) {
                 continue;
             }
             let node = &graph[idx];
-            let dx = node.location.x as f64 - origin_x;
-            let dy = node.location.y as f64 - origin_y;
-            let dist = (dx * dx + dy * dy).sqrt();
-            if dist < 1e-6 {
-                continue;
-            }
-            let dot = (dx * ndx + dy * ndy) / dist;
-            if dot < 0.0 {
-                continue;
-            }
-            let angle = dot.acos();
-            if angle > ANGLE_THRESHOLD {
-                continue;
-            }
-            let score = ANGLE_WEIGHT * angle + dist;
-            match best {
-                Some((_, bs)) if score >= bs => {}
-                _ => best = Some((idx, score)),
-            }
+            ids.push(idx);
+            cands.push((node.location.x as f64, node.location.y as f64));
         }
-        best.map(|(idx, _)| idx)
+        nearest_in_dir(
+            &cands,
+            (origin_x, origin_y),
+            (dir_x, dir_y),
+            std::f64::consts::FRAC_PI_3,
+        )
+        .map(|i| ids[i])
     }
 
     pub fn hit_test(
@@ -395,8 +350,7 @@ mod tests {
         let mut gs = GraphState {
             simulation: Simulation::from_graph(graph, SimulationParameters::default()),
             viewport: Viewport::default(),
-            selected_node: None,
-            selected_nodes: std::collections::HashSet::new(),
+            selection: crate::ui::CanvasSelection::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
@@ -408,11 +362,9 @@ mod tests {
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
-            context_menu_screen: (0, 0),
             connection_source: None,
             deleting_connection_source: None,
-            box_select_start: None,
-            box_select_curr: None,
+            marquee: crate::ui::MarqueeDragState::new(3),
             right_down_pos: None,
             mode_banner: None,
         };
@@ -445,7 +397,6 @@ mod tests {
             .unwrap();
         assert_eq!(hit_equal, idxs[1]);
     }
-
     fn make_state(nodes: &[(f64, f64, usize)]) -> (GraphState, Vec<NodeIndex>) {
         let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
         let mut idxs = Vec::new();
@@ -466,8 +417,7 @@ mod tests {
         let mut gs = GraphState {
             simulation: Simulation::from_graph(graph, SimulationParameters::default()),
             viewport: Viewport::default(),
-            selected_node: None,
-            selected_nodes: std::collections::HashSet::new(),
+            selection: crate::ui::CanvasSelection::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
@@ -479,11 +429,9 @@ mod tests {
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
-            context_menu_screen: (0, 0),
             connection_source: None,
             deleting_connection_source: None,
-            box_select_start: None,
-            box_select_curr: None,
+            marquee: crate::ui::MarqueeDragState::new(3),
             right_down_pos: None,
             mode_banner: None,
         };
@@ -517,8 +465,6 @@ mod tests {
 
         assert_eq!(node_world_radius(&config, 4, 4), 5.0);
         assert_eq!(node_world_radius(&config, 4, 0), 2.0);
-
-        // Cursor (3,0): dist to A = 3 <= 5 (contained); dist to B = 2.5 > 2 (not).
         let hit = vp.hit_test(3.0, 0.0, &gs, &config, area, max_lc).unwrap();
         assert_eq!(hit, idxs[0]);
     }

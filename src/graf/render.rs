@@ -5,15 +5,15 @@ use crate::app::ViewMode;
 use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape,
 };
-use crate::graf::graph::{GrafContextMenu, GraphState, menu_item_label, menu_item_shortcut_char};
+use crate::graf::graph::GraphState;
 use crate::graf::spatial::SpatialGrid;
 use crate::graf::viewport::{Viewport, node_world_radius};
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
@@ -758,8 +758,8 @@ pub fn draw_graph_view(
     let y_bounds = viewport.y_bounds(aspect);
 
     let selected_set: HashSet<NodeIndex> = {
-        let mut s = state.selected_nodes.clone();
-        if let Some(idx) = state.selected_node {
+        let mut s = state.selection.extra.clone();
+        if let Some(idx) = state.selection.primary {
             s.insert(idx);
         }
         s
@@ -767,7 +767,7 @@ pub fn draw_graph_view(
     let tier = cache.fill_nodes(
         graph,
         config,
-        state.selected_node,
+        state.selection.primary,
         &selected_set,
         colors.selected_indicator_color,
         hovered_node,
@@ -781,7 +781,7 @@ pub fn draw_graph_view(
     cache.fill_labels(
         graph,
         config,
-        state.selected_node,
+        state.selection.primary,
         &selected_set,
         cell_world_height * 1.5,
         tier,
@@ -956,7 +956,7 @@ pub fn draw_graph_view(
     }
 
     // Right-drag box-select rectangle.
-    if let (Some(start), Some(curr)) = (state.box_select_start, state.box_select_curr)
+    if let (Some(start), Some(curr)) = (state.marquee.start, state.marquee.end)
         && state.right_down_pos.is_some()
     {
         let (col0, row0) = viewport.world_to_screen(start.0, start.1, canvas_area);
@@ -965,43 +965,34 @@ pub fn draw_graph_view(
         let max_col = col0
             .max(col1)
             .ceil()
-            .min((canvas_area.x + canvas_area.width - 1) as f64) as u16;
+            .min((canvas_area.x + canvas_area.width.saturating_sub(1)) as f64)
+            as u16;
         let min_row = row0.min(row1).floor().max(canvas_area.y as f64) as u16;
         let max_row = row0
             .max(row1)
             .ceil()
-            .min((canvas_area.y + canvas_area.height - 1) as f64) as u16;
-        let style = Style::default().fg(colors.selected_indicator_color);
-        let buf = frame.buffer_mut();
-        for c in min_col..=max_col {
-            if let Some(cell) = buf.cell_mut((c, min_row)) {
-                cell.set_symbol("─").set_style(style);
-            }
-            if let Some(cell) = buf.cell_mut((c, max_row)) {
-                cell.set_symbol("─").set_style(style);
-            }
-        }
-        for r in min_row..=max_row {
-            if let Some(cell) = buf.cell_mut((min_col, r)) {
-                cell.set_symbol("│").set_style(style);
-            }
-            if let Some(cell) = buf.cell_mut((max_col, r)) {
-                cell.set_symbol("│").set_style(style);
-            }
-        }
-        for (col, row, sym) in [
-            (min_col, min_row, "┌"),
-            (max_col, min_row, "┐"),
-            (min_col, max_row, "└"),
-            (max_col, max_row, "┘"),
-        ] {
-            if let Some(cell) = buf.cell_mut((col, row)) {
-                cell.set_symbol(sym).set_style(style);
-            }
-        }
+            .min((canvas_area.y + canvas_area.height.saturating_sub(1)) as f64)
+            as u16;
+
+        let screen_rect = ratatui::layout::Rect::new(
+            min_col,
+            min_row,
+            max_col.saturating_sub(min_col).saturating_add(1),
+            max_row.saturating_sub(min_row).saturating_add(1),
+        );
+        let muted_accent = match colors.selected_indicator_color {
+            Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
+            _ => app_theme.highlight_bg,
+        };
+        crate::ui::canvas_overlay::draw_canvas_rect_outline_filled(
+            frame,
+            screen_rect,
+            colors.selected_indicator_color,
+            muted_accent,
+        );
     }
 
-    if flags.show_looking_glass && state.selected_node.is_some() {
+    if flags.show_looking_glass && state.selection.primary.is_some() {
         draw_looking_glass(
             frame,
             canvas_area,
@@ -1014,7 +1005,13 @@ pub fn draw_graph_view(
     }
 
     if let Some(menu) = &state.context_menu {
-        draw_context_menu(frame, canvas_area, menu, app_theme, mouse_pos);
+        crate::ui::canvas_menu::render_canvas_context_menu(
+            frame,
+            canvas_area,
+            menu,
+            app_theme,
+            mouse_pos,
+        );
     }
 }
 fn draw_grid(
@@ -1292,95 +1289,6 @@ fn draw_minimap(
     }
 }
 
-pub fn compute_context_menu_rect(menu: &GrafContextMenu, area: Rect) -> Rect {
-    let max_label = menu
-        .items
-        .iter()
-        .map(|i| menu_item_label(*i).len())
-        .max()
-        .unwrap_or(0);
-    let width = (max_label + 6) as u16;
-    let height = menu.items.len() as u16;
-    let x = menu.x.min(area.x + area.width.saturating_sub(width));
-    let y = menu.y.min(area.y + area.height.saturating_sub(height));
-    Rect::new(x, y, width, height)
-}
-
-fn draw_context_menu(
-    frame: &mut ratatui::Frame,
-    area: Rect,
-    menu: &GrafContextMenu,
-    app_theme: &crate::app_theme::AppThemeColors,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let rect = compute_context_menu_rect(menu, area);
-    frame.render_widget(Clear, rect);
-    let block = Block::default()
-        .borders(Borders::NONE)
-        .style(app_theme.preview_bg_style());
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
-
-    let hovered_row = mouse_pos.and_then(|(col, row)| {
-        if col >= inner.x && col < inner.x + inner.width {
-            let r = row as i64 - inner.y as i64;
-            if r >= 0 && (r as usize) < menu.items.len() {
-                Some(r as usize)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    });
-
-    for (i, item) in menu.items.iter().enumerate() {
-        let row = inner.y + i as u16;
-        let label = menu_item_label(*item);
-        let shortcut = menu_item_shortcut_char(*item);
-        let is_selected = i == menu.selected;
-        let is_hovered = hovered_row == Some(i) && !is_selected;
-        let style = if is_selected {
-            Style::default()
-                .fg(app_theme.highlight_fg)
-                .bg(app_theme.highlight_bg)
-                .add_modifier(Modifier::BOLD)
-        } else if is_hovered {
-            app_theme.hover_style()
-        } else {
-            Style::default().fg(app_theme.fg)
-        };
-
-        // Layout: "  " + label + pad + shortcut + " " (single trailing space).
-        let label_w = label.chars().count();
-        let width = inner.width as usize;
-        let left_pad = 2;
-        let right_pad = 1;
-        let shortcut_w = 1;
-        let pad = width.saturating_sub(left_pad + label_w + shortcut_w + right_pad);
-
-        let mut spans: Vec<Span> = Vec::with_capacity(5);
-        spans.push(Span::styled("  ", style));
-        spans.push(Span::styled(label.to_string(), style));
-        if pad > 0 {
-            spans.push(Span::styled(" ".repeat(pad), style));
-        }
-        let hint_style = Style::default().fg(app_theme.muted).bg(if is_selected {
-            app_theme.highlight_bg
-        } else {
-            Color::Reset
-        });
-        spans.push(Span::styled(shortcut.to_string(), hint_style));
-        spans.push(Span::styled(" ", style));
-
-        let line = ratatui::text::Line::from(spans);
-        frame.render_widget(
-            Paragraph::new(line),
-            Rect::new(inner.x, row, inner.width, 1),
-        );
-    }
-}
-
 fn compute_looking_glass_area(area: Rect, config: &ClinConfig, height: u16) -> Option<Rect> {
     let w = config.graf.visual.looking_glass_width;
     let minimap_w = config.graf.visual.minimap_width;
@@ -1402,7 +1310,7 @@ pub fn draw_looking_glass(
     app_theme: &crate::app_theme::AppThemeColors,
     cache: &RenderCache,
 ) {
-    let Some(idx) = state.selected_node else {
+    let Some(idx) = state.selection.primary else {
         return;
     };
     let graph = state.simulation.get_graph();

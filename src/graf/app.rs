@@ -234,7 +234,7 @@ impl GrafAppState {
     fn build_preview_key(&self) -> Option<PreviewRequestKey> {
         let note_id = if let Some(gs) = &self.graph_state {
             let guard = gs.read();
-            if let Some(idx) = guard.selected_node {
+            if let Some(idx) = guard.selection.primary {
                 guard
                     .simulation
                     .get_graph()
@@ -637,7 +637,7 @@ fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: Graf
     match item {
         CreateConnection => {
             let mut g = graph.write();
-            if let Some(src) = g.selected_node {
+            if let Some(src) = g.selection.primary {
                 g.connection_source = Some(src);
                 g.mode_banner = Some(ModeBanner::CreateConnection);
                 g.context_menu = None;
@@ -645,7 +645,7 @@ fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: Graf
         }
         DeleteConnection => {
             let mut g = graph.write();
-            if let Some(src) = g.selected_node {
+            if let Some(src) = g.selection.primary {
                 g.deleting_connection_source = Some(src);
                 g.mode_banner = Some(ModeBanner::DeleteConnection);
                 g.context_menu = None;
@@ -655,7 +655,7 @@ fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: Graf
             let ids: std::collections::HashSet<String> = {
                 let g = graph.read();
                 let mut ids = std::collections::HashSet::new();
-                if let Some(anchor) = g.selected_node {
+                if let Some(anchor) = g.selection.primary {
                     let graph_ref = g.simulation.get_graph();
                     if let Some(n) = graph_ref.node_weight(anchor) {
                         ids.insert(n.data.note_id.clone());
@@ -675,7 +675,8 @@ fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: Graf
         ShowGroup => {
             let ids: std::collections::HashSet<String> = {
                 let g = graph.read();
-                g.selected_nodes
+                g.selection
+                    .extra
                     .iter()
                     .filter_map(|idx| g.simulation.get_graph().node_weight(*idx))
                     .map(|n| n.data.note_id.clone())
@@ -689,12 +690,12 @@ fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: Graf
             let ids: Vec<String> = {
                 let g = graph.read();
                 let mut v = Vec::new();
-                if let Some(idx) = g.selected_node
+                if let Some(idx) = g.selection.primary
                     && let Some(n) = g.simulation.get_graph().node_weight(idx)
                 {
                     v.push(n.data.note_id.clone());
                 }
-                for idx in &g.selected_nodes {
+                for idx in &g.selection.extra {
                     if let Some(n) = g.simulation.get_graph().node_weight(*idx) {
                         let id = n.data.note_id.clone();
                         if !v.contains(&id) {
@@ -875,7 +876,7 @@ fn handle_event(
                                 };
                                 if let Some(graph_state) = &app_state.graph_state {
                                     let mut guard = graph_state.write();
-                                    guard.selected_node = Some(idx);
+                                    guard.selection.select_only(idx);
                                     guard.viewport.center_on_node(nx as f32, ny as f32);
                                 }
                             }
@@ -960,7 +961,7 @@ fn handle_search_keys(
                 };
                 if let Some(graph_state) = &app_state.graph_state {
                     let mut guard = graph_state.write();
-                    guard.selected_node = Some(idx);
+                    guard.selection.select_only(idx);
                     guard.viewport.center_on_node(nx as f32, ny as f32);
                 }
             }
@@ -1080,7 +1081,7 @@ mod tests {
             guard.simulation.get_graph().node_indices().next().unwrap()
         };
 
-        gs_ref.write().selected_node = Some(node_idx);
+        gs_ref.write().selection.select_only(node_idx);
         app_state.preview_enabled = true;
         app_state.last_preview_pane_width = 100;
         app_state.last_preview_pane_height = 40;

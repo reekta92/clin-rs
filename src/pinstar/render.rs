@@ -51,7 +51,7 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
             }
             if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE
                 .iter()
-                .find(|e| e.0 == s)
+                .find(|e| e.0.eq_ignore_ascii_case(s))
             {
                 entry.2
             } else {
@@ -153,13 +153,6 @@ fn draw_braille_segment(
     }
 }
 
-fn menu_shortcut(
-    _keybinds: &crate::keybinds::Keybinds,
-    menu_type: crate::pinstar::state::PinstarMenuType,
-    item: &str,
-) -> Option<String> {
-    crate::pinstar::state::menu_item_shortcut_char(menu_type, item).map(|c| format!("{c}"))
-}
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,
@@ -349,8 +342,8 @@ pub fn draw_pinstar_view(
             (bottom - top) as u16,
         );
 
-        let is_primary = state.selected_node_id.as_deref() == Some(g.id.as_str());
-        let is_selected = is_primary || state.selected_node_ids.contains(g.id.as_str());
+        let is_primary = state.selection.primary.as_deref() == Some(g.id.as_str());
+        let is_selected = is_primary || state.selection.extra.contains(g.id.as_str());
         let is_editing = is_primary && state.floating_editor.is_some();
         let base_color = get_node_color(g.color.as_deref(), theme);
         let border_color = if is_editing { theme.accent } else { base_color };
@@ -518,8 +511,8 @@ pub fn draw_pinstar_view(
         frame.render_widget(Clear, node_rect);
 
         // Multi-select: check both single-selection and multi-selection
-        let is_primary = state.selected_node_id.as_deref() == Some(node.id());
-        let is_selected = is_primary || state.selected_node_ids.contains(node.id());
+        let is_primary = state.selection.primary.as_deref() == Some(node.id());
+        let is_selected = is_primary || state.selection.extra.contains(node.id());
         let is_editing = is_primary && state.floating_editor.is_some();
 
         let node_color_attr = match node {
@@ -698,7 +691,7 @@ pub fn draw_pinstar_view(
     state.edge_overlay_rect = None;
 
     if let Some(editor) = &mut state.floating_editor
-        && let Some(node_id) = &state.selected_node_id
+        && let Some(node_id) = &state.selection.primary
         && let Some(node) = state.data.nodes.iter().find(|n| n.id() == node_id)
     {
         let (nx, ny) = node.pos();
@@ -739,11 +732,11 @@ pub fn draw_pinstar_view(
 
     // Select-rect overlay: drawn AFTER all nodes/edges/editor.
     // Uses buffer-cell bg mutation so node characters stay visible.
-    if state.mouse_selecting
-        && let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end)
+    if let (Some(start), Some(curr)) = (state.marquee.start, state.marquee.end)
+        && state.right_down_screen.is_some()
     {
-        let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
-        let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
+        let (sx1, sy1) = ((start.0 - vx) * z + origin_x, (start.1 - vy) * z + origin_y);
+        let (sx2, sy2) = ((curr.0 - vx) * z + origin_x, (curr.1 - vy) * z + origin_y);
         let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
         let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
         let left = (min_x
@@ -754,23 +747,21 @@ pub fn draw_pinstar_view(
             .min(canvas_area.bottom() as f64)) as u16;
         let width = ((max_x - min_x).max(1.0)) as u16;
         let height = ((max_y - min_y).max(1.0)) as u16;
-        // Muted accent: divide each channel by 4 for a dark translucent effect
         let muted_accent = match theme.accent {
             Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
             _ => theme.highlight_bg,
         };
-        let buf = frame.buffer_mut();
-        for row in top..(top + height).min(buf.area.height) {
-            for col in left..(left + width).min(buf.area.width) {
-                if let Some(cell) = buf.cell_mut((col, row)) {
-                    cell.set_bg(muted_accent);
-                }
-            }
-        }
+        let screen_rect = ratatui::layout::Rect::new(left, top, width, height);
+        crate::ui::canvas_overlay::draw_canvas_rect_outline_filled(
+            frame,
+            screen_rect,
+            theme.accent,
+            muted_accent,
+        );
     }
     // Edge-list overlay: when a node is selected, list its connected edges
     // (1..n) in a bottom-right legend panel, titles colored by edge color.
-    if state.selected_node_id.is_some() {
+    if state.selection.primary.is_some() {
         let edges = state.selected_node_edges();
         if !edges.is_empty() {
             let no_title = "(no title)".to_string();
@@ -941,91 +932,7 @@ pub fn draw_pinstar_view(
     crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 
     if let Some(menu) = &state.context_menu {
-        let menu_width: usize = menu
-            .items
-            .iter()
-            .map(|s| {
-                let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, s);
-                s.len() + shortcut.map_or(0, |k| k.len() + 4) + 4
-            })
-            .max()
-            .unwrap_or(25);
-        let menu_height = menu.items.len() as u16;
-        let menu_rect = Rect::new(
-            area.x + menu.x.min(area.width.saturating_sub(menu_width as u16)),
-            area.y + menu.y.min(area.height.saturating_sub(menu_height)),
-            menu_width as u16,
-            menu_height,
-        );
-
-        frame.render_widget(Clear, menu_rect);
-
-        let items: Vec<ListItem> = menu
-            .items
-            .iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, item);
-                let is_selected = i == menu.selected;
-                let base_style = if is_selected {
-                    Style::default()
-                        .fg(theme.highlight_fg)
-                        .bg(theme.highlight_bg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(theme.text)
-                };
-                let color_square = i < menu.color_hints.len() && menu.color_hints[i].is_some();
-                let label = format!("  {item}  ");
-                let hint_str = shortcut.as_ref().map(|k| format!("{k} "));
-                let hint_width = hint_str.as_ref().map_or(0, |h| h.len());
-                // Color-square rows render "  ■ {item}  " which is 2 chars
-                // wider than the plain label; account for that so the hint is
-                // not clipped off the menu's right edge.
-                let content_width = if color_square {
-                    item.len() + 6
-                } else {
-                    label.len()
-                };
-                let padding = menu_width.saturating_sub(content_width + hint_width);
-                let hint_style = Style::default().fg(theme.muted).bg(if is_selected {
-                    theme.highlight_bg
-                } else {
-                    Color::Reset
-                });
-                let mut spans: Vec<Span> = Vec::new();
-                if color_square {
-                    let sq_color = menu.color_hints[i].unwrap_or(Color::Reset);
-                    spans.push(Span::styled("  ", base_style));
-                    spans.push(Span::styled("■ ", base_style.fg(sq_color)));
-                    spans.push(Span::styled(format!("{item}  "), base_style));
-                } else {
-                    spans.push(Span::styled(label.clone(), base_style));
-                }
-                if padding > 0 {
-                    spans.push(Span::styled(" ".repeat(padding), base_style));
-                }
-                if let Some(h) = hint_str {
-                    spans.push(Span::styled(h, hint_style));
-                }
-                ListItem::new(Line::from(spans))
-            })
-            .collect();
-        let list = List::new(items).block(
-            Block::default()
-                .borders(Borders::NONE)
-                .style(theme.preview_bg_style()),
-        );
-        let list_state =
-            crate::ui::render_list_with_selection(frame, list, menu_rect, Some(menu.selected), 0);
-        crate::ui::paint_list_hover(
-            frame,
-            menu_rect,
-            &list_state,
-            menu.items.len(),
-            mouse_pos,
-            theme.hover_style(),
-        );
+        crate::ui::canvas_menu::render_canvas_context_menu(frame, area, menu, theme, mouse_pos);
     }
 
     if let Some(textarea) = &mut state.rename_popup {

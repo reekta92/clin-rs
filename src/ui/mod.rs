@@ -11,6 +11,10 @@ use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
+pub(crate) mod camera;
+pub(crate) mod canvas_menu;
+pub(crate) mod canvas_overlay;
+pub(crate) mod canvas_selection;
 mod edit_view;
 mod help;
 pub(crate) mod help_content;
@@ -23,6 +27,15 @@ pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
 
+#[allow(unused_imports)]
+pub(crate) use camera::{
+    ZoomDir, clamp_world, nearest_in_dir, nearest_to_point, pan_centered, zoom_step,
+};
+#[allow(unused_imports)]
+pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
+#[allow(unused_imports)]
+pub(crate) use canvas_overlay::{MarqueeDragState, draw_canvas_rect_outline_filled};
+pub(crate) use canvas_selection::CanvasSelection;
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};

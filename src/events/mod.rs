@@ -224,7 +224,7 @@ pub fn handle_bracketed_paste(
                 if let Some(ta) = &mut canvas.floating_editor {
                     ta.insert_str(&data);
                     // Mirror the node-sync: write editor text into selected node
-                    if let Some(node_id) = &canvas.selected_node_id {
+                    if let Some(node_id) = &canvas.selection.primary {
                         let text = ta.lines().join("\n");
                         for node in &mut canvas.data.nodes {
                             if node.id() == node_id {
