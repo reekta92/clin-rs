@@ -81,6 +81,17 @@ pub struct CanvasEdge {
     pub to_side: Option<String>,
     pub label: Option<String>,
     pub color: Option<String>,
+    #[serde(default)]
+    pub style: EdgeStyle,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum EdgeStyle {
+    #[default]
+    Solid,
+    Dashed,
+    Dotted,
 }
 
 impl CanvasNode {

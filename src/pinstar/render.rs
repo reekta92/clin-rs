@@ -62,6 +62,104 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
+fn get_edge_color(color: Option<&str>, selected: bool, theme: &AppThemeColors) -> Color {
+    if selected {
+        return theme.accent;
+    }
+    match color {
+        Some(s) if s.starts_with('#') && s.len() == 7 => {
+            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
+            Color::Rgb(r, g, b)
+        }
+        _ => theme.muted,
+    }
+}
+
+/// Color for an edge's text in the overlay: the edge's own color when set,
+/// else the default text color.
+fn edge_overlay_color(color: Option<&str>, theme: &AppThemeColors) -> Color {
+    match color {
+        Some(s) if s.starts_with('#') && s.len() == 7 => {
+            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
+            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
+            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
+            Color::Rgb(r, g, b)
+        }
+        _ => theme.text,
+    }
+}
+
+/// Dimmed variant of a color, so "(no title)" text stays muted but still
+/// hints at the edge's own color.
+fn muted_edge_color(color: Color) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => Color::Rgb(r / 2, g / 2, b / 2),
+        _ => color,
+    }
+}
+
+/// A resolved row for the edge-list overlay.
+struct OverlayEdgeRow {
+    index: usize,
+    from_title: Option<String>,
+    to_title: Option<String>,
+    color: Option<String>,
+}
+#[allow(clippy::too_many_arguments)]
+fn draw_braille_segment(
+    buf: &mut ratatui::buffer::Buffer,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    view_left: f64,
+    view_right: f64,
+    view_top: f64,
+    view_bottom: f64,
+    style: crate::pinstar::data::EdgeStyle,
+    color: Color,
+) {
+    let mut current_x = x1;
+    let mut current_y = y1;
+    let dist = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+    let steps = (dist * 4.0) as usize;
+    if steps == 0 {
+        return;
+    }
+    let ddx = (x2 - x1) / steps as f64;
+    let ddy = (y2 - y1) / steps as f64;
+    for step in 0..=steps {
+        let draw = match style {
+            crate::pinstar::data::EdgeStyle::Solid => true,
+            crate::pinstar::data::EdgeStyle::Dashed => step % 16 < 8,
+            crate::pinstar::data::EdgeStyle::Dotted => step % 8 == 0,
+        };
+        if draw
+            && current_x >= view_left
+            && current_x < view_right
+            && current_y >= view_top
+            && current_y < view_bottom
+        {
+            let cell_x = current_x as u16;
+            let cell_y = current_y as u16;
+            let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
+            let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
+            crate::ui::braille::set_braille_dot(buf, cell_x, cell_y, dot_x, dot_y, color);
+        }
+        current_x += ddx;
+        current_y += ddy;
+    }
+}
+
+fn menu_shortcut(
+    _keybinds: &crate::keybinds::Keybinds,
+    menu_type: crate::pinstar::state::PinstarMenuType,
+    item: &str,
+) -> Option<String> {
+    crate::pinstar::state::menu_item_shortcut_char(menu_type, item).map(|c| format!("{c}"))
+}
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,
@@ -216,6 +314,9 @@ pub fn draw_pinstar_view(
             cur_x += grid_step_x;
         }
     }
+    // Select-rect pass: drawn AFTER group/node passes.
+    // Uses buffer-cell bg mutation to avoid destroying node/edge characters.
+    // Done later, after all rendering — see below.
 
     for (idx, p) in proj.iter().enumerate() {
         if !p.is_group {
@@ -248,8 +349,9 @@ pub fn draw_pinstar_view(
             (bottom - top) as u16,
         );
 
-        let is_selected = state.selected_node_id.as_deref() == Some(g.id.as_str());
-        let is_editing = is_selected && state.floating_editor.is_some();
+        let is_primary = state.selected_node_id.as_deref() == Some(g.id.as_str());
+        let is_selected = is_primary || state.selected_node_ids.contains(g.id.as_str());
+        let is_editing = is_primary && state.floating_editor.is_some();
         let base_color = get_node_color(g.color.as_deref(), theme);
         let border_color = if is_editing { theme.accent } else { base_color };
 
@@ -346,96 +448,42 @@ pub fn draw_pinstar_view(
     }
 
     {
-        use std::collections::HashMap;
-        // Keys borrow state.data.nodes; map drops at end of this block,
-        // before the non-group pass takes &mut state.image_cache.
-        let id_index: HashMap<&str, usize> = state
-            .data
-            .nodes
-            .iter()
-            .enumerate()
-            .map(|(i, n)| (n.id(), i))
-            .collect();
-
         for edge in &state.data.edges {
-            let Some(&ia) = id_index.get(edge.from_node.as_str()) else {
+            let Some(seg) = state.get_edge_segments(edge) else {
                 continue;
             };
-            let Some(&ib) = id_index.get(edge.to_node.as_str()) else {
-                continue;
-            };
-            let pf = &proj[ia];
-            let pt = &proj[ib];
-
-            let (fx, fy, fw, fh) = (pf.pos.0, pf.pos.1, pf.size.0, pf.size.1);
-            let (tx, ty, tw, th) = (pt.pos.0, pt.pos.1, pt.size.0, pt.size.1);
-
-            let scx = fx + fw / 2.0;
-            let scy = fy + fh / 2.0;
-            let tcx = tx + tw / 2.0;
-            let tcy = ty + th / 2.0;
-            let dx = tcx - scx;
-            let dy = tcy - scy;
-
-            let (ax, ay) = if dx.abs() > dy.abs() {
-                if dx > 0.0 { (fx + fw, scy) } else { (fx, scy) }
-            } else if dy > 0.0 {
-                (scx, fy + fh)
-            } else {
-                (scx, fy)
-            };
-
-            let (bx, by) = if dx.abs() > dy.abs() {
-                if dx > 0.0 { (tx, tcy) } else { (tx + tw, tcy) }
-            } else if dy > 0.0 {
-                (tcx, ty)
-            } else {
-                (tcx, ty + th)
-            };
-
-            let sfx = (ax - vx) * z + origin_x;
-            let sfy = (ay - vy) * z + origin_y;
-            let stx = (bx - vx) * z + origin_x;
-            let sty = (by - vy) * z + origin_y;
-
-            // Cull edges whose screen bbox is entirely outside canvas
-            let min_x = sfx.min(stx);
-            let max_x = sfx.max(stx);
-            let min_y = sfy.min(sty);
-            let max_y = sfy.max(sty);
-            if max_x < view_left || min_x > view_right || max_y < view_top || min_y > view_bottom {
-                continue;
-            }
-
-            let mut current_x = sfx;
-            let mut current_y = sfy;
-            let dist = ((stx - sfx).powi(2) + (sty - sfy).powi(2)).sqrt();
-            let steps = (dist * 4.0) as usize;
-            if steps > 0 {
-                let ddx = (stx - sfx) / steps as f64;
-                let ddy = (sty - sfy) / steps as f64;
-                for _ in 0..=steps {
-                    if current_x >= view_left
-                        && current_x < view_right
-                        && current_y >= view_top
-                        && current_y < view_bottom
-                    {
-                        let cell_x = current_x as u16;
-                        let cell_y = current_y as u16;
-                        let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
-                        let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
-                        crate::ui::braille::set_braille_dot(
-                            frame.buffer_mut(),
-                            cell_x,
-                            cell_y,
-                            dot_x,
-                            dot_y,
-                            theme.muted,
-                        );
-                    }
-                    current_x += ddx;
-                    current_y += ddy;
+            let is_edge_selected = state.selected_edge_id.as_deref() == Some(edge.id.as_str());
+            let edge_color = get_edge_color(edge.color.as_deref(), is_edge_selected, theme);
+            for &(sx, sy, ex, ey) in seg.0.iter().take(seg.1) {
+                let sfx = (sx - vx) * z + origin_x;
+                let sfy = (sy - vy) * z + origin_y;
+                let stx = (ex - vx) * z + origin_x;
+                let sty = (ey - vy) * z + origin_y;
+                // Cull per segment
+                let min_x = sfx.min(stx);
+                let max_x = sfx.max(stx);
+                let min_y = sfy.min(sty);
+                let max_y = sfy.max(sty);
+                if max_x < view_left
+                    || min_x > view_right
+                    || max_y < view_top
+                    || min_y > view_bottom
+                {
+                    continue;
                 }
+                draw_braille_segment(
+                    frame.buffer_mut(),
+                    sfx,
+                    sfy,
+                    stx,
+                    sty,
+                    view_left,
+                    view_right,
+                    view_top,
+                    view_bottom,
+                    edge.style,
+                    edge_color,
+                );
             }
         }
     } // end edge-pass block
@@ -469,8 +517,10 @@ pub fn draw_pinstar_view(
 
         frame.render_widget(Clear, node_rect);
 
-        let is_selected = state.selected_node_id.as_deref() == Some(node.id());
-        let is_editing = is_selected && state.floating_editor.is_some();
+        // Multi-select: check both single-selection and multi-selection
+        let is_primary = state.selected_node_id.as_deref() == Some(node.id());
+        let is_selected = is_primary || state.selected_node_ids.contains(node.id());
+        let is_editing = is_primary && state.floating_editor.is_some();
 
         let node_color_attr = match node {
             crate::pinstar::data::CanvasNode::Text(n) => n.color.as_deref(),
@@ -645,6 +695,7 @@ pub fn draw_pinstar_view(
         }
     }
     state.floating_editor_rect = None;
+    state.edge_overlay_rect = None;
 
     if let Some(editor) = &mut state.floating_editor
         && let Some(node_id) = &state.selected_node_id
@@ -686,28 +737,153 @@ pub fn draw_pinstar_view(
         }
     }
 
+    // Select-rect overlay: drawn AFTER all nodes/edges/editor.
+    // Uses buffer-cell bg mutation so node characters stay visible.
+    if state.mouse_selecting
+        && let (Some(s), Some(e)) = (state.select_rect_start, state.select_rect_end)
+    {
+        let (sx1, sy1) = ((s.0 - vx) * z + origin_x, (s.1 - vy) * z + origin_y);
+        let (sx2, sy2) = ((e.0 - vx) * z + origin_x, (e.1 - vy) * z + origin_y);
+        let (min_x, max_x) = if sx1 < sx2 { (sx1, sx2) } else { (sx2, sx1) };
+        let (min_y, max_y) = if sy1 < sy2 { (sy1, sy2) } else { (sy2, sy1) };
+        let left = (min_x
+            .max(canvas_area.left() as f64)
+            .min(canvas_area.right() as f64)) as u16;
+        let top = (min_y
+            .max(canvas_area.top() as f64)
+            .min(canvas_area.bottom() as f64)) as u16;
+        let width = ((max_x - min_x).max(1.0)) as u16;
+        let height = ((max_y - min_y).max(1.0)) as u16;
+        // Muted accent: divide each channel by 4 for a dark translucent effect
+        let muted_accent = match theme.accent {
+            Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
+            _ => theme.highlight_bg,
+        };
+        let buf = frame.buffer_mut();
+        for row in top..(top + height).min(buf.area.height) {
+            for col in left..(left + width).min(buf.area.width) {
+                if let Some(cell) = buf.cell_mut((col, row)) {
+                    cell.set_bg(muted_accent);
+                }
+            }
+        }
+    }
+    // Edge-list overlay: when a node is selected, list its connected edges
+    // (1..n) in a bottom-right legend panel, titles colored by edge color.
+    if state.selected_node_id.is_some() {
+        let edges = state.selected_node_edges();
+        if !edges.is_empty() {
+            let no_title = "(no title)".to_string();
+            let resolved: Vec<OverlayEdgeRow> = edges
+                .iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    let title_of = |id: &str| {
+                        state
+                            .data
+                            .nodes
+                            .iter()
+                            .find(|n| n.id() == id)
+                            .and_then(|n| n.title())
+                            .map(|t| t.to_string())
+                    };
+                    OverlayEdgeRow {
+                        index: i,
+                        from_title: title_of(&e.from_node),
+                        to_title: title_of(&e.to_node),
+                        color: e.color.clone(),
+                    }
+                })
+                .collect();
+
+            let max_len = resolved
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{} {} → {}",
+                        r.index + 1,
+                        r.from_title.as_deref().unwrap_or(no_title.as_str()),
+                        r.to_title.as_deref().unwrap_or(no_title.as_str())
+                    )
+                    .chars()
+                    .count()
+                })
+                .max()
+                .unwrap_or(0);
+            let overlay_width = (max_len + 4) as u16;
+            let overlay_height = (edges.len() + 2) as u16;
+            let overlay_rect = Rect::new(
+                canvas_area.x + canvas_area.width.saturating_sub(overlay_width),
+                canvas_area.y + canvas_area.height.saturating_sub(overlay_height),
+                overlay_width,
+                overlay_height,
+            );
+            let rows: Vec<ratatui::text::Line> =
+                resolved
+                    .iter()
+                    .map(|r| {
+                        let edge_color = edge_overlay_color(r.color.as_deref(), theme);
+                        let mut spans = vec![Span::styled(
+                            format!("{} ", r.index + 1),
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        )];
+                        match &r.from_title {
+                            Some(title) => spans
+                                .push(Span::styled(title.clone(), Style::default().fg(edge_color))),
+                            None => spans.push(Span::styled(
+                                no_title.clone(),
+                                Style::default().fg(muted_edge_color(edge_color)),
+                            )),
+                        }
+                        spans.push(Span::styled(" → ", Style::default().fg(theme.muted)));
+                        match &r.to_title {
+                            Some(title) => spans
+                                .push(Span::styled(title.clone(), Style::default().fg(edge_color))),
+                            None => spans.push(Span::styled(
+                                no_title.clone(),
+                                Style::default().fg(muted_edge_color(edge_color)),
+                            )),
+                        }
+                        ratatui::text::Line::from(spans)
+                    })
+                    .collect();
+            let overlay = Paragraph::new(rows).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" EDGES ")
+                    .border_style(Style::default().fg(theme.accent))
+                    .style(theme.bg_style()),
+            );
+            frame.render_widget(Clear, overlay_rect);
+            frame.render_widget(overlay, overlay_rect);
+            // Hover highlight on overlay rows.
+            let hover_inner = Rect::new(
+                overlay_rect.x + 1,
+                overlay_rect.y + 1,
+                overlay_rect.width.saturating_sub(2),
+                overlay_rect.height.saturating_sub(2),
+            );
+            crate::ui::paint_list_hover(
+                frame,
+                hover_inner,
+                &ratatui::widgets::ListState::default(),
+                edges.len(),
+                mouse_pos,
+                theme.hover_style(),
+            );
+            state.edge_overlay_rect = Some(overlay_rect);
+        }
+    }
+
     let hint_area = Rect::new(
         total_area.x,
         total_area.bottom().saturating_sub(1),
         total_area.width,
         1,
     );
-    let hint_line = if state.connection_source_id.is_some() {
-        Line::from(vec![Span::styled(
-            "CONNECTION MODE: Select target node with mouse or Enter",
-            Style::default().fg(theme.muted),
-        )])
-    } else if state.deleting_connection_source_id.is_some() {
-        Line::from(vec![Span::styled(
-            "DELETE CONNECTION MODE: Select target node to remove link",
-            Style::default().fg(theme.muted),
-        )])
-    } else if state.resizing_node_id.is_some() {
-        Line::from(vec![Span::styled(
-            "RESIZE MODE: Drag mouse to resize, Left-click to confirm",
-            Style::default().fg(theme.muted),
-        )])
-    } else if state.footer_hint.is_empty() {
+    let hint_line = if state.footer_hint.is_empty() {
         let hints_items = vec![
             (
                 format!(
@@ -765,17 +941,20 @@ pub fn draw_pinstar_view(
     crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 
     if let Some(menu) = &state.context_menu {
-        let menu_width = menu
+        let menu_width: usize = menu
             .items
             .iter()
-            .map(|s| s.len() as u16 + 4)
+            .map(|s| {
+                let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, s);
+                s.len() + shortcut.map_or(0, |k| k.len() + 4) + 4
+            })
             .max()
             .unwrap_or(25);
         let menu_height = menu.items.len() as u16;
         let menu_rect = Rect::new(
-            area.x + menu.x.min(area.width.saturating_sub(menu_width)),
+            area.x + menu.x.min(area.width.saturating_sub(menu_width as u16)),
             area.y + menu.y.min(area.height.saturating_sub(menu_height)),
-            menu_width,
+            menu_width as u16,
             menu_height,
         );
 
@@ -786,7 +965,9 @@ pub fn draw_pinstar_view(
             .iter()
             .enumerate()
             .map(|(i, item)| {
-                let style = if i == menu.selected {
+                let shortcut = menu_shortcut(&state.keybinds, menu.menu_type, item);
+                let is_selected = i == menu.selected;
+                let base_style = if is_selected {
                     Style::default()
                         .fg(theme.highlight_fg)
                         .bg(theme.highlight_bg)
@@ -794,10 +975,42 @@ pub fn draw_pinstar_view(
                 } else {
                     Style::default().fg(theme.text)
                 };
-                ListItem::new(format!("  {item}  ")).style(style)
+                let color_square = i < menu.color_hints.len() && menu.color_hints[i].is_some();
+                let label = format!("  {item}  ");
+                let hint_str = shortcut.as_ref().map(|k| format!("{k} "));
+                let hint_width = hint_str.as_ref().map_or(0, |h| h.len());
+                // Color-square rows render "  ■ {item}  " which is 2 chars
+                // wider than the plain label; account for that so the hint is
+                // not clipped off the menu's right edge.
+                let content_width = if color_square {
+                    item.len() + 6
+                } else {
+                    label.len()
+                };
+                let padding = menu_width.saturating_sub(content_width + hint_width);
+                let hint_style = Style::default().fg(theme.muted).bg(if is_selected {
+                    theme.highlight_bg
+                } else {
+                    Color::Reset
+                });
+                let mut spans: Vec<Span> = Vec::new();
+                if color_square {
+                    let sq_color = menu.color_hints[i].unwrap_or(Color::Reset);
+                    spans.push(Span::styled("  ", base_style));
+                    spans.push(Span::styled("■ ", base_style.fg(sq_color)));
+                    spans.push(Span::styled(format!("{item}  "), base_style));
+                } else {
+                    spans.push(Span::styled(label.clone(), base_style));
+                }
+                if padding > 0 {
+                    spans.push(Span::styled(" ".repeat(padding), base_style));
+                }
+                if let Some(h) = hint_str {
+                    spans.push(Span::styled(h, hint_style));
+                }
+                ListItem::new(Line::from(spans))
             })
             .collect();
-
         let list = List::new(items).block(
             Block::default()
                 .borders(Borders::NONE)
@@ -959,6 +1172,7 @@ mod tests {
                         to_side: Some("left".to_string()),
                         label: None,
                         color: None,
+                        style: crate::pinstar::data::EdgeStyle::Solid,
                     })
                 })
             })

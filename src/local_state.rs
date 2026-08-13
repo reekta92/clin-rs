@@ -54,6 +54,8 @@ pub struct VaultState {
     /// Expanded folder paths for this vault.
     #[serde(default)]
     pub expanded_folders: BTreeSet<String>,
+    #[serde(default)]
+    pub canvas_orthogonal: bool,
 }
 
 impl LocalState {
@@ -291,6 +293,7 @@ mod tests {
             "/vault/path".into(),
             VaultState {
                 expanded_folders: ["a", "b"].into_iter().map(Into::into).collect(),
+                canvas_orthogonal: false,
             },
         );
         state.save(&path).unwrap();

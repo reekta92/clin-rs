@@ -13,4 +13,7 @@ pub const COLOR_PICKER_PALETTE: &[(&str, &str, Color)] = &[
     ("green", "#4caf50", Color::Rgb(76, 175, 80)),
     ("cyan", "#00bcd4", Color::Rgb(0, 188, 212)),
     ("purple", "#9c27b0", Color::Rgb(156, 39, 176)),
+    ("blue", "#2196f3", Color::Rgb(33, 150, 243)),
+    ("magenta", "#e91e63", Color::Rgb(233, 30, 99)),
+    ("white", "#ffffff", Color::Rgb(255, 255, 255)),
 ];

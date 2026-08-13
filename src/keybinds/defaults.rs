@@ -567,6 +567,14 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
+        canvas.insert(CanvasAction::Undo, vec![KeyCombo::ctrl(KeyCode::Char('z'))]);
+        canvas.insert(
+            CanvasAction::Redo,
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('y')),
+                KeyCombo::ctrl_shift(KeyCode::Char('z')),
+            ],
+        );
         canvas.insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
         canvas.insert(
             CanvasAction::ZoomFineIn,
@@ -629,7 +637,6 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::simple(KeyCode::Char('i')),
                 KeyCombo::simple(KeyCode::Enter),
-                KeyCombo::simple(KeyCode::Char('o')),
             ],
         );
         canvas.insert(
@@ -637,8 +644,52 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('a'))],
         );
         canvas.insert(
+            CanvasAction::CreateConnection,
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        canvas.insert(
+            CanvasAction::DeleteConnection,
+            vec![KeyCombo::simple(KeyCode::Char('d'))],
+        );
+        canvas.insert(
+            CanvasAction::RenameNode,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        canvas.insert(
+            CanvasAction::ResizeMode,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        canvas.insert(
+            CanvasAction::SetColor,
+            vec![KeyCombo::simple(KeyCode::Char('o'))],
+        );
+        canvas.insert(
+            CanvasAction::DeleteNode,
+            vec![KeyCombo::simple(KeyCode::Char('x'))],
+        );
+        canvas.insert(
+            CanvasAction::DeleteAllConnections,
+            vec![KeyCombo::simple(KeyCode::Char('b'))],
+        );
+        canvas.insert(
+            CanvasAction::AddTextNode,
+            vec![KeyCombo::simple(KeyCode::Char('t'))],
+        );
+        canvas.insert(
+            CanvasAction::AddGroup,
+            vec![KeyCombo::simple(KeyCode::Char('g'))],
+        );
+        canvas.insert(
+            CanvasAction::AddImageNode,
+            vec![KeyCombo::simple(KeyCode::Char('m'))],
+        );
+        canvas.insert(
             CanvasAction::ToggleGrid,
             vec![KeyCombo::shift(KeyCode::Char('G'))],
+        );
+        canvas.insert(
+            CanvasAction::ToggleOrthogonal,
+            vec![KeyCombo::ctrl(KeyCode::Char('o'))],
         );
         canvas.insert(
             CanvasAction::ToggleEditorPane,
@@ -667,19 +718,10 @@ impl Default for Keybinds {
             CanvasAction::MenuClose,
             vec![KeyCombo::simple(KeyCode::Esc)],
         );
-        canvas.insert(
-            CanvasAction::MenuUp,
-            vec![
-                KeyCombo::simple(KeyCode::Up),
-                KeyCombo::simple(KeyCode::Char('k')),
-            ],
-        );
+        canvas.insert(CanvasAction::MenuUp, vec![KeyCombo::simple(KeyCode::Up)]);
         canvas.insert(
             CanvasAction::MenuDown,
-            vec![
-                KeyCombo::simple(KeyCode::Down),
-                KeyCombo::simple(KeyCode::Char('j')),
-            ],
+            vec![KeyCombo::simple(KeyCode::Down)],
         );
         canvas.insert(
             CanvasAction::MenuSelect,

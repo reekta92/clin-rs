@@ -221,6 +221,8 @@ pub enum DrawAction {
 #[serde(rename_all = "snake_case")]
 pub enum CanvasAction {
     Quit,
+    Undo,
+    Redo,
     Save,
     ZoomFineIn,
     ZoomFineOut,
@@ -233,6 +235,7 @@ pub enum CanvasAction {
     EditOrConnect,
     OpenContextMenu,
     ToggleGrid,
+    ToggleOrthogonal,
     ToggleEditorPane,
     CycleFocus,
     Help,
@@ -248,6 +251,16 @@ pub enum CanvasAction {
     CancelResize,
     EditorUnfocus,
     EditorSyncRaw,
+    CreateConnection,
+    DeleteConnection,
+    RenameNode,
+    ResizeMode,
+    SetColor,
+    DeleteNode,
+    DeleteAllConnections,
+    AddTextNode,
+    AddGroup,
+    AddImageNode,
 }
 
 #[derive(

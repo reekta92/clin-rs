@@ -24,6 +24,8 @@ pub fn canvas_group_order() -> &'static [&'static str] {
     &[
         "Navigation",
         "Editing",
+        "Connections",
+        "Display",
         "Interface",
         "Menus & Popups",
         "General",
@@ -499,6 +501,14 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
 
 pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
     match a {
+        CanvasAction::Undo => HelpMeta {
+            group: "Editing",
+            description: "Undo last canvas edit",
+        },
+        CanvasAction::Redo => HelpMeta {
+            group: "Editing",
+            description: "Redo canvas edit",
+        },
         CanvasAction::MoveUp => HelpMeta {
             group: "Navigation",
             description: "Move up",
@@ -546,6 +556,10 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
         CanvasAction::RenameConfirm => HelpMeta {
             group: "Editing",
             description: "Rename confirm",
+        },
+        CanvasAction::ToggleOrthogonal => HelpMeta {
+            group: "Display",
+            description: "Toggle orthogonal edge routing",
         },
         CanvasAction::RenameCancel => HelpMeta {
             group: "Editing",
@@ -602,6 +616,46 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
         CanvasAction::CancelResize => HelpMeta {
             group: "Menus & Popups",
             description: "Resize cancel",
+        },
+        CanvasAction::CreateConnection => HelpMeta {
+            group: "Connections",
+            description: "Create connection from selected node",
+        },
+        CanvasAction::DeleteConnection => HelpMeta {
+            group: "Connections",
+            description: "Delete connection from selected node",
+        },
+        CanvasAction::DeleteAllConnections => HelpMeta {
+            group: "Connections",
+            description: "Delete all connections on selected node",
+        },
+        CanvasAction::RenameNode => HelpMeta {
+            group: "Editing",
+            description: "Rename selected node",
+        },
+        CanvasAction::ResizeMode => HelpMeta {
+            group: "Editing",
+            description: "Enter resize mode",
+        },
+        CanvasAction::SetColor => HelpMeta {
+            group: "Editing",
+            description: "Set color of selected node(s)",
+        },
+        CanvasAction::DeleteNode => HelpMeta {
+            group: "Editing",
+            description: "Delete selected node(s)",
+        },
+        CanvasAction::AddTextNode => HelpMeta {
+            group: "Editing",
+            description: "Add text node at cursor",
+        },
+        CanvasAction::AddGroup => HelpMeta {
+            group: "Editing",
+            description: "Add group at cursor",
+        },
+        CanvasAction::AddImageNode => HelpMeta {
+            group: "Editing",
+            description: "Add image node at cursor",
         },
         CanvasAction::Help => HelpMeta {
             group: "General",
