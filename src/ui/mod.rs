@@ -34,7 +34,7 @@ pub(crate) use camera::{
 #[allow(unused_imports)]
 pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
 #[allow(unused_imports)]
-pub(crate) use canvas_overlay::{MarqueeDragState, draw_canvas_rect_outline_filled};
+pub(crate) use canvas_overlay::{MarqueeDragState, draw_canvas_rect_filled};
 pub(crate) use canvas_selection::CanvasSelection;
 pub use edit_view::draw_edit_view;
 pub use help::*;

@@ -1,8 +1,4 @@
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::{Color, Style},
-};
+use ratatui::{Frame, layout::Rect, style::Color};
 
 pub struct MarqueeDragState {
     pub start: Option<(f64, f64)>,
@@ -49,56 +45,14 @@ impl MarqueeDragState {
     }
 }
 
-/// Hybrid marquee: translucent fill over its full area, preserving node glyph
-/// foregrounds, plus `─│┌┐└┘` corner/edge outline painted corners-last.
-pub fn draw_canvas_rect_outline_filled(frame: &mut Frame, rect: Rect, outline: Color, fill: Color) {
+/// Translucent marquee fill preserving every underlying glyph and foreground.
+pub fn draw_canvas_rect_filled(frame: &mut Frame, rect: Rect, fill: Color) {
     let buf = frame.buffer_mut();
-    // 1. Translucent fill over the rectangle, preserving node glyph foreground.
     for row in rect.y..rect.y.saturating_add(rect.height) {
         for col in rect.x..rect.x.saturating_add(rect.width) {
             if let Some(cell) = buf.cell_mut((col, row)) {
                 cell.set_bg(fill);
             }
-        }
-    }
-    // 2. Outline: ─ on top/bottom, │ on left/right, ┌┐└┘ corners.
-    let style = Style::default().fg(outline).bg(fill);
-    let left = rect.x;
-    let right = rect.x + rect.width.saturating_sub(1);
-    let top = rect.y;
-    let bottom = rect.y + rect.height.saturating_sub(1);
-    if rect.height == 1 {
-        for c in left..=right {
-            if let Some(cell) = buf.cell_mut((c, top)) {
-                cell.set_symbol("─").set_style(style);
-            }
-        }
-        return;
-    }
-    for c in left..=right {
-        if let Some(cell) = buf.cell_mut((c, top)) {
-            cell.set_symbol("─").set_style(style);
-        }
-        if let Some(cell) = buf.cell_mut((c, bottom)) {
-            cell.set_symbol("─").set_style(style);
-        }
-    }
-    for r in (top + 1)..bottom {
-        if let Some(cell) = buf.cell_mut((left, r)) {
-            cell.set_symbol("│").set_style(style);
-        }
-        if let Some(cell) = buf.cell_mut((right, r)) {
-            cell.set_symbol("│").set_style(style);
-        }
-    }
-    for (col, row, sym) in [
-        (left, top, "┌"),
-        (right, top, "┐"),
-        (left, bottom, "└"),
-        (right, bottom, "┘"),
-    ] {
-        if let Some(cell) = buf.cell_mut((col, row)) {
-            cell.set_symbol(sym).set_style(style);
         }
     }
 }
@@ -156,35 +110,33 @@ mod tests {
         assert!(m.is_dragging_screen(2, 2, 0, 0));
     }
     #[test]
-    fn marquee_fill_covers_outline_and_interior() {
+    fn marquee_fill_preserves_underlying_glyphs() {
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(6, 6)).unwrap();
         terminal
             .draw(|frame| {
-                draw_canvas_rect_outline_filled(
-                    frame,
-                    Rect::new(1, 1, 4, 4),
-                    Color::Red,
-                    Color::Blue,
-                );
+                for y in 1..5 {
+                    for x in 1..5 {
+                        frame
+                            .buffer_mut()
+                            .cell_mut((x, y))
+                            .unwrap()
+                            .set_symbol("x")
+                            .set_fg(Color::Red);
+                    }
+                }
+                draw_canvas_rect_filled(frame, Rect::new(1, 1, 4, 4), Color::Blue);
             })
             .unwrap();
 
         let buf = terminal.backend().buffer();
-        for (x, y) in [
-            (1, 1),
-            (2, 1),
-            (4, 1),
-            (1, 2),
-            (4, 2),
-            (1, 4),
-            (2, 4),
-            (4, 4),
-        ] {
-            let style = buf.cell((x, y)).unwrap().style();
-            assert_eq!(style.fg, Some(Color::Red));
-            assert_eq!(style.bg, Some(Color::Blue));
+        for y in 1..5 {
+            for x in 1..5 {
+                let cell = buf.cell((x, y)).unwrap();
+                assert_eq!(cell.symbol(), "x");
+                assert_eq!(cell.style().fg, Some(Color::Red));
+                assert_eq!(cell.style().bg, Some(Color::Blue));
+            }
         }
-        assert_eq!(buf.cell((2, 2)).unwrap().style().bg, Some(Color::Blue));
     }
 }
