@@ -49,22 +49,20 @@ impl MarqueeDragState {
     }
 }
 
-/// Hybrid marquee: translucent fill (interior only, preserving node glyphs)
-/// plus `─│┌┐└┘` corner/edge outline painted corners-last.
+/// Hybrid marquee: translucent fill over its full area, preserving node glyph
+/// foregrounds, plus `─│┌┐└┘` corner/edge outline painted corners-last.
 pub fn draw_canvas_rect_outline_filled(frame: &mut Frame, rect: Rect, outline: Color, fill: Color) {
     let buf = frame.buffer_mut();
-    // 1. Translucent fill (interior only), preserving node glyph foreground.
-    if rect.width > 2 && rect.height > 2 {
-        for row in (rect.y + 1)..(rect.y + rect.height - 1) {
-            for col in (rect.x + 1)..(rect.x + rect.width - 1) {
-                if let Some(cell) = buf.cell_mut((col, row)) {
-                    cell.set_bg(fill);
-                }
+    // 1. Translucent fill over the rectangle, preserving node glyph foreground.
+    for row in rect.y..rect.y.saturating_add(rect.height) {
+        for col in rect.x..rect.x.saturating_add(rect.width) {
+            if let Some(cell) = buf.cell_mut((col, row)) {
+                cell.set_bg(fill);
             }
         }
     }
     // 2. Outline: ─ on top/bottom, │ on left/right, ┌┐└┘ corners.
-    let style = Style::default().fg(outline);
+    let style = Style::default().fg(outline).bg(fill);
     let left = rect.x;
     let right = rect.x + rect.width.saturating_sub(1);
     let top = rect.y;
@@ -156,5 +154,37 @@ mod tests {
         // Manhattan move of 4 → dragging.
         assert!(m.is_dragging_screen(4, 0, 0, 0));
         assert!(m.is_dragging_screen(2, 2, 0, 0));
+    }
+    #[test]
+    fn marquee_fill_covers_outline_and_interior() {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(6, 6)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw_canvas_rect_outline_filled(
+                    frame,
+                    Rect::new(1, 1, 4, 4),
+                    Color::Red,
+                    Color::Blue,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        for (x, y) in [
+            (1, 1),
+            (2, 1),
+            (4, 1),
+            (1, 2),
+            (4, 2),
+            (1, 4),
+            (2, 4),
+            (4, 4),
+        ] {
+            let style = buf.cell((x, y)).unwrap().style();
+            assert_eq!(style.fg, Some(Color::Red));
+            assert_eq!(style.bg, Some(Color::Blue));
+        }
+        assert_eq!(buf.cell((2, 2)).unwrap().style().bg, Some(Color::Blue));
     }
 }
