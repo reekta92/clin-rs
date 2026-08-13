@@ -980,10 +980,10 @@ pub fn draw_graph_view(
             max_col.saturating_sub(min_col).saturating_add(1),
             max_row.saturating_sub(min_row).saturating_add(1),
         );
-        let fill = match colors.selected_indicator_color {
-            Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
-            _ => app_theme.highlight_bg,
-        };
+        let fill = crate::ui::canvas_overlay::muted_canvas_selection_fill(
+            app_theme.accent,
+            app_theme.highlight_bg,
+        );
         crate::ui::canvas_overlay::draw_canvas_rect_filled(frame, screen_rect, fill);
     }
 

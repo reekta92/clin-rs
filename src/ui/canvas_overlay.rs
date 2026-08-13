@@ -45,6 +45,14 @@ impl MarqueeDragState {
     }
 }
 
+/// Marquee fill color shared by graf and pinstar.
+pub fn muted_canvas_selection_fill(accent: Color, highlight_bg: Color) -> Color {
+    match accent {
+        Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
+        _ => highlight_bg,
+    }
+}
+
 /// Translucent marquee fill preserving every underlying glyph and foreground.
 pub fn draw_canvas_rect_filled(frame: &mut Frame, rect: Rect, fill: Color) {
     let buf = frame.buffer_mut();
@@ -138,5 +146,17 @@ mod tests {
                 assert_eq!(cell.style().bg, Some(Color::Blue));
             }
         }
+    }
+
+    #[test]
+    fn muted_selection_fill_uses_accent_or_highlight_fallback() {
+        assert_eq!(
+            muted_canvas_selection_fill(Color::Rgb(96, 64, 32), Color::Cyan),
+            Color::Rgb(24, 16, 8),
+        );
+        assert_eq!(
+            muted_canvas_selection_fill(Color::Yellow, Color::Cyan),
+            Color::Cyan,
+        );
     }
 }

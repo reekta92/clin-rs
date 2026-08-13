@@ -747,10 +747,10 @@ pub fn draw_pinstar_view(
             .min(canvas_area.bottom() as f64)) as u16;
         let width = ((max_x - min_x).max(1.0)) as u16;
         let height = ((max_y - min_y).max(1.0)) as u16;
-        let fill = match theme.accent {
-            Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
-            _ => theme.highlight_bg,
-        };
+        let fill = crate::ui::canvas_overlay::muted_canvas_selection_fill(
+            theme.accent,
+            theme.highlight_bg,
+        );
         let screen_rect = ratatui::layout::Rect::new(left, top, width, height);
         crate::ui::canvas_overlay::draw_canvas_rect_filled(frame, screen_rect, fill);
     }
