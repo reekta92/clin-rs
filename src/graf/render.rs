@@ -1049,7 +1049,6 @@ fn draw_grid(
     }
 }
 
-
 /// Rect passed to Canvas drawing and geometry: `area` with the bottom status-bar
 /// row removed when it is shown. Render and input MUST use this same rect so
 /// hover and click map mouse→world identically.

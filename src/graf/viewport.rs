@@ -44,7 +44,6 @@ pub fn node_world_radius(config: &ClinConfig, max_link_count: usize, link_count:
     }
 }
 
-
 #[derive(Clone)]
 pub struct Viewport {
     pub center_x: f64,
@@ -289,13 +288,15 @@ impl Viewport {
                 let click_thresh = (nr + pad_world).max(min_hit_world);
                 if dist <= nr {
                     match contained {
-                        Some((bi, bd)) if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
+                        Some((bi, bd))
+                            if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
                         _ => contained = Some((idx, dist)),
                     }
                 }
                 if dist <= click_thresh {
                     match near {
-                        Some((bi, bd)) if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
+                        Some((bi, bd))
+                            if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
                         _ => near = Some((idx, dist)),
                     }
                 }
@@ -434,10 +435,14 @@ mod tests {
         let area = Rect::new(0, 0, 80, 40);
         let max_lc = 0;
 
-        let hit = vp.hit_test(10001.0, 10001.0, &gs, &config, area, max_lc).unwrap();
+        let hit = vp
+            .hit_test(10001.0, 10001.0, &gs, &config, area, max_lc)
+            .unwrap();
         assert_eq!(hit, idxs[1]);
 
-        let hit_equal = vp.hit_test(10002.5, 10002.5, &gs, &config, area, max_lc).unwrap();
+        let hit_equal = vp
+            .hit_test(10002.5, 10002.5, &gs, &config, area, max_lc)
+            .unwrap();
         assert_eq!(hit_equal, idxs[1]);
     }
 
@@ -520,11 +525,7 @@ mod tests {
 
     #[test]
     fn test_hit_test_zoom_extremes() {
-        let (gs, idxs) = make_state(&[
-            (0.0, 0.0, 0),
-            (10000.0, 10000.0, 0),
-            (10005.0, 10005.0, 0),
-        ]);
+        let (gs, idxs) = make_state(&[(0.0, 0.0, 0), (10000.0, 10000.0, 0), (10005.0, 10005.0, 0)]);
         let config = ClinConfig::default();
         let area = Rect::new(0, 0, 80, 40);
         let max_lc = 0;

@@ -344,8 +344,9 @@ pub fn handle_graph_mouse(
                             canvas,
                         );
                         let max_lc = guard.render_cache.lock().max_link_count;
-                        let target_idx =
-                            guard.viewport.hit_test(wx, wy, &guard, config, canvas, max_lc);
+                        let target_idx = guard
+                            .viewport
+                            .hit_test(wx, wy, &guard, config, canvas, max_lc);
                         if let (Some(src), Some(source_id), Some(tidx)) =
                             (src_idx, source_id, target_idx)
                             && src != tidx
@@ -398,7 +399,9 @@ pub fn handle_graph_mouse(
                 let hit = {
                     let guard = state.read();
                     let max_lc = guard.render_cache.lock().max_link_count;
-                    guard.viewport.hit_test(wx, wy, &guard, config, canvas, max_lc)
+                    guard
+                        .viewport
+                        .hit_test(wx, wy, &guard, config, canvas, max_lc)
                 };
 
                 let is_double_click = mouse_state
@@ -452,9 +455,11 @@ pub fn handle_graph_mouse(
                 let [yb, yt] = guard.viewport.y_bounds(aspect);
                 let world_per_col = ((xr - xl) / canvas.width.max(1) as f64).abs();
                 let world_per_row = ((yt - yb) / canvas.height.max(1) as f64).abs();
-                let world_dx = -world_per_col * (mouse_event.column as f64 - orig_col as f64)
+                let world_dx = -world_per_col
+                    * (mouse_event.column as f64 - orig_col as f64)
                     * config.graf.interaction.drag_sensitivity;
-                let world_dy = world_per_row * (mouse_event.row as f64 - orig_row as f64)
+                let world_dy = world_per_row
+                    * (mouse_event.row as f64 - orig_row as f64)
                     * config.graf.interaction.drag_sensitivity;
                 guard.viewport.pan_by(world_dx, world_dy);
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
@@ -575,7 +580,10 @@ pub fn handle_graph_mouse(
                             .viewport
                             .screen_to_world(mouse_event.column, mouse_event.row, canvas);
                     let max_lc = guard.render_cache.lock().max_link_count;
-                    if let Some(idx) = guard.viewport.hit_test(wx, wy, &guard, config, canvas, max_lc) {
+                    if let Some(idx) = guard
+                        .viewport
+                        .hit_test(wx, wy, &guard, config, canvas, max_lc)
+                    {
                         guard.selected_node = Some(idx);
                     }
                     guard.open_context_menu(mouse_event.column, mouse_event.row, (wx, wy));
