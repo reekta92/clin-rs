@@ -427,7 +427,7 @@ fn handle_mouse(
         MouseEventKind::Drag(MouseButton::Left) => {
             let point = screen_to_canvas(ev.column, ev.row, app);
             match app.active_tool {
-                DrawTool::Cursor => cursor_left_drag(point, app),
+                DrawTool::Cursor => cursor_left_drag(ev, point, app),
                 DrawTool::Text => {}
                 DrawTool::Draw => {
                     if let Some(stroke) = &mut app.current_stroke {
@@ -453,6 +453,8 @@ fn handle_mouse(
         MouseEventKind::Up(MouseButton::Left) => {
             if app.active_tool == DrawTool::Cursor {
                 finish_cursor_move(app)?;
+                app.is_panning = false;
+                app.last_mouse_pos = None;
                 return Ok(None);
             }
 
@@ -975,11 +977,12 @@ fn cursor_left_down(mouse: MouseEvent, point: (f64, f64), app: &mut DrawAppState
         app.selection.clear();
         app.hovered = None;
         app.interaction = None;
+        app.last_mouse_pos = Some((mouse.column, mouse.row));
     }
     app.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
 }
 
-fn cursor_left_drag(point: (f64, f64), app: &mut DrawAppState) {
+fn cursor_left_drag(mouse: MouseEvent, point: (f64, f64), app: &mut DrawAppState) {
     let Some(DrawInteraction::Move {
         start_world,
         original_translation,
@@ -987,6 +990,9 @@ fn cursor_left_drag(point: (f64, f64), app: &mut DrawAppState) {
         ..
     }) = &mut app.interaction
     else {
+        if app.last_mouse_pos.is_some() {
+            panning(mouse.column, mouse.row, app);
+        }
         return;
     };
     preview_translation.0 = original_translation.0 + point.0 - start_world.0;
@@ -1199,6 +1205,49 @@ mod tests {
     }
 
     #[test]
+    fn cursor_empty_drag_pans_view() {
+        let (_temp, mut state) = test_state();
+        state.last_area = Rect::new(0, 0, 100, 100);
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+        let mut clipboard = None;
+
+        handle_event(
+            mouse(MouseEventKind::Down(MouseButton::Left), 20, 20),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+        handle_event(
+            mouse(MouseEventKind::Drag(MouseButton::Left), 30, 25),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+
+        assert!(state.is_panning);
+        assert_eq!(state.viewport.x, -20.0);
+        assert_eq!(state.viewport.y, 10.0);
+        assert!(state.undo_stack.is_empty());
+
+        handle_event(
+            mouse(MouseEventKind::Up(MouseButton::Left), 30, 25),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+
+        assert!(!state.is_panning);
+        assert!(state.last_mouse_pos.is_none());
+    }
+
+    #[test]
     fn cursor_double_click_opens_text_editor() {
         let (_temp, mut state) = test_state();
         state.last_area = Rect::new(0, 0, 100, 100);
@@ -1377,7 +1426,7 @@ mod tests {
                 row: 0,
                 modifiers: KeyModifiers::NONE,
             },
-            (0.0, -9.0),
+            (0.0, 9.0),
             &mut state,
         );
         assert!(matches!(
