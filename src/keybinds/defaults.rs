@@ -2278,6 +2278,7 @@ impl KeybindPreset {
 mod tests {
     use super::*;
     use crossterm::event::{KeyEvent, KeyModifiers};
+    use strum::IntoEnumIterator;
 
     #[test]
     fn ctrl_shift_a_matches_select_all() {
@@ -2287,5 +2288,59 @@ mod tests {
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
         );
         assert!(keybinds.matches_edit(EditAction::SelectAll, &event));
+    }
+
+    #[test]
+    fn draw_actions_have_bindings_in_every_preset() {
+        for preset in [
+            KeybindPreset::Default,
+            KeybindPreset::Helix,
+            KeybindPreset::Vim,
+            KeybindPreset::Emacs,
+        ] {
+            let keybinds = preset.base_keybinds();
+            for action in DrawAction::iter() {
+                assert!(
+                    keybinds.bindings_for_draw().contains_key(&action),
+                    "{preset} is missing {action:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_draw_editing_bindings_match_contract() {
+        let keybinds = Keybinds::default();
+        for (action, key) in [
+            (
+                DrawAction::SelectCursorTool,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE),
+            ),
+            (
+                DrawAction::Copy,
+                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Paste,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Undo,
+                KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Redo,
+                KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Redo,
+                KeyEvent::new(
+                    KeyCode::Char('z'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
+            ),
+        ] {
+            assert!(keybinds.matches_draw(action, &key), "{action:?}");
+        }
     }
 }

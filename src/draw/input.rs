@@ -1403,4 +1403,33 @@ mod tests {
         assert_eq!(state.data.item(&id).unwrap().transform.scale, 10.0);
         assert_eq!(state.undo_stack.len(), 2);
     }
+
+    #[test]
+    fn cursor_and_grid_keybinds_update_transient_draw_state() {
+        let (_temp, mut state) = test_state();
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+        let mut clipboard = None;
+        state.active_tool = DrawTool::Draw;
+
+        handle_event(
+            Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE)),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+        assert_eq!(state.active_tool, DrawTool::Cursor);
+
+        handle_event(
+            Event::Key(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT)),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+        assert!(!state.grid.visible);
+    }
 }

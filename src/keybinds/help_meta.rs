@@ -18,7 +18,14 @@ pub fn graph_group_order() -> &'static [&'static str] {
     &["Navigation", "Actions", "Display", "Menu", "System"]
 }
 pub fn draw_group_order() -> &'static [&'static str] {
-    &["Tools", "Shape Selector", "Text Editor", "General"]
+    &[
+        "Tools",
+        "Shape Selector",
+        "Text Editor",
+        "Context Menu",
+        "Editing",
+        "General",
+    ]
 }
 pub fn canvas_group_order() -> &'static [&'static str] {
     &[
@@ -490,7 +497,7 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
     match a {
         DrawAction::SelectCursorTool => HelpMeta {
             group: "Tools",
-            description: "Select and move elements",
+            description: "Select and transform element",
         },
         DrawAction::SelectDrawTool => HelpMeta {
             group: "Tools",
@@ -574,7 +581,7 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
         },
         DrawAction::Quit => HelpMeta {
             group: "General",
-            description: "Exit canvas view",
+            description: "Exit draw view",
         },
     }
 }

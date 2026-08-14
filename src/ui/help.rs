@@ -1429,10 +1429,27 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             _ => format!("[ERR:{}]", token),
         },
         "draw" => match action {
-            "ToggleShapeSelector" => kb.draw_keys_display(DrawAction::ToggleShapeSelector),
+            "Quit" => kb.draw_keys_display(DrawAction::Quit),
+            "Help" => kb.draw_keys_display(DrawAction::Help),
+            "SelectCursorTool" => kb.draw_keys_display(DrawAction::SelectCursorTool),
             "SelectDrawTool" => kb.draw_keys_display(DrawAction::SelectDrawTool),
+            "ToggleShapeSelector" => kb.draw_keys_display(DrawAction::ToggleShapeSelector),
             "SelectTextTool" => kb.draw_keys_display(DrawAction::SelectTextTool),
             "SelectEraseTool" => kb.draw_keys_display(DrawAction::SelectEraseTool),
+            "ShapeSelectorUp" => kb.draw_keys_display(DrawAction::ShapeSelectorUp),
+            "ShapeSelectorDown" => kb.draw_keys_display(DrawAction::ShapeSelectorDown),
+            "ShapeSelectorConfirm" => kb.draw_keys_display(DrawAction::ShapeSelectorConfirm),
+            "ShapeSelectorCancel" => kb.draw_keys_display(DrawAction::ShapeSelectorCancel),
+            "TextEditorConfirm" => kb.draw_keys_display(DrawAction::TextEditorConfirm),
+            "TextEditorCancel" => kb.draw_keys_display(DrawAction::TextEditorCancel),
+            "MenuClose" => kb.draw_keys_display(DrawAction::MenuClose),
+            "MenuUp" => kb.draw_keys_display(DrawAction::MenuUp),
+            "MenuDown" => kb.draw_keys_display(DrawAction::MenuDown),
+            "MenuSelect" => kb.draw_keys_display(DrawAction::MenuSelect),
+            "Copy" => kb.draw_keys_display(DrawAction::Copy),
+            "Paste" => kb.draw_keys_display(DrawAction::Paste),
+            "Undo" => kb.draw_keys_display(DrawAction::Undo),
+            "Redo" => kb.draw_keys_display(DrawAction::Redo),
             "ToggleGrid" => kb.draw_keys_display(DrawAction::ToggleGrid),
             _ => format!("[ERR:{}]", token),
         },
@@ -1488,6 +1505,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use strum::IntoEnumIterator;
 
     #[test]
     fn editor_help_tab_uses_pencil_glyph() {
@@ -1544,6 +1562,19 @@ mod tests {
             assert!(
                 !span.content.to_string().contains("[ERR:"),
                 "no ERR in any span"
+            );
+        }
+    }
+
+    #[test]
+    fn draw_help_tokens_resolve_every_action() {
+        let keybinds = crate::keybinds::Keybinds::default();
+        for action in crate::keybinds::DrawAction::iter() {
+            let token = format!("draw:{action:?}");
+            assert_eq!(
+                resolve_tip_key(&token, &keybinds),
+                keybinds.draw_keys_display(action),
+                "{token}"
             );
         }
     }
