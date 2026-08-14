@@ -2,11 +2,11 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::prelude::*;
 use ratatui::symbols::Marker;
-use ratatui::widgets::canvas::{Canvas, Context, Line as CanvasLine, Rectangle};
+use ratatui::widgets::canvas::Canvas;
 use ratatui::widgets::*;
 
 use crate::app_theme::AppThemeColors;
-use crate::draw::state::{DrawData, DrawElement, Shape, Stroke};
+use crate::draw::state::DrawData;
 use crate::pinstar::data::{CanvasData, CanvasNode};
 use unicode_width::UnicodeWidthChar;
 
@@ -378,28 +378,15 @@ pub fn render_draw_snapshot_with_size(
             .x_bounds(x_bounds)
             .y_bounds(y_bounds)
             .paint(|ctx| {
-                for element in &data.elements {
-                    match element {
-                        DrawElement::Stroke(stroke) => {
-                            draw_stroke_lines(ctx, stroke);
-                        }
-                        DrawElement::Shape(shape) => {
-                            draw_shape_on_canvas(ctx, shape);
-                        }
-                        DrawElement::Text(text) => {
-                            let color = Color::Rgb(text.color.0, text.color.1, text.color.2);
-                            ctx.print(
-                                text.x,
-                                text.y,
-                                ratatui::text::Line::from(text.content.clone())
-                                    .style(Style::default().fg(color)),
-                            );
-                        }
-                        DrawElement::Image(_) => {
-                            // Image elements are inert — kept for backward compat
-                            // with older .draw files, not rendered.
-                        }
-                    }
+                for item in data.elements.iter().filter(|item| {
+                    !matches!(&item.element, crate::draw::state::DrawElement::Text(_))
+                }) {
+                    crate::draw::render::draw_item(ctx, item);
+                }
+                for item in data.elements.iter().filter(|item| {
+                    matches!(&item.element, crate::draw::state::DrawElement::Text(_))
+                }) {
+                    crate::draw::render::draw_item(ctx, item);
                 }
             });
         frame.render_widget(canvas, frame.area());
@@ -548,76 +535,12 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
     let mut min_y = f64::MAX;
     let mut max_x = f64::MIN;
     let mut max_y = f64::MIN;
-    for el in &data.elements {
-        match el {
-            DrawElement::Stroke(s) => {
-                for &(px, py) in &s.points {
-                    min_x = min_x.min(px);
-                    min_y = min_y.min(py);
-                    max_x = max_x.max(px);
-                    max_y = max_y.max(py);
-                }
-            }
-            DrawElement::Shape(shape) => match shape {
-                Shape::Rect {
-                    x,
-                    y,
-                    width,
-                    height,
-                    ..
-                } => {
-                    min_x = min_x.min(*x);
-                    min_y = min_y.min(*y);
-                    max_x = max_x.max(x + width);
-                    max_y = max_y.max(y + height);
-                }
-                Shape::Ellipse {
-                    x,
-                    y,
-                    width,
-                    height,
-                    ..
-                } => {
-                    min_x = min_x.min(*x);
-                    min_y = min_y.min(*y);
-                    max_x = max_x.max(x + width);
-                    max_y = max_y.max(y + height);
-                }
-                Shape::Diamond {
-                    x,
-                    y,
-                    width,
-                    height,
-                    ..
-                } => {
-                    min_x = min_x.min(*x);
-                    min_y = min_y.min(*y);
-                    max_x = max_x.max(x + width);
-                    max_y = max_y.max(y + height);
-                }
-                Shape::Line { x1, y1, x2, y2, .. } => {
-                    min_x = min_x.min(x1.min(*x2));
-                    min_y = min_y.min(y1.min(*y2));
-                    max_x = max_x.max(x1.max(*x2));
-                    max_y = max_y.max(y1.max(*y2));
-                }
-                Shape::Arrow { x1, y1, x2, y2, .. } => {
-                    min_x = min_x.min(x1.min(*x2));
-                    min_y = min_y.min(y1.min(*y2));
-                    max_x = max_x.max(x1.max(*x2));
-                    max_y = max_y.max(y1.max(*y2));
-                }
-            },
-            DrawElement::Text(t) => {
-                min_x = min_x.min(t.x);
-                min_y = min_y.min(t.y);
-                max_x = max_x.max(t.x + t.content.len() as f64 * 8.0);
-                max_y = max_y.max(t.y + 12.0);
-            }
-            DrawElement::Image(_) => {
-                // Image elements are inert — kept for backward compat
-                // with older .draw files, not included in bounds.
-            }
+    for item in &data.elements {
+        if let Some(bounds) = crate::draw::geometry::transformed_bounds(item) {
+            min_x = min_x.min(bounds.min_x);
+            min_y = min_y.min(bounds.min_y);
+            max_x = max_x.max(bounds.max_x);
+            max_y = max_y.max(bounds.max_y);
         }
     }
     if min_x == f64::MAX {
@@ -664,139 +587,10 @@ fn is_image_ext(file: &str) -> bool {
     )
 }
 
-fn draw_stroke_lines(ctx: &mut Context, stroke: &Stroke) {
-    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
-    for window in stroke.points.windows(2) {
-        if let [p1, p2] = window {
-            ctx.draw(&CanvasLine {
-                x1: p1.0,
-                y1: p1.1,
-                x2: p2.0,
-                y2: p2.1,
-                color,
-            });
-        }
-    }
-}
-
-fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
-    match shape {
-        Shape::Rect {
-            x,
-            y,
-            width,
-            height,
-            color,
-        } => {
-            ctx.draw(&Rectangle {
-                x: *x,
-                y: *y,
-                width: *width,
-                height: *height,
-                color: Color::Rgb(color.0, color.1, color.2),
-            });
-        }
-        Shape::Ellipse {
-            x,
-            y,
-            width,
-            height,
-            color,
-        } => {
-            let color = Color::Rgb(color.0, color.1, color.2);
-            let rx = width / 2.0;
-            let ry = height / 2.0;
-            let cx_center = x + rx;
-            let cy_center = y + ry;
-            let segments = 32;
-            for i in 0..segments {
-                let angle1 = (i as f64 / segments as f64) * 2.0 * std::f64::consts::PI;
-                let angle2 = ((i + 1) as f64 / segments as f64) * 2.0 * std::f64::consts::PI;
-                ctx.draw(&CanvasLine {
-                    x1: cx_center + rx * angle1.cos(),
-                    y1: cy_center + ry * angle1.sin(),
-                    x2: cx_center + rx * angle2.cos(),
-                    y2: cy_center + ry * angle2.sin(),
-                    color,
-                });
-            }
-        }
-        Shape::Diamond {
-            x,
-            y,
-            width,
-            height,
-            color,
-        } => {
-            let color = Color::Rgb(color.0, color.1, color.2);
-            let p1 = (x + width / 2.0, *y);
-            let p2 = (x + width, y + height / 2.0);
-            let p3 = (x + width / 2.0, y + height);
-            let p4 = (*x, y + height / 2.0);
-            for (start, end) in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)] {
-                ctx.draw(&CanvasLine {
-                    x1: start.0,
-                    y1: start.1,
-                    x2: end.0,
-                    y2: end.1,
-                    color,
-                });
-            }
-        }
-        Shape::Line {
-            x1,
-            y1,
-            x2,
-            y2,
-            color,
-        } => {
-            ctx.draw(&CanvasLine {
-                x1: *x1,
-                y1: *y1,
-                x2: *x2,
-                y2: *y2,
-                color: Color::Rgb(color.0, color.1, color.2),
-            });
-        }
-        Shape::Arrow {
-            x1,
-            y1,
-            x2,
-            y2,
-            color,
-        } => {
-            let color = Color::Rgb(color.0, color.1, color.2);
-            ctx.draw(&CanvasLine {
-                x1: *x1,
-                y1: *y1,
-                x2: *x2,
-                y2: *y2,
-                color,
-            });
-            let angle = (y2 - y1).atan2(x2 - x1);
-            let head_len = 5.0;
-            let head_angle = std::f64::consts::PI / 6.0;
-            ctx.draw(&CanvasLine {
-                x1: *x2,
-                y1: *y2,
-                x2: x2 - head_len * (angle - head_angle).cos(),
-                y2: y2 - head_len * (angle - head_angle).sin(),
-                color,
-            });
-            ctx.draw(&CanvasLine {
-                x1: *x2,
-                y1: *y2,
-                x2: x2 - head_len * (angle + head_angle).cos(),
-                y2: y2 - head_len * (angle + head_angle).sin(),
-                color,
-            });
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::draw::state::{DrawElement, DrawItem, Shape};
     use crate::pinstar::data::{GroupNode, TextNode};
     use ratatui::backend::TestBackend;
 
@@ -906,17 +700,17 @@ mod tests {
     #[test]
     fn draw_snapshot_renders_content() {
         let data = DrawData {
-            version: 1,
+            version: crate::draw::state::DRAW_SCHEMA_VERSION,
             width: 500.0,
             height: 500.0,
             background: None,
-            elements: vec![DrawElement::Shape(Shape::Rect {
+            elements: vec![DrawItem::new(DrawElement::Shape(Shape::Rect {
                 x: 0.0,
                 y: 0.0,
                 width: 100.0,
                 height: 100.0,
                 color: (255, 0, 0),
-            })],
+            }))],
         };
         let theme = AppThemeColors::default();
         let grid = render_draw_snapshot_with_size(

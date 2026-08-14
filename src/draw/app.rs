@@ -1,6 +1,6 @@
 use crate::draw::input::handle_event;
 use crate::draw::render::draw_canvas;
-use crate::draw::state::{DrawData, Viewport};
+use crate::draw::state::{DrawData, DrawItemId, Viewport};
 use crate::keybinds::Keybinds;
 
 pub enum DrawEventAction {
@@ -23,7 +23,7 @@ pub struct DrawAppState {
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub mouse_pos: Option<(u16, u16)>,
-    pub text_editor: Option<(usize, TextArea<'static>)>,
+    pub text_editor: Option<(DrawItemId, TextArea<'static>)>,
     pub text_editor_rect: Option<Rect>,
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
     pub theme: crate::app_theme::AppThemeColors,
@@ -62,7 +62,7 @@ impl DrawAppState {
             storage,
             current_file: file_id,
             running: true,
-            active_tool: crate::draw::state::DrawTool::Draw,
+            active_tool: crate::draw::state::DrawTool::Cursor,
             current_stroke: None,
             last_area: Rect::default(),
             mouse_pos: None,

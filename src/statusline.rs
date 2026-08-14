@@ -1031,6 +1031,7 @@ impl StatuslineContext<'_> {
                 let val = match name {
                     "tool" => {
                         let t = match draw.active_tool {
+                            crate::draw::state::DrawTool::Cursor => "cursor",
                             crate::draw::state::DrawTool::Draw => "draw",
                             crate::draw::state::DrawTool::Erase => "erase",
                             crate::draw::state::DrawTool::Text => "text",

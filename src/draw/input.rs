@@ -1,5 +1,7 @@
 use crate::draw::app::{DrawAppState, DrawEventAction};
-use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke, Text};
+use crate::draw::state::{
+    DrawElement, DrawItem, DrawItemId, DrawShapeType, DrawTool, Shape, Stroke, Text,
+};
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
@@ -18,7 +20,7 @@ pub fn handle_event(
         return handle_text_editor_mouse(mouse, app);
     }
 
-    if let Some((idx, textarea)) = &mut app.text_editor {
+    if let Some((id, textarea)) = &mut app.text_editor {
         app.seq_matcher.clear();
         match ev {
             Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorCancel, &k) => {
@@ -27,8 +29,11 @@ pub fn handle_event(
             }
             Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorConfirm, &k) => {
                 let new_content = textarea.lines()[0].clone();
-                if let Some(DrawElement::Text(t)) = app.data.elements.get_mut(*idx) {
-                    t.content = new_content;
+                let target = id.clone();
+                if let Some(item) = app.data.elements.iter_mut().find(|item| item.id == target)
+                    && let DrawElement::Text(text) = &mut item.element
+                {
+                    text.content = new_content;
                 }
                 app.text_editor = None;
                 return Ok(Some(DrawEventAction::Save));
@@ -237,8 +242,7 @@ fn handle_mouse(
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,
                 ) {
-                    if i == 1 {
-                        // Shape tab opens the shape selector, matching old bottom-button behavior.
+                    if crate::draw::render::DRAW_TAB_TOOLS[i] == DrawTool::Shape {
                         app.show_shape_selector = true;
                     } else {
                         app.active_tool = crate::draw::render::DRAW_TAB_TOOLS[i];
@@ -250,6 +254,7 @@ fn handle_mouse(
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
 
             match app.active_tool {
+                DrawTool::Cursor => {}
                 DrawTool::Draw => {
                     app.current_stroke = Some(Stroke {
                         points: vec![(cx, cy)],
@@ -260,12 +265,14 @@ fn handle_mouse(
                     app.creation_origin = Some((cx, cy));
                 }
                 DrawTool::Text => {
-                    app.data.elements.push(DrawElement::Text(Text {
-                        content: "New Text".to_string(),
-                        x: cx,
-                        y: cy,
-                        color: (255, 255, 255),
-                    }));
+                    app.data
+                        .elements
+                        .push(DrawItem::new(DrawElement::Text(Text {
+                            content: "New Text".to_string(),
+                            x: cx,
+                            y: cy,
+                            color: (255, 255, 255),
+                        })));
                     return Ok(Some(DrawEventAction::Save));
                 }
                 DrawTool::Erase => {
@@ -276,11 +283,12 @@ fn handle_mouse(
         MouseEventKind::Down(MouseButton::Right) => {
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
 
-            if let Some(idx) = find_text_at(cx, cy, app)
-                && let Some(DrawElement::Text(t)) = app.data.elements.get(idx)
+            if let Some(id) = find_text_at(cx, cy, app)
+                && let Some(item) = app.data.elements.iter().find(|item| item.id == id)
+                && let DrawElement::Text(text) = &item.element
             {
-                let textarea = TextArea::new(vec![t.content.clone()]);
-                app.text_editor = Some((idx, textarea));
+                let textarea = TextArea::new(vec![text.content.clone()]);
+                app.text_editor = Some((id, textarea));
                 return Ok(None);
             }
 
@@ -292,6 +300,7 @@ fn handle_mouse(
         MouseEventKind::Drag(MouseButton::Left) => {
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
             match app.active_tool {
+                DrawTool::Cursor | DrawTool::Text => {}
                 DrawTool::Draw => {
                     if let Some(stroke) = &mut app.current_stroke {
                         stroke.points.push((cx, cy));
@@ -306,7 +315,6 @@ fn handle_mouse(
                             Some(create_shape(ox, oy, cx, cy, app.active_shape_type));
                     }
                 }
-                DrawTool::Text => {}
             }
         }
         MouseEventKind::Drag(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Middle) => {
@@ -316,11 +324,13 @@ fn handle_mouse(
             let mut changed = false;
             if let Some(mut stroke) = app.current_stroke.take() {
                 stroke.points = crate::draw::render::smooth_points(&stroke.points);
-                app.data.elements.push(DrawElement::Stroke(stroke));
+                app.data
+                    .elements
+                    .push(DrawItem::new(DrawElement::Stroke(stroke)));
                 changed = true;
             }
             if let Some(element) = app.preview_element.take() {
-                app.data.elements.push(element);
+                app.data.elements.push(DrawItem::new(element));
                 changed = true;
             }
             if app.active_tool == DrawTool::Erase {
@@ -388,22 +398,17 @@ fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawEl
     }
 }
 
-fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<usize> {
+fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<DrawItemId> {
     let threshold = 5.0 / app.viewport.zoom;
-    for (i, el) in app.data.elements.iter().enumerate() {
-        if let DrawElement::Text(t) = el
-            && (t.x - cx).abs() < threshold
-            && (t.y - cy).abs() < threshold
-        {
-            return Some(i);
-        }
-    }
-    None
+    app.data.elements.iter().find_map(|item| {
+        let (x, y) = crate::draw::geometry::translated_text_position(item)?;
+        ((x - cx).abs() < threshold && (y - cy).abs() < threshold).then(|| item.id.clone())
+    })
 }
 
 fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     let threshold = 5.0 / app.viewport.zoom;
-    app.data.elements.retain(|el| match el {
+    app.data.elements.retain(|item| match &item.element {
         DrawElement::Stroke(s) => !s
             .points
             .iter()
@@ -436,7 +441,6 @@ fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
             }
         },
         DrawElement::Text(t) => (t.x - cx).abs() > threshold || (t.y - cy).abs() > threshold,
-        DrawElement::Image(_) => true,
     });
 }
 

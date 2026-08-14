@@ -1,6 +1,6 @@
 use crate::app::ViewMode;
 use crate::draw::app::DrawAppState;
-use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
+use crate::draw::state::{DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke};
 use crate::keybinds::DrawAction;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -13,8 +13,12 @@ use ratatui::widgets::{Block, List, ListItem};
 /// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
 /// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
 /// so they never drift — same pattern as `backup::render::backup_tabs`.
-pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 4] {
+pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 5] {
     [
+        (
+            "Cursor",
+            crate::ui::get_icon("\u{f245}", "\u{25b6}", icon_mode),
+        ),
         (
             "Draw",
             crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode),
@@ -33,10 +37,10 @@ pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'s
         ),
     ]
 }
-/// Tab order is fixed (Draw, Shape, Text, Erase) and intentionally NOT the
-/// `DrawTool` enum ordinal (enum is Draw, Erase, Text, Shape). Keep this array
-/// the single source of truth for index<->tool.
-pub const DRAW_TAB_TOOLS: [DrawTool; 4] = [
+/// Tab order is fixed and intentionally not tied to `DrawTool` declaration
+/// order. Keep this array as the single index-to-tool source of truth.
+pub const DRAW_TAB_TOOLS: [DrawTool; 5] = [
+    DrawTool::Cursor,
     DrawTool::Draw,
     DrawTool::Shape,
     DrawTool::Text,
@@ -101,27 +105,13 @@ pub fn draw_canvas(
                     cur_x += grid_step_x;
                 }
             }
-            for element in &app.data.elements {
-                match element {
-                    DrawElement::Stroke(stroke) => {
-                        draw_stroke(ctx, stroke);
-                    }
-                    DrawElement::Shape(shape) => {
-                        draw_shape(ctx, shape);
-                    }
-                    DrawElement::Text(text) => {
-                        let content = text.content.clone();
-                        let color = Color::Rgb(text.color.0, text.color.1, text.color.2);
-                        ctx.print(
-                            text.x,
-                            text.y,
-                            ratatui::text::Line::from(content).style(Style::default().fg(color)),
-                        );
-                    }
-                    DrawElement::Image(_) => {
-                        // Rendered as StatefulImage pass after the canvas widget
-                    }
-                }
+            for item in app
+                .data
+                .elements
+                .iter()
+                .filter(|item| !matches!(&item.element, DrawElement::Text(_)))
+            {
+                draw_item(ctx, item);
             }
 
             if let Some(stroke) = &app.current_stroke {
@@ -129,7 +119,16 @@ pub fn draw_canvas(
             }
 
             if let Some(DrawElement::Shape(shape)) = &app.preview_element {
-                draw_shape(ctx, shape);
+                draw_shape(ctx, shape, crate::draw::geometry::DrawAffine::identity());
+            }
+
+            for item in app
+                .data
+                .elements
+                .iter()
+                .filter(|item| matches!(&item.element, DrawElement::Text(_)))
+            {
+                draw_item(ctx, item);
             }
         });
 
@@ -287,20 +286,88 @@ pub fn draw_canvas(
     }
 }
 
-fn draw_stroke(ctx: &mut Context, stroke: &Stroke) {
-    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
-    for window in stroke.points.windows(2) {
-        if let [p1, p2] = window {
-            ctx.draw(&Line {
-                x1: p1.0,
-                y1: p1.1,
-                x2: p2.0,
-                y2: p2.1,
-                color,
-            });
+pub(crate) fn draw_item(ctx: &mut Context, item: &DrawItem) {
+    match &item.element {
+        DrawElement::Stroke(stroke) => {
+            draw_stroke(
+                ctx,
+                stroke,
+                crate::draw::geometry::DrawAffine::new(&item.transform),
+            );
+        }
+        DrawElement::Shape(shape) => {
+            draw_shape(
+                ctx,
+                shape,
+                crate::draw::geometry::DrawAffine::new(&item.transform),
+            );
+        }
+        DrawElement::Text(text) => {
+            if let Some((x, y)) = crate::draw::geometry::translated_text_position(item) {
+                let color = Color::Rgb(text.color.0, text.color.1, text.color.2);
+                ctx.print(
+                    x,
+                    y,
+                    ratatui::text::Line::from(text.content.clone())
+                        .style(Style::default().fg(color)),
+                );
+            }
         }
     }
 }
+
+fn draw_stroke(ctx: &mut Context, stroke: &Stroke, transform: crate::draw::geometry::DrawAffine) {
+    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
+    for window in stroke.points.windows(2) {
+        if let [start, end] = window {
+            draw_transformed_line(ctx, *start, *end, color, transform);
+        }
+    }
+}
+
+fn draw_canvas_line(ctx: &mut Context, start: (f64, f64), end: (f64, f64), color: Color) {
+    ctx.draw(&Line {
+        x1: start.0,
+        y1: start.1,
+        x2: end.0,
+        y2: end.1,
+        color,
+    });
+}
+
+fn draw_transformed_line(
+    ctx: &mut Context,
+    start: (f64, f64),
+    end: (f64, f64),
+    color: Color,
+    transform: crate::draw::geometry::DrawAffine,
+) {
+    draw_canvas_line(
+        ctx,
+        transform.transform_point(start),
+        transform.transform_point(end),
+        color,
+    );
+}
+
+fn draw_closed_polygon(
+    ctx: &mut Context,
+    points: &[(f64, f64)],
+    color: Color,
+    transform: crate::draw::geometry::DrawAffine,
+) {
+    let Some((&first, rest)) = points.split_first() else {
+        return;
+    };
+    let mut previous = transform.transform_point(first);
+    for &point in rest {
+        let current = transform.transform_point(point);
+        draw_canvas_line(ctx, previous, current, color);
+        previous = current;
+    }
+    draw_canvas_line(ctx, previous, transform.transform_point(first), color);
+}
+
 /// Binomial filter smoothing (discrete Gaussian blur).
 /// Applies a 3-point moving average with weights [0.25, 0.5, 0.25]
 /// for 10 iterations. Acts as a powerful low-pass filter that
@@ -310,41 +377,40 @@ pub fn smooth_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
         return points.to_vec();
     }
     let n = points.len();
-    let mut xs: Vec<f64> = points.iter().map(|p| p.0).collect();
-    let mut ys: Vec<f64> = points.iter().map(|p| p.1).collect();
+    let mut xs: Vec<f64> = points.iter().map(|point| point.0).collect();
+    let mut ys: Vec<f64> = points.iter().map(|point| point.1).collect();
     for _ in 0..10 {
-        let prev_xs = xs.clone();
-        let prev_ys = ys.clone();
-        xs[0] = prev_xs[0];
-        ys[0] = prev_ys[0];
-        for i in 1..n - 1 {
-            xs[i] = 0.25 * prev_xs[i - 1] + 0.5 * prev_xs[i] + 0.25 * prev_xs[i + 1];
-            ys[i] = 0.25 * prev_ys[i - 1] + 0.5 * prev_ys[i] + 0.25 * prev_ys[i + 1];
+        let previous_xs = xs.clone();
+        let previous_ys = ys.clone();
+        xs[0] = previous_xs[0];
+        ys[0] = previous_ys[0];
+        for index in 1..n - 1 {
+            xs[index] = 0.25 * previous_xs[index - 1]
+                + 0.5 * previous_xs[index]
+                + 0.25 * previous_xs[index + 1];
+            ys[index] = 0.25 * previous_ys[index - 1]
+                + 0.5 * previous_ys[index]
+                + 0.25 * previous_ys[index + 1];
         }
-        xs[n - 1] = prev_xs[n - 1];
-        ys[n - 1] = prev_ys[n - 1];
+        xs[n - 1] = previous_xs[n - 1];
+        ys[n - 1] = previous_ys[n - 1];
     }
     xs.into_iter().zip(ys).collect()
 }
 
-/// Draw a stroke after applying binomial smoothing.
 fn draw_smoothed_stroke(ctx: &mut Context, stroke: &Stroke) {
     let smoothed = smooth_points(&stroke.points);
-    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
-    for window in smoothed.windows(2) {
-        if let [p1, p2] = window {
-            ctx.draw(&Line {
-                x1: p1.0,
-                y1: p1.1,
-                x2: p2.0,
-                y2: p2.1,
-                color,
-            });
-        }
-    }
+    draw_stroke(
+        ctx,
+        &Stroke {
+            points: smoothed,
+            color: stroke.color,
+        },
+        crate::draw::geometry::DrawAffine::identity(),
+    );
 }
 
-fn draw_shape(ctx: &mut Context, shape: &Shape) {
+fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry::DrawAffine) {
     match shape {
         Shape::Rect {
             x,
@@ -352,7 +418,7 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
             width,
             height,
             color,
-        } => {
+        } if transform.is_identity() => {
             ctx.draw(&Rectangle {
                 x: *x,
                 y: *y,
@@ -360,6 +426,26 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
                 height: *height,
                 color: Color::Rgb(color.0, color.1, color.2),
             });
+        }
+        Shape::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+        } => {
+            let points = [
+                (*x, *y),
+                (*x + *width, *y),
+                (*x + *width, *y + *height),
+                (*x, *y + *height),
+            ];
+            draw_closed_polygon(
+                ctx,
+                &points,
+                Color::Rgb(color.0, color.1, color.2),
+                transform,
+            );
         }
         Shape::Ellipse {
             x,
@@ -369,21 +455,27 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
             color,
         } => {
             let color = Color::Rgb(color.0, color.1, color.2);
-            let rx = width / 2.0;
-            let ry = height / 2.0;
-            let cx_center = x + rx;
-            let cy_center = y + ry;
-            let segments = 32;
-            for i in 0..segments {
-                let angle1 = (i as f64 / segments as f64) * 2.0 * std::f64::consts::PI;
-                let angle2 = ((i + 1) as f64 / segments as f64) * 2.0 * std::f64::consts::PI;
-                ctx.draw(&Line {
-                    x1: cx_center + rx * angle1.cos(),
-                    y1: cy_center + ry * angle1.sin(),
-                    x2: cx_center + rx * angle2.cos(),
-                    y2: cy_center + ry * angle2.sin(),
+            let radius_x = width / 2.0;
+            let radius_y = height / 2.0;
+            let center_x = x + radius_x;
+            let center_y = y + radius_y;
+            const SEGMENTS: usize = 32;
+            for index in 0..SEGMENTS {
+                let start_angle = (index as f64 / SEGMENTS as f64) * std::f64::consts::TAU;
+                let end_angle = ((index + 1) as f64 / SEGMENTS as f64) * std::f64::consts::TAU;
+                draw_transformed_line(
+                    ctx,
+                    (
+                        center_x + radius_x * start_angle.cos(),
+                        center_y + radius_y * start_angle.sin(),
+                    ),
+                    (
+                        center_x + radius_x * end_angle.cos(),
+                        center_y + radius_y * end_angle.sin(),
+                    ),
                     color,
-                });
+                    transform,
+                );
             }
         }
         Shape::Diamond {
@@ -393,21 +485,18 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
             height,
             color,
         } => {
-            let color = Color::Rgb(color.0, color.1, color.2);
-            let p1 = (x + width / 2.0, *y);
-            let p2 = (x + width, y + height / 2.0);
-            let p3 = (x + width / 2.0, y + height);
-            let p4 = (*x, y + height / 2.0);
-
-            for (start, end) in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)] {
-                ctx.draw(&Line {
-                    x1: start.0,
-                    y1: start.1,
-                    x2: end.0,
-                    y2: end.1,
-                    color,
-                });
-            }
+            let points = [
+                (*x + *width / 2.0, *y),
+                (*x + *width, *y + *height / 2.0),
+                (*x + *width / 2.0, *y + *height),
+                (*x, *y + *height / 2.0),
+            ];
+            draw_closed_polygon(
+                ctx,
+                &points,
+                Color::Rgb(color.0, color.1, color.2),
+                transform,
+            );
         }
         Shape::Line {
             x1,
@@ -416,13 +505,13 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
             y2,
             color,
         } => {
-            ctx.draw(&Line {
-                x1: *x1,
-                y1: *y1,
-                x2: *x2,
-                y2: *y2,
-                color: Color::Rgb(color.0, color.1, color.2),
-            });
+            draw_transformed_line(
+                ctx,
+                (*x1, *y1),
+                (*x2, *y2),
+                Color::Rgb(color.0, color.1, color.2),
+                transform,
+            );
         }
         Shape::Arrow {
             x1,
@@ -432,32 +521,23 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
             color,
         } => {
             let color = Color::Rgb(color.0, color.1, color.2);
-            ctx.draw(&Line {
-                x1: *x1,
-                y1: *y1,
-                x2: *x2,
-                y2: *y2,
-                color,
-            });
+            let start = (*x1, *y1);
+            let end = (*x2, *y2);
+            draw_transformed_line(ctx, start, end, color, transform);
 
             let angle = (y2 - y1).atan2(x2 - x1);
-            let head_len = 5.0;
+            let head_length = 5.0;
             let head_angle = std::f64::consts::PI / 6.0;
-
-            ctx.draw(&Line {
-                x1: *x2,
-                y1: *y2,
-                x2: x2 - head_len * (angle - head_angle).cos(),
-                y2: y2 - head_len * (angle - head_angle).sin(),
-                color,
-            });
-            ctx.draw(&Line {
-                x1: *x2,
-                y1: *y2,
-                x2: x2 - head_len * (angle + head_angle).cos(),
-                y2: y2 - head_len * (angle + head_angle).sin(),
-                color,
-            });
+            let left = (
+                x2 - head_length * (angle - head_angle).cos(),
+                y2 - head_length * (angle - head_angle).sin(),
+            );
+            let right = (
+                x2 - head_length * (angle + head_angle).cos(),
+                y2 - head_length * (angle + head_angle).sin(),
+            );
+            draw_transformed_line(ctx, end, left, color, transform);
+            draw_transformed_line(ctx, end, right, color, transform);
         }
     }
 }
