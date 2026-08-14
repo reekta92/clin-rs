@@ -206,6 +206,7 @@ pub struct DrawAppState {
     pub grid: crate::ui::CanvasGridState,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub is_panning: bool,
+    status_notice: Option<&'static str>,
     pub undo_stack: Vec<DrawData>,
     pub redo_stack: Vec<DrawData>,
 }
@@ -265,12 +266,46 @@ impl DrawAppState {
             is_panning: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            status_notice: None,
         }
     }
 
     pub fn set_active_tool(&mut self, tool: crate::draw::state::DrawTool) {
         self.clear_transient_interaction();
         self.active_tool = tool;
+    }
+    #[must_use]
+    pub fn active_mode_message(&self) -> &'static str {
+        match self.interaction.as_ref() {
+            Some(DrawInteraction::Rotate { .. }) => {
+                "ROTATE MODE: Drag pointer to rotate, Left-click to begin"
+            }
+            Some(DrawInteraction::Scale { .. }) => {
+                "SCALE MODE: Drag pointer to scale, Left-click to begin"
+            }
+            Some(DrawInteraction::Paste { .. }) => "PASTE MODE: Move pointer, Left-click to place",
+            Some(DrawInteraction::Move { .. }) | None => match self.active_tool {
+                crate::draw::state::DrawTool::Cursor => {
+                    "CURSOR MODE: Select, move, and open element actions"
+                }
+                crate::draw::state::DrawTool::Draw => "DRAW MODE: Left-drag to draw",
+                crate::draw::state::DrawTool::Shape => "SHAPE MODE: Left-drag to create",
+                crate::draw::state::DrawTool::Text => "TEXT MODE: Left-click to add text",
+                crate::draw::state::DrawTool::Erase => "ERASE MODE: Click or drag to erase",
+            },
+        }
+    }
+
+    pub fn notify(&mut self, message: &'static str) {
+        self.status_notice = Some(message);
+    }
+
+    pub fn sync_header_status(&mut self, app: &mut crate::app::App) {
+        if let Some(message) = self.status_notice.take() {
+            app.set_temporary_status_static(message);
+        } else if app.status_until.is_none() {
+            app.status = std::borrow::Cow::Borrowed(self.active_mode_message());
+        }
     }
 
     #[must_use]
@@ -425,7 +460,9 @@ impl crate::overlay::OverlayView for DrawAppState {
         let keybinds = self.keybinds.clone();
         let config = &app.config;
         let clipboard = &mut app.draw_clipboard;
-        if let Some(action) = handle_event(event, self, &keybinds, config, clipboard)? {
+        let action = handle_event(event, self, &keybinds, config, clipboard)?;
+        self.sync_header_status(app);
+        if let Some(action) = action {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;
@@ -550,6 +587,34 @@ mod tests {
         let vector_id = vector.id.clone();
         state.data.elements.push(vector);
         assert_eq!(state.topmost_hit((1.0, 1.0)), Some(vector_id));
+    }
+
+    #[test]
+    fn active_mode_message_tracks_tool_and_interaction() {
+        let (_temp, mut state) = test_state();
+        assert_eq!(
+            state.active_mode_message(),
+            "CURSOR MODE: Select, move, and open element actions"
+        );
+
+        state.set_active_tool(crate::draw::state::DrawTool::Text);
+        assert_eq!(
+            state.active_mode_message(),
+            "TEXT MODE: Left-click to add text"
+        );
+
+        state.interaction = Some(DrawInteraction::Paste {
+            item: crate::draw::state::DrawItem::new(crate::draw::state::DrawElement::Stroke(
+                crate::draw::state::Stroke {
+                    points: vec![(0.0, 0.0)],
+                    color: (255, 255, 255),
+                },
+            )),
+        });
+        assert_eq!(
+            state.active_mode_message(),
+            "PASTE MODE: Move pointer, Left-click to place"
+        );
     }
 
     #[test]

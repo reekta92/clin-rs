@@ -410,19 +410,22 @@ fn draw_selection_bounds(
         bounds.min_y,
         ratatui::text::Line::from("┘").style(style),
     );
-    if !matches!(&item.element, DrawElement::Text(_))
-        && let Some((rotation, scale)) =
+    let active_handle = match app.interaction.as_ref() {
+        Some(DrawInteraction::Rotate { id, .. }) if id == &item.id => {
             crate::draw::geometry::selection_handle_points(item, &transform, &app.viewport)
-    {
+                .map(|(rotation, _)| (rotation, "○"))
+        }
+        Some(DrawInteraction::Scale { id, .. }) if id == &item.id => {
+            crate::draw::geometry::selection_handle_points(item, &transform, &app.viewport)
+                .map(|(_, scale)| (scale, "◢"))
+        }
+        _ => None,
+    };
+    if let Some((point, glyph)) = active_handle {
         ctx.print(
-            rotation.0,
-            rotation.1,
-            ratatui::text::Line::from("○").style(style),
-        );
-        ctx.print(
-            scale.0,
-            scale.1,
-            ratatui::text::Line::from("◢").style(style),
+            point.0,
+            point.1,
+            ratatui::text::Line::from(glyph).style(style),
         );
     }
 }

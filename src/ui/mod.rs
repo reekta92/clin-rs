@@ -201,6 +201,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
                 let tabs = tab_vec_from_array(&tabs_arr);
                 let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
+                draw.sync_header_status(app);
                 let hovered = app.mouse_pos.and_then(|(col, row)| {
                     if row == outer[0].y {
                         let region = crate::ui::title_bar_tabs_region(outer[0], "Draw");

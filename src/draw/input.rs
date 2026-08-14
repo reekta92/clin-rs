@@ -683,19 +683,20 @@ fn execute_menu_item(
     Ok(())
 }
 
-fn copy_selected(app: &DrawAppState, clipboard: &mut Option<DrawClipboard>) {
-    if let Some(id) = &app.selection.primary {
-        copy_item(app, clipboard, id);
+fn copy_selected(app: &mut DrawAppState, clipboard: &mut Option<DrawClipboard>) {
+    if let Some(id) = app.selection.primary.clone() {
+        copy_item(app, clipboard, &id);
     }
 }
 
 fn copy_item(
-    app: &DrawAppState,
+    app: &mut DrawAppState,
     clipboard: &mut Option<DrawClipboard>,
     id: &crate::draw::state::DrawItemId,
 ) {
     if let Some(item) = app.data.item(id) {
         *clipboard = Some(DrawClipboard::from_item(item));
+        app.notify("Element copied");
     }
 }
 
@@ -870,6 +871,7 @@ fn commit_paste(app: &mut DrawAppState) -> anyhow::Result<()> {
     app.data.elements.push(item);
     app.selection.select_only(id);
     app.commit_data_change(previous)?;
+    app.notify("Element pasted");
     Ok(())
 }
 
@@ -968,29 +970,6 @@ fn finish_transform(app: &mut DrawAppState) -> anyhow::Result<()> {
 }
 
 fn cursor_left_down(mouse: MouseEvent, point: (f64, f64), app: &mut DrawAppState) {
-    let selected_handles = app.selection.primary.as_ref().and_then(|id| {
-        app.data
-            .item(id)
-            .filter(|item| !matches!(&item.element, DrawElement::Text(_)))
-            .and_then(|item| {
-                crate::draw::geometry::selection_handle_points(item, &item.transform, &app.viewport)
-                    .map(|handles| (id.clone(), handles))
-            })
-    });
-    if let Some((id, (rotation, scale))) = selected_handles {
-        let tolerance = 5.0 / app.viewport.zoom.abs();
-        if (point.0 - rotation.0).hypot(point.1 - rotation.1) <= tolerance {
-            begin_rotate(app, id);
-            begin_transform_drag(app, point);
-            return;
-        }
-        if (point.0 - scale.0).hypot(point.1 - scale.1) <= tolerance {
-            begin_scale(app, id);
-            begin_transform_drag(app, point);
-            return;
-        }
-    }
-
     let hit = app.topmost_hit(point);
     let double_click = app.last_click.is_some_and(|(column, row, at)| {
         column == mouse.column && row == mouse.row && at.elapsed().as_millis() < 500
@@ -1486,6 +1465,51 @@ mod tests {
     }
 
     #[test]
+    fn selected_context_transform_shortcuts_enter_matching_modes() {
+        let (_temp, mut state) = test_state();
+        let item = DrawItem::new(DrawElement::Shape(Shape::Rect {
+            x: -1.0,
+            y: -1.0,
+            width: 2.0,
+            height: 2.0,
+            color: (255, 255, 255),
+        }));
+        let id = item.id.clone();
+        state.data.elements.push(item);
+        state.selection.select_only(id.clone());
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+        let mut clipboard = None;
+
+        handle_event(
+            key(KeyCode::Char('r')),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+        assert!(matches!(
+            &state.interaction,
+            Some(DrawInteraction::Rotate { id: target, .. }) if target == &id
+        ));
+
+        state.interaction = None;
+        handle_event(
+            key(KeyCode::Char('s')),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+        assert!(matches!(
+            &state.interaction,
+            Some(DrawInteraction::Scale { id: target, .. }) if target == &id
+        ));
+    }
+
+    #[test]
     fn rotate_and_scale_preview_then_commit_once_each() {
         let (_temp, mut state) = test_state();
         let item = DrawItem::new(DrawElement::Shape(Shape::Rect {
@@ -1498,6 +1522,13 @@ mod tests {
         let id = item.id.clone();
         state.data.elements.push(item);
         state.selection.select_only(id.clone());
+        let rotation = crate::draw::geometry::selection_handle_points(
+            state.data.item(&id).unwrap(),
+            &state.data.item(&id).unwrap().transform,
+            &state.viewport,
+        )
+        .unwrap()
+        .0;
         cursor_left_down(
             MouseEvent {
                 kind: MouseEventKind::Down(MouseButton::Left),
@@ -1505,18 +1536,13 @@ mod tests {
                 row: 0,
                 modifiers: KeyModifiers::NONE,
             },
-            (0.0, 9.0),
+            rotation,
             &mut state,
         );
-        assert!(matches!(
-            &state.interaction,
-            Some(DrawInteraction::Rotate {
-                id: selected_id,
-                start_angle: Some(_),
-                ..
-            }) if selected_id == &id
+        assert!(!matches!(
+            state.interaction,
+            Some(DrawInteraction::Rotate { .. } | DrawInteraction::Scale { .. })
         ));
-        state.interaction = None;
 
         begin_rotate(&mut state, id.clone());
         begin_transform_drag(&mut state, (1.0, 0.0));
