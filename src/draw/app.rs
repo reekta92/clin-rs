@@ -274,25 +274,19 @@ impl DrawAppState {
         self.clear_transient_interaction();
         self.active_tool = tool;
     }
+    const TRANSIENT_MODE_MESSAGES: [&str; 3] = [
+        "ROTATE MODE: Drag pointer to rotate, Left-click to begin",
+        "SCALE MODE: Drag pointer to scale, Left-click to begin",
+        "PASTE MODE: Move pointer, Left-click to place",
+    ];
+
     #[must_use]
-    pub fn active_mode_message(&self) -> &'static str {
+    pub fn active_mode_message(&self) -> Option<&'static str> {
         match self.interaction.as_ref() {
-            Some(DrawInteraction::Rotate { .. }) => {
-                "ROTATE MODE: Drag pointer to rotate, Left-click to begin"
-            }
-            Some(DrawInteraction::Scale { .. }) => {
-                "SCALE MODE: Drag pointer to scale, Left-click to begin"
-            }
-            Some(DrawInteraction::Paste { .. }) => "PASTE MODE: Move pointer, Left-click to place",
-            Some(DrawInteraction::Move { .. }) | None => match self.active_tool {
-                crate::draw::state::DrawTool::Cursor => {
-                    "CURSOR MODE: Select, move, and open element actions"
-                }
-                crate::draw::state::DrawTool::Draw => "DRAW MODE: Left-drag to draw",
-                crate::draw::state::DrawTool::Shape => "SHAPE MODE: Left-drag to create",
-                crate::draw::state::DrawTool::Text => "TEXT MODE: Left-click to add text",
-                crate::draw::state::DrawTool::Erase => "ERASE MODE: Click or drag to erase",
-            },
+            Some(DrawInteraction::Rotate { .. }) => Some(Self::TRANSIENT_MODE_MESSAGES[0]),
+            Some(DrawInteraction::Scale { .. }) => Some(Self::TRANSIENT_MODE_MESSAGES[1]),
+            Some(DrawInteraction::Paste { .. }) => Some(Self::TRANSIENT_MODE_MESSAGES[2]),
+            Some(DrawInteraction::Move { .. }) | None => None,
         }
     }
 
@@ -304,7 +298,11 @@ impl DrawAppState {
         if let Some(message) = self.status_notice.take() {
             app.set_temporary_status_static(message);
         } else if app.status_until.is_none() {
-            app.status = std::borrow::Cow::Borrowed(self.active_mode_message());
+            if let Some(message) = self.active_mode_message() {
+                app.status = std::borrow::Cow::Borrowed(message);
+            } else if Self::TRANSIENT_MODE_MESSAGES.contains(&app.status.as_ref()) {
+                app.set_default_status();
+            }
         }
     }
 
@@ -590,18 +588,12 @@ mod tests {
     }
 
     #[test]
-    fn active_mode_message_tracks_tool_and_interaction() {
+    fn active_mode_message_only_tracks_transient_interactions() {
         let (_temp, mut state) = test_state();
-        assert_eq!(
-            state.active_mode_message(),
-            "CURSOR MODE: Select, move, and open element actions"
-        );
+        assert_eq!(state.active_mode_message(), None);
 
         state.set_active_tool(crate::draw::state::DrawTool::Text);
-        assert_eq!(
-            state.active_mode_message(),
-            "TEXT MODE: Left-click to add text"
-        );
+        assert_eq!(state.active_mode_message(), None);
 
         state.interaction = Some(DrawInteraction::Paste {
             item: crate::draw::state::DrawItem::new(crate::draw::state::DrawElement::Stroke(
@@ -613,7 +605,7 @@ mod tests {
         });
         assert_eq!(
             state.active_mode_message(),
-            "PASTE MODE: Move pointer, Left-click to place"
+            Some("PASTE MODE: Move pointer, Left-click to place")
         );
     }
 
