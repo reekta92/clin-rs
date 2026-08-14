@@ -75,7 +75,7 @@ pub enum DrawTool {
 
 | Tool | Behavior |
 |---|---|
-| **Cursor** | Selects one precise topmost item. Drag moves; visible handles rotate or scale; double-click text opens editor. |
+| **Cursor** | Selects one precise topmost item. Drag moves; Rotate or Scale mode shows matching handle; double-click text opens editor. |
 | **Draw** | Left-click-drag draws a freehand stroke. Points are recorded at mouse movement intervals and stored as `Stroke`. |
 | **Erase** | Click or drag across an element to remove it. |
 | **Text** | Click a location to place text and open inline editor. |
@@ -99,11 +99,11 @@ pub enum DrawTool {
 
 | Key | Action |
 |---|---|
-| `v` | Select Cursor tool |
+| `a` | Select Cursor tool |
 | `d`, `e`, `t`, `s` | Select Draw, Erase, Text, or Shape tool |
 | Selected Cursor item shortcut | Runs matching context-menu action before tool shortcut |
+| `c` / `v` | Copy selected item / enter paste placement |
 | `Shift+G` | Toggle visual grid |
-| `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy selected item / enter paste placement |
 | `Ctrl+Z` | Undo latest committed draw change |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo latest draw change |
 | `Esc` | Cancel highest-priority transient state, then exit Draw |

@@ -90,7 +90,7 @@ impl DrawMenuItem {
             Self::Copy => 'c',
             Self::Erase => 'e',
             Self::EditText => 't',
-            Self::Paste => 'p',
+            Self::Paste => 'v',
         }
     }
 }
@@ -649,7 +649,7 @@ mod tests {
         assert!(draw_menu_specs(&DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, false).is_empty());
         assert_eq!(
             labels(DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, true),
-            vec![("Paste", Some('p'))]
+            vec![("Paste", Some('v'))]
         );
 
         let id = DrawItemId::new();

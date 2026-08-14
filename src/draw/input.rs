@@ -83,6 +83,22 @@ pub fn handle_event(
         }
     }
 
+    if let Event::Key(key) = ev
+        && keybinds.matches_draw(DrawAction::Paste, &key)
+        && clipboard.is_some()
+    {
+        let anchor = app.menu_target.as_ref().and_then(|target| match target {
+            DrawMenuTarget::Empty { x, y } => Some((*x, *y)),
+            DrawMenuTarget::NonText(_) | DrawMenuTarget::Text(_) => None,
+        });
+        app.context_menu = None;
+        app.menu_target = None;
+        app.menu_kind = None;
+        app.seq_matcher.clear();
+        begin_paste(app, clipboard.as_ref(), anchor);
+        return Ok(None);
+    }
+
     if app.context_menu.is_some()
         && let Event::Key(key) = ev
     {
@@ -1404,7 +1420,7 @@ mod tests {
         );
 
         handle_event(
-            key(KeyCode::Char('p')),
+            key(KeyCode::Char('v')),
             &mut state,
             &keybinds,
             &config,
@@ -1430,6 +1446,36 @@ mod tests {
         assert!((center.1 + 1.0).abs() < 1e-9);
         assert_eq!(state.selection.primary, Some(pasted.id.clone()));
         assert_eq!(state.undo_stack.len(), 2);
+    }
+
+    #[test]
+    fn paste_key_starts_placement_without_context_menu() {
+        let (_temp, mut state) = test_state();
+        let source = DrawItem::new(DrawElement::Shape(Shape::Rect {
+            x: -2.0,
+            y: -2.0,
+            width: 4.0,
+            height: 4.0,
+            color: (255, 255, 255),
+        }));
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+        let mut clipboard = Some(DrawClipboard::from_item(&source));
+
+        handle_event(
+            key(KeyCode::Char('v')),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+
+        assert!(state.context_menu.is_none());
+        assert!(matches!(
+            state.interaction,
+            Some(DrawInteraction::Paste { .. })
+        ));
     }
 
     #[test]
@@ -1567,7 +1613,7 @@ mod tests {
         state.active_tool = DrawTool::Draw;
 
         handle_event(
-            Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE)),
+            Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
             &mut state,
             &keybinds,
             &config,
