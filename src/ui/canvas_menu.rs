@@ -136,14 +136,7 @@ pub fn render_canvas_context_menu(
                 spans.push(Span::styled(" ".repeat(pad), base));
             }
             if let Some(c) = spec.shortcut {
-                spans.push(Span::styled(
-                    format!("{c} "),
-                    Style::default().fg(theme.muted).bg(if is_selected {
-                        theme.highlight_bg
-                    } else {
-                        Color::Reset
-                    }),
-                ));
+                spans.push(Span::styled(format!("{c} "), base.fg(theme.muted)));
             }
             ListItem::new(Line::from(spans))
         })
@@ -217,5 +210,34 @@ mod tests {
         assert_eq!(m.row_at(rect, rect.x, rect.y + 1), Some(1));
         assert_eq!(m.row_at(rect, rect.x, rect.y + 2), None);
         assert_eq!(m.row_at(rect, rect.x + rect.width, rect.y), None);
+    }
+
+    #[test]
+    fn shortcut_hint_inherits_unselected_menu_background() {
+        let mut theme = AppThemeColors::default();
+        theme.bg = Some(Color::Black);
+        let menu = CanvasContextMenu::new(
+            0,
+            0,
+            vec![
+                CanvasMenuItemSpec::new("Other"),
+                CanvasMenuItemSpec::new("Action").shortcut('a'),
+            ],
+        );
+        let area = Rect::new(0, 0, 20, 4);
+        let rect = menu.rect(area);
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(20, 4)).unwrap();
+        terminal
+            .draw(|frame| render_canvas_context_menu(frame, area, &menu, &theme, None))
+            .unwrap();
+
+        let shortcut = terminal
+            .backend()
+            .buffer()
+            .cell((rect.x + rect.width - 2, rect.y + 1))
+            .unwrap();
+        assert_eq!(shortcut.style().bg, theme.preview_bg());
+        assert_eq!(shortcut.style().fg, Some(theme.muted));
     }
 }
