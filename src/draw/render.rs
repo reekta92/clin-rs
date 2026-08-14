@@ -397,22 +397,22 @@ fn draw_selection_bounds(
     let style = Style::default().fg(app.theme.accent);
     ctx.print(
         bounds.min_x,
-        bounds.min_y,
+        bounds.max_y,
         ratatui::text::Line::from("┌").style(style),
     );
     ctx.print(
         bounds.max_x,
-        bounds.min_y,
+        bounds.max_y,
         ratatui::text::Line::from("┐").style(style),
     );
     ctx.print(
         bounds.min_x,
-        bounds.max_y,
+        bounds.min_y,
         ratatui::text::Line::from("└").style(style),
     );
     ctx.print(
         bounds.max_x,
-        bounds.max_y,
+        bounds.min_y,
         ratatui::text::Line::from("┘").style(style),
     );
     if !matches!(&item.element, DrawElement::Text(_))

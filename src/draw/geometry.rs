@@ -220,8 +220,8 @@ pub fn selection_handle_points(
     }
     let bounds = transformed_bounds_with_transform(item, transform)?;
     let center = bounds.center();
-    let rotation = (center.0, bounds.min_y - 8.0 / zoom);
-    let scale = (bounds.max_x, bounds.max_y);
+    let rotation = (center.0, bounds.max_y + 8.0 / zoom);
+    let scale = (bounds.max_x, bounds.min_y);
     Some((rotation, scale))
 }
 
@@ -700,7 +700,7 @@ mod tests {
 
         assert_eq!(
             selection_handle_points(&rectangle, &rectangle.transform, &viewport),
-            Some(((25.0, -19.0), (35.0, 25.0)))
+            Some(((25.0, 29.0), (35.0, -15.0)))
         );
     }
 }
