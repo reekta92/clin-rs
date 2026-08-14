@@ -302,7 +302,7 @@ fn is_interaction_item(app: &DrawAppState, item_id: &crate::draw::state::DrawIte
 
 fn interaction_transform_for_item(
     item: &DrawItem,
-    interaction: &Option<DrawInteraction>,
+    interaction: Option<&DrawInteraction>,
 ) -> DrawTransform {
     let mut transform = item.transform;
     match interaction {
@@ -352,7 +352,7 @@ fn draw_interaction_preview(ctx: &mut Context, app: &DrawAppState, text: bool) {
                 draw_item_with_transform(
                     ctx,
                     item,
-                    interaction_transform_for_item(item, &app.interaction),
+                    interaction_transform_for_item(item, app.interaction.as_ref()),
                 );
             }
         }
@@ -363,7 +363,7 @@ fn draw_selection_and_hover(ctx: &mut Context, app: &DrawAppState) {
     if let Some(id) = &app.selection.primary
         && let Some(item) = app.data.item(id)
     {
-        let transform = interaction_transform_for_item(item, &app.interaction);
+        let transform = interaction_transform_for_item(item, app.interaction.as_ref());
         draw_item_with_transform_and_color(
             ctx,
             item,
@@ -374,7 +374,7 @@ fn draw_selection_and_hover(ctx: &mut Context, app: &DrawAppState) {
     } else if let Some(id) = &app.hovered
         && let Some(item) = app.data.item(id)
     {
-        let transform = interaction_transform_for_item(item, &app.interaction);
+        let transform = interaction_transform_for_item(item, app.interaction.as_ref());
         draw_item_with_transform_and_color(
             ctx,
             item,

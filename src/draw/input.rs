@@ -141,7 +141,7 @@ pub fn handle_event(
                     return Ok(None);
                 }
                 DrawAction::Paste => {
-                    begin_paste(app, clipboard, None);
+                    begin_paste(app, clipboard.as_ref(), None);
                     return Ok(None);
                 }
                 DrawAction::Undo => {
@@ -616,7 +616,7 @@ fn execute_menu_item(
                         DrawMenuTarget::Empty { x, y } => Some((x, y)),
                         DrawMenuTarget::NonText(_) | DrawMenuTarget::Text(_) => None,
                     };
-                    begin_paste(app, clipboard, anchor);
+                    begin_paste(app, clipboard.as_ref(), anchor);
                     app.menu_target = None;
                 }
             }
@@ -652,7 +652,7 @@ fn copy_item(
 
 fn begin_paste(
     app: &mut DrawAppState,
-    clipboard: &Option<DrawClipboard>,
+    clipboard: Option<&DrawClipboard>,
     anchor: Option<(f64, f64)>,
 ) {
     let Some(clipboard) = clipboard else {

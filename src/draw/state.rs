@@ -85,6 +85,12 @@ impl DrawItemId {
     }
 }
 
+impl Default for DrawItemId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl std::fmt::Display for DrawItemId {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(formatter)
