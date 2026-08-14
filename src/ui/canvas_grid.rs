@@ -1,8 +1,9 @@
 use ratatui::{Frame, layout::Rect, style::Color};
 
-const BASE_STEP_X: f64 = 100.0;
-const BASE_STEP_Y: f64 = 50.0;
-const MIN_ROW_SPACING: f64 = 6.0;
+// Terminal cells are roughly twice as tall as wide. Twenty columns by ten rows
+// keeps each grid square visually 1:1 while matching Pinstar's default density.
+const GRID_COL_SPACING: f64 = 20.0;
+const GRID_ROW_SPACING: f64 = 10.0;
 
 /// Transient visibility state for canvas-like live views.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,14 +71,10 @@ pub(crate) fn draw_canvas_grid(
     let max_x = projection.world_left.max(projection.world_right);
     let min_y = projection.world_top.min(projection.world_bottom);
     let max_y = projection.world_top.max(projection.world_bottom);
-    let mut step_x = BASE_STEP_X;
-    let mut step_y = BASE_STEP_Y;
-    while (step_y * projection.rows_per_world_y).abs() < MIN_ROW_SPACING {
-        step_x *= 2.0;
-        step_y *= 2.0;
-        if !step_x.is_finite() || !step_y.is_finite() {
-            return;
-        }
+    let step_x = GRID_COL_SPACING / projection.cols_per_world_x.abs();
+    let step_y = GRID_ROW_SPACING / projection.rows_per_world_y.abs();
+    if !step_x.is_finite() || !step_y.is_finite() || step_x == 0.0 || step_y == 0.0 {
+        return;
     }
 
     let Some(start_x) = grid_index(min_x, step_x, f64::floor) else {
@@ -144,15 +141,22 @@ mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
 
-    fn projection(rows_per_world_y: f64) -> CanvasGridProjection {
+    fn projection(cols_per_world_x: f64, rows_per_world_y: f64) -> CanvasGridProjection {
+        let step_x = GRID_COL_SPACING / cols_per_world_x.abs();
+        let step_y = GRID_ROW_SPACING / rows_per_world_y.abs();
+        let (world_top, world_bottom) = if rows_per_world_y.is_sign_negative() {
+            (-step_y, 0.0)
+        } else {
+            (0.0, step_y)
+        };
         CanvasGridProjection {
             world_left: 0.0,
-            world_right: 200.0,
-            world_top: 0.0,
-            world_bottom: 100.0,
+            world_right: step_x,
+            world_top,
+            world_bottom,
             origin_col: 0.0,
             origin_row: 0.0,
-            cols_per_world_x: 0.1,
+            cols_per_world_x,
             rows_per_world_y,
         }
     }
@@ -170,22 +174,24 @@ mod tests {
     }
 
     #[test]
-    fn doubles_steps_until_rows_are_six_cells_apart() {
-        let buffer = render_grid(
-            Rect::new(0, 0, 21, 11),
-            CanvasGridState::default(),
-            projection(0.1),
-        );
-
-        assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
-        assert_eq!(buffer.cell((20, 10)).unwrap().symbol(), "·");
-        assert_eq!(buffer.cell((10, 5)).unwrap().symbol(), " ");
+    fn preserves_pinstar_density_across_projections() {
+        let area = Rect::new(0, 0, 21, 11);
+        for projection in [
+            projection(0.1, 0.1),
+            projection(0.25, -0.125),
+            projection(0.04, -0.02),
+        ] {
+            let buffer = render_grid(area, CanvasGridState::default(), projection);
+            assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
+            assert_eq!(buffer.cell((20, 10)).unwrap().symbol(), "·");
+            assert_eq!(buffer.cell((10, 5)).unwrap().symbol(), " ");
+        }
     }
 
     #[test]
     fn projects_clips_and_styles_dots_once() {
         let area = Rect::new(2, 3, 10, 7);
-        let mut p = projection(0.12);
+        let mut p = projection(0.1, 0.12);
         p.origin_col = 2.0;
         p.origin_row = 3.0;
         let buffer = render_grid(area, CanvasGridState::default(), p);
@@ -203,14 +209,14 @@ mod tests {
         let mut hidden = CanvasGridState::default();
         hidden.toggle();
         assert_eq!(
-            render_grid(area, hidden, projection(0.1))
+            render_grid(area, hidden, projection(0.1, 0.1))
                 .cell((0, 0))
                 .unwrap()
                 .symbol(),
             " "
         );
 
-        let mut invalid = projection(0.1);
+        let mut invalid = projection(0.1, 0.1);
         invalid.origin_col = f64::NAN;
         assert_eq!(
             render_grid(area, CanvasGridState::default(), invalid)
@@ -230,7 +236,7 @@ mod tests {
                     frame,
                     Rect::new(0, 0, 21, 11),
                     CanvasGridState::default(),
-                    projection(0.1),
+                    projection(0.1, 0.1),
                     Color::DarkGray,
                 );
                 frame

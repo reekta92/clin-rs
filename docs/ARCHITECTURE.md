@@ -284,7 +284,7 @@ src/
 │   └── help_meta.rs      — Action metadata for help UI
 ├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
 │   ├── mod.rs            — Central UI dispatcher, shared helpers
-│   ├── canvas_grid.rs    — Shared adaptive canvas grid projection/rendering
+│   ├── canvas_grid.rs    — Shared square visual-grid projection/rendering
 │   ├── list_view.rs      — Main list/grid view rendering
 │   ├── edit_view.rs      — Editor body rendering
 │   ├── help.rs           — Full help view
