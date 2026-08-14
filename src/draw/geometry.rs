@@ -1,4 +1,4 @@
-use crate::draw::state::{DrawElement, DrawItem, DrawTransform, Shape};
+use crate::draw::state::{DrawElement, DrawItem, DrawTransform, Shape, Viewport};
 use unicode_width::UnicodeWidthStr;
 
 pub const TEXT_CHAR_WIDTH: f64 = 8.0;
@@ -67,6 +67,14 @@ impl DrawBounds {
             max_x: self.max_x + x,
             max_y: self.max_y + y,
         }
+    }
+
+    #[must_use]
+    pub fn contains_with_tolerance(self, point: (f64, f64), tolerance: f64) -> bool {
+        point.0 >= self.min_x - tolerance
+            && point.0 <= self.max_x + tolerance
+            && point.1 >= self.min_y - tolerance
+            && point.1 <= self.max_y + tolerance
     }
 }
 
@@ -139,6 +147,11 @@ impl DrawAffine {
     pub const fn is_identity(self) -> bool {
         self.identity
     }
+
+    #[must_use]
+    pub const fn scale(self) -> f64 {
+        self.scale
+    }
 }
 
 #[must_use]
@@ -167,8 +180,11 @@ pub fn base_bounds(element: &DrawElement) -> Option<DrawBounds> {
                 height,
                 ..
             } => DrawBounds::from_corners(*x, *y, *x + *width, *y + *height),
-            Shape::Line { x1, y1, x2, y2, .. } | Shape::Arrow { x1, y1, x2, y2, .. } => {
-                DrawBounds::from_corners(*x1, *y1, *x2, *y2)
+            Shape::Line { x1, y1, x2, y2, .. } => DrawBounds::from_corners(*x1, *y1, *x2, *y2),
+            Shape::Arrow { x1, y1, x2, y2, .. } => {
+                let [left, right] = arrow_head_points(*x1, *y1, *x2, *y2);
+                DrawBounds::from_points(&[(*x1, *y1), (*x2, *y2), left, right])
+                    .expect("arrow has four bounds points")
             }
         }),
         DrawElement::Text(text) => Some(DrawBounds::from_corners(
@@ -180,14 +196,16 @@ pub fn base_bounds(element: &DrawElement) -> Option<DrawBounds> {
     }
 }
 
-#[must_use]
 pub fn transformed_bounds(item: &DrawItem) -> Option<DrawBounds> {
+    transformed_bounds_with_affine(item, DrawAffine::new(&item.transform))
+}
+
+fn transformed_bounds_with_affine(item: &DrawItem, transform: DrawAffine) -> Option<DrawBounds> {
     let bounds = base_bounds(&item.element)?;
     if matches!(item.element, DrawElement::Text(_)) {
         return Some(bounds.translated(item.transform.translate_x, item.transform.translate_y));
     }
 
-    let transform = DrawAffine::new(&item.transform);
     let corners = bounds.corners();
     let mut transformed = DrawBounds::from_points(&[transform.transform_point(corners[0])])?;
     for corner in &corners[1..] {
@@ -243,4 +261,392 @@ pub fn translated_text_position(item: &DrawItem) -> Option<(f64, f64)> {
         text.x + item.transform.translate_x,
         text.y + item.transform.translate_y,
     ))
+}
+
+#[must_use]
+pub fn hit_test_item(
+    item: &DrawItem,
+    world_point: (f64, f64),
+    screen_tolerance: f64,
+    viewport: &Viewport,
+) -> bool {
+    let zoom = viewport.zoom.abs();
+    if !zoom.is_finite()
+        || zoom == 0.0
+        || !screen_tolerance.is_finite()
+        || !item.transform.scale.is_finite()
+        || item.transform.scale <= 0.0
+    {
+        return false;
+    }
+    let world_tolerance = screen_tolerance.abs() / zoom;
+
+    if matches!(item.element, DrawElement::Text(_)) {
+        return transformed_bounds(item)
+            .is_some_and(|bounds| bounds.contains_with_tolerance(world_point, world_tolerance));
+    }
+
+    let transform = DrawAffine::new(&item.transform);
+    let Some(bounds) = transformed_bounds_with_affine(item, transform) else {
+        return false;
+    };
+    if !bounds.contains_with_tolerance(world_point, world_tolerance) {
+        return false;
+    }
+
+    let local_point = transform.inverse_transform_point(world_point);
+    hit_test_element(
+        &item.element,
+        local_point,
+        world_tolerance / transform.scale().abs(),
+    )
+}
+
+fn hit_test_element(element: &DrawElement, point: (f64, f64), tolerance: f64) -> bool {
+    match element {
+        DrawElement::Stroke(stroke) => {
+            stroke.points.windows(2).any(|window| {
+                let [start, end] = window else {
+                    return false;
+                };
+                point_to_segment_distance(point, *start, *end) <= tolerance
+            }) || stroke
+                .points
+                .first()
+                .is_some_and(|first| point_to_segment_distance(point, *first, *first) <= tolerance)
+        }
+        DrawElement::Shape(shape) => hit_test_shape(shape, point, tolerance),
+        DrawElement::Text(_) => base_bounds(element)
+            .is_some_and(|bounds| bounds.contains_with_tolerance(point, tolerance)),
+    }
+}
+
+fn hit_test_shape(shape: &Shape, point: (f64, f64), tolerance: f64) -> bool {
+    match shape {
+        Shape::Rect {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => {
+            let bounds = DrawBounds::from_corners(*x, *y, *x + *width, *y + *height);
+            let corners = bounds.corners();
+            closed_segments_hit(&corners, point, tolerance)
+        }
+        Shape::Ellipse {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => {
+            let bounds = DrawBounds::from_corners(*x, *y, *x + *width, *y + *height);
+            closest_ellipse_distance(point, bounds) <= tolerance
+        }
+        Shape::Diamond {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => {
+            let bounds = DrawBounds::from_corners(*x, *y, *x + *width, *y + *height);
+            let points = [
+                ((bounds.min_x + bounds.max_x) / 2.0, bounds.min_y),
+                (bounds.max_x, (bounds.min_y + bounds.max_y) / 2.0),
+                ((bounds.min_x + bounds.max_x) / 2.0, bounds.max_y),
+                (bounds.min_x, (bounds.min_y + bounds.max_y) / 2.0),
+            ];
+            closed_segments_hit(&points, point, tolerance)
+        }
+        Shape::Line { x1, y1, x2, y2, .. } => {
+            point_to_segment_distance(point, (*x1, *y1), (*x2, *y2)) <= tolerance
+        }
+        Shape::Arrow { x1, y1, x2, y2, .. } => {
+            let start = (*x1, *y1);
+            let end = (*x2, *y2);
+            let [left, right] = arrow_head_points(*x1, *y1, *x2, *y2);
+            point_to_segment_distance(point, start, end) <= tolerance
+                || point_to_segment_distance(point, end, left) <= tolerance
+                || point_to_segment_distance(point, end, right) <= tolerance
+        }
+    }
+}
+
+fn closed_segments_hit(points: &[(f64, f64); 4], point: (f64, f64), tolerance: f64) -> bool {
+    point_to_segment_distance(point, points[0], points[1]) <= tolerance
+        || point_to_segment_distance(point, points[1], points[2]) <= tolerance
+        || point_to_segment_distance(point, points[2], points[3]) <= tolerance
+        || point_to_segment_distance(point, points[3], points[0]) <= tolerance
+}
+
+fn point_to_segment_distance(point: (f64, f64), start: (f64, f64), end: (f64, f64)) -> f64 {
+    let delta_x = end.0 - start.0;
+    let delta_y = end.1 - start.1;
+    let length_squared = delta_x.mul_add(delta_x, delta_y * delta_y);
+    if length_squared == 0.0 {
+        return (point.0 - start.0).hypot(point.1 - start.1);
+    }
+    let projection =
+        ((point.0 - start.0) * delta_x + (point.1 - start.1) * delta_y) / length_squared;
+    let projection = projection.clamp(0.0, 1.0);
+    (point.0 - (start.0 + projection * delta_x)).hypot(point.1 - (start.1 + projection * delta_y))
+}
+
+fn arrow_head_points(x1: f64, y1: f64, x2: f64, y2: f64) -> [(f64, f64); 2] {
+    let angle = (y2 - y1).atan2(x2 - x1);
+    let head_length = 5.0;
+    let head_angle = std::f64::consts::PI / 6.0;
+    [
+        (
+            x2 - head_length * (angle - head_angle).cos(),
+            y2 - head_length * (angle - head_angle).sin(),
+        ),
+        (
+            x2 - head_length * (angle + head_angle).cos(),
+            y2 - head_length * (angle + head_angle).sin(),
+        ),
+    ]
+}
+
+fn closest_ellipse_distance(point: (f64, f64), bounds: DrawBounds) -> f64 {
+    let radius_x = (bounds.max_x - bounds.min_x) / 2.0;
+    let radius_y = (bounds.max_y - bounds.min_y) / 2.0;
+    let center = bounds.center();
+    if radius_x == 0.0 && radius_y == 0.0 {
+        return point_to_segment_distance(point, center, center);
+    }
+    if radius_x == 0.0 {
+        return point_to_segment_distance(
+            point,
+            (center.0, center.1 - radius_y),
+            (center.0, center.1 + radius_y),
+        );
+    }
+    if radius_y == 0.0 {
+        return point_to_segment_distance(
+            point,
+            (center.0 - radius_x, center.1),
+            (center.0 + radius_x, center.1),
+        );
+    }
+
+    let delta_x = point.0 - center.0;
+    let delta_y = point.1 - center.1;
+    if delta_x == 0.0 && delta_y == 0.0 {
+        return radius_x.min(radius_y);
+    }
+
+    let initial = (delta_y / radius_y).atan2(delta_x / radius_x);
+    [
+        initial,
+        initial + std::f64::consts::FRAC_PI_2,
+        initial + std::f64::consts::PI,
+        initial + 3.0 * std::f64::consts::FRAC_PI_2,
+    ]
+    .into_iter()
+    .map(|angle| ellipse_distance_from_angle(point, center, radius_x, radius_y, angle))
+    .fold(f64::INFINITY, f64::min)
+}
+
+fn ellipse_distance_from_angle(
+    point: (f64, f64),
+    center: (f64, f64),
+    radius_x: f64,
+    radius_y: f64,
+    mut angle: f64,
+) -> f64 {
+    for _ in 0..8 {
+        let sin = angle.sin();
+        let cos = angle.cos();
+        let edge_x = center.0 + radius_x * cos;
+        let edge_y = center.1 + radius_y * sin;
+        let delta_x = edge_x - point.0;
+        let delta_y = edge_y - point.1;
+        let first = delta_x * -radius_x * sin + delta_y * radius_y * cos;
+        let second = (radius_x * sin).powi(2) + (radius_y * cos).powi(2)
+            - delta_x * radius_x * cos
+            - delta_y * radius_y * sin;
+        if second.abs() < f64::EPSILON {
+            break;
+        }
+        let step = (first / second).clamp(-0.5, 0.5);
+        angle -= step;
+        if step.abs() < 1e-9 {
+            break;
+        }
+    }
+    let edge = (
+        center.0 + radius_x * angle.cos(),
+        center.1 + radius_y * angle.sin(),
+    );
+    (point.0 - edge.0).hypot(point.1 - edge.1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::draw::state::{Stroke, Text};
+
+    fn item(element: DrawElement) -> DrawItem {
+        DrawItem::new(element)
+    }
+
+    fn assert_close(actual: (f64, f64), expected: (f64, f64)) {
+        assert!(
+            (actual.0 - expected.0).abs() < 1e-9,
+            "x: {actual:?} != {expected:?}"
+        );
+        assert!(
+            (actual.1 - expected.1).abs() < 1e-9,
+            "y: {actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    fn affine_round_trip_and_rotations_preserve_points() {
+        for rotation_degrees in [0.0, 90.0, 359.0] {
+            let transform = DrawTransform {
+                pivot_x: 10.0,
+                pivot_y: -3.0,
+                translate_x: 7.0,
+                translate_y: 11.0,
+                rotation_degrees,
+                scale: 1.75,
+            };
+            let world = transform_point(&transform, (16.0, 9.0));
+            assert_close(inverse_transform_point(&transform, world), (16.0, 9.0));
+        }
+    }
+
+    #[test]
+    fn bounds_normalize_negative_sizes_and_translate_text_only() {
+        let rectangle = DrawElement::Shape(Shape::Rect {
+            x: 10.0,
+            y: 20.0,
+            width: -6.0,
+            height: -8.0,
+            color: (0, 0, 0),
+        });
+        assert_eq!(
+            base_bounds(&rectangle),
+            Some(DrawBounds::from_corners(4.0, 12.0, 10.0, 20.0))
+        );
+
+        let mut text = item(DrawElement::Text(Text {
+            content: "wide界".to_string(),
+            x: 2.0,
+            y: 3.0,
+            color: (0, 0, 0),
+        }));
+        text.transform.translate_x = 10.0;
+        text.transform.translate_y = -4.0;
+        assert_eq!(translated_text_position(&text), Some((12.0, -1.0)));
+        assert_eq!(
+            transformed_bounds(&text),
+            Some(DrawBounds::from_corners(
+                12.0,
+                -1.0,
+                12.0 + "wide界".width() as f64 * TEXT_CHAR_WIDTH,
+                -1.0 + TEXT_HEIGHT,
+            ))
+        );
+    }
+
+    #[test]
+    fn hit_tests_precisely_cover_each_element_kind() {
+        let viewport = Viewport::default();
+        let tolerance = 0.5;
+
+        let stroke = item(DrawElement::Stroke(Stroke {
+            points: vec![(0.0, 0.0), (10.0, 0.0)],
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&stroke, (5.0, 0.25), tolerance, &viewport));
+        assert!(!hit_test_item(&stroke, (5.0, 2.0), tolerance, &viewport));
+
+        let rectangle = item(DrawElement::Shape(Shape::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&rectangle, (0.0, 5.0), tolerance, &viewport));
+        assert!(!hit_test_item(&rectangle, (5.0, 5.0), tolerance, &viewport));
+
+        let ellipse = item(DrawElement::Shape(Shape::Ellipse {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 6.0,
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&ellipse, (10.0, 3.0), tolerance, &viewport));
+        assert!(!hit_test_item(&ellipse, (5.0, 3.0), tolerance, &viewport));
+
+        let diamond = item(DrawElement::Shape(Shape::Diamond {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&diamond, (5.0, 0.0), tolerance, &viewport));
+        assert!(!hit_test_item(&diamond, (5.0, 5.0), tolerance, &viewport));
+
+        let line = item(DrawElement::Shape(Shape::Line {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 10.0,
+            y2: 10.0,
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&line, (5.0, 5.25), tolerance, &viewport));
+
+        let arrow = item(DrawElement::Shape(Shape::Arrow {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 10.0,
+            y2: 0.0,
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&arrow, (10.0, 0.0), tolerance, &viewport));
+        assert!(hit_test_item(&arrow, (6.0, 2.0), tolerance, &viewport));
+
+        let text = item(DrawElement::Text(Text {
+            content: "text".to_string(),
+            x: 0.0,
+            y: 0.0,
+            color: (0, 0, 0),
+        }));
+        assert!(hit_test_item(&text, (8.0, 6.0), tolerance, &viewport));
+    }
+
+    #[test]
+    fn transformed_hit_tests_use_world_tolerance() {
+        let mut rectangle = item(DrawElement::Shape(Shape::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            color: (0, 0, 0),
+        }));
+        rectangle.transform = DrawTransform {
+            pivot_x: 5.0,
+            pivot_y: 5.0,
+            translate_x: 20.0,
+            translate_y: 0.0,
+            rotation_degrees: 90.0,
+            scale: 2.0,
+        };
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            zoom: 2.0,
+        };
+        assert!(hit_test_item(&rectangle, (25.0, 15.0), 1.0, &viewport));
+        assert!(!hit_test_item(&rectangle, (25.0, 13.0), 1.0, &viewport));
+    }
 }

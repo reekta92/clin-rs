@@ -399,59 +399,17 @@ fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawEl
 }
 
 fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<DrawItemId> {
-    let threshold = 5.0 / app.viewport.zoom;
-    app.data.elements.iter().find_map(|item| {
-        let (x, y) = crate::draw::geometry::translated_text_position(item)?;
-        ((x - cx).abs() < threshold && (y - cy).abs() < threshold).then(|| item.id.clone())
+    app.data.elements.iter().rev().find_map(|item| {
+        (matches!(&item.element, DrawElement::Text(_))
+            && crate::draw::geometry::hit_test_item(item, (cx, cy), 5.0, &app.viewport))
+        .then(|| item.id.clone())
     })
 }
 
 fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
-    let threshold = 5.0 / app.viewport.zoom;
-    app.data.elements.retain(|item| match &item.element {
-        DrawElement::Stroke(s) => !s
-            .points
-            .iter()
-            .any(|(px, py)| ((*px) - cx).powi(2) + ((*py) - cy).powi(2) < threshold.powi(2)),
-        DrawElement::Shape(s) => match s {
-            Shape::Rect {
-                x,
-                y,
-                width,
-                height,
-                ..
-            }
-            | Shape::Ellipse {
-                x,
-                y,
-                width,
-                height,
-                ..
-            }
-            | Shape::Diamond {
-                x,
-                y,
-                width,
-                height,
-                ..
-            } => cx < *x || cx > *x + *width || cy < *y || cy > *y + *height,
-            Shape::Line { x1, y1, x2, y2, .. } | Shape::Arrow { x1, y1, x2, y2, .. } => {
-                let d = line_dist(*x1, *y1, *x2, *y2, cx, cy);
-                d > threshold
-            }
-        },
-        DrawElement::Text(t) => (t.x - cx).abs() > threshold || (t.y - cy).abs() > threshold,
-    });
-}
-
-fn line_dist(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
-    let l2 = (x2 - x1).powi(2) + (y2 - y1).powi(2);
-    if l2 == 0.0 {
-        return ((px - x1).powi(2) + (py - y1).powi(2)).sqrt();
-    }
-    let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
-    let t = t.clamp(0.0, 1.0);
-    ((px - (x1 + t * (x2 - x1))).powi(2) + (py - (y1 + t * (y2 - y1))).powi(2)).sqrt()
+    app.data
+        .elements
+        .retain(|item| !crate::draw::geometry::hit_test_item(item, (cx, cy), 5.0, &app.viewport));
 }
 
 fn panning(x: u16, y: u16, app: &mut DrawAppState) {
