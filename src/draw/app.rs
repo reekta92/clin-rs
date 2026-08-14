@@ -8,6 +8,16 @@ pub enum DrawEventAction {
     OpenHelp,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum DrawInteraction {
+    Move {
+        id: DrawItemId,
+        start_world: (f64, f64),
+        original_translation: (f64, f64),
+        preview_translation: (f64, f64),
+    },
+}
+
 use ratatui::layout::Rect;
 use ratatui_textarea::TextArea;
 
@@ -20,10 +30,15 @@ pub struct DrawAppState {
     pub active_tool: crate::draw::state::DrawTool,
     pub selection: crate::ui::CanvasSelection<DrawItemId>,
     pub hovered: Option<DrawItemId>,
+    pub interaction: Option<DrawInteraction>,
     pub current_stroke: Option<crate::draw::state::Stroke>,
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub mouse_pos: Option<(u16, u16)>,
+    pub last_click: Option<(u16, u16, std::time::Instant)>,
+    pub right_mouse: crate::ui::MarqueeDragState,
+    pub right_mouse_screen: Option<(u16, u16)>,
+    pub right_mouse_target: Option<DrawItemId>,
     pub text_editor: Option<(DrawItemId, TextArea<'static>)>,
     pub text_editor_rect: Option<Rect>,
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
@@ -69,10 +84,15 @@ impl DrawAppState {
             active_tool: crate::draw::state::DrawTool::Cursor,
             selection: crate::ui::CanvasSelection::new(),
             hovered: None,
+            interaction: None,
             current_stroke: None,
             last_area: Rect::default(),
             mouse_pos: None,
             last_mouse_pos: None,
+            last_click: None,
+            right_mouse: crate::ui::MarqueeDragState::new(3),
+            right_mouse_screen: None,
+            right_mouse_target: None,
             text_editor: None,
             text_editor_rect: None,
             mouse_selection: crate::text_edit::MouseTextSelection::default(),
@@ -89,6 +109,41 @@ impl DrawAppState {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         }
+    }
+
+    pub fn set_active_tool(&mut self, tool: crate::draw::state::DrawTool) {
+        self.clear_transient_interaction();
+        self.active_tool = tool;
+    }
+
+    #[must_use]
+    pub fn topmost_hit(&self, world_point: (f64, f64)) -> Option<DrawItemId> {
+        let hit = |item: &crate::draw::state::DrawItem| {
+            crate::draw::geometry::hit_test_item(item, world_point, 5.0, &self.viewport)
+        };
+        self.data
+            .elements
+            .iter()
+            .rev()
+            .find(|item| {
+                matches!(&item.element, crate::draw::state::DrawElement::Text(_)) && hit(item)
+            })
+            .or_else(|| {
+                self.data.elements.iter().rev().find(|item| {
+                    !matches!(&item.element, crate::draw::state::DrawElement::Text(_)) && hit(item)
+                })
+            })
+            .map(|item| item.id.clone())
+    }
+
+    pub fn begin_text_editor(&mut self, id: DrawItemId) -> bool {
+        let Some(crate::draw::state::DrawElement::Text(text)) =
+            self.data.item(&id).map(|item| &item.element)
+        else {
+            return false;
+        };
+        self.text_editor = Some((id, TextArea::new(vec![text.content.clone()])));
+        true
     }
 
     pub fn record_undo_state(&mut self, previous: DrawData) {
@@ -140,6 +195,11 @@ impl DrawAppState {
         self.last_mouse_pos = None;
         self.hovered = None;
         self.selection.clear();
+        self.interaction = None;
+        self.last_click = None;
+        self.right_mouse.clear();
+        self.right_mouse_screen = None;
+        self.right_mouse_target = None;
     }
 
     fn push_history(stack: &mut Vec<DrawData>, data: DrawData) {
@@ -264,5 +324,44 @@ mod tests {
             serde_json::from_str::<DrawData>(&saved).unwrap(),
             state.data
         );
+    }
+
+    #[test]
+    fn topmost_hit_prefers_text_then_latest_vector() {
+        let (_temp, mut state) = test_state();
+        let text = crate::draw::state::DrawItem::new(crate::draw::state::DrawElement::Text(
+            crate::draw::state::Text {
+                content: "text".to_string(),
+                x: 0.0,
+                y: 0.0,
+                color: (255, 255, 255),
+            },
+        ));
+        let text_id = text.id.clone();
+        state.data.elements.push(text);
+        state.data.elements.push(crate::draw::state::DrawItem::new(
+            crate::draw::state::DrawElement::Shape(crate::draw::state::Shape::Line {
+                x1: 0.0,
+                y1: 1.0,
+                x2: 10.0,
+                y2: 1.0,
+                color: (255, 255, 255),
+            }),
+        ));
+        assert_eq!(state.topmost_hit((1.0, 1.0)), Some(text_id));
+
+        state.data.elements.remove(0);
+        let vector = crate::draw::state::DrawItem::new(crate::draw::state::DrawElement::Shape(
+            crate::draw::state::Shape::Line {
+                x1: 0.0,
+                y1: 1.0,
+                x2: 10.0,
+                y2: 1.0,
+                color: (255, 255, 255),
+            },
+        ));
+        let vector_id = vector.id.clone();
+        state.data.elements.push(vector);
+        assert_eq!(state.topmost_hit((1.0, 1.0)), Some(vector_id));
     }
 }

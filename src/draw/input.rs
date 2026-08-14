@@ -1,12 +1,9 @@
-use crate::draw::app::{DrawAppState, DrawEventAction};
-use crate::draw::state::{
-    DrawElement, DrawItem, DrawItemId, DrawShapeType, DrawTool, Shape, Stroke, Text,
-};
+use crate::draw::app::{DrawAppState, DrawEventAction, DrawInteraction};
+use crate::draw::state::{DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke, Text};
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
-use ratatui_textarea::TextArea;
 
 pub fn handle_event(
     ev: Event,
@@ -65,8 +62,7 @@ pub fn handle_event(
                 return Ok(None);
             }
             Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorConfirm, &k) => {
-                app.show_shape_selector = false;
-                app.active_tool = DrawTool::Shape;
+                app.set_active_tool(DrawTool::Shape);
                 return Ok(None);
             }
             Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorUp, &k) => {
@@ -93,7 +89,7 @@ pub fn handle_event(
                     return Ok(Some(DrawEventAction::Quit));
                 }
                 DrawAction::SelectDrawTool => {
-                    app.active_tool = DrawTool::Draw;
+                    app.set_active_tool(DrawTool::Draw);
                     return Ok(None);
                 }
                 DrawAction::ToggleShapeSelector => {
@@ -101,11 +97,11 @@ pub fn handle_event(
                     return Ok(None);
                 }
                 DrawAction::SelectTextTool => {
-                    app.active_tool = DrawTool::Text;
+                    app.set_active_tool(DrawTool::Text);
                     return Ok(None);
                 }
                 DrawAction::SelectEraseTool => {
-                    app.active_tool = DrawTool::Erase;
+                    app.set_active_tool(DrawTool::Erase);
                     return Ok(None);
                 }
                 DrawAction::Help => {
@@ -200,6 +196,7 @@ fn handle_mouse(
     app: &mut DrawAppState,
     config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
+    app.mouse_pos = Some((ev.column, ev.row));
     let area = app.last_area;
 
     if app.show_shape_selector {
@@ -224,10 +221,9 @@ fn handle_mouse(
                         DrawShapeType::Line,
                         DrawShapeType::Arrow,
                     ];
-                    if let Some(&st) = shapes.get(row_rel) {
-                        app.active_shape_type = st;
-                        app.active_tool = DrawTool::Shape;
-                        app.show_shape_selector = false;
+                    if let Some(&shape) = shapes.get(row_rel) {
+                        app.active_shape_type = shape;
+                        app.set_active_tool(DrawTool::Shape);
                         return Ok(None);
                     }
                 }
@@ -239,6 +235,12 @@ fn handle_mouse(
     }
 
     match ev.kind {
+        MouseEventKind::Moved => {
+            if app.active_tool == DrawTool::Cursor && app.interaction.is_none() && !app.is_panning {
+                let point = screen_to_canvas(ev.column, ev.row, app);
+                app.hovered = app.topmost_hit(point);
+            }
+        }
         MouseEventKind::Down(MouseButton::Left) => {
             let icon_mode = config.ui.icon_mode;
             let header_y = area.y.saturating_sub(1);
@@ -246,30 +248,31 @@ fn handle_mouse(
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
                 let tabs = crate::ui::tab_vec_from_array(&tabs_arr);
                 let region = crate::ui::title_bar_tabs_region(area, "Draw");
-                if let Some(i) = crate::ui::hit_test_tabs(
+                if let Some(index) = crate::ui::hit_test_tabs(
                     &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,
                 ) {
-                    if crate::draw::render::DRAW_TAB_TOOLS[i] == DrawTool::Shape {
+                    let tool = crate::draw::render::DRAW_TAB_TOOLS[index];
+                    if tool == DrawTool::Shape {
+                        app.clear_transient_interaction();
                         app.show_shape_selector = true;
                     } else {
-                        app.active_tool = crate::draw::render::DRAW_TAB_TOOLS[i];
+                        app.set_active_tool(tool);
                     }
                 }
                 return Ok(None);
             }
 
-            let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
-
+            let point = screen_to_canvas(ev.column, ev.row, app);
             match app.active_tool {
-                DrawTool::Cursor => {}
+                DrawTool::Cursor => cursor_left_down(ev, point, app),
                 DrawTool::Draw => {
                     app.current_stroke = Some(Stroke {
-                        points: vec![(cx, cy)],
+                        points: vec![point],
                         color: (255, 255, 255),
                     });
                 }
                 DrawTool::Shape => {
-                    app.creation_origin = Some((cx, cy));
+                    app.creation_origin = Some(point);
                 }
                 DrawTool::Text => {
                     let previous = app.data.clone();
@@ -277,60 +280,96 @@ fn handle_mouse(
                         .elements
                         .push(DrawItem::new(DrawElement::Text(Text {
                             content: "New Text".to_string(),
-                            x: cx,
-                            y: cy,
+                            x: point.0,
+                            y: point.1,
                             color: (255, 255, 255),
                         })));
                     app.commit_data_change(previous)?;
-                    return Ok(None);
                 }
                 DrawTool::Erase => {
                     app.erase_start_data = Some(app.data.clone());
-                    erase_at(cx, cy, app);
+                    erase_at(point.0, point.1, app);
                 }
             }
         }
         MouseEventKind::Down(MouseButton::Right) => {
-            let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
-
-            if let Some(id) = find_text_at(cx, cy, app)
-                && let Some(item) = app.data.elements.iter().find(|item| item.id == id)
-                && let DrawElement::Text(text) = &item.element
-            {
-                let textarea = TextArea::new(vec![text.content.clone()]);
-                app.text_editor = Some((id, textarea));
-                return Ok(None);
-            }
-
+            let point = screen_to_canvas(ev.column, ev.row, app);
+            app.right_mouse_target = app.topmost_hit(point);
+            app.right_mouse_screen = Some((ev.column, ev.row));
+            app.right_mouse.on_down(point.0, point.1);
             app.last_mouse_pos = Some((ev.column, ev.row));
+        }
+        MouseEventKind::Drag(MouseButton::Right) => {
+            if let Some((start_x, start_y)) = app.right_mouse_screen
+                && app
+                    .right_mouse
+                    .is_dragging_screen(ev.column, ev.row, start_x, start_y)
+            {
+                let point = screen_to_canvas(ev.column, ev.row, app);
+                app.right_mouse.on_drag(point.0, point.1);
+                panning(ev.column, ev.row, app);
+            }
+        }
+        MouseEventKind::Up(MouseButton::Right) => {
+            let dragged = app.right_mouse_screen.is_some_and(|(start_x, start_y)| {
+                app.right_mouse
+                    .is_dragging_screen(ev.column, ev.row, start_x, start_y)
+            });
+            if dragged {
+                app.is_panning = false;
+                app.last_mouse_pos = None;
+            } else if let Some(id) = app.right_mouse_target.clone() {
+                app.selection.select_only(id);
+                app.hovered = None;
+            } else {
+                app.selection.clear();
+                app.hovered = None;
+            }
+            app.right_mouse.clear();
+            app.right_mouse_screen = None;
         }
         MouseEventKind::Down(MouseButton::Middle) => {
             app.last_mouse_pos = Some((ev.column, ev.row));
         }
+        MouseEventKind::Drag(MouseButton::Middle) => {
+            panning(ev.column, ev.row, app);
+        }
+        MouseEventKind::Up(MouseButton::Middle) => {
+            app.is_panning = false;
+            app.last_mouse_pos = None;
+        }
         MouseEventKind::Drag(MouseButton::Left) => {
-            let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
+            let point = screen_to_canvas(ev.column, ev.row, app);
             match app.active_tool {
-                DrawTool::Cursor | DrawTool::Text => {}
+                DrawTool::Cursor => cursor_left_drag(point, app),
+                DrawTool::Text => {}
                 DrawTool::Draw => {
                     if let Some(stroke) = &mut app.current_stroke {
-                        stroke.points.push((cx, cy));
+                        stroke.points.push(point);
                     }
                 }
                 DrawTool::Erase => {
-                    erase_at(cx, cy, app);
+                    erase_at(point.0, point.1, app);
                 }
                 DrawTool::Shape => {
-                    if let Some((ox, oy)) = app.creation_origin {
-                        app.preview_element =
-                            Some(create_shape(ox, oy, cx, cy, app.active_shape_type));
+                    if let Some(origin) = app.creation_origin {
+                        app.preview_element = Some(create_shape(
+                            origin.0,
+                            origin.1,
+                            point.0,
+                            point.1,
+                            app.active_shape_type,
+                        ));
                     }
                 }
             }
         }
-        MouseEventKind::Drag(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Middle) => {
-            panning(ev.column, ev.row, app);
-        }
         MouseEventKind::Up(MouseButton::Left) => {
+            if app.active_tool == DrawTool::Cursor {
+                finish_cursor_move(app)?;
+                return Ok(None);
+            }
+
             let mut previous = None;
             if let Some(mut stroke) = app.current_stroke.take() {
                 stroke.points = crate::draw::render::smooth_points(&stroke.points);
@@ -353,10 +392,6 @@ fn handle_mouse(
                 app.commit_data_change(previous)?;
             }
         }
-        MouseEventKind::Up(_) => {
-            app.is_panning = false;
-            app.last_mouse_pos = None;
-        }
         MouseEventKind::ScrollUp => {
             app.viewport.zoom *= 1.1;
         }
@@ -367,6 +402,81 @@ fn handle_mouse(
     }
 
     Ok(None)
+}
+
+fn cursor_left_down(mouse: MouseEvent, point: (f64, f64), app: &mut DrawAppState) {
+    let hit = app.topmost_hit(point);
+    let double_click = app.last_click.is_some_and(|(column, row, at)| {
+        column == mouse.column && row == mouse.row && at.elapsed().as_millis() < 500
+    });
+
+    if let Some(id) = hit {
+        let is_text = app
+            .data
+            .item(&id)
+            .is_some_and(|item| matches!(&item.element, DrawElement::Text(_)));
+        if double_click && is_text {
+            app.selection.select_only(id.clone());
+            app.hovered = None;
+            app.begin_text_editor(id);
+            app.last_click = None;
+            return;
+        }
+
+        let translation = app.data.item(&id).map_or((0.0, 0.0), |item| {
+            (item.transform.translate_x, item.transform.translate_y)
+        });
+        app.selection.select_only(id.clone());
+        app.hovered = None;
+        app.interaction = Some(DrawInteraction::Move {
+            id,
+            start_world: point,
+            original_translation: translation,
+            preview_translation: translation,
+        });
+    } else {
+        app.selection.clear();
+        app.hovered = None;
+        app.interaction = None;
+    }
+    app.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
+}
+
+fn cursor_left_drag(point: (f64, f64), app: &mut DrawAppState) {
+    let Some(DrawInteraction::Move {
+        start_world,
+        original_translation,
+        preview_translation,
+        ..
+    }) = &mut app.interaction
+    else {
+        return;
+    };
+    preview_translation.0 = original_translation.0 + point.0 - start_world.0;
+    preview_translation.1 = original_translation.1 + point.1 - start_world.1;
+}
+
+fn finish_cursor_move(app: &mut DrawAppState) -> anyhow::Result<()> {
+    let Some(DrawInteraction::Move {
+        id,
+        original_translation,
+        preview_translation,
+        ..
+    }) = app.interaction.take()
+    else {
+        return Ok(());
+    };
+    if original_translation == preview_translation {
+        return Ok(());
+    }
+
+    let previous = app.data.clone();
+    if let Some(item) = app.data.item_mut(&id) {
+        item.transform.translate_x = preview_translation.0;
+        item.transform.translate_y = preview_translation.1;
+        app.commit_data_change(previous)?;
+    }
+    Ok(())
 }
 
 fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawElement {
@@ -410,14 +520,6 @@ fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawEl
     }
 }
 
-fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<DrawItemId> {
-    app.data.elements.iter().rev().find_map(|item| {
-        (matches!(&item.element, DrawElement::Text(_))
-            && crate::draw::geometry::hit_test_item(item, (cx, cy), 5.0, &app.viewport))
-        .then(|| item.id.clone())
-    })
-}
-
 fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     app.data
         .elements
@@ -449,4 +551,149 @@ fn screen_to_canvas(sx: u16, sy: u16, app: &DrawAppState) -> (f64, f64) {
     let cx = app.viewport.x + (col_frac * 2.0 - 1.0) * 100.0 / app.viewport.zoom;
     let cy = app.viewport.y + (1.0 - row_frac * 2.0) * 100.0 / app.viewport.zoom;
     (cx, cy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyModifiers;
+    use ratatui::layout::Rect;
+
+    fn test_state() -> (tempfile::TempDir, DrawAppState) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let storage = crate::storage::Storage {
+            data_dir: root.join("data"),
+            config_dir: root.join("config"),
+            notes_dir: root.join("notes"),
+            templates_dir: root.join("templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        std::fs::create_dir_all(&storage.notes_dir).unwrap();
+        (
+            temp,
+            DrawAppState::new(
+                storage,
+                Some("cursor.draw".to_string()),
+                crate::app_theme::AppThemeColors::default(),
+                Keybinds::default(),
+                crate::keybinds::KeyMatcher::new(),
+            ),
+        )
+    }
+
+    fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Event {
+        Event::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn cursor_drag_commits_one_translated_item() {
+        let (_temp, mut state) = test_state();
+        state.last_area = Rect::new(0, 0, 100, 100);
+        let item = DrawItem::new(DrawElement::Shape(Shape::Rect {
+            x: -2.0,
+            y: -2.0,
+            width: 4.0,
+            height: 4.0,
+            color: (255, 255, 255),
+        }));
+        let id = item.id.clone();
+        state.data.elements.push(item);
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+
+        handle_event(
+            mouse(MouseEventKind::Down(MouseButton::Left), 50, 50),
+            &mut state,
+            &keybinds,
+            &config,
+        )
+        .unwrap();
+        handle_event(
+            mouse(MouseEventKind::Drag(MouseButton::Left), 60, 60),
+            &mut state,
+            &keybinds,
+            &config,
+        )
+        .unwrap();
+        assert_eq!(state.data.item(&id).unwrap().transform.translate_x, 0.0);
+        let Some(DrawInteraction::Move {
+            id: preview_id,
+            start_world,
+            original_translation,
+            preview_translation,
+        }) = &state.interaction
+        else {
+            panic!("cursor drag must create move preview");
+        };
+        assert_eq!(preview_id, &id);
+        assert!((start_world.0 - 1.0).abs() < 1e-9);
+        assert!((start_world.1 + 1.0).abs() < 1e-9);
+        assert_eq!(*original_translation, (0.0, 0.0));
+        assert!((preview_translation.0 - 20.0).abs() < 1e-9);
+        assert!((preview_translation.1 + 20.0).abs() < 1e-9);
+
+        handle_event(
+            mouse(MouseEventKind::Up(MouseButton::Left), 60, 60),
+            &mut state,
+            &keybinds,
+            &config,
+        )
+        .unwrap();
+        let item = state.data.item(&id).unwrap();
+        assert!((item.transform.translate_x - 20.0).abs() < 1e-9);
+        assert!((item.transform.translate_y + 20.0).abs() < 1e-9);
+        assert_eq!(state.undo_stack.len(), 1);
+        assert!(state.interaction.is_none());
+    }
+
+    #[test]
+    fn cursor_double_click_opens_text_editor() {
+        let (_temp, mut state) = test_state();
+        state.last_area = Rect::new(0, 0, 100, 100);
+        let item = DrawItem::new(DrawElement::Text(Text {
+            content: "text".to_string(),
+            x: 0.0,
+            y: 0.0,
+            color: (255, 255, 255),
+        }));
+        let id = item.id.clone();
+        state.data.elements.push(item);
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+
+        handle_event(
+            mouse(MouseEventKind::Down(MouseButton::Left), 50, 49),
+            &mut state,
+            &keybinds,
+            &config,
+        )
+        .unwrap();
+        handle_event(
+            mouse(MouseEventKind::Up(MouseButton::Left), 50, 49),
+            &mut state,
+            &keybinds,
+            &config,
+        )
+        .unwrap();
+        handle_event(
+            mouse(MouseEventKind::Down(MouseButton::Left), 50, 49),
+            &mut state,
+            &keybinds,
+            &config,
+        )
+        .unwrap();
+
+        assert_eq!(
+            state.text_editor.as_ref().map(|(target, _)| target),
+            Some(&id)
+        );
+        assert!(state.interaction.is_none());
+    }
 }
