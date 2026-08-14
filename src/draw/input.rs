@@ -30,13 +30,20 @@ pub fn handle_event(
             Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorConfirm, &k) => {
                 let new_content = textarea.lines()[0].clone();
                 let target = id.clone();
-                if let Some(item) = app.data.elements.iter_mut().find(|item| item.id == target)
-                    && let DrawElement::Text(text) = &mut item.element
-                {
-                    text.content = new_content;
+                let changed = app.data.item(&target).is_some_and(|item| {
+                    matches!(&item.element, DrawElement::Text(text) if text.content != new_content)
+                });
+                if changed {
+                    let previous = app.data.clone();
+                    if let Some(item) = app.data.item_mut(&target)
+                        && let DrawElement::Text(text) = &mut item.element
+                    {
+                        text.content = new_content;
+                    }
+                    app.commit_data_change(previous)?;
                 }
                 app.text_editor = None;
-                return Ok(Some(DrawEventAction::Save));
+                return Ok(None);
             }
             _ => {
                 if let Event::Key(k) = ev
@@ -265,6 +272,7 @@ fn handle_mouse(
                     app.creation_origin = Some((cx, cy));
                 }
                 DrawTool::Text => {
+                    let previous = app.data.clone();
                     app.data
                         .elements
                         .push(DrawItem::new(DrawElement::Text(Text {
@@ -273,9 +281,11 @@ fn handle_mouse(
                             y: cy,
                             color: (255, 255, 255),
                         })));
-                    return Ok(Some(DrawEventAction::Save));
+                    app.commit_data_change(previous)?;
+                    return Ok(None);
                 }
                 DrawTool::Erase => {
+                    app.erase_start_data = Some(app.data.clone());
                     erase_at(cx, cy, app);
                 }
             }
@@ -321,24 +331,26 @@ fn handle_mouse(
             panning(ev.column, ev.row, app);
         }
         MouseEventKind::Up(MouseButton::Left) => {
-            let mut changed = false;
+            let mut previous = None;
             if let Some(mut stroke) = app.current_stroke.take() {
                 stroke.points = crate::draw::render::smooth_points(&stroke.points);
+                previous = Some(app.data.clone());
                 app.data
                     .elements
                     .push(DrawItem::new(DrawElement::Stroke(stroke)));
-                changed = true;
             }
             if let Some(element) = app.preview_element.take() {
+                if previous.is_none() {
+                    previous = Some(app.data.clone());
+                }
                 app.data.elements.push(DrawItem::new(element));
-                changed = true;
             }
             if app.active_tool == DrawTool::Erase {
-                changed = true;
+                previous = app.erase_start_data.take();
             }
             app.creation_origin = None;
-            if changed {
-                return Ok(Some(DrawEventAction::Save));
+            if let Some(previous) = previous {
+                app.commit_data_change(previous)?;
             }
         }
         MouseEventKind::Up(_) => {

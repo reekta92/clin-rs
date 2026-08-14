@@ -46,6 +46,15 @@ impl DrawData {
         }
         Ok(())
     }
+
+    #[must_use]
+    pub fn item(&self, id: &DrawItemId) -> Option<&DrawItem> {
+        self.elements.iter().find(|item| &item.id == id)
+    }
+
+    pub fn item_mut(&mut self, id: &DrawItemId) -> Option<&mut DrawItem> {
+        self.elements.iter_mut().find(|item| &item.id == id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -98,6 +107,27 @@ impl DrawItem {
             id: DrawItemId::new(),
             transform: DrawTransform::identity(pivot_x, pivot_y),
             element,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawClipboard {
+    pub item: DrawItem,
+}
+
+impl DrawClipboard {
+    #[must_use]
+    pub fn from_item(item: &DrawItem) -> Self {
+        Self { item: item.clone() }
+    }
+
+    #[must_use]
+    pub fn pasted_item(&self) -> DrawItem {
+        DrawItem {
+            id: DrawItemId::new(),
+            element: self.item.element.clone(),
+            transform: self.item.transform,
         }
     }
 }
@@ -521,5 +551,18 @@ mod tests {
                 .unwrap_err()
                 .contains("scale must be positive")
         );
+    }
+
+    #[test]
+    fn clipboard_preserves_item_payload_and_refreshes_id() {
+        let mut source = DrawItem::new(stroke());
+        source.transform.translate_x = 12.0;
+        source.transform.rotation_degrees = 45.0;
+        source.transform.scale = 2.0;
+
+        let pasted = DrawClipboard::from_item(&source).pasted_item();
+        assert_ne!(pasted.id, source.id);
+        assert_eq!(pasted.element, source.element);
+        assert_eq!(pasted.transform, source.transform);
     }
 }
