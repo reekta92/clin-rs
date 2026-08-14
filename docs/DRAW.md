@@ -101,6 +101,7 @@ pub enum DrawTool {
 |---|---|
 | `v` | Select Cursor tool |
 | `d`, `e`, `t`, `s` | Select Draw, Erase, Text, or Shape tool |
+| Selected Cursor item shortcut | Runs matching context-menu action before tool shortcut |
 | `Shift+G` | Toggle visual grid |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy selected item / enter paste placement |
 | `Ctrl+Z` | Undo latest committed draw change |

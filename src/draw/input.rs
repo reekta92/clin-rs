@@ -1,13 +1,13 @@
 use crate::draw::app::{
     DrawAppState, DrawEventAction, DrawInteraction, DrawMenuItem, DrawMenuKind, DrawMenuTarget,
-    draw_menu_items,
+    draw_menu_items, draw_menu_shortcut_index,
 };
 use crate::draw::state::{
     DrawClipboard, DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke, Text,
 };
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
-use crossterm::event::{Event, KeyCode, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 
 pub fn handle_event(
@@ -101,6 +101,10 @@ pub fn handle_event(
                 return Ok(None);
             }
         }
+        if handle_selected_menu_shortcut(k, app, clipboard)? {
+            return Ok(None);
+        }
+
         if crate::events::is_universal_quit_key(&k) {
             return Ok(Some(DrawEventAction::Quit));
         }
@@ -179,6 +183,49 @@ pub fn handle_event(
         Event::Mouse(mouse_event) => handle_mouse(mouse_event, app, config, clipboard),
         _ => Ok(None),
     }
+}
+
+fn handle_selected_menu_shortcut(
+    key: crossterm::event::KeyEvent,
+    app: &mut DrawAppState,
+    clipboard: &mut Option<DrawClipboard>,
+) -> anyhow::Result<bool> {
+    if app.active_tool != DrawTool::Cursor
+        || key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER)
+    {
+        return Ok(false);
+    }
+    let KeyCode::Char(shortcut) = key.code else {
+        return Ok(false);
+    };
+    let Some(id) = app.selection.primary.clone() else {
+        return Ok(false);
+    };
+    let Some(item) = app.data.item(&id) else {
+        return Ok(false);
+    };
+    let target = if matches!(&item.element, DrawElement::Text(_)) {
+        DrawMenuTarget::Text(id)
+    } else {
+        DrawMenuTarget::NonText(id)
+    };
+    let Some(index) = draw_menu_shortcut_index(&target, clipboard.is_some(), shortcut) else {
+        return Ok(false);
+    };
+    let (menu_x, menu_y) = app.mouse_pos.unwrap_or((app.last_area.x, app.last_area.y));
+    app.seq_matcher.clear();
+    execute_menu_item(
+        app,
+        clipboard,
+        target,
+        DrawMenuKind::Actions,
+        index,
+        menu_x,
+        menu_y,
+    )?;
+    Ok(true)
 }
 
 fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
@@ -1404,6 +1451,38 @@ mod tests {
         assert!((center.1 + 1.0).abs() < 1e-9);
         assert_eq!(state.selection.primary, Some(pasted.id.clone()));
         assert_eq!(state.undo_stack.len(), 2);
+    }
+
+    #[test]
+    fn selected_context_shortcut_precedes_cursor_tool_shortcut() {
+        let (_temp, mut state) = test_state();
+        let item = DrawItem::new(DrawElement::Shape(Shape::Rect {
+            x: -1.0,
+            y: -1.0,
+            width: 2.0,
+            height: 2.0,
+            color: (255, 255, 255),
+        }));
+        let id = item.id.clone();
+        state.data.elements.push(item);
+        state.selection.select_only(id.clone());
+        let keybinds = Keybinds::default();
+        let config = crate::config::ClinConfig::default();
+        let mut clipboard = None;
+
+        handle_event(
+            key(KeyCode::Char('e')),
+            &mut state,
+            &keybinds,
+            &config,
+            &mut clipboard,
+        )
+        .unwrap();
+
+        assert!(state.data.item(&id).is_none());
+        assert!(state.selection.is_empty());
+        assert_eq!(state.active_tool, DrawTool::Cursor);
+        assert_eq!(state.undo_stack.len(), 1);
     }
 
     #[test]

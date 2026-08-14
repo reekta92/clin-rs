@@ -123,6 +123,17 @@ pub fn draw_menu_items(
     }
 }
 
+pub(crate) fn draw_menu_shortcut_index(
+    target: &DrawMenuTarget,
+    clipboard_available: bool,
+    shortcut: char,
+) -> Option<usize> {
+    let shortcut = shortcut.to_ascii_lowercase();
+    draw_menu_items(target, clipboard_available)
+        .iter()
+        .position(|item| item.shortcut().to_ascii_lowercase() == shortcut)
+}
+
 #[must_use]
 pub fn draw_menu_specs(
     target: &DrawMenuTarget,
@@ -574,6 +585,16 @@ mod tests {
         assert_eq!(
             labels(DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, true),
             vec![("Paste", Some('p'))]
+        );
+
+        let id = DrawItemId::new();
+        assert_eq!(
+            draw_menu_shortcut_index(&DrawMenuTarget::NonText(id.clone()), false, 'E'),
+            Some(4)
+        );
+        assert_eq!(
+            draw_menu_shortcut_index(&DrawMenuTarget::Text(id), false, 'T'),
+            Some(0)
         );
     }
 }
