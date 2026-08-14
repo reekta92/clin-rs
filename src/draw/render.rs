@@ -374,7 +374,7 @@ fn draw_selection_and_hover(ctx: &mut Context, app: &DrawAppState) {
             ctx,
             item,
             transform,
-            blended_item_color(item, app.theme.accent, 20),
+            blended_item_color(item, app.theme.accent, 30),
         );
     }
 }
@@ -765,8 +765,8 @@ mod tests {
         let accent = Color::Rgb(200, 100, 0);
 
         assert_eq!(
-            blended_item_color(&item, accent, 20),
-            Color::Rgb(120, 140, 160)
+            blended_item_color(&item, accent, 30),
+            Color::Rgb(130, 135, 140)
         );
         assert_eq!(
             blended_item_color(&item, accent, 45),
