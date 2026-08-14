@@ -299,6 +299,14 @@ const DRAW_SUGGESTIONS: &[HelpSuggestion] = &[
         "Shape menu",
         "Use {draw:ShapeSelectorUp}/{draw:ShapeSelectorDown}; press {draw:ShapeSelectorConfirm} to choose highlighted shape.",
     ),
+    tip(
+        "Transform handles",
+        "Select an item in Cursor mode, then drag its round handle to rotate or square handle to scale. Hold ``Shift`` while rotating to snap.",
+    ),
+    tip(
+        "Pan and zoom",
+        "Middle-drag pans canvas. Scroll zooms around pointer without changing stored item geometry.",
+    ),
 ];
 const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
