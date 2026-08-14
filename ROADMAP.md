@@ -72,6 +72,7 @@
 #### General
 - [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
+- [ ] **Feature toggles** — nearly every big feature will be toggleable for which means if you don't use canvas files, you will be able to disable it which will dismiss it's code from runtime
 
 #### Notes View
 - [ ] **Notebook files** — a text file type where you can embed interactable drawings(via `draw`), schemes(via `pinstar`) etc. At it's core it's a markdown file with a special property, so it will be compatible with other `.md` editors.
