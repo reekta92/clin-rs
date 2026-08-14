@@ -553,6 +553,10 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('d'))],
         );
         draw.insert(
+            DrawAction::SelectCursorTool,
+            vec![KeyCombo::simple(KeyCode::Char('v'))],
+        );
+        draw.insert(
             DrawAction::ToggleShapeSelector,
             vec![KeyCombo::simple(KeyCode::Char('s'))],
         );
@@ -596,6 +600,35 @@ impl Default for Keybinds {
         draw.insert(
             DrawAction::TextEditorCancel,
             vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        draw.insert(DrawAction::MenuClose, vec![KeyCombo::simple(KeyCode::Esc)]);
+        draw.insert(
+            DrawAction::MenuUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        draw.insert(
+            DrawAction::MenuDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        draw.insert(
+            DrawAction::MenuSelect,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(DrawAction::Copy, vec![KeyCombo::ctrl(KeyCode::Char('c'))]);
+        draw.insert(DrawAction::Paste, vec![KeyCombo::ctrl(KeyCode::Char('v'))]);
+        draw.insert(DrawAction::Undo, vec![KeyCombo::ctrl(KeyCode::Char('z'))]);
+        draw.insert(
+            DrawAction::Redo,
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('y')),
+                KeyCombo::ctrl_shift(KeyCode::Char('z')),
+            ],
         );
         draw.insert(
             DrawAction::ToggleGrid,

@@ -203,6 +203,7 @@ pub enum GraphAction {
 pub enum DrawAction {
     Quit,
     Help,
+    SelectCursorTool,
     SelectDrawTool,
     ToggleShapeSelector,
     SelectTextTool,
@@ -213,6 +214,14 @@ pub enum DrawAction {
     ShapeSelectorCancel,
     TextEditorConfirm,
     TextEditorCancel,
+    MenuClose,
+    MenuUp,
+    MenuDown,
+    MenuSelect,
+    Copy,
+    Paste,
+    Undo,
+    Redo,
     ToggleGrid,
 }
 

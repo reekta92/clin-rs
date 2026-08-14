@@ -16,6 +16,146 @@ pub enum DrawInteraction {
         original_translation: (f64, f64),
         preview_translation: (f64, f64),
     },
+    Rotate {
+        id: DrawItemId,
+        pivot_world: (f64, f64),
+        original_degrees: f64,
+        preview_degrees: f64,
+        start_angle: Option<f64>,
+    },
+    Scale {
+        id: DrawItemId,
+        pivot_world: (f64, f64),
+        original_scale: f64,
+        preview_scale: f64,
+        start_distance: Option<f64>,
+    },
+    Paste {
+        item: crate::draw::state::DrawItem,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DrawMenuTarget {
+    NonText(DrawItemId),
+    Text(DrawItemId),
+    Empty { x: f64, y: f64 },
+}
+
+impl DrawMenuTarget {
+    #[must_use]
+    pub fn item_id(&self) -> Option<&DrawItemId> {
+        match self {
+            Self::NonText(id) | Self::Text(id) => Some(id),
+            Self::Empty { .. } => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrawMenuKind {
+    Actions,
+    Color,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrawMenuItem {
+    Rotate,
+    Scale,
+    Color,
+    Copy,
+    Erase,
+    EditText,
+    Paste,
+}
+
+impl DrawMenuItem {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Rotate => "Rotate",
+            Self::Scale => "Scale",
+            Self::Color => "Color...",
+            Self::Copy => "Copy",
+            Self::Erase => "Erase",
+            Self::EditText => "Edit Text",
+            Self::Paste => "Paste",
+        }
+    }
+
+    const fn shortcut(self) -> char {
+        match self {
+            Self::Rotate => 'r',
+            Self::Scale => 's',
+            Self::Color => 'o',
+            Self::Copy => 'c',
+            Self::Erase => 'e',
+            Self::EditText => 't',
+            Self::Paste => 'p',
+        }
+    }
+}
+
+#[must_use]
+pub fn draw_menu_items(
+    target: &DrawMenuTarget,
+    clipboard_available: bool,
+) -> &'static [DrawMenuItem] {
+    const NON_TEXT: &[DrawMenuItem] = &[
+        DrawMenuItem::Rotate,
+        DrawMenuItem::Scale,
+        DrawMenuItem::Color,
+        DrawMenuItem::Copy,
+        DrawMenuItem::Erase,
+    ];
+    const TEXT: &[DrawMenuItem] = &[
+        DrawMenuItem::EditText,
+        DrawMenuItem::Color,
+        DrawMenuItem::Copy,
+        DrawMenuItem::Erase,
+    ];
+    const PASTE: &[DrawMenuItem] = &[DrawMenuItem::Paste];
+
+    match target {
+        DrawMenuTarget::NonText(_) => NON_TEXT,
+        DrawMenuTarget::Text(_) => TEXT,
+        DrawMenuTarget::Empty { .. } if clipboard_available => PASTE,
+        DrawMenuTarget::Empty { .. } => &[],
+    }
+}
+
+#[must_use]
+pub fn draw_menu_specs(
+    target: &DrawMenuTarget,
+    clipboard_available: bool,
+) -> Vec<crate::ui::CanvasMenuItemSpec> {
+    draw_menu_items(target, clipboard_available)
+        .iter()
+        .map(|item| crate::ui::CanvasMenuItemSpec::new(item.label()).shortcut(item.shortcut()))
+        .collect()
+}
+
+#[must_use]
+pub fn draw_color_menu_specs() -> Vec<crate::ui::CanvasMenuItemSpec> {
+    crate::pinstar::COLOR_PICKER_PALETTE
+        .iter()
+        .map(|(label, _, color)| {
+            let shortcut = match *label {
+                "Red" => 'r',
+                "Orange" => 'o',
+                "Yellow" => 'y',
+                "Green" => 'g',
+                "Cyan" => 'c',
+                "Purple" => 'p',
+                "Blue" => 'b',
+                "Magenta" => 'm',
+                "White" => 'w',
+                _ => unreachable!("fixed color palette has known names"),
+            };
+            crate::ui::CanvasMenuItemSpec::new(label)
+                .shortcut(shortcut)
+                .color(*color)
+        })
+        .collect()
 }
 
 use ratatui::layout::Rect;
@@ -39,6 +179,9 @@ pub struct DrawAppState {
     pub right_mouse: crate::ui::MarqueeDragState,
     pub right_mouse_screen: Option<(u16, u16)>,
     pub right_mouse_target: Option<DrawItemId>,
+    pub context_menu: Option<crate::ui::CanvasContextMenu>,
+    pub menu_target: Option<DrawMenuTarget>,
+    pub menu_kind: Option<DrawMenuKind>,
     pub text_editor: Option<(DrawItemId, TextArea<'static>)>,
     pub text_editor_rect: Option<Rect>,
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
@@ -93,6 +236,9 @@ impl DrawAppState {
             right_mouse: crate::ui::MarqueeDragState::new(3),
             right_mouse_screen: None,
             right_mouse_target: None,
+            context_menu: None,
+            menu_target: None,
+            menu_kind: None,
             text_editor: None,
             text_editor_rect: None,
             mouse_selection: crate::text_edit::MouseTextSelection::default(),
@@ -144,6 +290,31 @@ impl DrawAppState {
         };
         self.text_editor = Some((id, TextArea::new(vec![text.content.clone()])));
         true
+    }
+
+    pub fn open_context_menu(
+        &mut self,
+        x: u16,
+        y: u16,
+        target: DrawMenuTarget,
+        clipboard_available: bool,
+    ) {
+        let specs = draw_menu_specs(&target, clipboard_available);
+        if specs.is_empty() {
+            return;
+        }
+        self.context_menu = Some(crate::ui::CanvasContextMenu::new(x, y, specs));
+        self.menu_target = Some(target);
+        self.menu_kind = Some(DrawMenuKind::Actions);
+    }
+
+    pub fn open_color_menu(&mut self, x: u16, y: u16) {
+        self.context_menu = Some(crate::ui::CanvasContextMenu::new(
+            x,
+            y,
+            draw_color_menu_specs(),
+        ));
+        self.menu_kind = Some(DrawMenuKind::Color);
     }
 
     pub fn record_undo_state(&mut self, previous: DrawData) {
@@ -200,6 +371,9 @@ impl DrawAppState {
         self.right_mouse.clear();
         self.right_mouse_screen = None;
         self.right_mouse_target = None;
+        self.context_menu = None;
+        self.menu_target = None;
+        self.menu_kind = None;
     }
 
     fn push_history(stack: &mut Vec<DrawData>, data: DrawData) {
@@ -238,7 +412,9 @@ impl crate::overlay::OverlayView for DrawAppState {
         _term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &keybinds, &app.config)? {
+        let config = &app.config;
+        let clipboard = &mut app.draw_clipboard;
+        if let Some(action) = handle_event(event, self, &keybinds, config, clipboard)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;
@@ -363,5 +539,41 @@ mod tests {
         let vector_id = vector.id.clone();
         state.data.elements.push(vector);
         assert_eq!(state.topmost_hit((1.0, 1.0)), Some(vector_id));
+    }
+
+    #[test]
+    fn context_menu_specs_match_draw_item_scope() {
+        let id = DrawItemId::new();
+        let labels = |target: DrawMenuTarget, clipboard_available| {
+            draw_menu_specs(&target, clipboard_available)
+                .into_iter()
+                .map(|spec| (spec.label, spec.shortcut))
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            labels(DrawMenuTarget::NonText(id.clone()), false),
+            vec![
+                ("Rotate", Some('r')),
+                ("Scale", Some('s')),
+                ("Color...", Some('o')),
+                ("Copy", Some('c')),
+                ("Erase", Some('e')),
+            ]
+        );
+        assert_eq!(
+            labels(DrawMenuTarget::Text(id), false),
+            vec![
+                ("Edit Text", Some('t')),
+                ("Color...", Some('o')),
+                ("Copy", Some('c')),
+                ("Erase", Some('e')),
+            ]
+        );
+        assert!(draw_menu_specs(&DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, false).is_empty());
+        assert_eq!(
+            labels(DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, true),
+            vec![("Paste", Some('p'))]
+        );
     }
 }
