@@ -133,7 +133,7 @@ pub fn draw_canvas(
         area.width,
         1,
     );
-    let hints_items = vec![
+    let hints_items = [
         (
             app.keybinds.display_draw(DrawAction::SelectCursorTool),
             "cursor",
@@ -154,11 +154,6 @@ pub fn draw_canvas(
             app.keybinds.display_draw(DrawAction::SelectEraseTool),
             "erase",
         ),
-        (app.keybinds.display_draw(DrawAction::ToggleGrid), "grid"),
-        (app.keybinds.display_draw(DrawAction::Copy), "copy"),
-        (app.keybinds.display_draw(DrawAction::Paste), "paste"),
-        (app.keybinds.display_draw(DrawAction::Undo), "undo"),
-        (app.keybinds.display_draw(DrawAction::Redo), "redo"),
         (app.keybinds.draw_keys_display(DrawAction::Quit), "back"),
         (
             format!("F1/{}", app.keybinds.draw_keys_display(DrawAction::Help)),
