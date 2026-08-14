@@ -200,6 +200,31 @@ pub fn transformed_bounds(item: &DrawItem) -> Option<DrawBounds> {
     transformed_bounds_with_affine(item, DrawAffine::new(&item.transform))
 }
 
+#[must_use]
+pub fn transformed_bounds_with_transform(
+    item: &DrawItem,
+    transform: &DrawTransform,
+) -> Option<DrawBounds> {
+    transformed_bounds_with_affine(item, DrawAffine::new(transform))
+}
+
+#[must_use]
+pub fn selection_handle_points(
+    item: &DrawItem,
+    transform: &DrawTransform,
+    viewport: &Viewport,
+) -> Option<((f64, f64), (f64, f64))> {
+    let zoom = viewport.zoom.abs();
+    if !zoom.is_finite() || zoom == 0.0 {
+        return None;
+    }
+    let bounds = transformed_bounds_with_transform(item, transform)?;
+    let center = bounds.center();
+    let rotation = (center.0, bounds.min_y - 8.0 / zoom);
+    let scale = (bounds.max_x, bounds.max_y);
+    Some((rotation, scale))
+}
+
 fn transformed_bounds_with_affine(item: &DrawItem, transform: DrawAffine) -> Option<DrawBounds> {
     let bounds = base_bounds(&item.element)?;
     if matches!(item.element, DrawElement::Text(_)) {
@@ -648,5 +673,34 @@ mod tests {
         };
         assert!(hit_test_item(&rectangle, (25.0, 15.0), 1.0, &viewport));
         assert!(!hit_test_item(&rectangle, (25.0, 13.0), 1.0, &viewport));
+    }
+
+    #[test]
+    fn selection_handles_follow_transformed_bounds() {
+        let mut rectangle = item(DrawElement::Shape(Shape::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 20.0,
+            color: (0, 0, 0),
+        }));
+        rectangle.transform = DrawTransform {
+            pivot_x: 5.0,
+            pivot_y: 10.0,
+            translate_x: 20.0,
+            translate_y: -5.0,
+            rotation_degrees: 0.0,
+            scale: 2.0,
+        };
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            zoom: 2.0,
+        };
+
+        assert_eq!(
+            selection_handle_points(&rectangle, &rectangle.transform, &viewport),
+            Some(((25.0, -19.0), (35.0, 25.0)))
+        );
     }
 }

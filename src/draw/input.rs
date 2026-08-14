@@ -919,6 +919,29 @@ fn finish_transform(app: &mut DrawAppState) -> anyhow::Result<()> {
 }
 
 fn cursor_left_down(mouse: MouseEvent, point: (f64, f64), app: &mut DrawAppState) {
+    let selected_handles = app.selection.primary.as_ref().and_then(|id| {
+        app.data
+            .item(id)
+            .filter(|item| !matches!(&item.element, DrawElement::Text(_)))
+            .and_then(|item| {
+                crate::draw::geometry::selection_handle_points(item, &item.transform, &app.viewport)
+                    .map(|handles| (id.clone(), handles))
+            })
+    });
+    if let Some((id, (rotation, scale))) = selected_handles {
+        let tolerance = 5.0 / app.viewport.zoom.abs();
+        if (point.0 - rotation.0).hypot(point.1 - rotation.1) <= tolerance {
+            begin_rotate(app, id);
+            begin_transform_drag(app, point);
+            return;
+        }
+        if (point.0 - scale.0).hypot(point.1 - scale.1) <= tolerance {
+            begin_scale(app, id);
+            begin_transform_drag(app, point);
+            return;
+        }
+    }
+
     let hit = app.topmost_hit(point);
     let double_click = app.last_click.is_some_and(|(column, row, at)| {
         column == mouse.column && row == mouse.row && at.elapsed().as_millis() < 500
@@ -1346,6 +1369,26 @@ mod tests {
         }));
         let id = item.id.clone();
         state.data.elements.push(item);
+        state.selection.select_only(id.clone());
+        cursor_left_down(
+            MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+            (0.0, -9.0),
+            &mut state,
+        );
+        assert!(matches!(
+            &state.interaction,
+            Some(DrawInteraction::Rotate {
+                id: selected_id,
+                start_angle: Some(_),
+                ..
+            }) if selected_id == &id
+        ));
+        state.interaction = None;
 
         begin_rotate(&mut state, id.clone());
         begin_transform_drag(&mut state, (1.0, 0.0));

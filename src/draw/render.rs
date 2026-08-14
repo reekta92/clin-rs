@@ -1,6 +1,8 @@
 use crate::app::ViewMode;
-use crate::draw::app::DrawAppState;
-use crate::draw::state::{DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke};
+use crate::draw::app::{DrawAppState, DrawInteraction};
+use crate::draw::state::{
+    DrawElement, DrawItem, DrawShapeType, DrawTool, DrawTransform, Shape, Stroke,
+};
 use crate::keybinds::DrawAction;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -105,12 +107,10 @@ pub fn draw_canvas(
                     cur_x += grid_step_x;
                 }
             }
-            for item in app
-                .data
-                .elements
-                .iter()
-                .filter(|item| !matches!(&item.element, DrawElement::Text(_)))
-            {
+            for item in app.data.elements.iter().filter(|item| {
+                !matches!(&item.element, DrawElement::Text(_))
+                    && !is_interaction_item(app, &item.id)
+            }) {
                 draw_item(ctx, item);
             }
 
@@ -121,15 +121,15 @@ pub fn draw_canvas(
             if let Some(DrawElement::Shape(shape)) = &app.preview_element {
                 draw_shape(ctx, shape, crate::draw::geometry::DrawAffine::identity());
             }
+            draw_interaction_preview(ctx, app, false);
 
-            for item in app
-                .data
-                .elements
-                .iter()
-                .filter(|item| matches!(&item.element, DrawElement::Text(_)))
-            {
+            for item in app.data.elements.iter().filter(|item| {
+                matches!(&item.element, DrawElement::Text(_)) && !is_interaction_item(app, &item.id)
+            }) {
                 draw_item(ctx, item);
             }
+            draw_interaction_preview(ctx, app, true);
+            draw_selection_and_hover(ctx, app);
         });
 
     frame.render_widget(canvas, canvas_area);
@@ -182,6 +182,10 @@ pub fn draw_canvas(
     let (left_line, right_line) =
         crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Draw, &app.theme);
     crate::ui::draw_status_bar(frame, status_area, &app.theme, left_line, right_line);
+
+    if let Some(menu) = &app.context_menu {
+        crate::ui::render_canvas_context_menu(frame, canvas_area, menu, &app.theme, mouse_pos);
+    }
 
     if app.show_shape_selector {
         let content = crate::ui::draw_popup_frame(
@@ -286,38 +290,256 @@ pub fn draw_canvas(
     }
 }
 
-pub(crate) fn draw_item(ctx: &mut Context, item: &DrawItem) {
-    match &item.element {
-        DrawElement::Stroke(stroke) => {
-            draw_stroke(
-                ctx,
-                stroke,
-                crate::draw::geometry::DrawAffine::new(&item.transform),
-            );
+fn is_interaction_item(app: &DrawAppState, item_id: &crate::draw::state::DrawItemId) -> bool {
+    match &app.interaction {
+        Some(DrawInteraction::Move { id, .. })
+        | Some(DrawInteraction::Rotate { id, .. })
+        | Some(DrawInteraction::Scale { id, .. }) => id == item_id,
+        Some(DrawInteraction::Paste { .. }) | None => false,
+    }
+}
+
+fn interaction_transform_for_item(
+    item: &DrawItem,
+    interaction: &Option<DrawInteraction>,
+) -> DrawTransform {
+    let mut transform = item.transform;
+    match interaction {
+        Some(DrawInteraction::Move {
+            id,
+            preview_translation,
+            ..
+        }) if id == &item.id => {
+            transform.translate_x = preview_translation.0;
+            transform.translate_y = preview_translation.1;
         }
-        DrawElement::Shape(shape) => {
-            draw_shape(
-                ctx,
-                shape,
-                crate::draw::geometry::DrawAffine::new(&item.transform),
-            );
+        Some(DrawInteraction::Rotate {
+            id,
+            preview_degrees,
+            ..
+        }) if id == &item.id => {
+            transform.rotation_degrees = *preview_degrees;
         }
-        DrawElement::Text(text) => {
-            if let Some((x, y)) = crate::draw::geometry::translated_text_position(item) {
-                let color = Color::Rgb(text.color.0, text.color.1, text.color.2);
-                ctx.print(
-                    x,
-                    y,
-                    ratatui::text::Line::from(text.content.clone())
-                        .style(Style::default().fg(color)),
+        Some(DrawInteraction::Scale {
+            id, preview_scale, ..
+        }) if id == &item.id => {
+            transform.scale = *preview_scale;
+        }
+        Some(DrawInteraction::Paste { .. }) | None => {}
+        _ => {}
+    }
+    transform
+}
+
+fn draw_interaction_preview(ctx: &mut Context, app: &DrawAppState, text: bool) {
+    let Some(interaction) = &app.interaction else {
+        return;
+    };
+    match interaction {
+        DrawInteraction::Paste { item } => {
+            if matches!(&item.element, DrawElement::Text(_)) == text {
+                draw_item(ctx, item);
+            }
+        }
+        DrawInteraction::Move { id, .. }
+        | DrawInteraction::Rotate { id, .. }
+        | DrawInteraction::Scale { id, .. } => {
+            let Some(item) = app.data.item(id) else {
+                return;
+            };
+            if matches!(&item.element, DrawElement::Text(_)) == text {
+                draw_item_with_transform(
+                    ctx,
+                    item,
+                    interaction_transform_for_item(item, &app.interaction),
                 );
             }
         }
     }
 }
 
+fn draw_selection_and_hover(ctx: &mut Context, app: &DrawAppState) {
+    if let Some(id) = &app.selection.primary
+        && let Some(item) = app.data.item(id)
+    {
+        let transform = interaction_transform_for_item(item, &app.interaction);
+        draw_item_with_transform_and_color(
+            ctx,
+            item,
+            transform,
+            blended_item_color(item, app.theme.accent, 45),
+        );
+        draw_selection_bounds(ctx, item, transform, app);
+    } else if let Some(id) = &app.hovered
+        && let Some(item) = app.data.item(id)
+    {
+        let transform = interaction_transform_for_item(item, &app.interaction);
+        draw_item_with_transform_and_color(
+            ctx,
+            item,
+            transform,
+            blended_item_color(item, app.theme.accent, 20),
+        );
+    }
+}
+
+fn draw_selection_bounds(
+    ctx: &mut Context,
+    item: &DrawItem,
+    transform: DrawTransform,
+    app: &DrawAppState,
+) {
+    let Some(bounds) = crate::draw::geometry::transformed_bounds_with_transform(item, &transform)
+    else {
+        return;
+    };
+    let style = Style::default().fg(app.theme.accent);
+    ctx.print(
+        bounds.min_x,
+        bounds.min_y,
+        ratatui::text::Line::from("┌").style(style),
+    );
+    ctx.print(
+        bounds.max_x,
+        bounds.min_y,
+        ratatui::text::Line::from("┐").style(style),
+    );
+    ctx.print(
+        bounds.min_x,
+        bounds.max_y,
+        ratatui::text::Line::from("└").style(style),
+    );
+    ctx.print(
+        bounds.max_x,
+        bounds.max_y,
+        ratatui::text::Line::from("┘").style(style),
+    );
+    if !matches!(&item.element, DrawElement::Text(_))
+        && let Some((rotation, scale)) =
+            crate::draw::geometry::selection_handle_points(item, &transform, &app.viewport)
+    {
+        ctx.print(
+            rotation.0,
+            rotation.1,
+            ratatui::text::Line::from("○").style(style),
+        );
+        ctx.print(
+            scale.0,
+            scale.1,
+            ratatui::text::Line::from("◢").style(style),
+        );
+    }
+}
+
+pub(crate) fn draw_item(ctx: &mut Context, item: &DrawItem) {
+    draw_item_with_transform(ctx, item, item.transform);
+}
+
+fn draw_item_with_transform(ctx: &mut Context, item: &DrawItem, transform: DrawTransform) {
+    draw_item_with_transform_and_color(ctx, item, transform, item_color(item));
+}
+
+fn draw_item_with_transform_and_color(
+    ctx: &mut Context,
+    item: &DrawItem,
+    transform: DrawTransform,
+    color: Color,
+) {
+    match &item.element {
+        DrawElement::Stroke(stroke) => {
+            draw_stroke_colored(
+                ctx,
+                stroke,
+                crate::draw::geometry::DrawAffine::new(&transform),
+                color,
+            );
+        }
+        DrawElement::Shape(shape) => {
+            draw_shape_colored(
+                ctx,
+                shape,
+                crate::draw::geometry::DrawAffine::new(&transform),
+                color,
+            );
+        }
+        DrawElement::Text(text) => {
+            ctx.print(
+                text.x + transform.translate_x,
+                text.y + transform.translate_y,
+                ratatui::text::Line::from(text.content.clone()).style(Style::default().fg(color)),
+            );
+        }
+    }
+}
+
+fn item_color(item: &DrawItem) -> Color {
+    match &item.element {
+        DrawElement::Stroke(stroke) => Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2),
+        DrawElement::Shape(
+            Shape::Rect { color, .. }
+            | Shape::Ellipse { color, .. }
+            | Shape::Diamond { color, .. }
+            | Shape::Line { color, .. }
+            | Shape::Arrow { color, .. },
+        ) => Color::Rgb(color.0, color.1, color.2),
+        DrawElement::Text(text) => Color::Rgb(text.color.0, text.color.1, text.color.2),
+    }
+}
+
+fn blended_item_color(item: &DrawItem, accent: Color, amount: u8) -> Color {
+    let Color::Rgb(red, green, blue) = item_color(item) else {
+        return accent;
+    };
+    let Some((accent_red, accent_green, accent_blue)) = color_rgb(accent) else {
+        return accent;
+    };
+    let amount = u16::from(amount);
+    let inverse = 100 - amount;
+    Color::Rgb(
+        ((u16::from(red) * inverse + u16::from(accent_red) * amount) / 100) as u8,
+        ((u16::from(green) * inverse + u16::from(accent_green) * amount) / 100) as u8,
+        ((u16::from(blue) * inverse + u16::from(accent_blue) * amount) / 100) as u8,
+    )
+}
+
+fn color_rgb(color: Color) -> Option<(u8, u8, u8)> {
+    match color {
+        Color::Black => Some((0, 0, 0)),
+        Color::Red => Some((128, 0, 0)),
+        Color::Green => Some((0, 128, 0)),
+        Color::Yellow => Some((128, 128, 0)),
+        Color::Blue => Some((0, 0, 128)),
+        Color::Magenta => Some((128, 0, 128)),
+        Color::Cyan => Some((0, 128, 128)),
+        Color::Gray => Some((192, 192, 192)),
+        Color::DarkGray => Some((128, 128, 128)),
+        Color::LightRed => Some((255, 0, 0)),
+        Color::LightGreen => Some((0, 255, 0)),
+        Color::LightYellow => Some((255, 255, 0)),
+        Color::LightBlue => Some((0, 0, 255)),
+        Color::LightMagenta => Some((255, 0, 255)),
+        Color::LightCyan => Some((0, 255, 255)),
+        Color::White => Some((255, 255, 255)),
+        Color::Rgb(red, green, blue) => Some((red, green, blue)),
+        Color::Reset | Color::Indexed(_) => None,
+    }
+}
+
 fn draw_stroke(ctx: &mut Context, stroke: &Stroke, transform: crate::draw::geometry::DrawAffine) {
-    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
+    draw_stroke_colored(
+        ctx,
+        stroke,
+        transform,
+        Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2),
+    );
+}
+
+fn draw_stroke_colored(
+    ctx: &mut Context,
+    stroke: &Stroke,
+    transform: crate::draw::geometry::DrawAffine,
+    color: Color,
+) {
     for window in stroke.points.windows(2) {
         if let [start, end] = window {
             draw_transformed_line(ctx, *start, *end, color, transform);
@@ -411,20 +633,39 @@ fn draw_smoothed_stroke(ctx: &mut Context, stroke: &Stroke) {
 }
 
 fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry::DrawAffine) {
+    draw_shape_colored(ctx, shape, transform, shape_color(shape));
+}
+
+fn shape_color(shape: &Shape) -> Color {
+    match shape {
+        Shape::Rect { color, .. }
+        | Shape::Ellipse { color, .. }
+        | Shape::Diamond { color, .. }
+        | Shape::Line { color, .. }
+        | Shape::Arrow { color, .. } => Color::Rgb(color.0, color.1, color.2),
+    }
+}
+
+fn draw_shape_colored(
+    ctx: &mut Context,
+    shape: &Shape,
+    transform: crate::draw::geometry::DrawAffine,
+    draw_color: Color,
+) {
     match shape {
         Shape::Rect {
             x,
             y,
             width,
             height,
-            color,
+            ..
         } if transform.is_identity() => {
             ctx.draw(&Rectangle {
                 x: *x,
                 y: *y,
                 width: *width,
                 height: *height,
-                color: Color::Rgb(color.0, color.1, color.2),
+                color: draw_color,
             });
         }
         Shape::Rect {
@@ -432,7 +673,7 @@ fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry
             y,
             width,
             height,
-            color,
+            ..
         } => {
             let points = [
                 (*x, *y),
@@ -440,21 +681,15 @@ fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry
                 (*x + *width, *y + *height),
                 (*x, *y + *height),
             ];
-            draw_closed_polygon(
-                ctx,
-                &points,
-                Color::Rgb(color.0, color.1, color.2),
-                transform,
-            );
+            draw_closed_polygon(ctx, &points, draw_color, transform);
         }
         Shape::Ellipse {
             x,
             y,
             width,
             height,
-            color,
+            ..
         } => {
-            let color = Color::Rgb(color.0, color.1, color.2);
             let radius_x = width / 2.0;
             let radius_y = height / 2.0;
             let center_x = x + radius_x;
@@ -473,7 +708,7 @@ fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry
                         center_x + radius_x * end_angle.cos(),
                         center_y + radius_y * end_angle.sin(),
                     ),
-                    color,
+                    draw_color,
                     transform,
                 );
             }
@@ -483,7 +718,7 @@ fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry
             y,
             width,
             height,
-            color,
+            ..
         } => {
             let points = [
                 (*x + *width / 2.0, *y),
@@ -491,39 +726,15 @@ fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry
                 (*x + *width / 2.0, *y + *height),
                 (*x, *y + *height / 2.0),
             ];
-            draw_closed_polygon(
-                ctx,
-                &points,
-                Color::Rgb(color.0, color.1, color.2),
-                transform,
-            );
+            draw_closed_polygon(ctx, &points, draw_color, transform);
         }
-        Shape::Line {
-            x1,
-            y1,
-            x2,
-            y2,
-            color,
-        } => {
-            draw_transformed_line(
-                ctx,
-                (*x1, *y1),
-                (*x2, *y2),
-                Color::Rgb(color.0, color.1, color.2),
-                transform,
-            );
+        Shape::Line { x1, y1, x2, y2, .. } => {
+            draw_transformed_line(ctx, (*x1, *y1), (*x2, *y2), draw_color, transform);
         }
-        Shape::Arrow {
-            x1,
-            y1,
-            x2,
-            y2,
-            color,
-        } => {
-            let color = Color::Rgb(color.0, color.1, color.2);
+        Shape::Arrow { x1, y1, x2, y2, .. } => {
             let start = (*x1, *y1);
             let end = (*x2, *y2);
-            draw_transformed_line(ctx, start, end, color, transform);
+            draw_transformed_line(ctx, start, end, draw_color, transform);
 
             let angle = (y2 - y1).atan2(x2 - x1);
             let head_length = 5.0;
@@ -536,8 +747,31 @@ fn draw_shape(ctx: &mut Context, shape: &Shape, transform: crate::draw::geometry
                 x2 - head_length * (angle + head_angle).cos(),
                 y2 - head_length * (angle + head_angle).sin(),
             );
-            draw_transformed_line(ctx, end, left, color, transform);
-            draw_transformed_line(ctx, end, right, color, transform);
+            draw_transformed_line(ctx, end, left, draw_color, transform);
+            draw_transformed_line(ctx, end, right, draw_color, transform);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hover_and_selection_blend_item_color_toward_accent() {
+        let item = DrawItem::new(DrawElement::Stroke(Stroke {
+            points: vec![(0.0, 0.0)],
+            color: (100, 150, 200),
+        }));
+        let accent = Color::Rgb(200, 100, 0);
+
+        assert_eq!(
+            blended_item_color(&item, accent, 20),
+            Color::Rgb(120, 140, 160)
+        );
+        assert_eq!(
+            blended_item_color(&item, accent, 45),
+            Color::Rgb(145, 127, 110)
+        );
     }
 }
