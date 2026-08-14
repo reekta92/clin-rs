@@ -160,6 +160,7 @@ pub struct StatuslineContext<'a> {
     pub(crate) list_detail: Option<ListHeaderDetail>,
 
     pub graph_fps: Option<f64>,
+    pub graph_grid_visible: bool,
 }
 
 impl<'a> StatuslineContext<'a> {
@@ -187,6 +188,7 @@ impl<'a> StatuslineContext<'a> {
             detail: None,
             list_detail: None,
             graph_fps: None,
+            graph_grid_visible: true,
             edit_memo: std::cell::RefCell::new(EditMemo::default()),
         }
     }
@@ -215,6 +217,7 @@ impl<'a> StatuslineContext<'a> {
             detail: None,
             list_detail: None,
             graph_fps: None,
+            graph_grid_visible: true,
             edit_memo: std::cell::RefCell::new(EditMemo::default()),
         }
     }
@@ -997,12 +1000,7 @@ impl StatuslineContext<'_> {
                         nsm.to_string()
                     }
                     "zoom" => graph.viewport.zoom.to_string(),
-                    "show_grid" => (if self.config.graf.visual.show_grid {
-                        "on"
-                    } else {
-                        "off"
-                    })
-                    .to_string(),
+                    "show_grid" => (if self.graph_grid_visible { "on" } else { "off" }).to_string(),
                     "show_legend" => (if self.config.graf.visual.show_legend {
                         "on"
                     } else {
@@ -1052,7 +1050,7 @@ impl StatuslineContext<'_> {
                     "element_count" => draw.data.elements.len().to_string(),
                     "draw_width" => draw.data.width.to_string(),
                     "draw_height" => draw.data.height.to_string(),
-                    "draw_grid" => (if draw.show_grid { "on" } else { "off" }).to_string(),
+                    "draw_grid" => (if draw.grid.visible { "on" } else { "off" }).to_string(),
                     "draw_zoom" => format!("{:.1}", draw.viewport.zoom),
                     "text_editing" => (if draw.text_editor.is_some() {
                         "on"
@@ -1080,7 +1078,7 @@ impl StatuslineContext<'_> {
                     "canvas_pan_x" => canvas.viewport_x.to_string(),
                     "canvas_pan_y" => canvas.viewport_y.to_string(),
                     "canvas_selected" => canvas.selection.primary.clone().unwrap_or_default(),
-                    "canvas_grid" => (if canvas.show_grid { "on" } else { "off" }).to_string(),
+                    "canvas_grid" => (if canvas.grid.visible { "on" } else { "off" }).to_string(),
                     "canvas_editor" => {
                         (if canvas.show_editor_pane { "on" } else { "off" }).to_string()
                     }

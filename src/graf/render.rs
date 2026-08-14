@@ -327,7 +327,7 @@ pub struct LabelData {
 
 pub struct FeatureFlags {
     pub show_legend: bool,
-    pub show_grid: bool,
+    pub grid: crate::ui::CanvasGridState,
     pub show_minimap: bool,
     pub show_status_bar: bool,
     pub show_looking_glass: bool,
@@ -795,6 +795,27 @@ pub fn draw_graph_view(
         ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)),
     );
 
+    let cols_per_world_x =
+        (canvas_area.width.saturating_sub(1) as f64) / (x_bounds[1] - x_bounds[0]);
+    let rows_per_world_y =
+        -(canvas_area.height.saturating_sub(1) as f64) / (y_bounds[1] - y_bounds[0]);
+    crate::ui::draw_canvas_grid(
+        frame,
+        canvas_area,
+        flags.grid,
+        crate::ui::CanvasGridProjection {
+            world_left: x_bounds[0],
+            world_right: x_bounds[1],
+            world_top: y_bounds[0],
+            world_bottom: y_bounds[1],
+            origin_col: canvas_area.left() as f64 - x_bounds[0] * cols_per_world_x,
+            origin_row: canvas_area.top() as f64 - y_bounds[1] * rows_per_world_y,
+            cols_per_world_x,
+            rows_per_world_y,
+        },
+        app_theme.muted,
+    );
+
     let canvas = Canvas::default()
         .background_color(colors.background_color.unwrap_or(Color::Reset))
         .x_bounds(x_bounds)
@@ -804,15 +825,6 @@ pub fn draw_graph_view(
             config.graf.visual.canvas_marker,
         ))
         .paint(move |ctx| {
-            if flags.show_grid {
-                draw_grid(
-                    ctx,
-                    x_bounds,
-                    y_bounds,
-                    colors.grid_color,
-                    config.graf.visual.grid_divisions,
-                );
-            }
             ctx.draw(&GraphEdgesShape { edges: edges_ref });
             ctx.layer();
             ctx.draw(&GraphNodesShape { nodes: nodes_ref });
@@ -915,6 +927,7 @@ pub fn draw_graph_view(
         let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
         ctx.area = Some(status_area);
         ctx.graph = Some(state);
+        ctx.graph_grid_visible = flags.grid.visible;
         ctx.hints = Some(hint_line.spans);
         if let Some(p) = pending {
             ctx.pending = Some(vec![Span::styled(
@@ -1007,37 +1020,6 @@ pub fn draw_graph_view(
             app_theme,
             mouse_pos,
         );
-    }
-}
-fn draw_grid(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    x: [f64; 2],
-    y: [f64; 2],
-    color: Color,
-    divisions: usize,
-) {
-    let divs = divisions.max(2);
-    let step_x = (x[1] - x[0]) / divs as f64;
-    let step_y = (y[1] - y[0]) / divs as f64;
-    for i in 0..=divs {
-        let px = x[0] + step_x * i as f64;
-        ctx.draw(&Line {
-            x1: px,
-            y1: y[0],
-            x2: px,
-            y2: y[1],
-            color,
-        });
-    }
-    for i in 0..=divs {
-        let py = y[0] + step_y * i as f64;
-        ctx.draw(&Line {
-            x1: x[0],
-            y1: py,
-            x2: x[1],
-            y2: py,
-            color,
-        });
     }
 }
 

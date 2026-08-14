@@ -522,23 +522,6 @@ toggle_action!(
 );
 
 toggle_action!(
-    ToggleGraphShowGridAction,
-    "settings.graph_show_grid",
-    "Toggle Graph Grid",
-    "Show or hide the background grid in the graph overlay",
-    ActionCategory::Settings,
-    "\u{f0c9}",
-    "\u{1f4ca}",
-    toggle_graph_show_grid,
-    app,
-    if app.config.graf.visual.show_grid {
-        "On"
-    } else {
-        "Off"
-    }
-);
-
-toggle_action!(
     ToggleGraphShowMinimapAction,
     "settings.graph_show_minimap",
     "Toggle Graph Minimap",

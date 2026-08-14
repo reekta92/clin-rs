@@ -28,7 +28,6 @@
 //! title  = "#bb9af7"
 //! text   = "#cbccd5"
 //! fg     = "#ffffff"
-//! grid   = "#383c5f"
 //! bg     = "#1a1b26"       # optional
 //! ```
 
@@ -83,8 +82,6 @@ pub struct CustomGraph {
     pub text: String,
     #[serde(default)]
     pub fg: String,
-    #[serde(default)]
-    pub grid: String,
     #[serde(default)]
     pub bg: Option<String>,
 }
@@ -330,7 +327,6 @@ chrome = "#444444"
 title = "#ffa500"
 text = "#cccccc"
 fg = "#ffffff"
-grid = "#222222"
 bg = "#000000"
 "##,
         )

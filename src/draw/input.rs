@@ -156,7 +156,7 @@ pub fn handle_event(
                     return Ok(Some(DrawEventAction::OpenHelp));
                 }
                 DrawAction::ToggleGrid => {
-                    app.show_grid = !app.show_grid;
+                    app.grid.toggle();
                     return Ok(None);
                 }
                 DrawAction::MenuClose

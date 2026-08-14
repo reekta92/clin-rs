@@ -16,7 +16,6 @@ pub struct ColorOverrides {
     pub selection_ring_color: Option<Color>,
     pub border_color: Option<Color>,
     pub title_color: Option<Color>,
-    pub grid_color: Option<Color>,
     pub legend_text_color: Option<Color>,
     pub status_bar_color: Option<Color>,
     pub background_color: Option<Color>,
@@ -28,7 +27,7 @@ impl serde::Serialize for ColorOverrides {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("ColorOverrides", 10)?;
+        let mut s = serializer.serialize_struct("ColorOverrides", 9)?;
         fn fmt_color(c: &Color) -> String {
             if let Color::Rgb(r, g, b) = c {
                 format!("#{r:02x}{g:02x}{b:02x}")
@@ -53,9 +52,6 @@ impl serde::Serialize for ColorOverrides {
         }
         if let Some(v) = &self.title_color {
             s.serialize_field("title_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.grid_color {
-            s.serialize_field("grid_color", &fmt_color(v))?;
         }
         if let Some(v) = &self.legend_text_color {
             s.serialize_field("legend_text_color", &fmt_color(v))?;
@@ -90,8 +86,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
             #[serde(default, deserialize_with = "deserialize_optional_color")]
             title_color: Option<Color>,
             #[serde(default, deserialize_with = "deserialize_optional_color")]
-            grid_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
             legend_text_color: Option<Color>,
             #[serde(default, deserialize_with = "deserialize_optional_color")]
             status_bar_color: Option<Color>,
@@ -106,7 +100,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
             selection_ring_color: raw.selection_ring_color,
             border_color: raw.border_color,
             title_color: raw.title_color,
-            grid_color: raw.grid_color,
             legend_text_color: raw.legend_text_color,
             status_bar_color: raw.status_bar_color,
             background_color: raw.background_color,
@@ -138,8 +131,6 @@ pub struct VisualConfig {
     #[serde(default = "default_true")]
     pub show_legend: bool,
     #[serde(default)]
-    pub show_grid: bool,
-    #[serde(default)]
     pub show_minimap: bool,
     #[serde(default)]
     pub minimap_position: LegendPosition,
@@ -153,8 +144,6 @@ pub struct VisualConfig {
     pub node_shape: NodeShape,
     #[serde(default = "default_label_offset")]
     pub label_offset: f64,
-    #[serde(default = "default_grid_divisions")]
-    pub grid_divisions: usize,
     #[serde(default = "default_true")]
     pub show_looking_glass: bool,
     #[serde(default = "default_looking_glass_width")]
@@ -177,7 +166,6 @@ impl Default for VisualConfig {
             node_size_mode: NodeSizeMode::default(),
             edge_thickness: default_edge_thickness(),
             show_legend: default_true(),
-            show_grid: false,
             show_minimap: false,
             minimap_position: LegendPosition::TopRight,
             minimap_width: default_minimap_width(),
@@ -185,7 +173,6 @@ impl Default for VisualConfig {
             canvas_marker: CanvasMarker::Braille,
             node_shape: NodeShape::default(),
             label_offset: default_label_offset(),
-            grid_divisions: default_grid_divisions(),
             show_looking_glass: true,
             looking_glass_width: default_looking_glass_width(),
             looking_glass_height: default_looking_glass_height(),
@@ -692,7 +679,6 @@ pub struct ThemeColors {
     pub legend_text_color: Color,
     pub legend_border_color: Color,
     pub selected_indicator_color: Color,
-    pub grid_color: Color,
     pub background_color: Option<Color>,
     pub status_bar_color: Color,
     pub minimap_border_color: Color,

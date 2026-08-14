@@ -284,7 +284,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleGoalsAction),
         Box::new(settings::ToggleGraphPreviewAction),
         Box::new(settings::ToggleGraphShowLegendAction),
-        Box::new(settings::ToggleGraphShowGridAction),
         Box::new(settings::ToggleGraphShowMinimapAction),
         Box::new(settings::ToggleGraphShowOrphanAction),
         Box::new(info::ShowInfoAction),

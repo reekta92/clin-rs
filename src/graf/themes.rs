@@ -8,7 +8,6 @@ struct GraphThemePalette {
     title: [u8; 3],
     text: [u8; 3],
     fg: [u8; 3],
-    grid: [u8; 3],
     bg: [u8; 3],
 }
 
@@ -27,7 +26,6 @@ impl GraphThemePalette {
             legend_text_color: Self::rgb(self.text),
             legend_border_color: Self::rgb(self.chrome),
             selected_indicator_color: Self::rgb(self.fg),
-            grid_color: Self::rgb(self.grid),
             background_color: match background {
                 Background::Transparent => None,
                 Background::Solid => Some(Self::rgb(self.bg)),
@@ -56,7 +54,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [187, 154, 247],
         text: [203, 206, 215],
         fg: [255, 255, 255],
-        grid: [56, 62, 95],
         bg: [26, 27, 38],
     },
     GraphThemePalette {
@@ -74,7 +71,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [205, 214, 244],
         text: [205, 214, 244],
         fg: [205, 214, 244],
-        grid: [49, 50, 68],
         bg: [30, 30, 46],
     },
     GraphThemePalette {
@@ -92,7 +88,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [171, 178, 191],
         text: [171, 178, 191],
         fg: [220, 223, 228],
-        grid: [56, 63, 76],
         bg: [40, 44, 52],
     },
     GraphThemePalette {
@@ -110,7 +105,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [235, 219, 178],
         text: [235, 219, 178],
         fg: [251, 241, 199],
-        grid: [60, 56, 54],
         bg: [40, 40, 40],
     },
     GraphThemePalette {
@@ -128,7 +122,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [248, 248, 242],
         text: [248, 248, 242],
         fg: [255, 255, 255],
-        grid: [68, 71, 90],
         bg: [40, 42, 54],
     },
     GraphThemePalette {
@@ -146,7 +139,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [216, 222, 233],
         text: [216, 222, 233],
         fg: [236, 239, 244],
-        grid: [59, 66, 82],
         bg: [46, 52, 64],
     },
     GraphThemePalette {
@@ -164,7 +156,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [87, 82, 121],
         text: [87, 82, 121],
         fg: [87, 82, 121],
-        grid: [57, 53, 82],
         bg: [40, 37, 61],
     },
     GraphThemePalette {
@@ -182,7 +173,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [60, 76, 67],
         text: [60, 76, 67],
         fg: [60, 76, 67],
-        grid: [40, 50, 45],
         bg: [30, 38, 34],
     },
     GraphThemePalette {
@@ -200,7 +190,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [98, 114, 164],
         text: [98, 114, 164],
         fg: [98, 114, 164],
-        grid: [34, 40, 62],
         bg: [26, 30, 48],
     },
     GraphThemePalette {
@@ -218,7 +207,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [131, 148, 150],
         text: [131, 148, 150],
         fg: [253, 246, 227],
-        grid: [0, 74, 94],
         bg: [0, 43, 54],
     },
     // Catppuccin Frappé (dark) — PALETTES[10]
@@ -237,7 +225,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [198, 208, 245],
         text: [198, 208, 245],
         fg: [181, 191, 226],
-        grid: [65, 69, 89],
         bg: [48, 52, 70],
     },
     // Catppuccin Macchiato (dark) — PALETTES[11]
@@ -256,7 +243,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [202, 211, 245],
         text: [202, 211, 245],
         fg: [184, 192, 224],
-        grid: [54, 58, 79],
         bg: [36, 39, 58],
     },
     // Rose Pine Moon (dark) — PALETTES[12]
@@ -275,7 +261,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [224, 222, 244],
         text: [224, 222, 244],
         fg: [224, 222, 244],
-        grid: [42, 39, 63],
         bg: [35, 33, 54],
     },
     // Gruvbox Material (dark) — PALETTES[13]
@@ -294,7 +279,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [235, 219, 178],
         text: [235, 219, 178],
         fg: [251, 241, 199],
-        grid: [50, 48, 47],
         bg: [40, 40, 40],
     },
     // GitHub Dark — PALETTES[14]
@@ -313,7 +297,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [201, 209, 217],
         text: [201, 209, 217],
         fg: [255, 255, 255],
-        grid: [33, 38, 45],
         bg: [13, 17, 23],
     },
     // Ayu Mirage (dark) — PALETTES[15]
@@ -332,7 +315,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [203, 204, 198],
         text: [203, 204, 198],
         fg: [255, 255, 255],
-        grid: [40, 47, 62],
         bg: [31, 36, 48],
     },
     // Synthwave '84 (dark) — PALETTES[16]
@@ -351,7 +333,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [248, 248, 242],
         text: [248, 248, 242],
         fg: [255, 255, 255],
-        grid: [38, 33, 53],
         bg: [36, 29, 53],
     },
     // Material Theme (Darker) — PALETTES[17]
@@ -370,7 +351,6 @@ const PALETTES: [GraphThemePalette; 18] = [
         title: [238, 255, 255],
         text: [238, 255, 255],
         fg: [255, 255, 255],
-        grid: [40, 40, 40],
         bg: [28, 28, 28],
     },
 ];
@@ -398,7 +378,6 @@ fn default_theme_colors(background: Background) -> ThemeColors {
         legend_text_color: gray,
         legend_border_color: dark_gray,
         selected_indicator_color: reset,
-        grid_color: dark_gray,
         background_color: match background {
             Background::Transparent => None,
             Background::Solid => Some(Color::Black),
@@ -460,7 +439,6 @@ pub fn custom_theme_colors(g: &crate::config::CustomGraph, background: Backgroun
     let title = parse(&g.title);
     let text = parse(&g.text);
     let fg = parse(&g.fg);
-    let grid = parse(&g.grid);
     let bg_color =
         g.bg.as_ref()
             .and_then(|h| crate::config::parse_hex_color(h));
@@ -474,7 +452,6 @@ pub fn custom_theme_colors(g: &crate::config::CustomGraph, background: Backgroun
         legend_text_color: text,
         legend_border_color: chrome,
         selected_indicator_color: fg,
-        grid_color: grid,
         background_color: match background {
             Background::Transparent => None,
             Background::Solid => bg_color,

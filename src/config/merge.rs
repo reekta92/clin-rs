@@ -489,8 +489,6 @@ edge_thickness = 1
 # Show legend in graph view.
 show_legend = true
 
-# Show background grid.
-show_grid = false
 
 # Show minimap in graph view.
 show_minimap = false
@@ -511,9 +509,6 @@ node_shape = "circle"
 # Offset for node labels.
 label_offset = 4.0
 
-# Number of grid divisions.
-grid_divisions = 10
-
 
 # Show enlarged selected-node overlay ("looking glass") in graph view.
 show_looking_glass = true
@@ -530,7 +525,6 @@ looking_glass_height = 12
 # selection_ring_color = "#ff0000"
 # border_color = "#444444"
 # title_color = "#ffffff"
-# grid_color = "#222222"
 # legend_text_color = "#888888"
 # status_bar_color = "#000000"
 # background_color = "#000000"

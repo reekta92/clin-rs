@@ -37,7 +37,6 @@ chrome = "#565f89"
 title  = "#bb9af7"
 text   = "#cbccd5"
 fg     = "#ffffff"
-grid   = "#383c5f"
 bg     = "#1a1b26"       # optional
 ```
 

@@ -594,9 +594,6 @@ impl ClinConfig {
         if let Some(c) = self.graf.visual.colors.title_color {
             colors.title_color = c;
         }
-        if let Some(c) = self.graf.visual.colors.grid_color {
-            colors.grid_color = c;
-        }
         if let Some(c) = self.graf.visual.colors.legend_text_color {
             colors.legend_text_color = c;
         }
@@ -1007,7 +1004,6 @@ show_status_bar = false
         config.core.mouse_enabled = false;
         config.ui.show_status_bar = false;
         config.list.preview_enabled = false;
-        config.graf.visual.show_grid = true;
 
         let self_toml_str = toml::to_string(&config).unwrap();
         let self_value: toml::Value = toml::from_str(&self_toml_str).unwrap();
@@ -1024,11 +1020,29 @@ show_status_bar = false
         assert!(merged_str.contains("# Clin configuration"));
         assert!(merged_str.contains("# Enable mouse support (clicking, scrolling, panning)."));
         assert!(merged_str.contains("# Show the status bar at the bottom of the screen."));
-        assert!(merged_str.contains("# Show background grid."));
         assert!(merged_str.contains("mouse_enabled = false"));
         assert!(merged_str.contains("show_status_bar = false"));
         assert!(merged_str.contains("preview_enabled = false"));
-        assert!(merged_str.contains("show_grid = true"));
+    }
+
+    #[test]
+    fn legacy_graf_grid_options_are_ignored() {
+        let config: ClinConfig = toml::from_str(
+            r##"
+[graf.visual]
+show_grid = false
+grid_divisions = 4
+
+[graf.visual.colors]
+grid_color = "#222222"
+"##,
+        )
+        .unwrap();
+
+        let serialized = toml::to_string(&config).unwrap();
+        assert!(!serialized.contains("show_grid"));
+        assert!(!serialized.contains("grid_divisions"));
+        assert!(!serialized.contains("grid_color"));
     }
 
     #[test]

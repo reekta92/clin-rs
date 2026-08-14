@@ -72,6 +72,27 @@ pub fn draw_canvas(
         app.viewport.y + 100.0 / app.viewport.zoom,
     ];
 
+    let cols_per_world_x =
+        (canvas_area.width.saturating_sub(1) as f64) / (x_bounds[1] - x_bounds[0]);
+    let rows_per_world_y =
+        -(canvas_area.height.saturating_sub(1) as f64) / (y_bounds[1] - y_bounds[0]);
+    crate::ui::draw_canvas_grid(
+        frame,
+        canvas_area,
+        app.grid,
+        crate::ui::CanvasGridProjection {
+            world_left: x_bounds[0],
+            world_right: x_bounds[1],
+            world_top: y_bounds[0],
+            world_bottom: y_bounds[1],
+            origin_col: canvas_area.left() as f64 - x_bounds[0] * cols_per_world_x,
+            origin_row: canvas_area.top() as f64 - y_bounds[1] * rows_per_world_y,
+            cols_per_world_x,
+            rows_per_world_y,
+        },
+        app.theme.muted,
+    );
+
     let canvas = Canvas::default()
         .block(Block::default().style(Style::default().bg(app.theme.bg.unwrap_or(Color::Reset))))
         .background_color(app.theme.bg.unwrap_or(Color::Reset))
@@ -79,34 +100,6 @@ pub fn draw_canvas(
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .paint(|ctx| {
-            if app.show_grid {
-                let mut grid_step_x = 100.0;
-                let mut grid_step_y = 100.0;
-                while grid_step_y * app.viewport.zoom < 6.0 {
-                    grid_step_x *= 2.0;
-                    grid_step_y *= 2.0;
-                }
-                // compensate for terminal cell aspect ratio (~2:1 height:width) so grid appears even
-                grid_step_y *= canvas_area.width as f64 / (2.0 * canvas_area.height as f64);
-                let start_x = (x_bounds[0] / grid_step_x).floor() * grid_step_x;
-                let end_x = (x_bounds[1] / grid_step_x).ceil() * grid_step_x;
-                let start_y = (y_bounds[0] / grid_step_y).floor() * grid_step_y;
-                let end_y = (y_bounds[1] / grid_step_y).ceil() * grid_step_y;
-                let mut cur_x = start_x;
-                while cur_x <= end_x {
-                    let mut cur_y = start_y;
-                    while cur_y <= end_y {
-                        ctx.print(
-                            cur_x,
-                            cur_y,
-                            ratatui::text::Line::from("·")
-                                .style(Style::default().fg(app.theme.muted)),
-                        );
-                        cur_y += grid_step_y;
-                    }
-                    cur_x += grid_step_x;
-                }
-            }
             for item in app.data.elements.iter().filter(|item| {
                 !matches!(&item.element, DrawElement::Text(_))
                     && !is_interaction_item(app, &item.id)

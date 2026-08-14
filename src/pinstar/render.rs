@@ -260,53 +260,24 @@ pub fn draw_pinstar_view(
         .style(theme.bg_style());
     frame.render_widget(canvas_block, canvas_area);
 
-    if state.show_grid {
-        let mut grid_step_x = 100.0;
-        let mut grid_step_y = 50.0;
-        while grid_step_y * state.zoom < 6.0 {
-            grid_step_x *= 2.0;
-            grid_step_y *= 2.0;
-        }
-
-        let (cx1, cy1) = state.screen_to_canvas(canvas_area.left(), canvas_area.top(), canvas_area);
-        let (cx2, cy2) =
-            state.screen_to_canvas(canvas_area.right(), canvas_area.bottom(), canvas_area);
-
-        let min_cx = cx1.min(cx2);
-        let max_cx = cx1.max(cx2);
-        let min_cy = cy1.min(cy2);
-        let max_cy = cy1.max(cy2);
-
-        let start_x = (min_cx / grid_step_x).floor() * grid_step_x;
-        let end_x = (max_cx / grid_step_x).ceil() * grid_step_x;
-        let start_y = (min_cy / grid_step_y).floor() * grid_step_y;
-        let end_y = (max_cy / grid_step_y).ceil() * grid_step_y;
-
-        let buf = frame.buffer_mut();
-        let mut cur_x = start_x;
-        while cur_x <= end_x {
-            let mut cur_y = start_y;
-            while cur_y <= end_y {
-                let sx = (((cur_x - vx) * z) + origin_x).round() as i32;
-                let sy = (((cur_y - vy) * z) + origin_y).round() as i32;
-
-                if sx >= canvas_area.left() as i32
-                    && sx < canvas_area.right() as i32
-                    && sy >= canvas_area.top() as i32
-                    && sy < canvas_area.bottom() as i32
-                    && sx >= 0
-                    && sx < buf.area.width as i32
-                    && sy >= 0
-                    && sy < buf.area.height as i32
-                    && let Some(cell) = buf.cell_mut((sx as u16, sy as u16))
-                {
-                    cell.set_char('·').set_fg(theme.muted);
-                }
-                cur_y += grid_step_y;
-            }
-            cur_x += grid_step_x;
-        }
-    }
+    let (cx1, cy1) = state.screen_to_canvas(canvas_area.left(), canvas_area.top(), canvas_area);
+    let (cx2, cy2) = state.screen_to_canvas(canvas_area.right(), canvas_area.bottom(), canvas_area);
+    crate::ui::draw_canvas_grid(
+        frame,
+        canvas_area,
+        state.grid,
+        crate::ui::CanvasGridProjection {
+            world_left: cx1.min(cx2),
+            world_right: cx1.max(cx2),
+            world_top: cy1.min(cy2),
+            world_bottom: cy1.max(cy2),
+            origin_col: origin_x - vx * z,
+            origin_row: origin_y - vy * z,
+            cols_per_world_x: z,
+            rows_per_world_y: z,
+        },
+        theme.muted,
+    );
     // Select-rect pass: drawn AFTER group/node passes.
     // Uses buffer-cell bg mutation to avoid destroying node/edge characters.
     // Done later, after all rendering — see below.

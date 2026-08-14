@@ -57,7 +57,7 @@ pub fn draw_ui(
         let guard = graph_state.read();
         let flags = crate::graf::render::FeatureFlags {
             show_legend: state.show_legend,
-            show_grid: state.show_grid,
+            grid: state.grid,
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
             show_looking_glass: state.show_looking_glass,
