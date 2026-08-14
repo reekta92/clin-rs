@@ -89,7 +89,7 @@ pub enum DrawTool {
 
 | Gesture | Action |
 |---|---|
-| Left-click / drag | Current tool action; Cursor selects then moves selected item after drag threshold |
+| Left-click / drag | Current tool action; Cursor selects and moves items, or pans empty canvas on drag |
 | Double-click text | Open text editor in Cursor mode |
 | Right-click | Open item or empty-canvas action menu; drag past threshold pans |
 | Middle-click-drag | Pan canvas |
@@ -102,7 +102,7 @@ pub enum DrawTool {
 | `v` | Select Cursor tool |
 | `d`, `e`, `t`, `s` | Select Draw, Erase, Text, or Shape tool |
 | `Shift+G` | Toggle visual grid |
-| `Ctrl+C` / `Ctrl+V` | Copy selected item / enter paste placement |
+| `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy selected item / enter paste placement |
 | `Ctrl+Z` | Undo latest committed draw change |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo latest draw change |
 | `Esc` | Cancel highest-priority transient state, then exit Draw |

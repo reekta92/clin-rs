@@ -620,8 +620,14 @@ impl Default for Keybinds {
             DrawAction::MenuSelect,
             vec![KeyCombo::simple(KeyCode::Enter)],
         );
-        draw.insert(DrawAction::Copy, vec![KeyCombo::ctrl(KeyCode::Char('c'))]);
-        draw.insert(DrawAction::Paste, vec![KeyCombo::ctrl(KeyCode::Char('v'))]);
+        draw.insert(
+            DrawAction::Copy,
+            vec![KeyCombo::ctrl_shift(KeyCode::Char('c'))],
+        );
+        draw.insert(
+            DrawAction::Paste,
+            vec![KeyCombo::ctrl_shift(KeyCode::Char('v'))],
+        );
         draw.insert(DrawAction::Undo, vec![KeyCombo::ctrl(KeyCode::Char('z'))]);
         draw.insert(
             DrawAction::Redo,
@@ -2318,11 +2324,17 @@ mod tests {
             ),
             (
                 DrawAction::Copy,
-                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+                KeyEvent::new(
+                    KeyCode::Char('c'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
             ),
             (
                 DrawAction::Paste,
-                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL),
+                KeyEvent::new(
+                    KeyCode::Char('v'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
             ),
             (
                 DrawAction::Undo,
@@ -2341,6 +2353,18 @@ mod tests {
             ),
         ] {
             assert!(keybinds.matches_draw(action, &key), "{action:?}");
+        }
+        for (action, key) in [
+            (
+                DrawAction::Copy,
+                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Paste,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL),
+            ),
+        ] {
+            assert!(!keybinds.matches_draw(action, &key), "{action:?}");
         }
     }
 }
