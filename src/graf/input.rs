@@ -719,10 +719,6 @@ mod tests {
         let config = ClinConfig::default();
         let area = Rect::new(0, 0, 100, 50);
 
-        let (init_cx, init_cy) = {
-            let g = state.read();
-            (g.viewport.center_x, g.viewport.center_y)
-        };
         // 1. Middle down inside canvas
         let down_event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Middle),
@@ -745,11 +741,6 @@ mod tests {
         let res = handle_graph_mouse(&state, drag_event, area, &mut mouse_state, &config);
         assert!(res.is_none());
         assert_eq!(mouse_state.middle_drag_origin, Some((60, 30)));
-
-        let (drag_cx, drag_cy) = {
-            let g = state.read();
-            (g.viewport.center_x, g.viewport.center_y)
-        };
 
         // 3. Middle up
         let up_event = MouseEvent {
@@ -825,10 +816,6 @@ mod tests {
         let canvas = super::super::render::canvas_area(area, config.ui.show_status_bar);
         let minimap = super::super::render::compute_minimap_area(canvas, &config);
 
-        let (init_cx, init_cy) = {
-            let g = state.read();
-            (g.viewport.center_x, g.viewport.center_y)
-        };
         let down_event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Middle),
             column: minimap.x + 1,
@@ -849,10 +836,6 @@ mod tests {
         handle_graph_mouse(&state, drag_event, area, &mut mouse_state, &config);
 
         assert!(!mouse_state.is_minimap_dragging);
-        let (drag_cx, drag_cy) = {
-            let g = state.read();
-            (g.viewport.center_x, g.viewport.center_y)
-        };
     }
 
     #[test]
