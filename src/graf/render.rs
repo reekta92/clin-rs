@@ -8,7 +8,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape,
@@ -886,8 +886,12 @@ pub fn draw_graph_view(
         let legend_widget = ratatui::widgets::Paragraph::new(legend_text).block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(colors.border_color)),
+                .border_style(ratatui::style::Style::default().fg(colors.border_color))
+                .style(ratatui::style::Style::default().bg(
+                    colors.background_color.unwrap_or(Color::Black)
+                )),
         );
+        frame.render_widget(Clear, legend_area);
         frame.render_widget(legend_widget, legend_area);
     }
 
@@ -1107,8 +1111,11 @@ fn draw_minimap(
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color))
-        .style(ratatui::style::Style::default());
+        .style(ratatui::style::Style::default().bg(
+            params.colors.minimap_bg_color.unwrap_or(Color::Black)
+        ));
     let inner = block.inner(area);
+    frame.render_widget(Clear, area);
     frame.render_widget(block, area);
 
     if inner.width == 0 || inner.height == 0 {
@@ -1160,7 +1167,7 @@ fn draw_minimap(
     }
 
     let buf = frame.buffer_mut();
-    let bg_color: Option<Color> = None;
+    let bg_color: Option<Color> = params.colors.minimap_bg_color;
 
     for cell_row in 0..ih {
         let top_sub = cell_row * 2;
@@ -1344,6 +1351,7 @@ pub fn draw_looking_glass(
             Style::default().fg(colors.label_color),
         )));
     let inner = block.inner(overlay);
+    frame.render_widget(Clear, overlay);
     frame.render_widget(block, overlay);
     if inner.width < 4 || inner.height < 4 {
         return;
@@ -1418,7 +1426,8 @@ pub fn draw_looking_glass(
         Paragraph::new(ratatui::text::Line::from(Span::styled(
             link_label,
             Style::default().fg(app_theme.muted),
-        ))),
+        )))
+        .style(Style::default().bg(bg)),
         Rect::new(inner.x, footer_y, inner.width, meta_h.min(footer_h)),
     );
     let tags_h = tag_count as u16;
@@ -1442,7 +1451,7 @@ pub fn draw_looking_glass(
                 ))
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines), tags_rect);
+        frame.render_widget(Paragraph::new(lines).style(Style::default().bg(bg)), tags_rect);
     }
 }
 
