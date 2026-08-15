@@ -1,1 +1,0 @@
-source: Godot/GDScript/Basics.md, target: Structure, resolved_source: Godot/GDScript/Basics.md, resolved_target: Structure, result: Ok(())
