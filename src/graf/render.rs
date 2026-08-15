@@ -887,9 +887,10 @@ pub fn draw_graph_view(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
                 .border_style(ratatui::style::Style::default().fg(colors.border_color))
-                .style(ratatui::style::Style::default().bg(
-                    colors.background_color.unwrap_or(Color::Black)
-                )),
+                .style(
+                    ratatui::style::Style::default()
+                        .bg(colors.background_color.unwrap_or(Color::Black)),
+                ),
         );
         frame.render_widget(Clear, legend_area);
         frame.render_widget(legend_widget, legend_area);
@@ -1111,9 +1112,10 @@ fn draw_minimap(
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color))
-        .style(ratatui::style::Style::default().bg(
-            params.colors.minimap_bg_color.unwrap_or(Color::Black)
-        ));
+        .style(
+            ratatui::style::Style::default()
+                .bg(params.colors.minimap_bg_color.unwrap_or(Color::Black)),
+        );
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
@@ -1451,7 +1453,10 @@ pub fn draw_looking_glass(
                 ))
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines).style(Style::default().bg(bg)), tags_rect);
+        frame.render_widget(
+            Paragraph::new(lines).style(Style::default().bg(bg)),
+            tags_rect,
+        );
     }
 }
 

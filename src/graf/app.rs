@@ -534,12 +534,22 @@ fn add_wikilink_to_note(
             if idx + "\n## Links".len() == note.content.len() {
                 note.content.push_str(&format!("\n{link}\n"));
             } else {
-                let ensure_newline = if note.content.ends_with('\n') { "" } else { "\n" };
-                note.content.push_str(&format!("{ensure_newline}\n## Links\n{link}\n"));
+                let ensure_newline = if note.content.ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                };
+                note.content
+                    .push_str(&format!("{ensure_newline}\n## Links\n{link}\n"));
             }
         } else {
-            let ensure_newline = if note.content.ends_with('\n') { "" } else { "\n" };
-            note.content.push_str(&format!("{ensure_newline}\n## Links\n{link}\n"));
+            let ensure_newline = if note.content.ends_with('\n') {
+                ""
+            } else {
+                "\n"
+            };
+            note.content
+                .push_str(&format!("{ensure_newline}\n## Links\n{link}\n"));
         }
         let time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -579,10 +589,11 @@ fn remove_wikilink_from_note(
                     prefix = prefix.trim_end_matches(' ');
                 }
                 out.push_str(prefix);
-                
+
                 let rest_after = &after[end + 2..];
-                let consume_newline = rest_after.starts_with('\n') || rest_after.starts_with("\r\n");
-                
+                let consume_newline =
+                    rest_after.starts_with('\n') || rest_after.starts_with("\r\n");
+
                 if consume_newline && prefix.ends_with('\n') {
                     rest = if let Some(stripped) = rest_after.strip_prefix("\r\n") {
                         stripped
@@ -599,7 +610,7 @@ fn remove_wikilink_from_note(
         rest = &rest[start + pattern.len()..];
     }
     out.push_str(rest);
-    
+
     let trimmed = out.trim_end();
     if trimmed.ends_with("## Links") {
         let new_len = trimmed.len() - "## Links".len();
@@ -669,11 +680,26 @@ fn apply_connection(
     }
 
     let result = if create {
-        add_wikilink_to_note(&mut state.storage, &resolved_source_id, &resolved_target_title)
+        add_wikilink_to_note(
+            &mut state.storage,
+            &resolved_source_id,
+            &resolved_target_title,
+        )
     } else {
-        remove_wikilink_from_note(&mut state.storage, &resolved_source_id, &resolved_target_title)
+        remove_wikilink_from_note(
+            &mut state.storage,
+            &resolved_source_id,
+            &resolved_target_title,
+        )
     };
-    std::fs::write("apply_connection_log.txt", format!("source: {}, target: {}, resolved_source: {}, resolved_target: {}, result: {:?}", source_id, target_title, resolved_source_id, resolved_target_title, result)).unwrap_or_default();
+    std::fs::write(
+        "apply_connection_log.txt",
+        format!(
+            "source: {}, target: {}, resolved_source: {}, resolved_target: {}, result: {:?}",
+            source_id, target_title, resolved_source_id, resolved_target_title, result
+        ),
+    )
+    .unwrap_or_default();
     if result.is_err() {
         return None;
     }
@@ -703,9 +729,12 @@ fn apply_connection(
         let src = graph
             .node_indices()
             .find(|i| graph[*i].data.note_id == resolved_source_id);
-        let tgt = graph
-            .node_indices()
-            .find(|i| graph[*i].data.title.eq_ignore_ascii_case(&resolved_target_title));
+        let tgt = graph.node_indices().find(|i| {
+            graph[*i]
+                .data
+                .title
+                .eq_ignore_ascii_case(&resolved_target_title)
+        });
         (src, tgt)
     };
     if let (Some(s), Some(t)) = (src_idx, tgt_idx) {
@@ -1006,7 +1035,8 @@ fn handle_event(
                             target_title,
                             create,
                         } => {
-                            let mod_id = apply_connection(app_state, &source_id, &target_title, create);
+                            let mod_id =
+                                apply_connection(app_state, &source_id, &target_title, create);
                             if let Some(id) = mod_id {
                                 return Ok(Some(EventAction::NoteModified(id)));
                             }
