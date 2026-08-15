@@ -2,6 +2,117 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.11.0-rc.0] - 2026-08-15
+
+### Added
+
+- Added color previews to color picker
+- Added color picker for draw
+- Use header dropdown for shape popup
+- Simplify cursor paste bindings
+- Show active transform modes
+- Pan empty cursor drags
+- Wire editing action help
+- Unify live grid rendering
+- Render selection transform overlays
+- Add element action menus
+- Add cursor selection moves
+- Add history selection clipboard state
+- Add precise affine hit testing
+- Migrate files to stable v2 items
+- Render orbiting tags as varied geometric shapes
+- Looking glass expands downward with tags, visual stays fixed
+- Show link count above tags in looking glass
+- Title on looking-glass border, tags list below visual, drop meta line
+- Add looking glass, context menu, and multi-select
+- Tint no-title overlay text with edge color
+- Edge overlay shows titles, edge colors, hover highlight
+- Edge-list legend overlay with keyboard/mouse edge access
+- Move mode status to header bar, add shortcut hint padding
+- Dynamic key resolution for context menus
+- Direct-letter canvas actions + menu shortcut hints
+- Orthogonal edge routing toggle (Ctrl+O)
+- Edge segments, edge context menu, edge color/style
+- Multi-select rectangle with bulk color/delete
+- Undo/redo with 20-slot snapshot stack
+- Expand color palette from 6 to 10 colors
+- Add EdgeStyle enum and style field to CanvasEdge
+
+### CI
+
+- Fixed fmt and clippy warnings
+- Fixed fmt and clippy warnings
+- Fixed clippy warnings
+- Fixed fmt warning
+- Fixed fmt warnings
+
+### Changed
+
+- Trim footer hints
+- Unify graf and pinstar canvas features
+- Rebuild simulation for local/group mode instead of hiding nodes
+
+### Fixed
+
+- Fixed shift + l conflicting with movement
+- Shift + g shortcut not toggling grid
+- Fixed small visual bug in set color
+- Fixed middle click drag not panning
+- Use muted accent for hovered/selected popup items
+- Make header popup draw over the title bar
+- Fixed links section not updating in graf view
+- Fixed graf view overlays bleeding through the canvas
+- Fixed grid rendering logic so it's uniforn 1:1
+- Fixed grid rendering when zoom in/out
+- Strengthen hover highlight
+- Limit header mode notices
+- Stabilize shared grid density
+- Prefer selected item shortcuts
+- Reserve clipboard shortcuts
+- Orient selection controls
+- Satisfy strict clippy
+- Restore complete help suggestions
+- Unify context menu shortcut background
+- Match graph marquee color to pinstar
+- Remove marquee selection border
+- Tint marquee selection borders
+- Correct graph view mouse targeting
+- Link_count = total degree (forward + backlinks)
+- Keep orphan nodes in local/group focus builds
+- Deselect on empty click and preserve mode banner on box-select
+- Unbind context-menu open key, restore minimap toggle
+- Looking glass without selection ring, opaque background
+- Render looking glass identical to simulation nodes
+- Render looking glass as outlined node with edges
+- Fix context menu height, hover, and right-aligned hints
+- Fix context menu click offset and outside dismiss
+- Apply connection changes without restarting simulation
+- Show mode banner over header bar
+- Show shortcut hints in set-color (EdgeColorPicker) menu
+- Remove k/j from canvas MenuUp/MenuDown
+- Enter completes delete-connection mode too
+- Enter completes connection; delete connection works both ways
+- Add-node shortcuts in menu, multi-select drag, set-color guard, orthogonal notify
+- Select-rect overlay over nodes, click-deselect, add-node shortcuts
+- Context menu UX and right-drag fixes
+- Clippy lints for pinstar merge features
+
+### Miscellaneous
+
+- Gitignore update
+- Gitignore update
+- Cleanup project dir
+- Clean up proj dir
+- Updated roadmap
+- Formatting fixes
+- Cleanup graph tests
+- Updated gitignore
+- Updated gitignore
+- Updated gitignore
+
+### Styling
+
+- Remove brackets from context menu shortcut hints
 ## [0.10.1] - 2026-08-12
 
 ### Added
@@ -19,6 +130,10 @@ All notable changes to clin are documented in this file.
 - Remove full date from selected tree row
 - Ignore key.bin and state.json in is_existing_vault
 - Use help_tabs with glyphs for mouse tab hit-testing
+
+### Release
+
+- V0.10.1
 ## [0.10.0] - 2026-08-11
 
 ### Added
