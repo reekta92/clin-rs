@@ -27,6 +27,8 @@ pub enum OverlayResult {
     NoteOpened(String),
     /// Jump to a line in a note (Outline only).
     JumpToLine { note_id: String, line: usize },
+    /// Note modified, needs refresh.
+    NoteModified(String),
 }
 
 /// Uniform contract for sub-view overlays.

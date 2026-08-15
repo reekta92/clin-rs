@@ -1545,6 +1545,9 @@ where
                                         app.reload_theme();
                                         app.open_help_page_with_tab(tab);
                                     }
+                                    crate::overlay::OverlayResult::NoteModified(note_id) => {
+                                        app.refresh_note_single(None, &note_id);
+                                    }
                                     crate::overlay::OverlayResult::Exit => {
                                         if let Err(e) = app.config.save() {
                                             app.set_temporary_status(&format!(
@@ -1715,6 +1718,9 @@ where
                                     crate::overlay::OverlayResult::OpenHelp(tab) => {
                                         app.reload_theme();
                                         app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::NoteModified(note_id) => {
+                                        app.refresh_note_single(None, &note_id);
                                     }
                                     crate::overlay::OverlayResult::Exit => {
                                         if let Err(e) = app.config.save() {
