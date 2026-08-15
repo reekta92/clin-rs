@@ -91,6 +91,7 @@ pub fn draw_canvas(
             rows_per_world_y,
         },
         app.theme.muted,
+        app.viewport.zoom,
     );
 
     let canvas = Canvas::default()

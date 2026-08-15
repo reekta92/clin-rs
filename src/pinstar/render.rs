@@ -277,6 +277,7 @@ pub fn draw_pinstar_view(
             rows_per_world_y: z,
         },
         theme.muted,
+        state.zoom,
     );
     // Select-rect pass: drawn AFTER group/node passes.
     // Uses buffer-cell bg mutation to avoid destroying node/edge characters.

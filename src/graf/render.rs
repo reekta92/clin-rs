@@ -814,6 +814,7 @@ pub fn draw_graph_view(
             rows_per_world_y,
         },
         app_theme.muted,
+        state.viewport.zoom,
     );
 
     let canvas = Canvas::default()
