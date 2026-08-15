@@ -531,6 +531,26 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
             group: "Shape Selector",
             description: "Cancel shape selection",
         },
+        DrawAction::ToggleColorSelector => HelpMeta {
+            group: "Tools",
+            description: "Color picker (opens picker)",
+        },
+        DrawAction::ColorSelectorUp => HelpMeta {
+            group: "Color Selector",
+            description: "Select previous color",
+        },
+        DrawAction::ColorSelectorDown => HelpMeta {
+            group: "Color Selector",
+            description: "Select next color",
+        },
+        DrawAction::ColorSelectorConfirm => HelpMeta {
+            group: "Color Selector",
+            description: "Confirm color selection",
+        },
+        DrawAction::ColorSelectorCancel => HelpMeta {
+            group: "Color Selector",
+            description: "Cancel color selection",
+        },
         DrawAction::TextEditorConfirm => HelpMeta {
             group: "Text Editor",
             description: "Confirm text edit",

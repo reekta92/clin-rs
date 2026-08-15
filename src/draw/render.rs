@@ -221,6 +221,44 @@ pub fn draw_canvas(
             &app.theme,
         );
     }
+
+    if app.show_color_selector {
+        let colors = crate::pinstar::COLOR_PICKER_PALETTE;
+        let items: Vec<(&str, bool)> = colors
+            .iter()
+            .map(|(name, _, color)| {
+                let is_active = if let ratatui::style::Color::Rgb(r, g, b) = *color {
+                    (r, g, b) == app.active_color
+                } else {
+                    false
+                };
+                (*name, is_active)
+            })
+            .collect();
+
+        let hints_array = [
+            (
+                app.keybinds
+                    .display_draw(crate::keybinds::DrawAction::ColorSelectorConfirm),
+                "select",
+            ),
+            (
+                app.keybinds
+                    .display_draw(crate::keybinds::DrawAction::ColorSelectorCancel),
+                "cancel",
+            ),
+        ];
+
+        crate::ui::draw_header_dropdown(
+            frame,
+            area,
+            "SELECT COLOR",
+            &items,
+            mouse_pos,
+            Some(crate::ui::PopupHints::Keybinds(&hints_array)),
+            &app.theme,
+        );
+    }
     app.text_editor_rect = None;
 
     if let Some((_, textarea)) = &app.text_editor {

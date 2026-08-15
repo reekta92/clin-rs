@@ -81,6 +81,28 @@ pub fn handle_event(
             _ => {}
         }
     }
+    if app.show_color_selector {
+        app.seq_matcher.clear();
+        match ev {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ColorSelectorCancel, &k) => {
+                app.show_color_selector = false;
+                return Ok(None);
+            }
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ColorSelectorConfirm, &k) => {
+                app.show_color_selector = false;
+                return Ok(None);
+            }
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ColorSelectorUp, &k) => {
+                cycle_color(app, -1);
+                return Ok(None);
+            }
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ColorSelectorDown, &k) => {
+                cycle_color(app, 1);
+                return Ok(None);
+            }
+            _ => {}
+        }
+    }
 
     if let Event::Key(key) = ev
         && keybinds.matches_draw(DrawAction::Paste, &key)
@@ -147,6 +169,15 @@ pub fn handle_event(
                     }
                     return Ok(None);
                 }
+                DrawAction::ToggleColorSelector => {
+                    if app.show_color_selector {
+                        app.show_color_selector = false;
+                    } else {
+                        app.clear_transient_interaction();
+                        app.show_color_selector = true;
+                    }
+                    return Ok(None);
+                }
                 DrawAction::SelectTextTool => {
                     app.set_active_tool(DrawTool::Text);
                     return Ok(None);
@@ -187,6 +218,10 @@ pub fn handle_event(
                 | DrawAction::ShapeSelectorConfirm
                 | DrawAction::ShapeSelectorCancel
                 | DrawAction::TextEditorConfirm
+                | DrawAction::ColorSelectorUp
+                | DrawAction::ColorSelectorDown
+                | DrawAction::ColorSelectorConfirm
+                | DrawAction::ColorSelectorCancel
                 | DrawAction::TextEditorCancel => {}
             },
             crate::keybinds::MatchOutcome::Pending => return Ok(None),
@@ -257,6 +292,23 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
         .unwrap_or(0) as i32;
     let next_idx = (current_idx + delta).rem_euclid(shapes.len() as i32) as usize;
     app.active_shape_type = shapes[next_idx];
+}
+fn cycle_color(app: &mut DrawAppState, delta: i32) {
+    let colors = crate::pinstar::COLOR_PICKER_PALETTE;
+    let current_idx = colors
+        .iter()
+        .position(|&(_, _, c)| {
+            if let ratatui::style::Color::Rgb(r, g, b) = c {
+                (r, g, b) == app.active_color
+            } else {
+                false
+            }
+        })
+        .unwrap_or(0) as i32;
+    let next_idx = (current_idx + delta).rem_euclid(colors.len() as i32) as usize;
+    if let ratatui::style::Color::Rgb(r, g, b) = colors[next_idx].2 {
+        app.active_color = (r, g, b);
+    }
 }
 
 fn handle_text_editor_mouse(
@@ -347,6 +399,33 @@ fn handle_mouse(
         return Ok(None);
     }
 
+    if app.show_color_selector {
+        let colors = crate::pinstar::COLOR_PICKER_PALETTE;
+        let max_item_width = colors.iter().map(|(n, _, _)| n.len()).max().unwrap_or(0) as u16;
+        let dropdown_width = max_item_width + 4;
+        let dropdown_x = area.x + (area.width.saturating_sub(dropdown_width)) / 2;
+        let dropdown_y = area.y.saturating_sub(1) + 1; // == area.y, matching frame_area.y + 1
+        let dropdown_rect =
+            ratatui::layout::Rect::new(dropdown_x, dropdown_y, dropdown_width, colors.len() as u16);
+
+        if ev.kind == MouseEventKind::Down(MouseButton::Left) {
+            if crate::events::contains_cell(dropdown_rect, ev.column, ev.row) {
+                let row_rel = (ev.row - dropdown_y) as usize;
+                if let Some(&(_, _, c)) = colors.get(row_rel) {
+                    if let ratatui::style::Color::Rgb(r, g, b) = c {
+                        app.active_color = (r, g, b);
+                    }
+                    app.show_color_selector = false;
+                    return Ok(None);
+                }
+            } else {
+                app.show_color_selector = false;
+                return Ok(None);
+            }
+        }
+        return Ok(None);
+    }
+
     if app.context_menu.is_some() {
         return handle_context_menu_mouse(ev, app, clipboard);
     }
@@ -377,7 +456,10 @@ fn handle_mouse(
                     &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,
                 ) {
                     let tool = crate::draw::render::DRAW_TAB_TOOLS[index];
-                    if tool == DrawTool::Shape {
+                    if tool == DrawTool::Draw && app.active_tool == DrawTool::Draw {
+                        app.clear_transient_interaction();
+                        app.show_color_selector = true;
+                    } else if tool == DrawTool::Shape {
                         app.clear_transient_interaction();
                         app.show_shape_selector = true;
                     } else {
@@ -393,7 +475,7 @@ fn handle_mouse(
                 DrawTool::Draw => {
                     app.current_stroke = Some(Stroke {
                         points: vec![point],
-                        color: (255, 255, 255),
+                        color: app.active_color,
                     });
                 }
                 DrawTool::Shape => {
@@ -407,7 +489,7 @@ fn handle_mouse(
                             content: "New Text".to_string(),
                             x: point.0,
                             y: point.1,
-                            color: (255, 255, 255),
+                            color: app.active_color,
                         })));
                     app.commit_data_change(previous)?;
                 }
@@ -504,6 +586,7 @@ fn handle_mouse(
                             point.0,
                             point.1,
                             app.active_shape_type,
+                            app.active_color,
                         ));
                     }
                 }
@@ -1060,8 +1143,14 @@ fn finish_cursor_move(app: &mut DrawAppState) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawElement {
-    let color = (255, 255, 255);
+fn create_shape(
+    ox: f64,
+    oy: f64,
+    cx: f64,
+    cy: f64,
+    st: DrawShapeType,
+    color: (u8, u8, u8),
+) -> DrawElement {
     match st {
         DrawShapeType::Rect => DrawElement::Shape(Shape::Rect {
             x: ox.min(cx),

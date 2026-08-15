@@ -199,6 +199,8 @@ pub struct DrawAppState {
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::draw::state::DrawShapeType,
     pub show_shape_selector: bool,
+    pub show_color_selector: bool,
+    pub active_color: (u8, u8, u8),
     pub creation_origin: Option<(f64, f64)>,
     pub preview_element: Option<crate::draw::state::DrawElement>,
     pub(crate) erase_start_data: Option<DrawData>,
@@ -257,6 +259,8 @@ impl DrawAppState {
             theme,
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
+            show_color_selector: false,
+            active_color: (255, 255, 255),
             creation_origin: None,
             preview_element: None,
             erase_start_data: None,
@@ -406,6 +410,7 @@ impl DrawAppState {
         self.text_editor_rect = None;
         self.mouse_selection = crate::text_edit::MouseTextSelection::default();
         self.show_shape_selector = false;
+        self.show_color_selector = false;
         self.is_panning = false;
         self.last_mouse_pos = None;
         self.hovered = None;

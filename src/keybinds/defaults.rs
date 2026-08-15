@@ -594,6 +594,35 @@ impl Default for Keybinds {
             ],
         );
         draw.insert(
+            DrawAction::ToggleColorSelector,
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        draw.insert(
+            DrawAction::ColorSelectorUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        draw.insert(
+            DrawAction::ColorSelectorDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        draw.insert(
+            DrawAction::ColorSelectorConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(
+            DrawAction::ColorSelectorCancel,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
+        );
+        draw.insert(
             DrawAction::TextEditorConfirm,
             vec![KeyCombo::simple(KeyCode::Enter)],
         );
