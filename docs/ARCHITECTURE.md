@@ -284,6 +284,7 @@ src/
 │   └── help_meta.rs      — Action metadata for help UI
 ├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
 │   ├── mod.rs            — Central UI dispatcher, shared helpers
+│   ├── canvas_grid.rs    — Shared square visual-grid projection/rendering
 │   ├── list_view.rs      — Main list/grid view rendering
 │   ├── edit_view.rs      — Editor body rendering
 │   ├── help.rs           — Full help view
@@ -338,7 +339,7 @@ src/
 │   ├── graph.rs          — build_graph(), GraphNodeData
 │   ├── input.rs          — Keyboard/mouse handlers
 │   ├── physics.rs        — Force simulation thread
-│   ├── render.rs         — draw_graph_view(), minimap, legend, grid
+│   ├── render.rs         — draw_graph_view(), minimap, legend
 │   ├── spatial.rs        — Uniform-grid spatial index
 │   ├── themes.rs         — Color palette definitions
 │   ├── ui.rs             — Search popup, layout orchestration

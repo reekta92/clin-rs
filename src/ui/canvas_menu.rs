@@ -214,8 +214,10 @@ mod tests {
 
     #[test]
     fn shortcut_hint_inherits_unselected_menu_background() {
-        let mut theme = AppThemeColors::default();
-        theme.bg = Some(Color::Black);
+        let theme = AppThemeColors {
+            bg: Some(Color::Black),
+            ..AppThemeColors::default()
+        };
         let menu = CanvasContextMenu::new(
             0,
             0,

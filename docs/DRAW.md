@@ -14,22 +14,27 @@ The draw view provides an infinite 2D canvas for freehand drawing, inserting pre
 
 ## File Format
 
-Draw files are JSON with a `.draw` extension. Schema:
+Draw files are JSON with a `.draw` extension. Version 2 stores each element in a stable item wrapper:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "width": 1000.0,
   "height": 1000.0,
   "background": null,
   "elements": [
-    { "Stroke": { "points": [[0,0], [10,20], [30,50]], "color": [255, 0, 0] } },
-    { "Shape": { "Rect": { "x": 100, "y": 50, "width": 200, "height": 100, "color": [0, 255, 0] } } },
-    { "Shape": { "Ellipse": { "x": 300, "y": 150, "width": 80, "height": 60, "color": [0, 0, 255] } } },
-    { "Shape": { "Diamond": { "x": 500, "y": 200, "width": 100, "height": 80, "color": [255, 255, 0] } } },
-    { "Shape": { "Line": { "x1": 10, "y1": 10, "x2": 200, "y2": 200, "color": [128, 0, 128] } } },
-    { "Shape": { "Arrow": { "x1": 50, "y1": 300, "x2": 250, "y2": 350, "color": [0, 128, 255] } } },
-    { "Text": { "content": "Hello", "x": 400, "y": 400, "color": [255, 255, 255] } }
+    {
+      "id": "b7a2b8b7-9fd1-4bb9-b810-23d72e9e6a85",
+      "element": { "Stroke": { "points": [[0, 0], [10, 20]], "color": [255, 0, 0] } },
+      "transform": {
+        "pivot_x": 5.0,
+        "pivot_y": 10.0,
+        "translate_x": 0.0,
+        "translate_y": 0.0,
+        "rotation_degrees": 0.0,
+        "scale": 1.0
+      }
+    }
   ]
 }
 ```
@@ -48,7 +53,7 @@ Draw files are JSON with a `.draw` extension. Schema:
 
 ### Backward Compatibility
 
-The custom deserializer handles old `CanvasData` format (pre-version field). If no `version` field is found in the JSON, data is loaded as `version: 0` with elements parsed from the old `nodes`/`edges` format.
+Versions 0 and 1 migrate to v2 with fresh UUIDs and identity transforms. Saving migrated data writes v2. Legacy `Image` records are silently dropped. Future schema versions, duplicate IDs, and invalid transforms are rejected.
 
 ---
 
@@ -58,6 +63,7 @@ The custom deserializer handles old `CanvasData` format (pre-version field). If 
 
 ```rust
 pub enum DrawTool {
+    Cursor, // Select, move, rotate, scale, and open element actions
     Draw,   // Freehand drawing
     Erase,  // Click an element to erase it
     Text,   // Click to place, then inline editor
@@ -69,12 +75,11 @@ pub enum DrawTool {
 
 | Tool | Behavior |
 |---|---|
+| **Cursor** | Selects one precise topmost item. Drag moves; Rotate or Scale mode shows matching handle; double-click text opens editor. |
 | **Draw** | Left-click-drag draws a freehand stroke. Points are recorded at mouse movement intervals and stored as `Stroke`. |
-| **Erase** | Hover over an element and left-click to delete it. The element nearest to the click point within a threshold is removed. |
-| **Text** | Click a location to place the text cursor. A floating `TextArea` editor opens for typing. Press `Esc` to close the editor. |
-| **Shape** | Opens a shape selector popup (Rect, Ellipse, Diamond, Line, Arrow). Click-drag-release creates the shape. A preview element follows the cursor during drag. |
-
-Freehand strokes are smoothed with a binomial filter before being committed to the canvas, reducing jitter from hand-drawn input. (Replaces the earlier DP + Chaikin smoothing pipeline.)
+| **Erase** | Click or drag across an element to remove it. |
+| **Text** | Click a location to place text and open inline editor. |
+| **Shape** | Opens a shape selector popup (Rect, Ellipse, Diamond, Line, Arrow). Click-drag-release creates a shape. |
 
 ---
 
@@ -84,25 +89,24 @@ Freehand strokes are smoothed with a binomial filter before being committed to t
 
 | Gesture | Action |
 |---|---|
-| Left-click-drag | Draw stroke / create shape / pan (middle button) |
-| Left-click | Place text cursor / select element to erase |
+| Left-click / drag | Current tool action; Cursor selects and moves items, or pans empty canvas on drag |
+| Double-click text | Open text editor in Cursor mode |
+| Right-click | Open item or empty-canvas action menu; drag past threshold pans |
 | Middle-click-drag | Pan canvas |
 | Scroll | Zoom in/out |
-| Right-click | Edit existing text element |
 
 ### Keyboard
 
 | Key | Action |
 |---|---|
-| `d` | Select Draw tool |
-| `e` | Select Erase tool |
-| `t` | Select Text tool |
-| `s` | Select Shape tool (with selector popup) |
-| `r`/`c`/`d`/`l`/`a` | Shape type shortcuts (Rect/Circle/Diamond/Line/Arrow) |
-| `+` / `-` | Zoom in / out |
-| `Esc` | Exit draw view |
-| `Ctrl+S` | Save |
-| Arrow keys | Pan canvas |
+| `a` | Select Cursor tool |
+| `d`, `e`, `t`, `s` | Select Draw, Erase, Text, or Shape tool |
+| Selected Cursor item shortcut | Runs matching context-menu action before tool shortcut |
+| `c` / `v` | Copy selected item / enter paste placement |
+| `Shift+G` | Toggle visual grid |
+| `Ctrl+Z` | Undo latest committed draw change |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo latest draw change |
+| `Esc` | Cancel highest-priority transient state, then exit Draw |
 
 ---
 
@@ -116,20 +120,12 @@ Main state struct for the draw view:
 pub struct DrawAppState {
     pub data: DrawData,
     pub viewport: Viewport,
-    pub storage: Storage,
-    pub current_file: Option<String>,
-    pub running: bool,
     pub active_tool: DrawTool,
-    pub current_stroke: Option<Stroke>,
-    pub last_area: Rect,
-    pub last_mouse_pos: Option<(u16, u16)>,
-    pub text_editor: Option<(usize, TextArea<'static>)>,
-    pub last_click: Option<(u16, u16, Instant)>,
-    pub theme: AppThemeColors,
-    pub active_shape_type: DrawShapeType,
-    pub show_shape_selector: bool,
-    pub creation_origin: Option<(f64, f64)>,
-    pub preview_element: Option<DrawElement>,
+    pub selection: CanvasSelection<DrawItemId>,
+    pub hovered: Option<DrawItemId>,
+    pub interaction: Option<DrawInteraction>,
+    pub grid: CanvasGridState,
+    // storage, editor, history, menu, and input state
 }
 ```
 
@@ -147,6 +143,7 @@ pub struct Viewport {
 
 ```rust
 pub enum DrawTool {
+    Cursor,
     Draw,
     Erase,
     Text,
@@ -161,12 +158,11 @@ pub enum DrawTool {
 Rendering in `src/draw/render.rs`:
 
 - Uses ratatui's `Canvas` widget with Braille markers
-- Strokes are binomial-filtered at draw time for smoothing
-- Elements are drawn in order (Stroke → Shape → Text) with proper layering
-- Current stroke preview renders during active drawing
-- Shape preview renders during shape creation drag
-- Text elements render with ratatui `Paragraph` overlays
-- Viewport transform applies to all element positions
+- Shared adaptive dot grid renders before content and does not appear in snapshots
+- Vectors render in persisted order; text renders above vectors
+- Item transforms apply translation, rotation, and scale around stored pivots
+- Hover and selection redraw with blended color plus bounds and transform handles
+- Current drawing, shape, paste, and transform previews remain transient
 
 ---
 

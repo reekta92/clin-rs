@@ -212,7 +212,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{scale}`: Graph zoom scale relative to auto-fit (e.g. `"1.00×"`)
 - `{graph_settled}`: Force-directed simulation settlement status (`on`/`off`)
 - `{label_mode}`, `{node_color_mode}`, `{edge_color_mode}`, `{node_size_mode}`, `{zoom}`: Graph configuration and zoom status
-- `{show_grid}`, `{show_legend}`, `{show_minimap}`: Grid, legend, and minimap settings (`on`/`off`)
+- `{show_grid}`, `{show_legend}`, `{show_minimap}`: Current grid, legend, and minimap visibility (`on`/`off`)
 
 ##### Draw View (`Draw` view)
 - `{tool}`: Active draw tool (`draw`, `erase`, `text`, `shape`)
@@ -298,7 +298,6 @@ attachments_subdir = "attachments"
 | `node_size_mode` | `enum` | `"fixed"` | How node size is determined: `"fixed"`, `"link_count"` |
 | `edge_thickness` | `u16` | `1` | Edge line thickness (1–3) |
 | `show_legend` | `bool` | `true` | Show legend |
-| `show_grid` | `bool` | `false` | Show background grid |
 | `show_minimap` | `bool` | `false` | Show minimap |
 | `minimap_position` | `enum` | `"top_right"` | Minimap corner: `"top_right"`, `"top_left"`, `"bottom_right"`, `"bottom_left"` |
 | `minimap_width` | `u16` | `24` | Minimap width in cells |
@@ -306,7 +305,6 @@ attachments_subdir = "attachments"
 | `canvas_marker` | `enum` | `"braille"` | Canvas rendering marker: `"braille"`, `"half_block"`, `"dot"` |
 | `node_shape` | `enum` | `"circle"` | Node shape: `"circle"`, `"square"`, `"diamond"` |
 | `label_offset` | `f64` | `4.0` | Distance of labels from nodes |
-| `grid_divisions` | `usize` | `10` | Grid subdivision count |
 #### `[graf.visual.colors]`
 
 All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
@@ -319,7 +317,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `selection_ring_color` | `String` | Theme default |
 | `border_color` | `String` | Theme default |
 | `title_color` | `String` | Theme default |
-| `grid_color` | `String` | Theme default |
 | `legend_text_color` | `String` | Theme default |
 | `status_bar_color` | `String` | Theme default |
 | `background_color` | `String` | Theme default |

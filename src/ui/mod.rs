@@ -12,6 +12,7 @@ use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
 pub(crate) mod camera;
+pub(crate) mod canvas_grid;
 pub(crate) mod canvas_menu;
 pub(crate) mod canvas_overlay;
 pub(crate) mod canvas_selection;
@@ -31,6 +32,7 @@ mod title_bar;
 pub(crate) use camera::{
     ZoomDir, clamp_world, nearest_in_dir, nearest_to_point, pan_centered, zoom_step,
 };
+pub(crate) use canvas_grid::{CanvasGridProjection, CanvasGridState, draw_canvas_grid};
 #[allow(unused_imports)]
 pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
 #[allow(unused_imports)]
@@ -162,6 +164,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     ctx.vault_path = Some(&app.storage.data_dir);
                     ctx.date_format = Some(&app.date_format);
                     ctx.graph_fps = graf.canvas_fps();
+                    ctx.graph_grid_visible = graf.grid.visible;
                     if let Some(graph_state) = &graf.graph_state {
                         guard = graph_state.read();
                         ctx.graph = Some(&guard);
@@ -198,6 +201,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
                 let tabs = tab_vec_from_array(&tabs_arr);
                 let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
+                draw.sync_header_status(app);
                 let hovered = app.mouse_pos.and_then(|(col, row)| {
                     if row == outer[0].y {
                         let region = crate::ui::title_bar_tabs_region(outer[0], "Draw");

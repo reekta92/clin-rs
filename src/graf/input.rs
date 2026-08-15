@@ -233,6 +233,8 @@ pub struct GraphMouseState {
     pub last_click_time: Option<Instant>,
     pub last_clicked_node: Option<fdg_sim::petgraph::graph::NodeIndex>,
     pub is_minimap_dragging: bool,
+    pub middle_drag_origin: Option<(u16, u16)>,
+    pub is_middle_panning: bool,
 }
 
 pub fn handle_graph_mouse(
@@ -479,6 +481,37 @@ pub fn handle_graph_mouse(
             mouse_state.last_click_time = Some(Instant::now());
         }
 
+        MouseEventKind::Down(MouseButton::Middle) => {
+            if !inside_area {
+                return None;
+            }
+            mouse_state.middle_drag_origin = Some((mouse_event.column, mouse_event.row));
+            mouse_state.is_middle_panning = true;
+        }
+        MouseEventKind::Drag(MouseButton::Middle) => {
+            if mouse_state.is_middle_panning {
+                let (orig_col, orig_row) = mouse_state.middle_drag_origin?;
+                let mut guard = state.write();
+                let aspect = canvas.width as f64 / canvas.height.max(1) as f64;
+                let [xl, xr] = guard.viewport.x_bounds(aspect);
+                let [yb, yt] = guard.viewport.y_bounds(aspect);
+                let world_per_col = ((xr - xl) / canvas.width.max(1) as f64).abs();
+                let world_per_row = ((yt - yb) / canvas.height.max(1) as f64).abs();
+                let world_dx = -world_per_col
+                    * (mouse_event.column as f64 - orig_col as f64)
+                    * config.graf.interaction.drag_sensitivity;
+                let world_dy = world_per_row
+                    * (mouse_event.row as f64 - orig_row as f64)
+                    * config.graf.interaction.drag_sensitivity;
+                guard.viewport.pan_by(world_dx, world_dy);
+                mouse_state.middle_drag_origin = Some((mouse_event.column, mouse_event.row));
+            }
+        }
+        MouseEventKind::Up(MouseButton::Middle) => {
+            mouse_state.middle_drag_origin = None;
+            mouse_state.is_middle_panning = false;
+        }
+
         MouseEventKind::Down(MouseButton::Right) => {
             if !inside_area {
                 return None;
@@ -650,4 +683,177 @@ fn minimap_screen_to_world(
     let wx = wx_min + rel_x * (wx_max - wx_min);
     let wy = wy_min + rel_y * (wy_max - wy_min);
     (wx, wy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyModifiers;
+    use parking_lot::RwLock;
+    use std::sync::Arc;
+
+    fn setup_mock_graph_state(nodes: &[(&str, &[&str])]) -> Arc<RwLock<GraphState>> {
+        let summaries: Vec<_> = nodes
+            .iter()
+            .map(|(id, links)| crate::storage::NoteSummary {
+                id: id.to_string(),
+                title: id.to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: links.iter().map(|s| s.to_string()).collect(),
+                size_bytes: 0,
+            })
+            .collect();
+        let mut config = ClinConfig::default();
+        config.graf.visual.show_minimap = true;
+        let gs = GraphState::new(&summaries, &config).unwrap();
+        Arc::new(RwLock::new(gs))
+    }
+
+    #[test]
+    fn test_middle_mouse_pan_lifecycle() {
+        let state = setup_mock_graph_state(&[("a", &["b"]), ("b", &["a"])]);
+        let mut mouse_state = GraphMouseState::default();
+        let config = ClinConfig::default();
+        let area = Rect::new(0, 0, 100, 50);
+
+        // 1. Middle down inside canvas
+        let down_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Middle),
+            column: 50,
+            row: 25,
+            modifiers: KeyModifiers::NONE,
+        };
+        let res = handle_graph_mouse(&state, down_event, area, &mut mouse_state, &config);
+        assert!(res.is_none());
+        assert!(mouse_state.is_middle_panning);
+        assert_eq!(mouse_state.middle_drag_origin, Some((50, 25)));
+
+        // 2. Middle drag
+        let drag_event = MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Middle),
+            column: 60,
+            row: 30,
+            modifiers: KeyModifiers::NONE,
+        };
+        let res = handle_graph_mouse(&state, drag_event, area, &mut mouse_state, &config);
+        assert!(res.is_none());
+        assert_eq!(mouse_state.middle_drag_origin, Some((60, 30)));
+
+        // 3. Middle up
+        let up_event = MouseEvent {
+            kind: MouseEventKind::Up(MouseButton::Middle),
+            column: 60,
+            row: 30,
+            modifiers: KeyModifiers::NONE,
+        };
+        let res = handle_graph_mouse(&state, up_event, area, &mut mouse_state, &config);
+        assert!(res.is_none());
+        assert!(!mouse_state.is_middle_panning);
+        assert_eq!(mouse_state.middle_drag_origin, None);
+    }
+
+    #[test]
+    fn test_middle_mouse_pan_over_node_does_not_drag_node() {
+        let state = setup_mock_graph_state(&[("a", &["b"]), ("b", &["a"])]);
+        let mut mouse_state = GraphMouseState::default();
+        let config = ClinConfig::default();
+        let area = Rect::new(0, 0, 100, 50);
+
+        let canvas = super::super::render::canvas_area(area, config.ui.show_status_bar);
+
+        // Locate screen position of node 0
+        let (col, row) = {
+            let mut g = state.write();
+            let graph = g.simulation.get_graph_mut();
+            let node_idx = fdg_sim::petgraph::graph::NodeIndex::new(0);
+            let node = &mut graph[node_idx];
+            node.location.x = 0.0;
+            node.location.y = 0.0;
+            let (sc, sr) = g.viewport.world_to_screen(0.0, 0.0, canvas);
+            (sc.round() as u16, sr.round() as u16)
+        };
+
+        let down_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Middle),
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        };
+        handle_graph_mouse(&state, down_event, area, &mut mouse_state, &config);
+
+        assert!(mouse_state.is_middle_panning);
+        {
+            let g = state.read();
+            assert_eq!(g.dragging_node, None);
+            assert_eq!(g.selection.primary, None);
+        }
+
+        let drag_event = MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Middle),
+            column: col.saturating_add(5),
+            row: row.saturating_add(5),
+            modifiers: KeyModifiers::NONE,
+        };
+        handle_graph_mouse(&state, drag_event, area, &mut mouse_state, &config);
+
+        {
+            let g = state.read();
+            assert_eq!(g.dragging_node, None);
+        }
+    }
+
+    #[test]
+    fn test_middle_mouse_pan_over_minimap() {
+        let state = setup_mock_graph_state(&[("a", &["b"]), ("b", &["a"])]);
+        let mut mouse_state = GraphMouseState::default();
+        let mut config = ClinConfig::default();
+        config.graf.visual.show_minimap = true;
+        let area = Rect::new(0, 0, 100, 50);
+
+        let canvas = super::super::render::canvas_area(area, config.ui.show_status_bar);
+        let minimap = super::super::render::compute_minimap_area(canvas, &config);
+
+        let down_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Middle),
+            column: minimap.x + 1,
+            row: minimap.y + 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        handle_graph_mouse(&state, down_event, area, &mut mouse_state, &config);
+
+        assert!(mouse_state.is_middle_panning);
+        assert!(!mouse_state.is_minimap_dragging);
+
+        let drag_event = MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Middle),
+            column: minimap.x + 4,
+            row: minimap.y + 3,
+            modifiers: KeyModifiers::NONE,
+        };
+        handle_graph_mouse(&state, drag_event, area, &mut mouse_state, &config);
+
+        assert!(!mouse_state.is_minimap_dragging);
+    }
+
+    #[test]
+    fn test_middle_mouse_outside_area_ignored() {
+        let state = setup_mock_graph_state(&[("a", &["b"])]);
+        let mut mouse_state = GraphMouseState::default();
+        let config = ClinConfig::default();
+        let area = Rect::new(10, 10, 20, 20);
+
+        let down_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Middle),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        };
+        let res = handle_graph_mouse(&state, down_event, area, &mut mouse_state, &config);
+        assert!(res.is_none());
+        assert!(!mouse_state.is_middle_panning);
+        assert_eq!(mouse_state.middle_drag_origin, None);
+    }
 }

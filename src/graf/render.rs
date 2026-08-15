@@ -8,7 +8,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape,
@@ -327,7 +327,7 @@ pub struct LabelData {
 
 pub struct FeatureFlags {
     pub show_legend: bool,
-    pub show_grid: bool,
+    pub grid: crate::ui::CanvasGridState,
     pub show_minimap: bool,
     pub show_status_bar: bool,
     pub show_looking_glass: bool,
@@ -795,6 +795,28 @@ pub fn draw_graph_view(
         ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)),
     );
 
+    let cols_per_world_x =
+        (canvas_area.width.saturating_sub(1) as f64) / (x_bounds[1] - x_bounds[0]);
+    let rows_per_world_y =
+        -(canvas_area.height.saturating_sub(1) as f64) / (y_bounds[1] - y_bounds[0]);
+    crate::ui::draw_canvas_grid(
+        frame,
+        canvas_area,
+        flags.grid,
+        crate::ui::CanvasGridProjection {
+            world_left: x_bounds[0],
+            world_right: x_bounds[1],
+            world_top: y_bounds[0],
+            world_bottom: y_bounds[1],
+            origin_col: canvas_area.left() as f64 - x_bounds[0] * cols_per_world_x,
+            origin_row: canvas_area.top() as f64 - y_bounds[1] * rows_per_world_y,
+            cols_per_world_x,
+            rows_per_world_y,
+        },
+        app_theme.muted,
+        state.viewport.zoom,
+    );
+
     let canvas = Canvas::default()
         .background_color(colors.background_color.unwrap_or(Color::Reset))
         .x_bounds(x_bounds)
@@ -804,15 +826,6 @@ pub fn draw_graph_view(
             config.graf.visual.canvas_marker,
         ))
         .paint(move |ctx| {
-            if flags.show_grid {
-                draw_grid(
-                    ctx,
-                    x_bounds,
-                    y_bounds,
-                    colors.grid_color,
-                    config.graf.visual.grid_divisions,
-                );
-            }
             ctx.draw(&GraphEdgesShape { edges: edges_ref });
             ctx.layer();
             ctx.draw(&GraphNodesShape { nodes: nodes_ref });
@@ -873,8 +886,13 @@ pub fn draw_graph_view(
         let legend_widget = ratatui::widgets::Paragraph::new(legend_text).block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(colors.border_color)),
+                .border_style(ratatui::style::Style::default().fg(colors.border_color))
+                .style(
+                    ratatui::style::Style::default()
+                        .bg(colors.background_color.unwrap_or(Color::Black)),
+                ),
         );
+        frame.render_widget(Clear, legend_area);
         frame.render_widget(legend_widget, legend_area);
     }
 
@@ -915,6 +933,7 @@ pub fn draw_graph_view(
         let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
         ctx.area = Some(status_area);
         ctx.graph = Some(state);
+        ctx.graph_grid_visible = flags.grid.visible;
         ctx.hints = Some(hint_line.spans);
         if let Some(p) = pending {
             ctx.pending = Some(vec![Span::styled(
@@ -1009,37 +1028,6 @@ pub fn draw_graph_view(
         );
     }
 }
-fn draw_grid(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    x: [f64; 2],
-    y: [f64; 2],
-    color: Color,
-    divisions: usize,
-) {
-    let divs = divisions.max(2);
-    let step_x = (x[1] - x[0]) / divs as f64;
-    let step_y = (y[1] - y[0]) / divs as f64;
-    for i in 0..=divs {
-        let px = x[0] + step_x * i as f64;
-        ctx.draw(&Line {
-            x1: px,
-            y1: y[0],
-            x2: px,
-            y2: y[1],
-            color,
-        });
-    }
-    for i in 0..=divs {
-        let py = y[0] + step_y * i as f64;
-        ctx.draw(&Line {
-            x1: x[0],
-            y1: py,
-            x2: x[1],
-            y2: py,
-            color,
-        });
-    }
-}
 
 /// Rect passed to Canvas drawing and geometry: `area` with the bottom status-bar
 /// row removed when it is shown. Render and input MUST use this same rect so
@@ -1124,8 +1112,12 @@ fn draw_minimap(
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color))
-        .style(ratatui::style::Style::default());
+        .style(
+            ratatui::style::Style::default()
+                .bg(params.colors.minimap_bg_color.unwrap_or(Color::Black)),
+        );
     let inner = block.inner(area);
+    frame.render_widget(Clear, area);
     frame.render_widget(block, area);
 
     if inner.width == 0 || inner.height == 0 {
@@ -1177,7 +1169,7 @@ fn draw_minimap(
     }
 
     let buf = frame.buffer_mut();
-    let bg_color: Option<Color> = None;
+    let bg_color: Option<Color> = params.colors.minimap_bg_color;
 
     for cell_row in 0..ih {
         let top_sub = cell_row * 2;
@@ -1361,6 +1353,7 @@ pub fn draw_looking_glass(
             Style::default().fg(colors.label_color),
         )));
     let inner = block.inner(overlay);
+    frame.render_widget(Clear, overlay);
     frame.render_widget(block, overlay);
     if inner.width < 4 || inner.height < 4 {
         return;
@@ -1435,7 +1428,8 @@ pub fn draw_looking_glass(
         Paragraph::new(ratatui::text::Line::from(Span::styled(
             link_label,
             Style::default().fg(app_theme.muted),
-        ))),
+        )))
+        .style(Style::default().bg(bg)),
         Rect::new(inner.x, footer_y, inner.width, meta_h.min(footer_h)),
     );
     let tags_h = tag_count as u16;
@@ -1459,7 +1453,10 @@ pub fn draw_looking_glass(
                 ))
             })
             .collect();
-        frame.render_widget(Paragraph::new(lines), tags_rect);
+        frame.render_widget(
+            Paragraph::new(lines).style(Style::default().bg(bg)),
+            tags_rect,
+        );
     }
 }
 

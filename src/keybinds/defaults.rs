@@ -553,6 +553,10 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('d'))],
         );
         draw.insert(
+            DrawAction::SelectCursorTool,
+            vec![KeyCombo::simple(KeyCode::Char('a'))],
+        );
+        draw.insert(
             DrawAction::ToggleShapeSelector,
             vec![KeyCombo::simple(KeyCode::Char('s'))],
         );
@@ -596,6 +600,38 @@ impl Default for Keybinds {
         draw.insert(
             DrawAction::TextEditorCancel,
             vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        draw.insert(DrawAction::MenuClose, vec![KeyCombo::simple(KeyCode::Esc)]);
+        draw.insert(
+            DrawAction::MenuUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        draw.insert(
+            DrawAction::MenuDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        draw.insert(
+            DrawAction::MenuSelect,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(DrawAction::Copy, vec![KeyCombo::simple(KeyCode::Char('c'))]);
+        draw.insert(
+            DrawAction::Paste,
+            vec![KeyCombo::simple(KeyCode::Char('v'))],
+        );
+        draw.insert(DrawAction::Undo, vec![KeyCombo::ctrl(KeyCode::Char('z'))]);
+        draw.insert(
+            DrawAction::Redo,
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('y')),
+                KeyCombo::ctrl_shift(KeyCode::Char('z')),
+            ],
         );
         draw.insert(
             DrawAction::ToggleGrid,
@@ -2245,6 +2281,7 @@ impl KeybindPreset {
 mod tests {
     use super::*;
     use crossterm::event::{KeyEvent, KeyModifiers};
+    use strum::IntoEnumIterator;
 
     #[test]
     fn ctrl_shift_a_matches_select_all() {
@@ -2254,5 +2291,77 @@ mod tests {
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
         );
         assert!(keybinds.matches_edit(EditAction::SelectAll, &event));
+    }
+
+    #[test]
+    fn draw_actions_have_bindings_in_every_preset() {
+        for preset in [
+            KeybindPreset::Default,
+            KeybindPreset::Helix,
+            KeybindPreset::Vim,
+            KeybindPreset::Emacs,
+        ] {
+            let keybinds = preset.base_keybinds();
+            for action in DrawAction::iter() {
+                assert!(
+                    keybinds.bindings_for_draw().contains_key(&action),
+                    "{preset} is missing {action:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn default_draw_editing_bindings_match_contract() {
+        let keybinds = Keybinds::default();
+        for (action, key) in [
+            (
+                DrawAction::SelectCursorTool,
+                KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            ),
+            (
+                DrawAction::Copy,
+                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE),
+            ),
+            (
+                DrawAction::Paste,
+                KeyEvent::new(KeyCode::Char('v'), KeyModifiers::NONE),
+            ),
+            (
+                DrawAction::Undo,
+                KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Redo,
+                KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL),
+            ),
+            (
+                DrawAction::Redo,
+                KeyEvent::new(
+                    KeyCode::Char('z'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
+            ),
+        ] {
+            assert!(keybinds.matches_draw(action, &key), "{action:?}");
+        }
+        for (action, key) in [
+            (
+                DrawAction::Copy,
+                KeyEvent::new(
+                    KeyCode::Char('c'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
+            ),
+            (
+                DrawAction::Paste,
+                KeyEvent::new(
+                    KeyCode::Char('v'),
+                    KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+                ),
+            ),
+        ] {
+            assert!(!keybinds.matches_draw(action, &key), "{action:?}");
+        }
     }
 }

@@ -260,52 +260,52 @@ const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
 ];
 const DRAW_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
-        "Shape selector",
-        "Press {draw:ToggleShapeSelector} to open the **Shape Selector** menu and drop rectangles, circles, or lines.",
+        "Cursor tool",
+        "Press {draw:SelectCursorTool} to select, move, rotate, scale, and open actions for one element.",
     ),
     tip(
         "Pen tool",
         "Press {draw:SelectDrawTool} to activate the **Pen tool** and draw smooth freehand lines by dragging.",
     ),
     tip(
+        "Shape selector",
+        "Press {draw:ToggleShapeSelector} to open the **Shape Selector** menu and drop rectangles, ellipses, diamonds, lines, or arrows.",
+    ),
+    tip(
         "Text labels",
-        "Use {draw:SelectTextTool} to select the **Text tool** and type custom text annotations anywhere on the canvas.",
+        "Use {draw:SelectTextTool} to place text. Double-click selected text in Cursor mode to edit it.",
     ),
     tip(
         "Eraser tool",
-        "Press {draw:SelectEraseTool} to select the **Eraser tool** and rub out existing lines or shapes.",
+        "Press {draw:SelectEraseTool} to select the **Eraser tool** and remove elements.",
     ),
     tip(
-        "Toggle grid alignment",
-        "Press {draw:ToggleGrid} to toggle the alignment grid to help you position your shapes.",
+        "Context actions",
+        "Right-click an element for color, rotate, scale, delete, and text-edit actions. Right-click empty canvas to paste when clipboard has an item.",
     ),
     tip(
-        "Shape menu up",
-        "Use the `` Up `` arrow key inside the shape selector to move the highlighted option up.",
+        "Copy and paste",
+        "Use {draw:Copy} to copy selected element, then {draw:Paste} and click a placement point.",
     ),
     tip(
-        "Shape menu down",
-        "Use the `` Down `` arrow key inside the shape selector to move the highlighted option down.",
+        "Undo and redo",
+        "Use {draw:Undo} to reverse one completed draw change; {draw:Redo} reapplies it.",
     ),
     tip(
-        "Shape selection confirm",
-        "Press `` Enter `` to confirm and select the highlighted shape type from the menu.",
+        "Toggle grid",
+        "Press {draw:ToggleGrid} to show or hide the visual dot grid. Grid does not snap elements.",
     ),
     tip(
-        "Drawing workflow",
-        "Select a **tool** first, then click and drag on the canvas to place shapes, lines, or freehand strokes.",
+        "Shape menu",
+        "Use {draw:ShapeSelectorUp}/{draw:ShapeSelectorDown}; press {draw:ShapeSelectorConfirm} to choose highlighted shape.",
     ),
     tip(
-        "Grid alignment",
-        "Enable the alignment **grid** to snap elements into position as you draw or move them.",
+        "Transform handles",
+        "Select an item in Cursor mode, then drag its round handle to rotate or square handle to scale. Hold ``Shift`` while rotating to snap.",
     ),
     tip(
-        "Undo drawings",
-        "Use {edit:Undo} to revert the last drawing action if you make a mistake.",
-    ),
-    tip(
-        "Tool shortcuts",
-        "Quickly switch between **drawing**, **text**, and **eraser** tools using their dedicated keybinds without opening menus.",
+        "Pan and zoom",
+        "Middle-drag pans canvas. Scroll zooms around pointer without changing stored item geometry.",
     ),
 ];
 const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
@@ -621,7 +621,7 @@ const DRAW_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Text Editor",
-        body: "``Right-click`` an existing text label to open the **Text Editor** and change its content. Type to edit, ``Enter`` saves the change and writes the ``.draw`` file, ``Esc`` discards. To create new text instead, pick the Text tool and left-click an empty spot on the canvas.",
+        body: "Double-click an existing text label in Cursor mode to open the **Text Editor**. Type to edit; ``Enter`` saves one draw change and writes the ``.draw`` file; ``Esc`` discards. To create text, pick Text tool and left-click empty canvas.",
     },
 ];
 

@@ -139,7 +139,7 @@ pub struct PinstarState {
     pub deleting_connection_source_id: Option<String>,
     pub show_editor_pane: bool,
     pub drag_captured_nodes: HashSet<String>,
-    pub show_grid: bool,
+    pub grid: CanvasGridState,
     pub mouse_selecting: bool,
     pub mouse_dragged: bool,
     pub help_requested: bool,
@@ -202,7 +202,7 @@ Rendering happens in `src/pinstar/render.rs`. The canvas uses:
 - Viewport transform: screen coordinates = (world - viewport) * zoom
 - Nodes are drawn as bordered rectangles with type-specific labels
 - Edges are drawn as lines between node centers at specified sides
-- Grid is drawn when `show_grid` is enabled
+- Shared adaptive dot grid is drawn when `grid.visible` is enabled
 - Context menu renders as a popup at cursor position
 - Floating text editor renders within the selected text node area
 - Raw JSON editor is available via `Tab` toggle — full TextArea with entire canvas JSON

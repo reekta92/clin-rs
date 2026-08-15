@@ -866,21 +866,6 @@ impl App {
         }
     }
 
-    pub fn toggle_graph_show_grid(&mut self) {
-        self.config.graf.visual.show_grid = !self.config.graf.visual.show_grid;
-        self.set_temporary_status_static(if self.config.graf.visual.show_grid {
-            "Graph grid shown"
-        } else {
-            "Graph grid hidden"
-        });
-        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
-            config.graf.visual.show_grid = self.config.graf.visual.show_grid;
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
-        }
-    }
-
     pub fn toggle_graph_show_minimap(&mut self) {
         self.config.graf.visual.show_minimap = !self.config.graf.visual.show_minimap;
         self.set_temporary_status_static(if self.config.graf.visual.show_minimap {

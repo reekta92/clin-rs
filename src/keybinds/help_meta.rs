@@ -18,7 +18,14 @@ pub fn graph_group_order() -> &'static [&'static str] {
     &["Navigation", "Actions", "Display", "Menu", "System"]
 }
 pub fn draw_group_order() -> &'static [&'static str] {
-    &["Tools", "Shape Selector", "Text Editor", "General"]
+    &[
+        "Tools",
+        "Shape Selector",
+        "Text Editor",
+        "Context Menu",
+        "Editing",
+        "General",
+    ]
 }
 pub fn canvas_group_order() -> &'static [&'static str] {
     &[
@@ -488,6 +495,10 @@ pub fn graph_action_meta(a: GraphAction) -> HelpMeta {
 
 pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
     match a {
+        DrawAction::SelectCursorTool => HelpMeta {
+            group: "Tools",
+            description: "Select and transform element",
+        },
         DrawAction::SelectDrawTool => HelpMeta {
             group: "Tools",
             description: "Draw freehand strokes",
@@ -528,6 +539,38 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
             group: "Text Editor",
             description: "Cancel text edit",
         },
+        DrawAction::MenuClose => HelpMeta {
+            group: "Context Menu",
+            description: "Close context menu",
+        },
+        DrawAction::MenuUp => HelpMeta {
+            group: "Context Menu",
+            description: "Select previous menu item",
+        },
+        DrawAction::MenuDown => HelpMeta {
+            group: "Context Menu",
+            description: "Select next menu item",
+        },
+        DrawAction::MenuSelect => HelpMeta {
+            group: "Context Menu",
+            description: "Activate selected menu item",
+        },
+        DrawAction::Copy => HelpMeta {
+            group: "Editing",
+            description: "Copy selected element",
+        },
+        DrawAction::Paste => HelpMeta {
+            group: "Editing",
+            description: "Paste copied element",
+        },
+        DrawAction::Undo => HelpMeta {
+            group: "Editing",
+            description: "Undo last draw change",
+        },
+        DrawAction::Redo => HelpMeta {
+            group: "Editing",
+            description: "Redo last draw change",
+        },
         DrawAction::ToggleGrid => HelpMeta {
             group: "Tools",
             description: "Toggle grid overlay",
@@ -538,7 +581,7 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
         },
         DrawAction::Quit => HelpMeta {
             group: "General",
-            description: "Exit canvas view",
+            description: "Exit draw view",
         },
     }
 }

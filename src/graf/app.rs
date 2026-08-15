@@ -64,7 +64,7 @@ pub struct GrafAppState {
     pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
     pub show_legend: bool,
-    pub show_grid: bool,
+    pub grid: crate::ui::CanvasGridState,
     pub show_status_bar: bool,
     pub show_looking_glass: bool,
     pub config_reload_msg: Option<String>,
@@ -118,7 +118,7 @@ impl GrafAppState {
             search_popup: None,
             show_minimap: config.graf.visual.show_minimap,
             show_legend: config.graf.visual.show_legend,
-            show_grid: config.graf.visual.show_grid,
+            grid: crate::ui::CanvasGridState::default(),
             show_status_bar: config.ui.show_status_bar,
             show_looking_glass: config.graf.visual.show_looking_glass,
             config_reload_msg: None,
@@ -422,6 +422,7 @@ pub enum EventAction {
     Quit,
     OpenFile(String),
     OpenHelp,
+    NoteModified(String),
 }
 
 impl GrafAppState {
@@ -462,6 +463,9 @@ impl crate::overlay::OverlayView for GrafAppState {
                     return Ok(crate::overlay::OverlayResult::OpenHelp(
                         crate::app::HelpTab::Graph,
                     ));
+                }
+                EventAction::NoteModified(id) => {
+                    return Ok(crate::overlay::OverlayResult::NoteModified(id));
                 }
             }
         }
@@ -516,14 +520,36 @@ fn add_wikilink_to_note(
     note_id: &str,
     target_title: &str,
 ) -> anyhow::Result<()> {
+    if note_id.ends_with(".canvas") || note_id.ends_with(".draw") {
+        return Ok(());
+    }
+
     let mut note = storage.load_note(note_id)?;
     let link = format!("[[{target_title}]]");
     if !note.content.contains(&link) {
         if let Some(idx) = note.content.find("\n## Links\n") {
             note.content
                 .insert_str(idx + "\n## Links\n".len(), &format!("{link}\n"));
+        } else if let Some(idx) = note.content.find("\n## Links") {
+            if idx + "\n## Links".len() == note.content.len() {
+                note.content.push_str(&format!("\n{link}\n"));
+            } else {
+                let ensure_newline = if note.content.ends_with('\n') {
+                    ""
+                } else {
+                    "\n"
+                };
+                note.content
+                    .push_str(&format!("{ensure_newline}\n## Links\n{link}\n"));
+            }
         } else {
-            note.content.push_str(&format!("\n\n## Links\n{link}\n"));
+            let ensure_newline = if note.content.ends_with('\n') {
+                ""
+            } else {
+                "\n"
+            };
+            note.content
+                .push_str(&format!("{ensure_newline}\n## Links\n{link}\n"));
         }
         let time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -540,9 +566,12 @@ fn remove_wikilink_from_note(
     note_id: &str,
     target_title: &str,
 ) -> anyhow::Result<()> {
+    if note_id.ends_with(".canvas") || note_id.ends_with(".draw") {
+        return Ok(());
+    }
+
     let mut note = storage.load_note(note_id)?;
     let pattern = format!("[[{target_title}");
-    let mut changed = false;
     let mut out = String::with_capacity(note.content.len());
     let mut rest = note.content.as_str();
     while let Some(start) = rest.find(&pattern) {
@@ -555,9 +584,25 @@ fn remove_wikilink_from_note(
             }
             .trim();
             if name.eq_ignore_ascii_case(target_title) {
-                out.push_str(rest[..start].trim_end_matches(['\n', ' ']));
-                rest = &after[end + 2..];
-                changed = true;
+                let mut prefix = &rest[..start];
+                if prefix.ends_with(' ') {
+                    prefix = prefix.trim_end_matches(' ');
+                }
+                out.push_str(prefix);
+
+                let rest_after = &after[end + 2..];
+                let consume_newline =
+                    rest_after.starts_with('\n') || rest_after.starts_with("\r\n");
+
+                if consume_newline && prefix.ends_with('\n') {
+                    rest = if let Some(stripped) = rest_after.strip_prefix("\r\n") {
+                        stripped
+                    } else {
+                        &rest_after[1..]
+                    };
+                } else {
+                    rest = rest_after;
+                }
                 continue;
             }
         }
@@ -565,10 +610,28 @@ fn remove_wikilink_from_note(
         rest = &rest[start + pattern.len()..];
     }
     out.push_str(rest);
-    note.content = out;
-    if changed {
-        storage.save_note(note_id, &note)?;
+
+    let trimmed = out.trim_end();
+    if trimmed.ends_with("## Links") {
+        let new_len = trimmed.len() - "## Links".len();
+        let mut new_out = trimmed[..new_len].trim_end().to_string();
+        if !new_out.is_empty() {
+            new_out.push('\n');
+        }
+        out = new_out;
     }
+
+    note.content = out;
+    // Always save the note to ensure frontmatter stays in sync with content.
+    // If the link existed in frontmatter but not in the body (ghost link),
+    // this self-heals the file by purging it from the frontmatter.
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(note.updated_at);
+    note.updated_at = time;
+    storage.save_note(note_id, &note)?;
+
     Ok(())
 }
 
@@ -583,50 +646,102 @@ fn refresh_note_summaries(storage: &Storage) -> Vec<crate::storage::NoteSummary>
 
 /// Persist a wikilink edit and apply the resulting edge change to the live
 /// simulation without rebuilding it (positions/viewport/physics preserved).
-fn apply_connection(state: &mut GrafAppState, source_id: &str, target_title: &str, create: bool) {
+fn apply_connection(
+    state: &mut GrafAppState,
+    source_id: &str,
+    target_title: &str,
+    create: bool,
+) -> Option<String> {
+    let mut resolved_source_id = source_id.to_string();
+    let mut resolved_target_title = target_title.to_string();
+
+    if !create {
+        let source_has_link = state.notes.iter().any(|n| {
+            n.id == source_id && n.links.iter().any(|l| l.eq_ignore_ascii_case(target_title))
+        });
+
+        if !source_has_link
+            && let Some(target_note) = state
+                .notes
+                .iter()
+                .find(|n| n.title.eq_ignore_ascii_case(target_title))
+            && let Some(source_note) = state.notes.iter().find(|n| n.id == source_id)
+        {
+            let source_title = &source_note.title;
+            if target_note
+                .links
+                .iter()
+                .any(|l| l.eq_ignore_ascii_case(source_title))
+            {
+                resolved_source_id = target_note.id.clone();
+                resolved_target_title = source_title.clone();
+            }
+        }
+    }
+
     let result = if create {
-        add_wikilink_to_note(&mut state.storage, source_id, target_title)
+        add_wikilink_to_note(
+            &mut state.storage,
+            &resolved_source_id,
+            &resolved_target_title,
+        )
     } else {
-        remove_wikilink_from_note(&mut state.storage, source_id, target_title)
+        remove_wikilink_from_note(
+            &mut state.storage,
+            &resolved_source_id,
+            &resolved_target_title,
+        )
     };
+    std::fs::write(
+        "apply_connection_log.txt",
+        format!(
+            "source: {}, target: {}, resolved_source: {}, resolved_target: {}, result: {:?}",
+            source_id, target_title, resolved_source_id, resolved_target_title, result
+        ),
+    )
+    .unwrap_or_default();
     if result.is_err() {
-        return;
+        return None;
     }
     // Keep state.notes in sync (used by the search popup and a later manual rebuild).
-    if let Some(src_summary) = state.notes.iter_mut().find(|n| n.id == source_id) {
+    if let Some(src_summary) = state.notes.iter_mut().find(|n| n.id == resolved_source_id) {
         if create {
             if !src_summary
                 .links
                 .iter()
-                .any(|l| l.eq_ignore_ascii_case(target_title))
+                .any(|l| l.eq_ignore_ascii_case(&resolved_target_title))
             {
-                src_summary.links.push(target_title.to_string());
+                src_summary.links.push(resolved_target_title.to_string());
             }
         } else {
             src_summary
                 .links
-                .retain(|l| !l.eq_ignore_ascii_case(target_title));
+                .retain(|l| !l.eq_ignore_ascii_case(&resolved_target_title));
         }
     }
     // Mutate the live graph; do NOT rebuild the simulation.
     let Some(gs) = state.graph_state.as_ref() else {
-        return;
+        return Some(source_id.to_string());
     };
     let (src_idx, tgt_idx) = {
         let g = gs.read();
         let graph = g.simulation.get_graph();
         let src = graph
             .node_indices()
-            .find(|i| graph[*i].data.note_id == source_id);
-        let tgt = graph
-            .node_indices()
-            .find(|i| graph[*i].data.title.eq_ignore_ascii_case(target_title));
+            .find(|i| graph[*i].data.note_id == resolved_source_id);
+        let tgt = graph.node_indices().find(|i| {
+            graph[*i]
+                .data
+                .title
+                .eq_ignore_ascii_case(&resolved_target_title)
+        });
         (src, tgt)
     };
     if let (Some(s), Some(t)) = (src_idx, tgt_idx) {
         let mut g = gs.write();
         g.apply_connection_change(s, t, create);
     }
+    Some(resolved_source_id)
 }
 
 fn execute_menu_action(state: &mut GrafAppState, config: &ClinConfig, item: GrafMenuItem) {
@@ -785,7 +900,7 @@ fn handle_event(
                         return Ok(None);
                     }
                     GraphInputAction::ToggleGrid => {
-                        app_state.show_grid = !app_state.show_grid;
+                        app_state.grid.toggle();
                         return Ok(None);
                     }
                     GraphInputAction::ToggleStatus => {
@@ -826,7 +941,10 @@ fn handle_event(
                         target_title,
                         create,
                     } => {
-                        apply_connection(app_state, &source_id, &target_title, create);
+                        let mod_id = apply_connection(app_state, &source_id, &target_title, create);
+                        if let Some(id) = mod_id {
+                            return Ok(Some(EventAction::NoteModified(id)));
+                        }
                         return Ok(None);
                     }
                     GraphInputAction::ClearFocus => {
@@ -917,7 +1035,11 @@ fn handle_event(
                             target_title,
                             create,
                         } => {
-                            apply_connection(app_state, &source_id, &target_title, create);
+                            let mod_id =
+                                apply_connection(app_state, &source_id, &target_title, create);
+                            if let Some(id) = mod_id {
+                                return Ok(Some(EventAction::NoteModified(id)));
+                            }
                             return Ok(None);
                         }
                         _ => {}

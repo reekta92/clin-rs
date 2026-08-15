@@ -51,9 +51,6 @@ pub fn default_looking_glass_height() -> u16 {
 pub fn default_label_offset() -> f64 {
     4.0
 }
-pub fn default_grid_divisions() -> usize {
-    10
-}
 pub fn default_search_max_results() -> usize {
     20
 }

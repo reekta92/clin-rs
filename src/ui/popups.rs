@@ -1755,6 +1755,152 @@ pub fn draw_subnotes_popup(
     frame.render_widget(&content_input, edit_chunks[1]);
 }
 
+fn muted_color(c: Color) -> Color {
+    let (r, g, b) = match c {
+        Color::Black => (0, 0, 0),
+        Color::Red => (205, 0, 0),
+        Color::Green => (0, 205, 0),
+        Color::Yellow => (205, 205, 0),
+        Color::Blue => (0, 0, 205),
+        Color::Magenta => (205, 0, 205),
+        Color::Cyan => (0, 205, 205),
+        Color::Gray => (192, 192, 192),
+        Color::DarkGray => (128, 128, 128),
+        Color::LightRed => (255, 0, 0),
+        Color::LightGreen => (0, 255, 0),
+        Color::LightYellow => (255, 255, 0),
+        Color::LightBlue => (0, 0, 255),
+        Color::LightMagenta => (255, 0, 255),
+        Color::LightCyan => (0, 255, 255),
+        Color::White => (255, 255, 255),
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => (128, 128, 128),
+    };
+    Color::Rgb(
+        r.saturating_sub(40),
+        g.saturating_sub(40),
+        b.saturating_sub(40),
+    )
+}
+
+pub fn format_header_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>) -> Line<'a> {
+    match hints {
+        PopupHints::Keybinds(items) => {
+            let mut spans = Vec::new();
+            for (i, (keys, action)) in items.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::styled(
+                        " · ",
+                        Style::default().fg(theme.highlight_fg).bg(theme.accent),
+                    ));
+                }
+                spans.push(Span::styled(
+                    keys.clone(),
+                    Style::default()
+                        .fg(theme.highlight_fg)
+                        .bg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    format!(" {}", action),
+                    Style::default().fg(theme.highlight_fg).bg(theme.accent),
+                ));
+            }
+            Line::from(spans)
+        }
+        PopupHints::Text(text) => Line::from(Span::styled(
+            text.to_string(),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )),
+    }
+}
+
+pub fn draw_header_dropdown(
+    frame: &mut Frame,
+    _area: Rect,
+    title: &str,
+    items: &[(&str, bool)],
+    mouse_pos: Option<(u16, u16)>,
+    hints: Option<PopupHints>,
+    theme: &AppThemeColors,
+) -> Rect {
+    let frame_area = frame.area();
+
+    let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
+    frame.render_widget(Clear, header_rect);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.accent)),
+        header_rect,
+    );
+
+    let title_width = title.chars().count() as u16;
+    let title_x = frame_area.x + (frame_area.width.saturating_sub(title_width)) / 2;
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            title,
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )),
+        Rect::new(title_x, frame_area.y, title_width, 1),
+    );
+
+    if let Some(h) = hints {
+        let hint_line = format_header_hints(theme, h);
+        let hint_width = hint_line.width() as u16;
+        if frame_area.width > title_width + hint_width + 4 {
+            let hint_x = frame_area.right().saturating_sub(hint_width + 1);
+            frame.render_widget(
+                Paragraph::new(hint_line),
+                Rect::new(hint_x, frame_area.y, hint_width, 1),
+            );
+        }
+    }
+
+    if items.is_empty() {
+        return Rect::new(frame_area.x, frame_area.y, 0, 0);
+    }
+
+    let max_item_width = items
+        .iter()
+        .map(|(l, _)| l.chars().count())
+        .max()
+        .unwrap_or(0) as u16;
+    let dropdown_width = max_item_width + 4;
+    let dropdown_x = frame_area.x + (frame_area.width.saturating_sub(dropdown_width)) / 2;
+    let dropdown_y = frame_area.y + 1;
+    let dropdown_rect = Rect::new(dropdown_x, dropdown_y, dropdown_width, items.len() as u16);
+
+    frame.render_widget(Clear, dropdown_rect);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.accent)),
+        dropdown_rect,
+    );
+    for (i, (label, is_selected)) in items.iter().enumerate() {
+        let row_y = dropdown_y + i as u16;
+        let is_hovered = mouse_pos.is_some_and(|(col, row)| {
+            row == row_y && col >= dropdown_x && col < dropdown_x + dropdown_width
+        });
+
+        let bg = if *is_selected || is_hovered {
+            muted_color(theme.accent)
+        } else {
+            theme.accent
+        };
+
+        let fg = theme.highlight_fg;
+
+        let padded_label = format!("  {label}");
+        let row_rect = Rect::new(dropdown_x, row_y, dropdown_width, 1);
+
+        frame.render_widget(Clear, row_rect);
+        frame.render_widget(Block::default().style(Style::default().bg(bg)), row_rect);
+        frame.render_widget(
+            Paragraph::new(Span::styled(padded_label, Style::default().fg(fg).bg(bg))),
+            row_rect,
+        );
+    }
+
+    dropdown_rect
+}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,14 +1,10 @@
 target/
 pkg/
 development/
-info/
-graphify-out/
 
-/checks.md
+checks.md
 
 # nix
-result
-/result
-/.direnv/
+.direnv/
 *-out/
 result/
