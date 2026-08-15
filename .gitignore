@@ -2,10 +2,9 @@ target/
 pkg/
 development/
 
-/checks.md
+checks.md
 
 # nix
-/result
-/.direnv/
+.direnv/
 *-out/
 result/
