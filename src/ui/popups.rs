@@ -1819,7 +1819,7 @@ pub fn draw_header_dropdown(
     frame: &mut Frame,
     _area: Rect,
     title: &str,
-    items: &[(&str, bool)],
+    items: &[(&str, bool, Option<Color>)],
     mouse_pos: Option<(u16, u16)>,
     hints: Option<PopupHints>,
     theme: &AppThemeColors,
@@ -1861,7 +1861,7 @@ pub fn draw_header_dropdown(
 
     let max_item_width = items
         .iter()
-        .map(|(l, _)| l.chars().count())
+        .map(|(l, _, c)| l.chars().count() + if c.is_some() { 3 } else { 0 })
         .max()
         .unwrap_or(0) as u16;
     let dropdown_width = max_item_width + 4;
@@ -1874,7 +1874,7 @@ pub fn draw_header_dropdown(
         Block::default().style(Style::default().bg(theme.accent)),
         dropdown_rect,
     );
-    for (i, (label, is_selected)) in items.iter().enumerate() {
+    for (i, (label, is_selected, color_hint)) in items.iter().enumerate() {
         let row_y = dropdown_y + i as u16;
         let is_hovered = mouse_pos.is_some_and(|(col, row)| {
             row == row_y && col >= dropdown_x && col < dropdown_x + dropdown_width
@@ -1888,15 +1888,18 @@ pub fn draw_header_dropdown(
 
         let fg = theme.highlight_fg;
 
-        let padded_label = format!("  {label}");
+        let mut spans = Vec::new();
+        spans.push(Span::styled("  ", Style::default().bg(bg)));
+        if let Some(c) = color_hint {
+            spans.push(Span::styled("■ ", Style::default().fg(*c).bg(bg)));
+        }
+        spans.push(Span::styled(*label, Style::default().fg(fg).bg(bg)));
+
         let row_rect = Rect::new(dropdown_x, row_y, dropdown_width, 1);
 
         frame.render_widget(Clear, row_rect);
         frame.render_widget(Block::default().style(Style::default().bg(bg)), row_rect);
-        frame.render_widget(
-            Paragraph::new(Span::styled(padded_label, Style::default().fg(fg).bg(bg))),
-            row_rect,
-        );
+        frame.render_widget(Paragraph::new(Line::from(spans)), row_rect);
     }
 
     dropdown_rect

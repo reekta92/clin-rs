@@ -193,9 +193,9 @@ pub fn draw_canvas(
             (DrawShapeType::Arrow, "Arrow"),
         ];
 
-        let items: Vec<(&str, bool)> = shapes
+        let items: Vec<(&str, bool, Option<ratatui::style::Color>)> = shapes
             .iter()
-            .map(|(st, name)| (*name, app.active_shape_type == *st))
+            .map(|(st, name)| (*name, app.active_shape_type == *st, None))
             .collect();
 
         let hints_array = [
@@ -224,7 +224,7 @@ pub fn draw_canvas(
 
     if app.show_color_selector {
         let colors = crate::pinstar::COLOR_PICKER_PALETTE;
-        let items: Vec<(&str, bool)> = colors
+        let items: Vec<(&str, bool, Option<ratatui::style::Color>)> = colors
             .iter()
             .map(|(name, _, color)| {
                 let is_active = if let ratatui::style::Color::Rgb(r, g, b) = *color {
@@ -232,7 +232,7 @@ pub fn draw_canvas(
                 } else {
                     false
                 };
-                (*name, is_active)
+                (*name, is_active, Some(*color))
             })
             .collect();
 
