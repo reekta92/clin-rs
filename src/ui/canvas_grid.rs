@@ -1,6 +1,5 @@
 use ratatui::{Frame, layout::Rect, style::Color};
 
-
 /// Transient visibility state for canvas-like live views.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CanvasGridState {
@@ -60,7 +59,12 @@ pub(crate) fn draw_canvas_grid(
     muted: Color,
     zoom: f64,
 ) {
-    if !state.visible || area.is_empty() || !projection.is_valid() || !zoom.is_finite() || zoom <= 0.0 {
+    if !state.visible
+        || area.is_empty()
+        || !projection.is_valid()
+        || !zoom.is_finite()
+        || zoom <= 0.0
+    {
         return;
     }
 
@@ -75,7 +79,7 @@ pub(crate) fn draw_canvas_grid(
         grid_step_y *= 2.0;
     }
     // Compensate for terminal cell aspect ratio (~2:1 height:width) so grid appears square
-    grid_step_y *= area.width as f64 / (2.0 * area.height as f64);
+    grid_step_y *= projection.cols_per_world_x.abs() / (2.0 * projection.rows_per_world_y.abs());
     let step_x = grid_step_x;
     let step_y = grid_step_y;
     if !step_x.is_finite() || !step_y.is_finite() || step_x == 0.0 || step_y == 0.0 {
@@ -146,7 +150,12 @@ mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
 
-    fn projection(cols_per_world_x: f64, rows_per_world_y: f64, step_x: f64, step_y: f64) -> CanvasGridProjection {
+    fn projection(
+        cols_per_world_x: f64,
+        rows_per_world_y: f64,
+        step_x: f64,
+        step_y: f64,
+    ) -> CanvasGridProjection {
         let (world_top, world_bottom) = if rows_per_world_y.is_sign_negative() {
             (-step_y, 0.0)
         } else {
@@ -181,14 +190,16 @@ mod tests {
     fn preserves_pinstar_density_across_projections() {
         let area = Rect::new(0, 0, 21, 11);
         let zoom = 1.0;
-        // At zoom=1.0, area 21x11:
+        // At zoom=1.0:
         // step_x = 100
-        // step_y = 100 * 21 / 22 = 95.4545
+        // cols_per_world_x = 0.2, rows_per_world_y = 0.1
+        // compensation = 0.2 / (2 * 0.1) = 1.0
+        // step_y = 100 * 1.0 = 100.0
         // If we want a dot at col 20 and row 10, then cols_per_world_x * 100 = 20 => 0.2
-        // and rows_per_world_y * 95.4545 = 10 => 10 / 95.4545 = 0.10476
+        // and rows_per_world_y * 100 = 10 => 0.1
         for proj in [
-            projection(0.2, 0.10476, 100.0, 95.4545),
-            projection(0.2, -0.10476, 100.0, 95.4545),
+            projection(0.2, 0.1, 100.0, 100.0),
+            projection(0.2, -0.1, 100.0, 100.0),
         ] {
             let buffer = render_grid(area, CanvasGridState::default(), proj, zoom);
             assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
@@ -200,7 +211,7 @@ mod tests {
     #[test]
     fn projects_clips_and_styles_dots_once() {
         let area = Rect::new(2, 3, 10, 7);
-        let mut p = projection(0.2, 0.12, 100.0, 95.45);
+        let mut p = projection(0.2, 0.1, 100.0, 100.0);
         p.origin_col = 2.0;
         p.origin_row = 3.0;
         let buffer = render_grid(area, CanvasGridState::default(), p, 1.0);
@@ -218,14 +229,14 @@ mod tests {
         let mut hidden = CanvasGridState::default();
         hidden.toggle();
         assert_eq!(
-            render_grid(area, hidden, projection(0.1, 0.1, 100.0, 100.0), 1.0)
+            render_grid(area, hidden, projection(0.1, 0.1, 100.0, 50.0), 1.0)
                 .cell((0, 0))
                 .unwrap()
                 .symbol(),
             " "
         );
 
-        let mut invalid = projection(0.1, 0.1, 100.0, 100.0);
+        let mut invalid = projection(0.1, 0.1, 100.0, 50.0);
         invalid.origin_col = f64::NAN;
         assert_eq!(
             render_grid(area, CanvasGridState::default(), invalid, 1.0)
@@ -245,7 +256,7 @@ mod tests {
                     frame,
                     Rect::new(0, 0, 21, 11),
                     CanvasGridState::default(),
-                    projection(0.1, 0.1, 100.0, 100.0),
+                    projection(0.1, 0.1, 100.0, 50.0),
                     Color::DarkGray,
                     1.0,
                 );
@@ -268,17 +279,20 @@ mod tests {
         let area = Rect::new(0, 0, 21, 11);
         let zoom = 0.01;
         // At zoom = 0.01:
-        // Initial step_y = 100.0. step_y * zoom = 1.0 < 6.0
+        // cols_per_world_x = 0.025, rows_per_world_y = 0.0125
+        // compensation = 0.025 / (2 * 0.0125) = 1.0
+        // Initial step_y = 100.0 * 1.0 = 100.0. step_y * zoom = 1.0 < 6.0
         // Doubling happens until step_y * zoom >= 6.0.
         // 100 -> 200 (2.0) -> 400 (4.0) -> 800 (8.0)
         // grid_step_x = 800.0
-        // grid_step_y = 800.0 * 21 / 22 = 763.636
+        // grid_step_y = 800.0
         // Set cols/rows per world to make dots appear at 0, 20
-        // cols_per_world_x = 20 / 800.0 = 0.025
+        // cols_per_world_x * 800.0 = 20 => 0.025
+        // rows_per_world_y * 800.0 = 10 => 0.0125
         let buffer = render_grid(
             area,
             CanvasGridState::default(),
-            projection(0.025, 10.0 / 763.636, 800.0, 763.636),
+            projection(0.025, 0.0125, 800.0, 800.0),
             zoom,
         );
         assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
