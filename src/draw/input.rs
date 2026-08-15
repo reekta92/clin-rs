@@ -326,7 +326,7 @@ fn handle_mouse(
         let max_item_width = 7;
         let dropdown_width = max_item_width + 4;
         let dropdown_x = area.x + (area.width.saturating_sub(dropdown_width)) / 2;
-        let dropdown_y = area.y + 1;
+        let dropdown_y = area.y.saturating_sub(1) + 1; // == area.y, matching frame_area.y + 1
         let dropdown_rect = ratatui::layout::Rect::new(dropdown_x, dropdown_y, dropdown_width, shapes.len() as u16);
 
         if ev.kind == MouseEventKind::Down(MouseButton::Left) {

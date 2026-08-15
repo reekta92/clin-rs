@@ -1790,14 +1790,16 @@ pub fn format_header_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>)
 
 pub fn draw_header_dropdown(
     frame: &mut Frame,
-    area: Rect,
+    _area: Rect,
     title: &str,
     items: &[(&str, bool)],
     mouse_pos: Option<(u16, u16)>,
     hints: Option<PopupHints>,
     theme: &AppThemeColors,
 ) -> Rect {
-    let header_rect = Rect::new(area.x, area.y, area.width, 1);
+    let frame_area = frame.area();
+    
+    let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
     frame.render_widget(Clear, header_rect);
     frame.render_widget(
         Block::default().style(Style::default().bg(theme.accent)),
@@ -1805,29 +1807,29 @@ pub fn draw_header_dropdown(
     );
 
     let title_width = title.chars().count() as u16;
-    let title_x = area.x + (area.width.saturating_sub(title_width)) / 2;
+    let title_x = frame_area.x + (frame_area.width.saturating_sub(title_width)) / 2;
     frame.render_widget(
         Paragraph::new(Span::styled(
             title,
             Style::default().fg(theme.highlight_fg).bg(theme.accent),
         )),
-        Rect::new(title_x, area.y, title_width, 1),
+        Rect::new(title_x, frame_area.y, title_width, 1),
     );
 
     if let Some(h) = hints {
         let hint_line = format_header_hints(theme, h);
         let hint_width = hint_line.width() as u16;
-        if area.width > title_width + hint_width + 4 {
-            let hint_x = area.right().saturating_sub(hint_width + 1);
+        if frame_area.width > title_width + hint_width + 4 {
+            let hint_x = frame_area.right().saturating_sub(hint_width + 1);
             frame.render_widget(
                 Paragraph::new(hint_line),
-                Rect::new(hint_x, area.y, hint_width, 1),
+                Rect::new(hint_x, frame_area.y, hint_width, 1),
             );
         }
     }
 
     if items.is_empty() {
-        return Rect::new(area.x, area.y, 0, 0);
+        return Rect::new(frame_area.x, frame_area.y, 0, 0);
     }
 
     let max_item_width = items
@@ -1836,8 +1838,8 @@ pub fn draw_header_dropdown(
         .max()
         .unwrap_or(0) as u16;
     let dropdown_width = max_item_width + 4;
-    let dropdown_x = area.x + (area.width.saturating_sub(dropdown_width)) / 2;
-    let dropdown_y = area.y + 1;
+    let dropdown_x = frame_area.x + (frame_area.width.saturating_sub(dropdown_width)) / 2;
+    let dropdown_y = frame_area.y + 1;
     let dropdown_rect = Rect::new(dropdown_x, dropdown_y, dropdown_width, items.len() as u16);
 
     frame.render_widget(Clear, dropdown_rect);
