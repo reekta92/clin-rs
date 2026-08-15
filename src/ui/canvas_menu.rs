@@ -69,7 +69,7 @@ impl CanvasContextMenu {
             .iter()
             .map(|i| {
                 let base = i.label.chars().count();
-                let square = if i.color_hint.is_some() { 3 } else { 0 }; // "■ "
+                let square = if i.color_hint.is_some() { 2 } else { 0 }; // "■ "
                 let shortcut = i.shortcut.map_or(0, |_| 2); // "c "
                 base + square + shortcut + 4 // 2 left + 2 right pad
             })
@@ -129,7 +129,7 @@ pub fn render_canvas_context_menu(
             // dynamic padding so shortcut right-aligns.
             let content_len = spec.label.chars().count()
                 + 4
-                + if spec.color_hint.is_some() { 3 } else { 0 }
+                + if spec.color_hint.is_some() { 2 } else { 0 }
                 + spec.shortcut.map_or(0, |_| 2);
             let pad = (rect.width as usize).saturating_sub(content_len);
             if pad > 0 {
@@ -172,8 +172,8 @@ mod tests {
             ],
         );
         let rect = m.rect(Rect::new(0, 0, 80, 40));
-        // "A" → 1 + 4 = 5; "A" + square(3) + shortcut(2) + 4 = 10.
-        assert_eq!(rect.width, 10);
+        // "A" + square(2) + shortcut(2) + 4 = 9.
+        assert_eq!(rect.width, 9);
         assert_eq!(rect.height, 2);
     }
 
