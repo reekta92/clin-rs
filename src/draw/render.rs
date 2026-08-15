@@ -10,7 +10,7 @@ use ratatui::style::{Color, Style};
 use ratatui::symbols::Marker;
 use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
-use ratatui::widgets::{Block, List, ListItem};
+use ratatui::widgets::Block;
 
 /// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
 /// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
@@ -185,26 +185,6 @@ pub fn draw_canvas(
     }
 
     if app.show_shape_selector {
-        let content = crate::ui::draw_popup_frame(
-            frame,
-            area,
-            "SELECT SHAPE",
-            crate::ui::PopupSize::Small,
-            crate::ui::PopupHints::Keybinds(&[
-                (
-                    app.keybinds
-                        .display_draw(crate::keybinds::DrawAction::ShapeSelectorConfirm),
-                    "select",
-                ),
-                (
-                    app.keybinds
-                        .display_draw(crate::keybinds::DrawAction::ShapeSelectorCancel),
-                    "cancel",
-                ),
-            ]),
-            &app.theme,
-        );
-
         let shapes = [
             (DrawShapeType::Rect, "Rect"),
             (DrawShapeType::Ellipse, "Ellipse"),
@@ -212,44 +192,34 @@ pub fn draw_canvas(
             (DrawShapeType::Line, "Line"),
             (DrawShapeType::Arrow, "Arrow"),
         ];
-        let hovered_idx = mouse_pos.and_then(|(col, row)| {
-            let items_top = content.y + 1;
-            let items_bottom = items_top + shapes.len() as u16;
-            if row >= items_top
-                && row < items_bottom
-                && col > content.x
-                && col < content.x + content.width - 1
-            {
-                Some((row - items_top) as usize)
-            } else {
-                None
-            }
-        });
 
-        let items: Vec<ListItem> = shapes
+        let items: Vec<(&str, bool)> = shapes
             .iter()
-            .enumerate()
-            .map(|(i, (st, name))| {
-                let style = if app.active_shape_type == *st {
-                    Style::default()
-                        .fg(app.theme.highlight_fg)
-                        .bg(app.theme.highlight_bg)
-                } else if hovered_idx == Some(i) {
-                    app.theme.hover_style()
-                } else {
-                    Style::default().fg(app.theme.fg)
-                };
-                ListItem::new(format!("  {name}")).style(style)
-            })
+            .map(|(st, name)| (*name, app.active_shape_type == *st))
             .collect();
 
-        let list = List::new(items).block(
-            Block::bordered()
-                .border_style(Style::default().fg(app.theme.accent))
-                .style(app.theme.bg_style()),
-        );
+        let hints_array = [
+            (
+                app.keybinds
+                    .display_draw(crate::keybinds::DrawAction::ShapeSelectorConfirm),
+                "select",
+            ),
+            (
+                app.keybinds
+                    .display_draw(crate::keybinds::DrawAction::ShapeSelectorCancel),
+                "cancel",
+            ),
+        ];
 
-        frame.render_widget(list, content);
+        crate::ui::draw_header_dropdown(
+            frame,
+            area,
+            "SELECT SHAPE",
+            &items,
+            mouse_pos,
+            Some(crate::ui::PopupHints::Keybinds(&hints_array)),
+            &app.theme,
+        );
     }
     app.text_editor_rect = None;
 

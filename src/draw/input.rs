@@ -8,7 +8,6 @@ use crate::draw::state::{
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Direction, Layout, Margin};
 
 pub fn handle_event(
     ev: Event,
@@ -317,35 +316,31 @@ fn handle_mouse(
     let area = app.last_area;
 
     if app.show_shape_selector {
-        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Small, area);
-        let content = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
-            .split(popup_area)[0];
+        let shapes = [
+            DrawShapeType::Rect,
+            DrawShapeType::Ellipse,
+            DrawShapeType::Diamond,
+            DrawShapeType::Line,
+            DrawShapeType::Arrow,
+        ];
+        let max_item_width = 7;
+        let dropdown_width = max_item_width + 4;
+        let dropdown_x = area.x + (area.width.saturating_sub(dropdown_width)) / 2;
+        let dropdown_y = area.y + 1;
+        let dropdown_rect = ratatui::layout::Rect::new(dropdown_x, dropdown_y, dropdown_width, shapes.len() as u16);
 
         if ev.kind == MouseEventKind::Down(MouseButton::Left) {
-            if crate::events::contains_cell(content, ev.column, ev.row) {
-                let inner = content.inner(Margin {
-                    vertical: 1,
-                    horizontal: 1,
-                });
-                if crate::events::contains_cell(inner, ev.column, ev.row) {
-                    let row_rel = (ev.row - inner.y) as usize;
-                    let shapes = [
-                        DrawShapeType::Rect,
-                        DrawShapeType::Ellipse,
-                        DrawShapeType::Diamond,
-                        DrawShapeType::Line,
-                        DrawShapeType::Arrow,
-                    ];
-                    if let Some(&shape) = shapes.get(row_rel) {
-                        app.active_shape_type = shape;
-                        app.set_active_tool(DrawTool::Shape);
-                        return Ok(None);
-                    }
+            if crate::events::contains_cell(dropdown_rect, ev.column, ev.row) {
+                let row_rel = (ev.row - dropdown_y) as usize;
+                if let Some(&shape) = shapes.get(row_rel) {
+                    app.active_shape_type = shape;
+                    app.set_active_tool(DrawTool::Shape);
+                    app.show_shape_selector = false;
+                    return Ok(None);
                 }
             } else {
                 app.show_shape_selector = false;
+                return Ok(None);
             }
         }
         return Ok(None);
