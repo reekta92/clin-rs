@@ -134,7 +134,9 @@ pub(crate) fn draw_canvas_grid(
                 continue;
             }
             if let Some(cell) = buffer.cell_mut((col as u16, row as u16)) {
-                cell.set_char('·').set_fg(muted);
+                if cell.symbol() == " " || cell.symbol() == "" {
+                    cell.set_char('·').set_fg(muted);
+                }
             }
         }
     }

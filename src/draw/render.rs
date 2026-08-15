@@ -76,23 +76,6 @@ pub fn draw_canvas(
         (canvas_area.width.saturating_sub(1) as f64) / (x_bounds[1] - x_bounds[0]);
     let rows_per_world_y =
         -(canvas_area.height.saturating_sub(1) as f64) / (y_bounds[1] - y_bounds[0]);
-    crate::ui::draw_canvas_grid(
-        frame,
-        canvas_area,
-        app.grid,
-        crate::ui::CanvasGridProjection {
-            world_left: x_bounds[0],
-            world_right: x_bounds[1],
-            world_top: y_bounds[0],
-            world_bottom: y_bounds[1],
-            origin_col: canvas_area.left() as f64 - x_bounds[0] * cols_per_world_x,
-            origin_row: canvas_area.top() as f64 - y_bounds[1] * rows_per_world_y,
-            cols_per_world_x,
-            rows_per_world_y,
-        },
-        app.theme.muted,
-        app.viewport.zoom,
-    );
 
     let canvas = Canvas::default()
         .block(Block::default().style(Style::default().bg(app.theme.bg.unwrap_or(Color::Reset))))
@@ -127,6 +110,23 @@ pub fn draw_canvas(
         });
 
     frame.render_widget(canvas, canvas_area);
+    crate::ui::draw_canvas_grid(
+        frame,
+        canvas_area,
+        app.grid,
+        crate::ui::CanvasGridProjection {
+            world_left: x_bounds[0],
+            world_right: x_bounds[1],
+            world_top: y_bounds[0],
+            world_bottom: y_bounds[1],
+            origin_col: canvas_area.left() as f64 - x_bounds[0] * cols_per_world_x,
+            origin_row: canvas_area.top() as f64 - y_bounds[1] * rows_per_world_y,
+            cols_per_world_x,
+            rows_per_world_y,
+        },
+        app.theme.muted,
+        app.viewport.zoom,
+    );
 
     let status_area = Rect::new(
         area.x,
