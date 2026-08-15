@@ -36,12 +36,13 @@ impl KeyStroke {
         // and makes the char lowercase for comparison.
         fn normalize(code: KeyCode, mut mods: KeyModifiers) -> (KeyCode, KeyModifiers) {
             if let KeyCode::Char(c) = code
-                && c.is_ascii_alphabetic() {
-                    if c.is_uppercase() {
-                        mods.insert(KeyModifiers::SHIFT);
-                    }
-                    return (KeyCode::Char(c.to_ascii_lowercase()), mods);
+                && c.is_ascii_alphabetic()
+            {
+                if c.is_uppercase() {
+                    mods.insert(KeyModifiers::SHIFT);
                 }
+                return (KeyCode::Char(c.to_ascii_lowercase()), mods);
+            }
             // BackTab is essentially Shift+Tab
             if code == KeyCode::BackTab {
                 mods.insert(KeyModifiers::SHIFT);
