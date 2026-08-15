@@ -18,8 +18,8 @@ impl KeyStroke {
     /// Returns true if this single keystroke matches the given event.
     ///
     /// Per crossterm conventions, uppercase `Char` keys can encode Shift in
-    /// the character itself. Match ASCII letters case-insensitively when
-    /// Shift is present, while preserving Shift for Ctrl+Shift shortcuts.
+    /// the character itself. Normalize both the binding and the event to
+    /// a standard representation to compare them correctly.
     pub fn matches_event(&self, event: &KeyEvent) -> bool {
         // Canonicalize terminal-variant Ctrl+Backspace encodings.
         let event_code = if event.modifiers.contains(KeyModifiers::CONTROL) {
@@ -30,37 +30,31 @@ impl KeyStroke {
         } else {
             event.code
         };
-        let codes_match = self.code == event_code
-            || matches!(
-                (self.code, event_code),
-                (KeyCode::Char(a), KeyCode::Char(b))
-                    if a.is_ascii_alphabetic()
-                        && b.is_ascii_alphabetic()
-                        && a.eq_ignore_ascii_case(&b)
-                        && (event.modifiers.contains(KeyModifiers::SHIFT) || b.is_uppercase())
-            );
-        if !codes_match {
-            return false;
+
+        // Helper to normalize an alphabetic Char + modifiers into (lowercase_char, effective_modifiers).
+        // It moves the "uppercase" nature of the char into the SHIFT modifier,
+        // and makes the char lowercase for comparison.
+        fn normalize(code: KeyCode, mut mods: KeyModifiers) -> (KeyCode, KeyModifiers) {
+            if let KeyCode::Char(c) = code {
+                if c.is_ascii_alphabetic() {
+                    if c.is_uppercase() {
+                        mods.insert(KeyModifiers::SHIFT);
+                    }
+                    return (KeyCode::Char(c.to_ascii_lowercase()), mods);
+                }
+            }
+            // BackTab is essentially Shift+Tab
+            if code == KeyCode::BackTab {
+                mods.insert(KeyModifiers::SHIFT);
+                return (KeyCode::Tab, mods);
+            }
+            (code, mods)
         }
-        let self_mods = match self.code {
-            KeyCode::BackTab => self.modifiers & !KeyModifiers::SHIFT,
-            KeyCode::Char(c)
-                if c.is_uppercase() && !self.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
-                self.modifiers & !KeyModifiers::SHIFT
-            }
-            _ => self.modifiers,
-        };
-        let event_mods = match event.code {
-            KeyCode::BackTab => event.modifiers & !KeyModifiers::SHIFT,
-            KeyCode::Char(c)
-                if c.is_uppercase() && !event.modifiers.contains(KeyModifiers::CONTROL) =>
-            {
-                event.modifiers & !KeyModifiers::SHIFT
-            }
-            _ => event.modifiers,
-        };
-        self_mods == event_mods
+
+        let (self_code, self_mods) = normalize(self.code, self.modifiers);
+        let (ev_code, ev_mods) = normalize(event_code, event.modifiers);
+
+        self_code == ev_code && self_mods == ev_mods
     }
 }
 
@@ -372,6 +366,16 @@ mod tests {
         };
         let event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
         assert!(stroke.matches_event(&event));
+    }
+    #[test]
+    fn l_and_shift_l_conflict() {
+        let l_stroke = KeyStroke {
+            code: KeyCode::Char('l'),
+            modifiers: KeyModifiers::NONE,
+        };
+        let shift_l_event = KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT);
+        // Does a lowercase 'l' match 'Shift+L'?
+        assert!(!l_stroke.matches_event(&shift_l_event), "Lowercase binding should NOT match Shift+L");
     }
 
     #[test]
