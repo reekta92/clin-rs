@@ -1756,6 +1756,34 @@ pub fn draw_subnotes_popup(
 }
 
 
+fn muted_color(c: Color) -> Color {
+    let (r, g, b) = match c {
+        Color::Black => (0, 0, 0),
+        Color::Red => (205, 0, 0),
+        Color::Green => (0, 205, 0),
+        Color::Yellow => (205, 205, 0),
+        Color::Blue => (0, 0, 205),
+        Color::Magenta => (205, 0, 205),
+        Color::Cyan => (0, 205, 205),
+        Color::Gray => (192, 192, 192),
+        Color::DarkGray => (128, 128, 128),
+        Color::LightRed => (255, 0, 0),
+        Color::LightGreen => (0, 255, 0),
+        Color::LightYellow => (255, 255, 0),
+        Color::LightBlue => (0, 0, 255),
+        Color::LightMagenta => (255, 0, 255),
+        Color::LightCyan => (0, 255, 255),
+        Color::White => (255, 255, 255),
+        Color::Rgb(r, g, b) => (r, g, b),
+        _ => (128, 128, 128),
+    };
+    Color::Rgb(
+        r.saturating_sub(40),
+        g.saturating_sub(40),
+        b.saturating_sub(40),
+    )
+}
+
 pub fn format_header_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>) -> Line<'a> {
     match hints {
         PopupHints::Keybinds(items) => {
@@ -1847,7 +1875,6 @@ pub fn draw_header_dropdown(
         Block::default().style(Style::default().bg(theme.accent)),
         dropdown_rect,
     );
-
     for (i, (label, is_selected)) in items.iter().enumerate() {
         let row_y = dropdown_y + i as u16;
         let is_hovered = mouse_pos.is_some_and(|(col, row)| {
@@ -1855,7 +1882,7 @@ pub fn draw_header_dropdown(
         });
 
         let bg = if *is_selected || is_hovered {
-            theme.highlight_bg
+            muted_color(theme.accent)
         } else {
             theme.accent
         };
