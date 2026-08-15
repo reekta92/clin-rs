@@ -1755,7 +1755,6 @@ pub fn draw_subnotes_popup(
     frame.render_widget(&content_input, edit_chunks[1]);
 }
 
-
 fn muted_color(c: Color) -> Color {
     let (r, g, b) = match c {
         Color::Black => (0, 0, 0),
@@ -1826,7 +1825,7 @@ pub fn draw_header_dropdown(
     theme: &AppThemeColors,
 ) -> Rect {
     let frame_area = frame.area();
-    
+
     let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
     frame.render_widget(Clear, header_rect);
     frame.render_widget(
@@ -1891,7 +1890,7 @@ pub fn draw_header_dropdown(
 
         let padded_label = format!("  {label}");
         let row_rect = Rect::new(dropdown_x, row_y, dropdown_width, 1);
-        
+
         frame.render_widget(Clear, row_rect);
         frame.render_widget(Block::default().style(Style::default().bg(bg)), row_rect);
         frame.render_widget(
@@ -1899,7 +1898,7 @@ pub fn draw_header_dropdown(
             row_rect,
         );
     }
-    
+
     dropdown_rect
 }
 #[cfg(test)]

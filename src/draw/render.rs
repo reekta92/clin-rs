@@ -9,8 +9,8 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::symbols::Marker;
 use ratatui::text::Span;
-use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 use ratatui::widgets::Block;
+use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 
 /// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
 /// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
