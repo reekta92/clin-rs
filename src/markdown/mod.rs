@@ -567,7 +567,6 @@ impl MarkdownRenderer {
     }
 }
 
-
 #[cfg(test)]
 mod perf_tests;
 

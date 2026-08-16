@@ -965,7 +965,6 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
 // Code blocks
 // ---------------------------------------------------------------------------
 
-
 /// `(nerd_font_codepoint, unicode_glyph)` for a code-fence language, if known.
 fn lang_icon(lang: &str) -> Option<(&'static str, &'static str)> {
     let l = lang.to_ascii_lowercase();
@@ -1193,10 +1192,7 @@ fn render_table<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, tbl: &NodeTabl
                 cells.push(inlines);
             }
             let source_line = data.sourcepos.start.line;
-            rows.push(Row {
-                cells,
-                source_line,
-            });
+            rows.push(Row { cells, source_line });
         }
     }
 
