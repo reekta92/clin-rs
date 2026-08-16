@@ -2,7 +2,6 @@ pub mod messages;
 
 pub(crate) mod catalog;
 mod edit_panes;
-pub(crate) mod folder_preview;
 mod folders;
 mod import_ops;
 mod loading;
@@ -380,10 +379,6 @@ pub struct App {
     pub(crate) unsent_search_request: Option<crate::app::search_worker::SearchRequest>,
     pub search_status: Option<String>,
     pub note_index: Option<crate::note_index::NoteIndex>,
-    pub folder_preview_service: crate::app::folder_preview::FolderPreviewService,
-    pub folder_preview_catalog: Option<Arc<crate::app::folder_preview::FolderPreviewCatalog>>,
-    #[allow(dead_code)]
-    pub(crate) folder_preview_model: Option<Arc<crate::app::folder_preview::FolderGraphModel>>,
     pub notes_revision: u64,
     pub note_stamps: HashMap<String, crate::storage::FileStamp>,
     pub subnotes_view_cache: Vec<(String, Vec<crate::storage::SubNote>)>,
@@ -451,14 +446,7 @@ impl App {
             &self.config.list.custom_smart_folders,
             now,
         );
-        let preview_cat = crate::app::folder_preview::FolderPreviewCatalog::build(
-            self.notes_revision,
-            &self.notes,
-            &self.catalog_folders,
-            &index,
-        );
         self.note_index = Some(index);
-        self.folder_preview_catalog = Some(preview_cat);
     }
     pub fn desired_list_preview_height(&self) -> u16 {
         self.list.last_preview_pane_height
@@ -645,11 +633,6 @@ impl App {
             search_query_generation: Arc::new(AtomicU64::new(1)),
             unsent_search_request: None,
             note_index: None,
-            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(
-                notes_worker_pool.clone(),
-            ),
-            folder_preview_catalog: None,
-            folder_preview_model: None,
             notes_revision: 0,
             note_stamps,
             notes_with_subnotes: std::collections::HashSet::new(),
@@ -914,11 +897,6 @@ impl App {
             search_query_generation: Arc::new(AtomicU64::new(1)),
             unsent_search_request: None,
             note_index: None,
-            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(
-                notes_worker_pool.clone(),
-            ),
-            folder_preview_catalog: None,
-            folder_preview_model: None,
             notes_revision: 0,
             note_stamps,
             notes_with_subnotes: std::collections::HashSet::new(),

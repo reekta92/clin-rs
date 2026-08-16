@@ -1,5 +1,6 @@
 use crate::config::ClinConfig;
-use crate::constants::*;
+const FILE_MAGIC: &[u8; 5] = b"CLIN1";
+const NONCE_LEN: usize = 12;
 use crate::frontmatter;
 use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};

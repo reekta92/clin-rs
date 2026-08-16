@@ -26,48 +26,14 @@ impl TemplateVariables {
     }
 
     pub fn substitute(&self, template: &str) -> String {
-        let mut result = String::with_capacity(template.len() + 50);
-        let mut chars = template.chars().peekable();
-
-        while let Some(c) = chars.next() {
-            if c == '{' {
-                let mut var_name = String::new();
-                let mut closed = false;
-                while let Some(&next) = chars.peek() {
-                    if next == '}' {
-                        chars.next();
-                        closed = true;
-                        break;
-                    }
-                    if let Some(c) = chars.next() {
-                        var_name.push(c);
-                    }
-                }
-
-                if closed {
-                    match var_name.as_str() {
-                        "date" => result.push_str(&self.date),
-                        "datetime" => result.push_str(&self.datetime),
-                        "time" => result.push_str(&self.time),
-                        "weekday" => result.push_str(&self.weekday),
-                        "year" => result.push_str(&self.year),
-                        "month" => result.push_str(&self.month),
-                        "day" => result.push_str(&self.day),
-                        _ => {
-                            result.push('{');
-                            result.push_str(&var_name);
-                            result.push('}');
-                        }
-                    }
-                } else {
-                    result.push('{');
-                    result.push_str(&var_name);
-                }
-            } else {
-                result.push(c);
-            }
-        }
-        result
+        template
+            .replace("{date}", &self.date)
+            .replace("{datetime}", &self.datetime)
+            .replace("{time}", &self.time)
+            .replace("{weekday}", &self.weekday)
+            .replace("{year}", &self.year)
+            .replace("{month}", &self.month)
+            .replace("{day}", &self.day)
     }
 }
 

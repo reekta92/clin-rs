@@ -12,7 +12,6 @@ pub(crate) use widget::MarkdownWidget;
 pub(crate) use worker::{RenderViewport, prewarm_syntax_assets};
 
 use cache::RenderKey;
-use ratatui::layout::Rect;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -568,27 +567,6 @@ impl MarkdownRenderer {
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn hit_test_markdown(
-    document: &RenderedDocument,
-    inner: Rect,
-    line_offset: usize,
-    x: u16,
-    y: u16,
-) -> Option<(usize, usize)> {
-    if x < inner.x || x >= inner.right() || y < inner.y || y >= inner.bottom() {
-        return None;
-    }
-    let dy = (y - inner.y) as usize;
-    let global_line = line_offset.saturating_add(dy);
-    if global_line >= document.line_count() {
-        return None;
-    }
-    let dx = (x - inner.x) as usize;
-    let line = document.line(global_line)?;
-    let char_idx = line.char_index_at_visual_column(dx)?;
-    Some((global_line, char_idx))
-}
 
 #[cfg(test)]
 mod perf_tests;

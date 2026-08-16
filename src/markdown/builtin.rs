@@ -965,13 +965,6 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
 // Code blocks
 // ---------------------------------------------------------------------------
 
-/// Visual display width of a string (sum of per-char Unicode widths).
-#[allow(dead_code)]
-fn str_visual_width(s: &str) -> usize {
-    s.chars()
-        .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
-        .sum()
-}
 
 /// `(nerd_font_codepoint, unicode_glyph)` for a code-fence language, if known.
 fn lang_icon(lang: &str) -> Option<(&'static str, &'static str)> {
@@ -1135,9 +1128,7 @@ fn render_blockquote<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, depth: us
 // ---------------------------------------------------------------------------
 
 /// Captured table row data — holds references into the AST arena.
-#[allow(dead_code)]
 struct Row<'a> {
-    is_header: bool,
     cells: Vec<Vec<&'a AstNode<'a>>>,
     source_line: usize,
 }
@@ -1195,7 +1186,7 @@ fn render_table<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, tbl: &NodeTabl
 
     for child in node.children() {
         let data = child.data.borrow();
-        if let NodeValue::TableRow(is_header) = &data.value {
+        if let NodeValue::TableRow(_) = &data.value {
             let mut cells: Vec<Vec<&'a AstNode<'a>>> = Vec::new();
             for cell in child.children() {
                 let inlines: Vec<&'a AstNode<'a>> = cell.children().collect();
@@ -1203,7 +1194,6 @@ fn render_table<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, tbl: &NodeTabl
             }
             let source_line = data.sourcepos.start.line;
             rows.push(Row {
-                is_header: *is_header,
                 cells,
                 source_line,
             });
@@ -1663,6 +1653,13 @@ mod tests {
     use super::*;
     use crate::app_theme::AppThemeColors;
     use std::sync::atomic::AtomicBool;
+
+    /// Visual display width of a string (sum of per-char Unicode widths).
+    fn str_visual_width(s: &str) -> usize {
+        s.chars()
+            .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+            .sum()
+    }
 
     fn mk_opts(icon_mode: crate::config::IconMode) -> MdRenderOpts {
         MdRenderOpts {

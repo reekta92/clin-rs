@@ -6,7 +6,6 @@ pub mod calendar;
 pub mod cli;
 pub mod config;
 pub mod console;
-pub mod constants;
 pub mod draw;
 pub mod editor;
 pub(crate) mod editor_document;
@@ -1834,7 +1833,6 @@ where
     Ok(())
 }
 
-pub use constants::*;
 pub use event_source::{ChannelEventSource, CrosstermEventSource, EventSource};
 pub use host::{GuiHost, HostHooks, TuiHost};
 pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};

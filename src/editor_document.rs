@@ -42,7 +42,6 @@ impl Default for EditorDocument {
     }
 }
 
-#[allow(dead_code)]
 impl EditorDocument {
     pub(crate) fn from_text(content: &str) -> Self {
         let normalized = normalize_content(content);
@@ -53,7 +52,7 @@ impl EditorDocument {
             change: Some(DocumentChange::Full),
         }
     }
-
+    #[allow(dead_code)]
     pub(crate) fn from_lines(lines: impl IntoIterator<Item = String>) -> Self {
         let textarea = TextArea::from(lines.into_iter().collect::<Vec<_>>());
         Self {
@@ -63,7 +62,7 @@ impl EditorDocument {
             change: Some(DocumentChange::Full),
         }
     }
-
+    #[allow(dead_code)]
     pub(crate) fn replace_text(&mut self, content: &str) -> EditEffect {
         let old_len = self.line_count();
         let normalized = normalize_content(content);
@@ -105,7 +104,7 @@ impl EditorDocument {
     pub(crate) fn line_count(&self) -> usize {
         self.textarea.lines().len()
     }
-
+    #[allow(dead_code)]
     pub(crate) fn line(&self, row: usize) -> Option<&str> {
         self.textarea.lines().get(row).map(String::as_str)
     }
@@ -136,7 +135,7 @@ impl EditorDocument {
     pub(crate) fn input(&mut self, input: Input) -> EditEffect {
         self.mutate(|textarea| textarea.input(input))
     }
-
+    #[allow(dead_code)]
     pub(crate) fn input_key(&mut self, key: KeyEvent) -> EditEffect {
         self.input(Input::from(key))
     }
@@ -144,7 +143,7 @@ impl EditorDocument {
     pub(crate) fn insert_str(&mut self, text: impl AsRef<str>) -> EditEffect {
         self.mutate(|textarea| textarea.insert_str(text))
     }
-
+    #[allow(dead_code)]
     pub(crate) fn delete_str(&mut self, chars: usize) -> EditEffect {
         self.mutate(|textarea| textarea.delete_str(chars))
     }
@@ -218,7 +217,7 @@ impl EditorDocument {
     pub(crate) fn take_change(&mut self) -> Option<DocumentChange> {
         self.change.take()
     }
-
+    #[allow(dead_code)]
     pub(crate) fn set_yank_text(&mut self, text: impl Into<String>) {
         self.textarea.set_yank_text(text);
     }

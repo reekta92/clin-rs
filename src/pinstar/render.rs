@@ -5,17 +5,12 @@ use crate::keybinds::CanvasAction;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
 
-#[allow(dead_code)]
 struct Proj {
     is_group: bool,
-    pos: (f64, f64),  // canvas-space top-left
-    size: (f64, f64), // canvas-space size
     sx: f64,
     sy: f64,
     sw: f64,
     sh: f64,
-    scx: f64,
-    scy: f64,
     on_screen: bool,
 }
 
@@ -231,14 +226,10 @@ pub fn draw_pinstar_view(
             let sh = nh * z;
             Proj {
                 is_group: matches!(n, crate::pinstar::data::CanvasNode::Group(_)),
-                pos: (nx, ny),
-                size: (nw, nh),
                 sx,
                 sy,
                 sw,
                 sh,
-                scx: sx + sw / 2.0,
-                scy: sy + sh / 2.0,
                 on_screen: !(sx + sw < view_left
                     || sx > view_right
                     || sy + sh < view_top
