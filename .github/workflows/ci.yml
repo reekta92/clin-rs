@@ -7,4 +7,4 @@ on:
 
 jobs:
   ci:
-    uses: reekta92/shared-workflows/.github/workflows/ci.yml@main
+    uses: reekta92/.github/.github/workflows/ci.yml@main
