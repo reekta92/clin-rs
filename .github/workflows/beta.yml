@@ -1,0 +1,12 @@
+name: Auto Label Beta Issues
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  call_beta_labeler:
+    uses: reekta92/.github/.github/workflows/beta.yml@main
+    secrets: inherit
+    permissions:
+      issues: write
