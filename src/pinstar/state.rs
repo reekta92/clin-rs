@@ -595,12 +595,21 @@ impl PinstarState {
         for (idx, node) in self.data.nodes.iter().enumerate() {
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
+            let margin = 1.0 / self.zoom;
             let is_hit = match node {
                 crate::pinstar::data::CanvasNode::Group(_) => {
-                    let title_height = (1.5 / self.zoom).min(nh);
-                    x >= nx && x <= nx + nw && y >= ny && y <= ny + title_height
+                    let title_height = (2.0 / self.zoom).min(nh);
+                    x >= nx - margin
+                        && x <= nx + nw + margin
+                        && y >= ny - margin
+                        && y <= ny + title_height
                 }
-                _ => x >= nx && x <= nx + nw && y >= ny && y <= ny + nh,
+                _ => {
+                    x >= nx - margin
+                        && x <= nx + nw + margin
+                        && y >= ny - margin
+                        && y <= ny + nh + margin
+                }
             };
             if is_hit {
                 let area = nw * nh;
