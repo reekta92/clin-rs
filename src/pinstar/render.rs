@@ -316,21 +316,34 @@ pub fn draw_pinstar_view(
             label = format!("[EDITING] {label}");
         }
 
+        let title_sh = (40.0 * z).ceil() as u16;
+        let title_h = title_sh.max(1).min(node_rect.height);
+        let title_rect = Rect::new(node_rect.x, node_rect.y, node_rect.width, title_h);
+
         let is_hovered = !is_selected
-            && canvas_mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
-        let bg_style = if is_hovered {
+            && canvas_mouse_pos.is_some_and(|(col, row)| contains_cell(title_rect, col, row));
+
+        let title_style = if is_hovered {
             theme.hover_style()
         } else {
-            theme.bg_style()
+            let mut s = Style::default().bg(base_color);
+            if let Some(c) = theme.bg {
+                s = s.fg(c);
+            } else {
+                s = s.fg(ratatui::style::Color::Black);
+            }
+            s
         };
+
         let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(Span::styled(
-                label,
-                Style::default().fg(if is_editing { theme.accent } else { base_color }),
-            ))
-            .style(bg_style);
+            .title(ratatui::text::Line::from(format!(" {label} ")).style(title_style))
+            .style(if is_hovered {
+                theme.hover_style()
+            } else {
+                theme.bg_style()
+            });
 
         if is_selected && !is_editing {
             block = block.border_set(ratatui::symbols::border::Set {
