@@ -136,18 +136,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let icon_span = match app.editor.autosave_status {
             crate::editor::AutosaveStatus::Unsaved => Some(Span::styled(
-                " ⨯",
+                " ⨯ (Unsaved)",
                 Style::default().fg(ratatui::style::Color::Red),
             )),
-            crate::editor::AutosaveStatus::Saving => Some(Span::styled(
-                format!(
-                    " {}",
-                    crate::ui::title_bar::spinner_char(app.load_spinner_tick)
-                ),
-                Style::default().fg(theme.highlight_fg),
-            )),
             crate::editor::AutosaveStatus::RecentlySaved => Some(Span::styled(
-                " ✓",
+                " ✓ (Saved)",
                 Style::default().fg(ratatui::style::Color::Green),
             )),
             crate::editor::AutosaveStatus::Saved => None,
@@ -203,8 +196,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.render_widget(&app.editor.title_editor, title_rect);
 
             if let Some(icon) = icon_span.clone() {
-                let icon_x = (start_x + display_width).min(end_x.saturating_sub(2));
-                let icon_rect = Rect::new(icon_x, outer_chunks[0].y, 2, 1);
+                let w = icon.width() as u16;
+                let icon_x = (start_x + display_width).min(end_x.saturating_sub(w));
+                let icon_rect = Rect::new(icon_x, outer_chunks[0].y, w, 1);
                 frame.render_widget(Paragraph::new(Line::from(vec![icon])), icon_rect);
             }
 
