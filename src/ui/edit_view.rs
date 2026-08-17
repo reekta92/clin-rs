@@ -136,11 +136,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let icon_span = match app.editor.autosave_status {
             crate::editor::AutosaveStatus::Unsaved => Some(Span::styled(
-                " ⨯ (Unsaved)",
+                " ⨯",
                 Style::default().fg(ratatui::style::Color::Red),
             )),
             crate::editor::AutosaveStatus::RecentlySaved => Some(Span::styled(
-                " ✓ (Saved)",
+                " ✓",
                 Style::default().fg(ratatui::style::Color::Green),
             )),
             crate::editor::AutosaveStatus::Saved => None,
