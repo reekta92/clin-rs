@@ -10,7 +10,7 @@ fn sync_mode_status(app: &mut crate::app::App, state: &PinstarState) {
     const MODE_MESSAGES: [&str; 3] = [
         "CONNECTION MODE: Select target node with mouse or Enter",
         "DELETE CONNECTION MODE: Select target node to remove link",
-        "RESIZE MODE: Drag mouse to resize, Left-click to confirm",
+        "RESIZE MODE: Drag mouse to resize, Right-click to confirm",
     ];
     if let Some(msg) = state.active_mode_message() {
         app.status = std::borrow::Cow::Borrowed(msg);
@@ -52,11 +52,6 @@ pub fn handle_pinstar_mouse(
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Right) => {
             if state.resizing_node_id.is_some() {
-                state.resizing_node_id = None;
-                state.is_dragging_resize_handle = false;
-                let _ = state.save();
-                state.sync_to_raw_editor();
-                sync_mode_status(app, state);
                 return true;
             }
 
@@ -97,6 +92,18 @@ pub fn handle_pinstar_mouse(
             true
         }
         MouseEventKind::Up(MouseButton::Right) => {
+            if state.resizing_node_id.is_some() {
+                state.resizing_node_id = None;
+                state.is_dragging_resize_handle = false;
+                let _ = state.save();
+                state.sync_to_raw_editor();
+                sync_mode_status(app, state);
+                
+                state.right_down_screen = None;
+                state.marquee.clear();
+                state.drag_start_pos = None;
+                return true;
+            }
             let dragging = if let Some((sx, sy)) = state.right_down_screen {
                 state
                     .marquee

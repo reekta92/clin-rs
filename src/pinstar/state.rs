@@ -231,7 +231,7 @@ impl PinstarState {
         } else if self.deleting_connection_source_id.is_some() {
             Some("DELETE CONNECTION MODE: Select target node to remove link")
         } else if self.resizing_node_id.is_some() {
-            Some("RESIZE MODE: Drag mouse to resize, Left-click to confirm")
+            Some("RESIZE MODE: Drag mouse to resize, Right-click to confirm")
         } else {
             None
         }
