@@ -283,15 +283,14 @@ pub fn handle_pinstar_mouse(
 
             if state.floating_editor.is_some() {
                 let prev_selected = state.selection.primary.clone();
-                let hit_node = state.select_node_at(cx, cy);
+                let hit_node = state.node_at(cx, cy);
 
                 if hit_node != prev_selected {
-                    state.selection.primary = prev_selected;
                     state.toggle_editor();
                     state.sync_to_raw_editor();
-                    state.selection.primary = hit_node.clone();
 
                     if hit_node.is_none() {
+                        state.selection.clear();
                         return true;
                     }
                 } else {
@@ -305,18 +304,26 @@ pub fn handle_pinstar_mouse(
                 false
             };
 
-            let hit_node = state.select_node_at(cx, cy);
+            state.has_dragged = false;
+            let hit_node = state.node_at(cx, cy);
 
-            if is_double_click && hit_node.is_some() {
+            if is_double_click && let Some(id) = hit_node.clone() {
+                state.selection.select_only(id);
                 state.toggle_editor();
                 state.sync_to_raw_editor();
                 state.last_click = None;
-            } else if hit_node.is_some() {
+            } else if let Some(id) = hit_node {
+                if !state.selection.is_selected(&id) {
+                    state.selection.select_only(id.clone());
+                } else {
+                    state.selection.primary = Some(id.clone());
+                    state.selection.extra.remove(&id);
+                }
                 state.drag_start_pos = Some((cx, cy));
                 state.capture_drag_nodes();
                 state.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
             } else {
-                state.selection.clear_set();
+                state.selection.clear();
                 state.selected_edge_id = None;
                 state.last_click = Some((mouse.column, mouse.row, std::time::Instant::now()));
             }
@@ -340,6 +347,11 @@ pub fn handle_pinstar_mouse(
             }
 
             if state.drag_start_pos.is_some() {
+                if !state.has_dragged
+                    && let Some(id) = state.selection.primary.clone()
+                {
+                    state.selection.select_only(id);
+                }
                 state.drag_start_pos = None;
                 state.drag_captured_nodes.clear();
                 let _ = state.save();
@@ -411,6 +423,7 @@ pub fn handle_pinstar_mouse(
                 let dx = cx - last_pos.0;
                 let dy = cy - last_pos.1;
                 state.move_selected_node(dx, dy);
+                state.has_dragged = true;
                 state.drag_start_pos = Some((cx, cy));
                 if state.show_editor_pane {
                     state.sync_to_raw_editor();

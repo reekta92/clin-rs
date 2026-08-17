@@ -50,6 +50,7 @@ pub struct PinstarState {
     pub right_down_screen: Option<(u16, u16)>,
     pub last_zoom_at: Option<std::time::Instant>,
     pub orthogonal_connections: bool,
+    pub has_dragged: bool,
 }
 
 #[derive(Clone)]
@@ -218,6 +219,7 @@ impl PinstarState {
             marquee: crate::ui::MarqueeDragState::new(3),
             right_down_screen: None,
             orthogonal_connections: false,
+            has_dragged: false,
         })
     }
 
@@ -587,7 +589,7 @@ impl PinstarState {
         )
     }
 
-    pub fn select_node_at(&mut self, x: f64, y: f64) -> Option<String> {
+    pub fn node_at(&self, x: f64, y: f64) -> Option<String> {
         let mut best_hit: Option<(String, f64, usize)> = None;
 
         for (idx, node) in self.data.nodes.iter().enumerate() {
@@ -610,8 +612,11 @@ impl PinstarState {
                 }
             }
         }
+        best_hit.map(|(id, _, _)| id)
+    }
 
-        if let Some((id, _, _)) = best_hit {
+    pub fn select_node_at(&mut self, x: f64, y: f64) -> Option<String> {
+        if let Some(id) = self.node_at(x, y) {
             self.selection.select_only(id.clone());
             Some(id)
         } else {
