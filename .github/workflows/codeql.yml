@@ -23,7 +23,6 @@ jobs:
       matrix:
         include:
         - language: rust
-          build-mode: manual
 
     steps:
     - name: Checkout repository
@@ -38,7 +37,6 @@ jobs:
       uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
-        build-mode: ${{ matrix.build-mode }}
         
     - name: Build Rust code
       run: |
