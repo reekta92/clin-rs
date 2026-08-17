@@ -188,8 +188,8 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
         "Press {edit:ManageSubnotes} to attach or manage **subnotes** while editing.",
     ),
     tip(
-        "Auto-save",
-        "Your note is **automatically saved** when you press {edit:Back} to leave the editor — no manual save required.",
+        "Auto-save & Recovery",
+        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Keystrokes are also continuously written to an encrypted draft to survive crashes.",
     ),
     tip(
         "External editor workflow",

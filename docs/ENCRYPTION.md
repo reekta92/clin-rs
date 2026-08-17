@@ -166,6 +166,14 @@ load_note(id):
 ```
 
 ---
+## Editor Draft Recovery
+
+To prevent data loss in the event of an unexpected process exit (e.g., panics or `SIGKILL`), the `clin-rs` editor maintains a continuous, synchronously updated `editor_draft.bin` file.
+- Located at `<data_dir>/.clin/editor_draft.bin`.
+- Contains a bincode-serialized tuple: `(note_id, title, content)`.
+- Encrypted using the same ChaCha20-Poly1305 vault key, preserving privacy for unsaved work-in-progress keystrokes.
+- Automatically decrypted and recovered on the next app boot, then deleted.
+
 
 ## Key Rust Types
 
