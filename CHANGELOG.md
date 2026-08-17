@@ -2,47 +2,6 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.11.0-rc.1] - 2026-08-17
-
-### Added
-
-- Restrict marquee selection of groups to titlebar
-- Constrain group node interaction to titlebar
-- Implement robust draft recovery and ensure safe autosave
-- Add Ctrl+s manual save shortcut
-- Tweak autosave indicators per review
-- Implement autosave with visual indicators
-
-### CI
-
-- Use central workflows from .github repo
-- Fixed fmt warnings
-
-### Changed
-
-- Cleanup dead code blocks and files
-
-### Documentation
-
-- Add editor draft recovery details to architecture and help
-
-### Fixed
-
-- Add zoom-scaled margin to hit testing to fix fractional coordinate truncation
-- Use dynamic zoom-scaled hit height to match visual titlebar
-- Increase group titlebar hit area to 60.0
-- Preserve multi-selection when dragging nodes
-
-### Miscellaneous
-
-- Add beta labeler workflow caller
-- Moved SECURITY.md and CODE_OF_CONDUCT.md
-- Bump sha2 from 0.10.9 to 0.11.0
-- Bump strum from 0.26.3 to 0.28.0
-
-### Ui
-
-- Remove text from saved/unsaved indicator
 ## [0.11.0-rc.0] - 2026-08-15
 
 ### Added
@@ -154,10 +113,6 @@ All notable changes to clin are documented in this file.
 ### Styling
 
 - Remove brackets from context menu shortcut hints
-
-### Release
-
-- V0.11.0-rc.0
 ## [0.10.1] - 2026-08-12
 
 ### Added
