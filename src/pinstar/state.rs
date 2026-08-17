@@ -597,7 +597,7 @@ impl PinstarState {
             let (nw, nh) = node.size();
             let is_hit = match node {
                 crate::pinstar::data::CanvasNode::Group(_) => {
-                    let title_height = 60.0_f64.min(nh);
+                    let title_height = (1.5 / self.zoom).min(nh);
                     x >= nx && x <= nx + nw && y >= ny && y <= ny + title_height
                 }
                 _ => x >= nx && x <= nx + nw && y >= ny && y <= ny + nh,
