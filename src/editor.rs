@@ -78,6 +78,7 @@ pub enum AutosaveStatus {
     #[default]
     Saved,
     Unsaved,
+    Saving,
     RecentlySaved,
 }
 
