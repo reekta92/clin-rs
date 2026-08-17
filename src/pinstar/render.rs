@@ -316,7 +316,7 @@ pub fn draw_pinstar_view(
             label = format!("[EDITING] {label}");
         }
 
-        let title_sh = (40.0 * z).ceil() as u16;
+        let title_sh = (60.0 * z).ceil() as u16;
         let title_h = title_sh.max(1).min(node_rect.height);
         let title_rect = Rect::new(node_rect.x, node_rect.y, node_rect.width, title_h);
 
