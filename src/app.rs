@@ -1557,6 +1557,43 @@ impl App {
             }
         }
     }
+    pub fn tick_autosave(&mut self) -> bool {
+        let mut dirty = false;
+        let now = std::time::Instant::now();
+        match self.editor.autosave_status {
+            crate::editor::AutosaveStatus::Unsaved => {
+                if let Some(timer) = self.editor.autosave_timer
+                    && now >= timer
+                {
+                    self.editor.autosave_status = crate::editor::AutosaveStatus::Saving;
+                    self.editor.autosave_timer = Some(now + std::time::Duration::from_millis(50));
+                    dirty = true;
+                }
+            }
+            crate::editor::AutosaveStatus::Saving => {
+                if let Some(timer) = self.editor.autosave_timer
+                    && now >= timer
+                {
+                    self.autosave();
+                    self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                    self.editor.last_saved_time = Some(std::time::Instant::now());
+                    self.editor.autosave_timer = None;
+                    dirty = true;
+                }
+            }
+            crate::editor::AutosaveStatus::RecentlySaved => {
+                if let Some(last) = self.editor.last_saved_time
+                    && now.duration_since(last) > std::time::Duration::from_secs(2)
+                {
+                    self.editor.autosave_status = crate::editor::AutosaveStatus::Saved;
+                    dirty = true;
+                }
+            }
+            crate::editor::AutosaveStatus::Saved => {}
+        }
+        dirty
+    }
+
     pub fn autosave(&mut self) {
         let content = self.editor.body.lines().join("\n");
 

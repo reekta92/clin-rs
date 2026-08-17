@@ -134,6 +134,25 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let theme = &app.app_theme;
 
+        let icon_span = match app.editor.autosave_status {
+            crate::editor::AutosaveStatus::Unsaved => Some(Span::styled(
+                " ⨯",
+                Style::default().fg(ratatui::style::Color::Red),
+            )),
+            crate::editor::AutosaveStatus::Saving => Some(Span::styled(
+                format!(
+                    " {}",
+                    crate::ui::title_bar::spinner_char(app.load_spinner_tick)
+                ),
+                Style::default().fg(theme.highlight_fg),
+            )),
+            crate::editor::AutosaveStatus::RecentlySaved => Some(Span::styled(
+                " ✓",
+                Style::default().fg(ratatui::style::Color::Green),
+            )),
+            crate::editor::AutosaveStatus::Saved => None,
+        };
+
         if focus == EditFocus::Title {
             // Render background/blank bar first
             let background_bar = Paragraph::new("").style(theme.title_bar_bg_style());
@@ -182,6 +201,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .title_editor
                 .set_cursor_line_style(Style::default());
             frame.render_widget(&app.editor.title_editor, title_rect);
+
+            if let Some(icon) = icon_span.clone() {
+                let icon_x = (start_x + display_width).min(end_x.saturating_sub(2));
+                let icon_rect = Rect::new(icon_x, outer_chunks[0].y, 2, 1);
+                frame.render_widget(Paragraph::new(Line::from(vec![icon])), icon_rect);
+            }
+
             {
                 let (r, c) = crate::ui::refresh_textarea_viewport(
                     &app.editor.title_editor,
@@ -200,7 +226,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             } else {
                 (title_str.as_str(), Style::default().fg(theme.heading))
             };
-            let center_paragraph = Paragraph::new(Line::from(vec![Span::styled(span, style)]))
+            let mut spans = vec![Span::styled(span, style)];
+            if let Some(icon) = icon_span {
+                spans.push(icon);
+            }
+            let center_paragraph = Paragraph::new(Line::from(spans))
                 .style(theme.title_bar_bg_style())
                 .alignment(Alignment::Center);
             frame.render_widget(center_paragraph, outer_chunks[0]);

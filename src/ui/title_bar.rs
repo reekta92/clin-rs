@@ -3,7 +3,7 @@ use crate::app_theme::AppThemeColors;
 use ratatui::{prelude::*, widgets::*};
 use unicode_width::UnicodeWidthStr;
 
-fn spinner_char(tick: usize) -> char {
+pub fn spinner_char(tick: usize) -> char {
     const FRAMES: [char; 10] = [
         '\u{2801}', '\u{2802}', '\u{2804}', '\u{2840}', '\u{2844}', '\u{2848}', '\u{2850}',
         '\u{2860}', '\u{28C0}', '\u{28C4}',

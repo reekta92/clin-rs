@@ -73,8 +73,19 @@ pub(crate) struct EditorVisualRowCache {
     pub(crate) key: Option<(u64, u16, bool, ratatui_textarea::WrapMode, u8)>,
     pub(crate) rows: Vec<EditorVisualRow>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AutosaveStatus {
+    #[default]
+    Saved,
+    Unsaved,
+    Saving,
+    RecentlySaved,
+}
 
 pub struct NoteEditor {
+    pub autosave_status: AutosaveStatus,
+    pub autosave_timer: Option<Instant>,
+    pub last_saved_time: Option<Instant>,
     pub editing_id: Option<String>,
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
@@ -143,6 +154,9 @@ pub struct NoteEditor {
 impl Default for NoteEditor {
     fn default() -> Self {
         Self {
+            autosave_status: AutosaveStatus::default(),
+            autosave_timer: None,
+            last_saved_time: None,
             editing_id: None,
             initial_word_count: 0,
             template_edit_path: None,

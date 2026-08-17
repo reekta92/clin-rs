@@ -36,6 +36,7 @@ where
         dirty |= app.tick_status();
         dirty |= app.poll_editor_renderers();
         dirty |= app.poll_editor_image_results();
+        dirty |= app.tick_autosave();
 
         if dirty {
             if !(pre_draw_hook)(app) {
@@ -53,9 +54,13 @@ where
             .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
             || app.editor.pending_editor_preview_update;
         let timeout = if editor_pending {
-            Duration::from_millis(16)
+            std::time::Duration::from_millis(16)
+        } else if let Some(timer) = app.editor.autosave_timer {
+            timer
+                .saturating_duration_since(std::time::Instant::now())
+                .min(std::time::Duration::from_millis(200))
         } else {
-            Duration::from_millis(200)
+            std::time::Duration::from_millis(200)
         };
         if !events.poll(timeout).context("editor event poll failed")? {
             continue;
@@ -67,12 +72,23 @@ where
             pending.push(events.read()?);
         }
         for event in coalesce_editor_events(pending) {
-            let body_revision = app.editor.body.revision();
+            let body_rev_before = app.editor.body.revision();
+            let title_before = crate::events::get_title_text(&app.editor.title_editor).into_owned();
+
             dirty |= dispatch_editor_event(terminal, app, event, &mut focus, &mut mouse_selection)?;
-            if app.editor.body.revision() != body_revision {
-                if let Some(change) = app.editor.body.take_change() {
+
+            let body_rev_after = app.editor.body.revision();
+            let title_after = crate::events::get_title_text(&app.editor.title_editor).into_owned();
+
+            if body_rev_before != body_rev_after || title_before != title_after {
+                if body_rev_before != body_rev_after
+                    && let Some(change) = app.editor.body.take_change()
+                {
                     synchronize_source_highlight(app, change);
                 }
+                app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+                app.editor.autosave_timer =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
                 dirty = true;
             }
             if app.mode != ViewMode::Edit || app.should_quit {
