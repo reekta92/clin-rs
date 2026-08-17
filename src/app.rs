@@ -1565,15 +1565,6 @@ impl App {
                 if let Some(timer) = self.editor.autosave_timer
                     && now >= timer
                 {
-                    self.editor.autosave_status = crate::editor::AutosaveStatus::Saving;
-                    self.editor.autosave_timer = Some(now + std::time::Duration::from_millis(50));
-                    dirty = true;
-                }
-            }
-            crate::editor::AutosaveStatus::Saving => {
-                if let Some(timer) = self.editor.autosave_timer
-                    && now >= timer
-                {
                     self.autosave();
                     self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
                     self.editor.last_saved_time = Some(std::time::Instant::now());
