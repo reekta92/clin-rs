@@ -24,6 +24,7 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
         Err(e) => (crate::storage::Storage::new_fallback(), Some(e.to_string())),
     };
     let mut app = App::new_deferred(storage)?;
+    let _ = app.storage.recover_editor_draft();
     for w in init_warnings {
         app.messages
             .push(w, crate::app::messages::MessageSeverity::Warning);

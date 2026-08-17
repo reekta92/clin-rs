@@ -1283,17 +1283,21 @@ impl App {
         self.open_subnotes_popup_for(&parent_id, None);
     }
 
-    pub fn close_subnotes_popup(&mut self) {
+    pub fn close_subnotes_popup(&mut self) -> Result<(), String> {
         if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take() {
             if popup.is_dirty
                 && let Err(e) = self.storage.set_subnotes(&popup.parent_id, &popup.subnotes)
             {
-                self.set_temporary_status(&format!("Failed to save sub-notes: {e}"));
+                self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+                let err = format!("Failed to save sub-notes: {e}");
+                self.set_temporary_status(&err);
+                return Err(err);
             }
             self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
             self.refresh_subnotes_view_cache();
         }
         self.popups.active = None;
+        Ok(())
     }
     pub fn open_subnote_in_external_editor(&mut self) {
         let mut popup = match self.popups.active.take() {

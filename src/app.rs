@@ -16,7 +16,6 @@ mod trash;
 mod views;
 
 pub use crate::editor::*;
-use crate::events::get_title_text;
 use crate::events::make_title_editor;
 pub use crate::list_view::*;
 use crate::markdown::MarkdownRenderer;
@@ -1565,7 +1564,7 @@ impl App {
                 if let Some(timer) = self.editor.autosave_timer
                     && now >= timer
                 {
-                    self.autosave();
+                    let _ = self.autosave();
                     self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
                     self.editor.last_saved_time = Some(std::time::Instant::now());
                     self.editor.autosave_timer = None;
@@ -1585,7 +1584,19 @@ impl App {
         dirty
     }
 
-    pub fn autosave(&mut self) {
+    pub fn write_draft(&mut self) {
+        if let Some(id) = &self.editor.editing_id
+            && !id.ends_with(".clin")
+        {
+            let content = self.editor.body.lines().join("\n");
+            let title = crate::events::get_title_text(&self.editor.title_editor)
+                .trim()
+                .to_string();
+            let _ = self.storage.write_editor_draft(id, &title, &content);
+        }
+    }
+
+    pub fn autosave(&mut self) -> Result<(), String> {
         let content = self.editor.body.lines().join("\n");
 
         if let Some(path) = &self.editor.template_edit_path
@@ -1599,11 +1610,11 @@ impl App {
                     .template_path(&template.name);
                 if new_path != *path && !new_path.exists() {
                     if let Err(e) = std::fs::rename(path, &new_path) {
-                        self.set_temporary_status(&format!("Failed to rename template: {e}"));
-                        self.messages.push(
-                            format!("Failed to rename template: {e}"),
-                            crate::app::messages::MessageSeverity::Warning,
-                        );
+                        let err = format!("Failed to rename template: {e}");
+                        self.set_temporary_status(&err);
+                        self.messages
+                            .push(err.clone(), crate::app::messages::MessageSeverity::Warning);
+                        return Err(err);
                     } else {
                         path_to_write = new_path;
                         self.editor.template_edit_path = Some(path_to_write.clone());
@@ -1612,26 +1623,28 @@ impl App {
             }
 
             if let Err(e) = crate::fsutil::atomic_write_str(&path_to_write, &content) {
-                self.set_temporary_status(&format!("Template save failed: {e}"));
-                self.messages.push(
-                    format!("Template save failed: {e}"),
-                    crate::app::messages::MessageSeverity::Warning,
-                );
+                let err = format!("Template save failed: {e}");
+                self.set_temporary_status(&err);
+                self.messages
+                    .push(err.clone(), crate::app::messages::MessageSeverity::Warning);
+                return Err(err);
             }
-            return;
+            return Ok(());
         }
 
-        let mut title = get_title_text(&self.editor.title_editor).trim().to_string();
+        let mut title = crate::events::get_title_text(&self.editor.title_editor)
+            .trim()
+            .to_string();
         if title.is_empty() {
             title = String::from("Untitled note");
         }
         let id = match &self.editor.editing_id {
             Some(id) => id.clone(),
-            None => return,
+            None => return Ok(()),
         };
 
         if id.ends_with(".clin") {
-            return;
+            return Ok(());
         }
 
         let (updated_at, tags) = self
@@ -1674,12 +1687,15 @@ impl App {
                 if let Err(error) = self.save_goals_progress(&progress) {
                     self.set_temporary_status(&format!("Failed to save local state: {error}"));
                 }
+                self.storage.delete_editor_draft();
+                Ok(())
             }
             Err(e) => {
                 let text = format!("Autosave failed for '{id}': {e}");
                 self.set_temporary_status(&text);
                 self.messages
-                    .push(text, crate::app::messages::MessageSeverity::Warning);
+                    .push(text.clone(), crate::app::messages::MessageSeverity::Warning);
+                Err(text)
             }
         }
     }
@@ -1964,7 +1980,7 @@ mod tests {
         app.editor.body = crate::editor_document::EditorDocument::from_text(body_content);
 
         // Call autosave
-        app.autosave();
+        let _ = app.autosave();
 
         // Verify words_written is 10 and note ID is in notes_modified
         assert_eq!(app.goals_progress.words_written, 10);
@@ -1973,7 +1989,7 @@ mod tests {
         // Edit note again: delete 3 words, and add 5 words (net new +2 words)
         let body_content_2 = "one two three four five six seven eight nine ten eleven twelve";
         app.editor.body = crate::editor_document::EditorDocument::from_text(body_content_2);
-        app.autosave();
+        let _ = app.autosave();
 
         // 10 + 2 = 12 words total
         assert_eq!(app.goals_progress.words_written, 12);
@@ -1981,7 +1997,7 @@ mod tests {
         // Edit note again: remove words (e.g. to 3 words)
         let body_content_3 = "one two three";
         app.editor.body = crate::editor_document::EditorDocument::from_text(body_content_3);
-        app.autosave();
+        let _ = app.autosave();
 
         // Should not decrease words_written (should remain 12)
         assert_eq!(app.goals_progress.words_written, 12);
@@ -1990,7 +2006,7 @@ mod tests {
         app.start_blank_note_with_title(String::new(), "Second Note".to_string());
         assert_eq!(app.editor.initial_word_count, 0);
         app.editor.body = crate::editor_document::EditorDocument::from_text("hello world");
-        app.autosave();
+        let _ = app.autosave();
 
         // words_written: 12 + 2 = 14
         assert_eq!(app.goals_progress.words_written, 14);
@@ -2025,7 +2041,7 @@ mod tests {
         for title in ["Note A", "Note B", "Note C"] {
             app.start_blank_note_with_title(String::new(), title.to_string());
             let prev = app.editor.editing_id.clone();
-            app.autosave();
+            let _ = app.autosave();
             let new = app.editor.editing_id.clone();
             app.back_to_list(prev.as_deref(), new.as_deref());
         }
@@ -2046,7 +2062,7 @@ mod tests {
         app.editor.body = crate::editor_document::EditorDocument::from_text(body_content);
 
         let prev_id = app.editor.editing_id.clone();
-        app.autosave();
+        let _ = app.autosave();
         let new_id = app.editor.editing_id.clone();
         app.back_to_list(prev_id.as_deref(), new_id.as_deref());
 
@@ -2075,7 +2091,7 @@ mod tests {
         app.editor.title_editor = TextArea::from(vec!["Note B Renamed".to_string()].into_iter());
 
         let prev_id = app.editor.editing_id.clone();
-        app.autosave();
+        let _ = app.autosave();
         let new_id = app.editor.editing_id.clone();
         let renamed_id = new_id
             .clone()

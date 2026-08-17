@@ -12,9 +12,12 @@ use super::{
 };
 
 fn leave_editor(app: &mut App, focus: &mut EditFocus) {
+    if let Err(e) = app.autosave() {
+        app.set_temporary_status(&e);
+        return;
+    }
     app.editor.find_popup = None;
     let prev_id = app.editor.editing_id.clone();
-    app.autosave();
     let new_id = app.editor.editing_id.clone();
     app.back_to_list(prev_id.as_deref(), new_id.as_deref());
     *focus = EditFocus::Body;
@@ -220,10 +223,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Save => {
-                app.autosave();
-                app.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
-                app.editor.last_saved_time = Some(std::time::Instant::now());
-                app.editor.autosave_timer = None;
+                if app.autosave().is_ok() {
+                    app.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                    app.editor.last_saved_time = Some(std::time::Instant::now());
+                    app.editor.autosave_timer = None;
+                }
                 return true;
             }
             EditAction::ToggleMarkdownPreview => {
@@ -401,6 +405,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     app.app_theme.highlight_bg,
                 );
             }
+            app.write_draft();
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
@@ -408,11 +413,13 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.body, key) {
                 if app.editor.body.revision() != revision {
                     app.request_editor_preview_update();
+                    app.write_draft();
                 }
                 return false;
             }
             if app.editor.body.input(Input::from(key)).content_changed {
                 app.request_editor_preview_update();
+                app.write_draft();
             }
         }
     }

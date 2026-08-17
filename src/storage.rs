@@ -1192,6 +1192,66 @@ impl Storage {
             })
         }
     }
+    pub fn editor_draft_path(&self) -> PathBuf {
+        self.data_dir.join(".clin").join("editor_draft.bin")
+    }
+
+    pub fn write_editor_draft(&mut self, id: &str, title: &str, content: &str) -> Result<()> {
+        self.ensure_key()?;
+        let draft = (id.to_string(), title.to_string(), content.to_string());
+        let bytes = bincode::serde::encode_to_vec(&draft, bincode::config::standard())
+            .context("failed to encode draft")?;
+        let encrypted = self.encrypt(&bytes)?;
+        let path = self.editor_draft_path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).context("failed to create .clin directory")?;
+        }
+        crate::fsutil::atomic_write(&path, &encrypted).context("failed to write editor draft")?;
+        Ok(())
+    }
+
+    pub fn delete_editor_draft(&self) {
+        let _ = fs::remove_file(self.editor_draft_path());
+    }
+
+    pub fn recover_editor_draft(&mut self) -> Result<()> {
+        let path = self.editor_draft_path();
+        if !path.exists() {
+            return Ok(());
+        }
+        let encrypted = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(_) => return Ok(()),
+        };
+        self.ensure_key()?;
+        if let Ok(decrypted) = self.decrypt(&encrypted)
+            && let Ok((draft, _)) = bincode::serde::decode_from_slice::<(String, String, String), _>(
+                &decrypted,
+                bincode::config::standard(),
+            )
+        {
+            let mut note = self.load_note(&draft.0).unwrap_or_else(|_| Note {
+                title: draft.1.clone(),
+                content: String::new(),
+                updated_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                tags: vec![],
+            });
+            if note.title != draft.1 || note.content != draft.2 {
+                note.title = draft.1;
+                note.content = draft.2;
+                note.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let _ = self.save_note(&draft.0, &note);
+            }
+        }
+        self.delete_editor_draft();
+        Ok(())
+    }
 
     pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
         let preferred_stem = self.note_file_stem_from_title(&note.title);

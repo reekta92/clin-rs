@@ -1062,7 +1062,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
                 )
             });
             if app.mode == ViewMode::Edit {
-                app.autosave();
+                let _ = app.autosave();
             }
             result
         };
@@ -1468,6 +1468,16 @@ where
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
+            if app.mode == ViewMode::Edit {
+                let _ = app.autosave();
+            } else if app
+                .popups
+                .active
+                .as_ref()
+                .is_some_and(|p| matches!(p, crate::popups::ActivePopup::Subnotes(_)))
+            {
+                let _ = app.close_subnotes_popup();
+            }
             crate::force_quit();
         }
         mut ev @ (Event::Key(_) | Event::Mouse(_)) => {

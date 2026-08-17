@@ -147,6 +147,7 @@ where
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
+            let _ = app.autosave();
             crate::force_quit()
         }
         Event::Key(key) if key.kind == KeyEventKind::Press => {

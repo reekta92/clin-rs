@@ -1201,7 +1201,7 @@ impl crate::popups::ActivePopup {
                                 }
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
-                            app.close_subnotes_popup();
+                            let _ = app.close_subnotes_popup();
                         } else {
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         }
