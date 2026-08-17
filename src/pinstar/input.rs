@@ -98,7 +98,7 @@ pub fn handle_pinstar_mouse(
                 let _ = state.save();
                 state.sync_to_raw_editor();
                 sync_mode_status(app, state);
-                
+
                 state.right_down_screen = None;
                 state.marquee.clear();
                 state.drag_start_pos = None;
