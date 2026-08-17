@@ -369,6 +369,10 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Editing",
             description: "Insert date/time",
         },
+        EditAction::Save => HelpMeta {
+            group: "General",
+            description: "Save",
+        },
     }
 }
 

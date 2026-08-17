@@ -219,6 +219,13 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 leave_editor(app, focus);
                 return false;
             }
+            EditAction::Save => {
+                app.autosave();
+                app.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                app.editor.last_saved_time = Some(std::time::Instant::now());
+                app.editor.autosave_timer = None;
+                return true;
+            }
             EditAction::ToggleMarkdownPreview => {
                 app.toggle_markdown_preview();
                 if *focus == EditFocus::Sidebar {

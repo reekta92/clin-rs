@@ -114,6 +114,7 @@ pub enum EditAction {
     ToggleLinks,
     PreviewLink,
     GoToLine,
+    Save,
 }
 
 #[derive(

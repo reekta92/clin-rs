@@ -237,6 +237,7 @@ impl Default for Keybinds {
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
+        edit.insert(EditAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
         edit.insert(
             EditAction::CycleFocus,
             vec![KeyCombo::ctrl(KeyCode::Char('t'))],
