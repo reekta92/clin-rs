@@ -283,10 +283,16 @@ impl PinstarState {
             .data
             .nodes
             .iter()
-            .filter(|n| {
-                let (nx, ny) = n.pos();
-                let (nw, nh) = n.size();
-                nx + nw > min_x && nx < max_x && ny + nh > min_y && ny < max_y
+            .filter(|node| {
+                let (nx, ny) = node.pos();
+                let (nw, nh) = node.size();
+                match node {
+                    crate::pinstar::data::CanvasNode::Group(_) => {
+                        let title_height = (2.0 / self.zoom).min(nh);
+                        nx + nw > min_x && nx < max_x && ny + title_height > min_y && ny < max_y
+                    }
+                    _ => nx + nw > min_x && nx < max_x && ny + nh > min_y && ny < max_y,
+                }
             })
             .map(|n| n.id().to_string())
             .collect();
