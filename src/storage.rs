@@ -1,3 +1,4 @@
+use rand::RngExt;
 use crate::config::ClinConfig;
 const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 const NONCE_LEN: usize = 12;
@@ -6,7 +7,7 @@ use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use rand::RngCore;
+
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
@@ -423,7 +424,7 @@ impl Storage {
             return Ok(());
         }
 
-        rand::rngs::OsRng.fill_bytes(&mut self.key);
+        rand::rng().fill(&mut self.key);
         if let Some(parent) = key_path.parent() {
             fs::create_dir_all(parent).context("failed to create key directory")?;
         }
@@ -1683,7 +1684,7 @@ impl Storage {
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
         let mut nonce = [0_u8; NONCE_LEN];
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        rand::rng().fill(&mut nonce);
         let ciphertext = cipher
             .encrypt(Nonce::from_slice(&nonce), plaintext)
             .map_err(|_| anyhow!("note encryption failed"))?;

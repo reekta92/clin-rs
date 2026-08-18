@@ -532,10 +532,10 @@ pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
 /// Pick `count` random suggestions for `tab`. Returns fewer (or empty) if the
 /// pool is smaller than `count`. Uses rand 0.8 (already a dependency).
 pub fn roll_suggestions(tab: HelpTab, count: usize) -> Vec<&'static HelpSuggestion> {
-    use rand::seq::SliceRandom;
+    use rand::seq::IndexedRandom;
     let pool = tab_suggestions(tab);
-    let mut rng = rand::thread_rng();
-    pool.choose_multiple(&mut rng, count).collect()
+    let mut rng = rand::rng();
+    pool.sample(&mut rng, count).collect()
 }
 
 #[derive(Debug, Clone, Copy)]
