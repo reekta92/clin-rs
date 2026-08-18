@@ -394,6 +394,7 @@ pub struct App {
     pub backup_status: Arc<Mutex<Option<String>>>,
     pub config_mtime: Option<std::time::SystemTime>,
     pub goals_progress: crate::goals::DailyProgress,
+    pub todo_state: crate::todo::TodoState,
     pub draw_preview: Option<(String, crate::draw::state::DrawData)>,
     pub graph_preview: Option<crate::graf::graph::GraphState>,
     pub graph_preview_sig: usize,
@@ -648,6 +649,7 @@ impl App {
             watcher_window_start: None,
             config_mtime,
             goals_progress: crate::goals::DailyProgress::default(),
+            todo_state: crate::todo::TodoState::default(),
             draw_preview: None,
             graph_preview: None,
             graph_preview_sig: 0,
@@ -703,6 +705,7 @@ impl App {
             app.expand_folders_to_depth(d);
         }
 
+        app.rebuild_note_index();
         app.list.pending_preview_update = true;
         app.sort_notes();
         app.refresh_visual_list();
@@ -912,6 +915,7 @@ impl App {
             watcher_window_start: None,
             config_mtime,
             goals_progress: crate::goals::DailyProgress::default(),
+            todo_state: crate::todo::TodoState::default(),
             draw_preview: None,
             graph_preview: None,
             graph_preview_steps: 0,
@@ -978,6 +982,7 @@ impl App {
                 );
             }
         }
+        app.rebuild_note_index();
         app.sort_notes();
         app.refresh_visual_list();
         Ok(app)

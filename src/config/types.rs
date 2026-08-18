@@ -573,6 +573,7 @@ pub enum NotesSection {
     Goals,
     Draw,
     Graf,
+    Todo,
 }
 
 impl std::str::FromStr for NotesSection {
@@ -583,8 +584,9 @@ impl std::str::FromStr for NotesSection {
             "goals" => Ok(NotesSection::Goals),
             "draw" => Ok(NotesSection::Draw),
             "graf" => Ok(NotesSection::Graf),
+            "todo" => Ok(NotesSection::Todo),
             _ => Err(format!(
-                "Unknown section: {s}. Expected calendar, goals, draw, or graf."
+                "Unknown section: {s}. Expected calendar, goals, draw, graf, or todo."
             )),
         }
     }
@@ -597,6 +599,7 @@ impl std::fmt::Display for NotesSection {
             NotesSection::Goals => write!(f, "goals"),
             NotesSection::Draw => write!(f, "draw"),
             NotesSection::Graf => write!(f, "graf"),
+            NotesSection::Todo => write!(f, "todo"),
         }
     }
 }

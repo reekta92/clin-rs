@@ -33,6 +33,7 @@ pub fn draw_calendar(
     let today = chrono::Local::now().date_naive();
 
     // Width-adaptive week count.
+
     const LEFT_LABEL: u16 = 3; // "Mo "
     const COL_PITCH: u16 = 2; // cell char + gap
     let inner_w = rect.width.saturating_sub(4 + LEFT_LABEL); // 4 = block padding (2+2)
@@ -83,27 +84,21 @@ pub fn draw_calendar(
         for col_i in 0..weeks as usize {
             let date = first_col_start + chrono::Duration::days((7 * col_i + row_i) as i64);
             let count = activity_by_day.get(&date).copied().unwrap_or(0);
-            let (ch, style) = if date == today {
-                (
-                    '\u{2588}', // █
+            let (ch, mut style) = match count {
+                0 => ('\u{00B7}', Style::default().fg(theme.muted)), // ·
+                1 => ('\u{2591}', Style::default().fg(theme.text)),  // ░
+                2..=3 => ('\u{2592}', Style::default().fg(theme.accent)), // ▒
+                _ => (
+                    '\u{2593}', // ▓
                     Style::default()
-                        .fg(theme.highlight_fg)
-                        .bg(theme.highlight_bg)
+                        .fg(theme.accent)
                         .add_modifier(Modifier::BOLD),
-                )
-            } else {
-                match count {
-                    0 => ('\u{00B7}', Style::default().fg(theme.muted)), // ·
-                    1 => ('\u{2591}', Style::default().fg(theme.text)),  // ░
-                    2..=3 => ('\u{2592}', Style::default().fg(theme.accent)), // ▒
-                    _ => (
-                        '\u{2593}', // ▓
-                        Style::default()
-                            .fg(theme.accent)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                }
+                ),
             };
+
+            if date == today {
+                style = style.fg(theme.success).add_modifier(Modifier::BOLD);
+            }
             spans.push(Span::styled(format!("{ch} "), style));
         }
         lines.push(Line::from(spans));

@@ -99,6 +99,7 @@ impl App {
                         self.refresh_visual_list();
                         self.refresh_subnotes_view_cache();
                         self.notes_revision += 1;
+                        self.rebuild_note_index();
                     }
 
                     self.set_default_status();

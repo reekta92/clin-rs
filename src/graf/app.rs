@@ -379,7 +379,7 @@ impl GrafAppState {
                 Some(PreviewContent::Markdown(r)) => *r,
                 _ => MarkdownRenderer::new(),
             };
-            let opts = crate::markdown::MdRenderOpts::from_config(config);
+            let opts = crate::markdown::MdRenderOpts::from_config(config, Some(&key.note_id));
             let height = key.height;
             let viewport = crate::markdown::RenderViewport {
                 start: renderer.visible_start(),

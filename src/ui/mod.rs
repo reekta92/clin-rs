@@ -2079,6 +2079,11 @@ fn editor_display_width_to(text: &str, mut width: usize, tab_len: u8) -> usize {
 
 /// Overlay EDIT-mode markdown highlighting on top of rendered textarea.
 pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) {
+    let is_todo_txt = app
+        .editor
+        .editing_id
+        .as_ref()
+        .is_some_and(|id| id.ends_with("todo.txt"));
     let show_ln = app.editor.show_line_numbers;
     let gutter = if show_ln {
         app.editor.body.lines().len().to_string().len() as u16 + 2
@@ -2122,7 +2127,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                     Some(rc) => rc.clone(),
                     None => {
                         let rc: std::rc::Rc<[ratatui::style::Style]> =
-                            hl.highlight_line(line, index).into();
+                            hl.highlight_line(line, index, is_todo_txt).into();
                         e.md_highlight_memo.put(key, rc.clone());
                         rc
                     }
@@ -2238,7 +2243,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             if displayed.is_empty() {
                 continue;
             }
-            let styles = hl.highlight_line(&displayed, 0);
+            let styles = hl.highlight_line(&displayed, 0, is_todo_txt);
             let mut char_index = 0;
             for x in content_left..inner.right() {
                 if char_index >= styles.len() {

@@ -339,12 +339,36 @@ pub fn render_draw_snapshot(
 pub fn render_draw_snapshot_with_size(
     data: &DrawData,
     theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
+    width: u16,
+    height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+) -> Vec<Vec<(char, Style)>> {
+    render_draw_snapshot_with_bg(
+        data,
+        theme,
+        icon_mode,
+        width,
+        height,
+        scale,
+        offset_x,
+        offset_y,
+        theme.preview_bg(),
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub fn render_draw_snapshot_with_bg(
+    data: &DrawData,
+    _theme: &AppThemeColors,
     _icon_mode: crate::config::IconMode,
     width: u16,
     height: u16,
     scale: f64,
     offset_x: f64,
     offset_y: f64,
+    bg_opt: Option<Color>,
 ) -> Vec<Vec<(char, Style)>> {
     if width == 0 || height == 0 {
         return empty_grid(width, height);
@@ -368,7 +392,6 @@ pub fn render_draw_snapshot_with_size(
 
     let _ = terminal.draw(|frame| {
         let area = frame.area();
-        let bg_opt = theme.preview_bg();
         fill_buf_bg(frame.buffer_mut(), area, bg_opt);
         let bg_color = bg_opt.unwrap_or(Color::Reset);
         let canvas = Canvas::default()

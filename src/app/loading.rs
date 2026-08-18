@@ -1399,7 +1399,7 @@ impl App {
                         Some(PreviewContent::Markdown(r)) => *r,
                         _ => MarkdownRenderer::new(),
                     };
-                    let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                    let opts = crate::markdown::MdRenderOpts::from_config(&self.config, Some(id));
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
                     let viewport = crate::markdown::RenderViewport {
@@ -1542,7 +1542,7 @@ impl App {
                     Some(PreviewContent::Markdown(r)) => *r,
                     _ => MarkdownRenderer::new(),
                 };
-                let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
                 let viewport = crate::markdown::RenderViewport {
@@ -1603,7 +1603,7 @@ impl App {
                     Some(PreviewContent::Markdown(r)) => *r,
                     _ => MarkdownRenderer::new(),
                 };
-                let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
                 let viewport = crate::markdown::RenderViewport {
@@ -1666,7 +1666,8 @@ impl App {
                         Some(PreviewContent::Markdown(r)) => *r,
                         _ => MarkdownRenderer::new(),
                     };
-                    let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                    let opts =
+                        crate::markdown::MdRenderOpts::from_config(&self.config, Some(parent_id));
                     let md = format!("# {}\n\n{}", sub.title, sub.content);
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
@@ -1789,7 +1790,10 @@ impl App {
         let content = self.editor.body.snapshot();
         let width = self.desired_editor_preview_width();
         let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
-        let mut opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+        let mut opts = crate::markdown::MdRenderOpts::from_config(
+            &self.config,
+            self.editor.editing_id.as_deref(),
+        );
         opts.wrap = self.config.editor.soft_wrap;
         let height = self.desired_editor_preview_height();
         let viewport = crate::markdown::RenderViewport {
