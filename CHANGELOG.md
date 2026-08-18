@@ -2,6 +2,26 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.11.0] - 2026-08-18
+
+### CI
+
+- Fixed fmt warnings
+- Remove custom codeql workflow
+- Applied cargo fmt
+
+### Fixed
+
+- Fixed resize confirming with right click
+- Fixed resize confirming with right click
+
+### Miscellaneous
+
+- Bump rand from 0.8.7 to 0.10.2
+
+### Comp
+
+- Compatibility changes for rand bump
 ## [0.11.0-rc.1] - 2026-08-17
 
 ### Added
@@ -44,6 +64,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.11.0-rc.1
 - V0.11.0-rc.1
 
 ### Ui
