@@ -156,7 +156,13 @@ impl SourceHighlighter {
         }
 
         // 2. Priority
-        if !is_completed && i + 3 < chars.len() && chars[i] == '(' && chars[i + 2] == ')' && chars[i + 3] == ' ' && chars[i + 1].is_ascii_uppercase() {
+        if !is_completed
+            && i + 3 < chars.len()
+            && chars[i] == '('
+            && chars[i + 2] == ')'
+            && chars[i + 3] == ' '
+            && chars[i + 1].is_ascii_uppercase()
+        {
             styles[i] = self.theme.todotxt_priority;
             styles[i + 1] = self.theme.todotxt_priority;
             styles[i + 2] = self.theme.todotxt_priority;
@@ -167,12 +173,19 @@ impl SourceHighlighter {
         // 3. Dates (up to 2 dates YYYY-MM-DD)
         for _ in 0..2 {
             if i + 10 <= chars.len() {
-                let is_date = chars[i..i + 10].iter().all(|&c| c.is_ascii_digit() || c == '-') 
-                              && chars[i + 4] == '-' && chars[i + 7] == '-';
+                let is_date = chars[i..i + 10]
+                    .iter()
+                    .all(|&c| c.is_ascii_digit() || c == '-')
+                    && chars[i + 4] == '-'
+                    && chars[i + 7] == '-';
                 let is_valid_end = i + 10 == chars.len() || chars[i + 10].is_whitespace();
                 if is_date && is_valid_end {
                     for j in 0..10 {
-                        styles[i + j] = if is_completed { self.theme.todotxt_completed } else { self.theme.paragraph };
+                        styles[i + j] = if is_completed {
+                            self.theme.todotxt_completed
+                        } else {
+                            self.theme.paragraph
+                        };
                     }
                     i += 10;
                     if i < chars.len() && chars[i].is_whitespace() {
@@ -213,7 +226,7 @@ impl SourceHighlighter {
                 } else {
                     base_style
                 };
-                
+
                 if word_style != base_style {
                     for j in start..i {
                         styles[j] = word_style;
@@ -1365,43 +1378,44 @@ mod tests {
     fn todotxt_highlight() {
         let colors = crate::app_theme::AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
-        
-        let line = "x (A) 2024-05-01 2024-04-01 measure space for +chapelShelving @chapel due:2024-05-30";
+
+        let line =
+            "x (A) 2024-05-01 2024-04-01 measure space for +chapelShelving @chapel due:2024-05-30";
         let styles = hl.highlight_line(line, 0, true);
-        
+
         // The length of styles should be exactly the character count of the line
         assert_eq!(styles.len(), line.chars().count());
-        
+
         // The first character 'x' and ' ' should be todotxt_completed
         assert_eq!(styles[0], hl.theme.todotxt_completed);
         assert_eq!(styles[1], hl.theme.todotxt_completed);
-        
+
         // Because it's completed, the date and words will fall back to todotxt_completed
         // Let's test an uncompleted one to see specific colors
-        
+
         let line2 = "(B) 2024-05-01 Simple +project @context tag:val";
         let styles2 = hl.highlight_line(line2, 0, true);
-        
+
         // "(B) "
         assert_eq!(styles2[0], hl.theme.todotxt_priority);
         assert_eq!(styles2[1], hl.theme.todotxt_priority);
         assert_eq!(styles2[2], hl.theme.todotxt_priority);
         assert_eq!(styles2[3], hl.theme.todotxt_priority);
-        
+
         // "2024-05-01" (index 4 to 13)
         for i in 4..14 {
             assert_eq!(styles2[i], hl.theme.paragraph); // Because no todotxt_date exists, it falls back to paragraph in our implementation
         }
-        
+
         // " Simple " is paragraph
         let start_project = line2.find("+project").unwrap();
         assert_eq!(styles2[start_project], hl.theme.todotxt_project);
         assert_eq!(styles2[start_project + 1], hl.theme.todotxt_project);
-        
+
         let start_context = line2.find("@context").unwrap();
         assert_eq!(styles2[start_context], hl.theme.todotxt_context);
         assert_eq!(styles2[start_context + 1], hl.theme.todotxt_context);
-        
+
         let start_tag = line2.find("tag:val").unwrap();
         assert_eq!(styles2[start_tag], hl.theme.todotxt_tag);
         assert_eq!(styles2[start_tag + 6], hl.theme.todotxt_tag);

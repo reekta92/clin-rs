@@ -193,24 +193,38 @@ pub fn draw_todo(
     let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
     let content_area = Rect::new(content_x, content_y, content_w, content_h);
 
-    let inner_block = Block::default()
-        .style(theme.bg_style())
-        .padding(Padding::new(2, 2, 1, 1));
-
     let mut lines = Vec::new();
     let separator_width = content_area.width.saturating_sub(4); // account for padding
     let separator = "─".repeat(separator_width as usize);
 
+    let mut content_height = 0;
     for (i, task) in state.items.iter().enumerate() {
         if i > 0 {
             lines.push(Line::from(separator.clone()).style(Style::default().fg(theme.muted)));
+            content_height += 1;
         }
         lines.push(highlight_todo_task(task, theme));
+        
+        let char_count = task.chars().count() as u16;
+        let wrapped_lines = if separator_width > 0 {
+            (char_count.saturating_sub(1) / separator_width) + 1
+        } else {
+            1
+        };
+        content_height += wrapped_lines;
     }
 
     if lines.is_empty() {
         lines.push(Line::from("No pending tasks").style(Style::default().fg(theme.muted)));
+        content_height = 1;
     }
+
+    let pad_top = content_area.height.saturating_sub(content_height) / 2;
+
+    let inner_block = Block::default()
+        .style(theme.bg_style())
+        .padding(Padding::new(2, 2, pad_top, 0));
+
 
     let paragraph = Paragraph::new(lines)
         .style(theme.bg_style())
