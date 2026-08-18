@@ -1,5 +1,5 @@
-use rand::RngExt;
 use crate::config::ClinConfig;
+use rand::RngExt;
 const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 const NONCE_LEN: usize = 12;
 use crate::frontmatter;
