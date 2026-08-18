@@ -358,7 +358,7 @@ pub fn render_draw_snapshot_with_size(
         theme.preview_bg(),
     )
 }
-
+#[allow(clippy::too_many_arguments)]
 pub fn render_draw_snapshot_with_bg(
     data: &DrawData,
     _theme: &AppThemeColors,

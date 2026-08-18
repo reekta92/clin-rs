@@ -88,7 +88,11 @@ fn draw_strip_draw(
     let strip_block = Block::default()
         .style(app.app_theme.bg_style())
         .borders(borders)
-        .border_style(ratatui::style::Style::default().fg(app.app_theme.border).bg(app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset)));
+        .border_style(
+            ratatui::style::Style::default()
+                .fg(app.app_theme.border)
+                .bg(app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset)),
+        );
     frame.render_widget(&strip_block, strip_rect);
     let inner = strip_block.inner(strip_rect);
 
@@ -103,7 +107,8 @@ fn draw_strip_draw(
         Some(pair) => pair,
         None => {
             let line = popup_hint_line(&app.app_theme, "No .draw file");
-            let p = ratatui::widgets::Paragraph::new(line).style(app.app_theme.bg_style())
+            let p = ratatui::widgets::Paragraph::new(line)
+                .style(app.app_theme.bg_style())
                 .alignment(ratatui::layout::Alignment::Center);
             frame.render_widget(p, content_area);
             return;
@@ -164,8 +169,12 @@ fn draw_strip_graf(
             };
             let block = Block::default()
                 .style(app.app_theme.bg_style())
-        .borders(borders)
-                .border_style(Style::default().fg(app.app_theme.border).bg(app.app_theme.bg.unwrap_or(Color::Reset)));
+                .borders(borders)
+                .border_style(
+                    Style::default()
+                        .fg(app.app_theme.border)
+                        .bg(app.app_theme.bg.unwrap_or(Color::Reset)),
+                );
             let outer_inner = block.inner(strip_rect);
             frame.render_widget(block, strip_rect);
 
@@ -270,7 +279,8 @@ fn draw_strip_graf(
         }
         None => {
             let line = popup_hint_line(&app.app_theme, "Graph unavailable");
-            let p = ratatui::widgets::Paragraph::new(line).style(app.app_theme.bg_style())
+            let p = ratatui::widgets::Paragraph::new(line)
+                .style(app.app_theme.bg_style())
                 .alignment(ratatui::layout::Alignment::Center);
             frame.render_widget(p, rect);
         }
