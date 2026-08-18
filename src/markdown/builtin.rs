@@ -851,11 +851,117 @@ fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHead
 // ---------------------------------------------------------------------------
 // Paragraph
 // ---------------------------------------------------------------------------
+fn extract_raw_text<'a>(node: &'a AstNode<'a>, out: &mut String) {
+    let data = node.data.borrow();
+    match &data.value {
+        NodeValue::Text(t) => out.push_str(t),
+        NodeValue::Code(c) => {
+            out.push('`');
+            out.push_str(&c.literal);
+            out.push('`');
+        }
+        NodeValue::SoftBreak | NodeValue::LineBreak => {
+            out.push('\n');
+        }
+        _ => {
+            for child in node.children() {
+                extract_raw_text(child, out);
+            }
+        }
+    }
+}
+
+fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtItem, margin: usize) {
+    use crate::markdown::todotxt::TodoTxtSpan;
+
+    if item.completed {
+        ctx.push_str("x ", ctx.theme.task_checked, margin);
+        if let Some(c) = item.completion_date {
+            ctx.push_str(c, ctx.theme.todotxt_completed, margin);
+            ctx.push(' ', ctx.theme.todotxt_completed, margin);
+        }
+        if let Some(c) = item.creation_date {
+            ctx.push_str(c, ctx.theme.todotxt_completed, margin);
+            ctx.push(' ', ctx.theme.todotxt_completed, margin);
+        }
+        for span in &item.spans {
+            match span {
+                TodoTxtSpan::Text(t) => {
+                    ctx.push_str(t, ctx.theme.todotxt_completed, margin);
+                    ctx.push(' ', ctx.theme.todotxt_completed, margin);
+                }
+                TodoTxtSpan::Project(t) => {
+                    ctx.push_str(t, ctx.theme.todotxt_completed, margin);
+                    ctx.push(' ', ctx.theme.todotxt_completed, margin);
+                }
+                TodoTxtSpan::Context(t) => {
+                    ctx.push_str(t, ctx.theme.todotxt_completed, margin);
+                    ctx.push(' ', ctx.theme.todotxt_completed, margin);
+                }
+                TodoTxtSpan::Tag(k, v) => {
+                    ctx.push_str(k, ctx.theme.todotxt_completed, margin);
+                    ctx.push(':', ctx.theme.todotxt_completed, margin);
+                    ctx.push_str(v, ctx.theme.todotxt_completed, margin);
+                    ctx.push(' ', ctx.theme.todotxt_completed, margin);
+                }
+            }
+        }
+        return;
+    }
+
+    if let Some(p) = item.priority {
+        ctx.push('(', ctx.theme.todotxt_priority, margin);
+        ctx.push(p, ctx.theme.todotxt_priority, margin);
+        ctx.push_str(") ", ctx.theme.todotxt_priority, margin);
+    }
+    if let Some(c) = item.creation_date {
+        ctx.push_str(c, ctx.theme.ghost_syntax, margin);
+        ctx.push(' ', ctx.theme.ghost_syntax, margin);
+    }
+
+    for span in &item.spans {
+        match span {
+            TodoTxtSpan::Text(t) => {
+                ctx.push_str(t, ctx.theme.paragraph, margin);
+                ctx.push(' ', ctx.theme.paragraph, margin);
+            }
+            TodoTxtSpan::Project(t) => {
+                ctx.push_str(t, ctx.theme.todotxt_project, margin);
+                ctx.push(' ', ctx.theme.paragraph, margin);
+            }
+            TodoTxtSpan::Context(t) => {
+                ctx.push_str(t, ctx.theme.todotxt_context, margin);
+                ctx.push(' ', ctx.theme.paragraph, margin);
+            }
+            TodoTxtSpan::Tag(k, v) => {
+                ctx.push_str(k, ctx.theme.todotxt_tag, margin);
+                ctx.push(':', ctx.theme.paragraph, margin);
+                ctx.push_str(v, ctx.theme.paragraph, margin);
+                ctx.push(' ', ctx.theme.paragraph, margin);
+            }
+        }
+    }
+}
 
 fn render_paragraph<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     let margin = block_margin(depth);
-    let style = ctx.theme.paragraph;
 
+    if ctx.opts.is_todo_txt {
+        let mut raw = String::new();
+        extract_raw_text(node, &mut raw);
+        let lines: Vec<&str> = raw.split('\n').collect();
+        let start_line = node.data.borrow().sourcepos.start.line;
+        for (i, line) in lines.iter().enumerate() {
+            if i > 0 {
+                ctx.begin_inline_continuation(start_line + i, margin);
+            }
+            let item = crate::markdown::todotxt::parse_todotxt_line(line);
+            render_todotxt_item(ctx, &item, margin);
+        }
+        return;
+    }
+
+    let style = ctx.theme.paragraph;
     for child in node.children() {
         render_inline(ctx, child, style, margin);
     }
@@ -869,6 +975,21 @@ fn render_paragraph<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
 fn render_list_child<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize, margin: usize) {
     let is_paragraph = matches!(node.data.borrow().value, NodeValue::Paragraph);
     if is_paragraph {
+        if ctx.opts.is_todo_txt {
+            let mut raw = String::new();
+            extract_raw_text(node, &mut raw);
+            let lines: Vec<&str> = raw.split('\n').collect();
+            let start_line = node.data.borrow().sourcepos.start.line;
+            for (i, line) in lines.iter().enumerate() {
+                if i > 0 {
+                    ctx.begin_inline_continuation(start_line + i, margin);
+                }
+                let item = crate::markdown::todotxt::parse_todotxt_line(line);
+                render_todotxt_item(ctx, &item, margin);
+            }
+            return;
+        }
+
         let style = ctx.theme.paragraph;
         for inline in node.children() {
             render_inline(ctx, inline, style, margin);
@@ -1666,6 +1787,7 @@ mod tests {
             code_line_numbers: false,
             wrap_indicator: false,
             link_url_max: 0,
+            is_todo_txt: false,
         }
     }
 

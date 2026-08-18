@@ -243,7 +243,7 @@ impl App {
             // (60% width, max 100, minus borders/padding ≈ 76).
             let width = 76u16;
             let mut renderer = self.editor.link_preview_renderer.take().unwrap_or_default();
-            let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+            let opts = crate::markdown::MdRenderOpts::from_config(&self.config, id.as_deref());
             let viewport = crate::markdown::RenderViewport {
                 start: 0,
                 height: 20,

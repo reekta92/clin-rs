@@ -194,6 +194,11 @@ pub(crate) struct MarkdownTheme {
     pub task_unchecked: Style,
     pub task_checked: Style,
     pub ghost_syntax: Style,
+    pub todotxt_priority: Style,
+    pub todotxt_project: Style,
+    pub todotxt_context: Style,
+    pub todotxt_tag: Style,
+    pub todotxt_completed: Style,
 }
 
 pub(crate) fn faint_background(fg: Color) -> Color {
@@ -266,6 +271,15 @@ impl MarkdownTheme {
             task_unchecked: Style::default().fg(theme.warning),
             task_checked: Style::default().fg(theme.success),
             ghost_syntax: Style::default().fg(theme.muted).add_modifier(Modifier::DIM),
+            todotxt_priority: Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+            todotxt_project: Style::default().fg(theme.heading),
+            todotxt_context: Style::default().fg(theme.warning),
+            todotxt_tag: Style::default().fg(theme.tag),
+            todotxt_completed: Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::CROSSED_OUT),
         }
     }
 }

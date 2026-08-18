@@ -2,6 +2,7 @@ mod builtin;
 mod cache;
 mod source_highlight;
 mod style;
+pub(crate) mod todotxt;
 mod widget;
 mod worker;
 
@@ -29,6 +30,7 @@ pub(crate) struct MdRenderOpts {
     pub code_line_numbers: bool,
     pub wrap_indicator: bool,
     pub link_url_max: usize,
+    pub is_todo_txt: bool,
 }
 
 impl Default for MdRenderOpts {
@@ -41,13 +43,14 @@ impl Default for MdRenderOpts {
             code_line_numbers: true,
             wrap_indicator: false,
             link_url_max: 80,
+            is_todo_txt: false,
         }
     }
 }
 
 impl MdRenderOpts {
     /// Build render options from the app config (used by all three preview call sites).
-    pub(crate) fn from_config(config: &crate::config::ClinConfig) -> Self {
+    pub(crate) fn from_config(config: &crate::config::ClinConfig, id: Option<&str>) -> Self {
         Self {
             syntax_hl: config.core.syntax_highlighting,
             wrap: config.core.preview_wrap,
@@ -56,6 +59,7 @@ impl MdRenderOpts {
             code_line_numbers: config.core.code_line_numbers,
             wrap_indicator: config.core.preview_wrap_indicator,
             link_url_max: config.core.link_url_max_length,
+            is_todo_txt: id.is_some_and(|s| s.ends_with("todo.txt")),
         }
     }
 }

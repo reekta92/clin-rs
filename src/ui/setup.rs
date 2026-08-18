@@ -368,6 +368,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             code_line_numbers: true,
             wrap_indicator: false,
             link_url_max: 80,
+            is_todo_txt: false,
         };
 
         let next_key = crate::setup::SetupPreviewKey {
