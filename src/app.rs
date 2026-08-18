@@ -705,6 +705,7 @@ impl App {
             app.expand_folders_to_depth(d);
         }
 
+        app.rebuild_note_index();
         app.list.pending_preview_update = true;
         app.sort_notes();
         app.refresh_visual_list();
@@ -981,6 +982,7 @@ impl App {
                 );
             }
         }
+        app.rebuild_note_index();
         app.sort_notes();
         app.refresh_visual_list();
         Ok(app)
