@@ -86,8 +86,9 @@ fn draw_strip_draw(
         Borders::TOP
     };
     let strip_block = Block::default()
+        .style(app.app_theme.bg_style())
         .borders(borders)
-        .border_style(ratatui::style::Style::default().fg(app.app_theme.border));
+        .border_style(ratatui::style::Style::default().fg(app.app_theme.border).bg(app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset)));
     frame.render_widget(&strip_block, strip_rect);
     let inner = strip_block.inner(strip_rect);
 
@@ -102,7 +103,7 @@ fn draw_strip_draw(
         Some(pair) => pair,
         None => {
             let line = popup_hint_line(&app.app_theme, "No .draw file");
-            let p = ratatui::widgets::Paragraph::new(line)
+            let p = ratatui::widgets::Paragraph::new(line).style(app.app_theme.bg_style())
                 .alignment(ratatui::layout::Alignment::Center);
             frame.render_widget(p, content_area);
             return;
@@ -110,12 +111,13 @@ fn draw_strip_draw(
     };
     if data.elements.is_empty() || content_area.width == 0 || content_area.height == 0 {
         let line = popup_hint_line(&app.app_theme, "No .draw file");
-        let p =
-            ratatui::widgets::Paragraph::new(line).alignment(ratatui::layout::Alignment::Center);
+        let p = ratatui::widgets::Paragraph::new(line)
+            .style(app.app_theme.bg_style())
+            .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(p, content_area);
         return;
     }
-    let grid = crate::snapshot::render_draw_snapshot_with_size(
+    let grid = crate::snapshot::render_draw_snapshot_with_bg(
         data,
         &app.app_theme,
         app.config.ui.icon_mode,
@@ -124,6 +126,7 @@ fn draw_strip_draw(
         1.0,
         0.0,
         0.0,
+        app.app_theme.bg,
     );
     frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), content_area);
 }
@@ -160,8 +163,9 @@ fn draw_strip_graf(
                 Borders::TOP
             };
             let block = Block::default()
-                .borders(borders)
-                .border_style(Style::default().fg(app.app_theme.border));
+                .style(app.app_theme.bg_style())
+        .borders(borders)
+                .border_style(Style::default().fg(app.app_theme.border).bg(app.app_theme.bg.unwrap_or(Color::Reset)));
             let outer_inner = block.inner(strip_rect);
             frame.render_widget(block, strip_rect);
 
@@ -245,15 +249,16 @@ fn draw_strip_graf(
                         Some(c) => c,
                         None => continue,
                     };
+                    let bg = app.app_theme.bg;
                     match (top_color, bot_color) {
                         (None, None) => {}
                         (Some(tc), None) => {
                             cell.set_symbol("▀");
-                            cell.set_style(Style::default().fg(tc));
+                            cell.set_style(Style::default().fg(tc).bg(bg.unwrap_or(Color::Reset)));
                         }
                         (None, Some(bc)) => {
                             cell.set_symbol("▄");
-                            cell.set_style(Style::default().fg(bc));
+                            cell.set_style(Style::default().fg(bc).bg(bg.unwrap_or(Color::Reset)));
                         }
                         (Some(tc), Some(bc)) => {
                             cell.set_symbol("▄");
@@ -265,7 +270,7 @@ fn draw_strip_graf(
         }
         None => {
             let line = popup_hint_line(&app.app_theme, "Graph unavailable");
-            let p = ratatui::widgets::Paragraph::new(line)
+            let p = ratatui::widgets::Paragraph::new(line).style(app.app_theme.bg_style())
                 .alignment(ratatui::layout::Alignment::Center);
             frame.render_widget(p, rect);
         }
