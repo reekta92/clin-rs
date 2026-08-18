@@ -204,13 +204,13 @@ pub fn draw_todo(
             content_height += 1;
         }
         lines.push(highlight_todo_task(task, theme));
-        
+
         let char_count = task.chars().count() as u16;
-        let wrapped_lines = if separator_width > 0 {
-            (char_count.saturating_sub(1) / separator_width) + 1
-        } else {
-            1
-        };
+        let wrapped_lines = char_count
+            .saturating_sub(1)
+            .checked_div(separator_width)
+            .unwrap_or(0)
+            + 1;
         content_height += wrapped_lines;
     }
 
@@ -224,7 +224,6 @@ pub fn draw_todo(
     let inner_block = Block::default()
         .style(theme.bg_style())
         .padding(Padding::new(2, 2, pad_top, 0));
-
 
     let paragraph = Paragraph::new(lines)
         .style(theme.bg_style())

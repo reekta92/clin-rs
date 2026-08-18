@@ -151,9 +151,7 @@ impl SourceHighlighter {
         };
 
         // Fill rest with base_style initially
-        for j in i..chars.len() {
-            styles[j] = base_style;
-        }
+        styles[i..].fill(base_style);
 
         // 2. Priority
         if !is_completed
@@ -228,9 +226,7 @@ impl SourceHighlighter {
                 };
 
                 if word_style != base_style {
-                    for j in start..i {
-                        styles[j] = word_style;
-                    }
+                    styles[start..i].fill(word_style);
                 }
             }
         }
@@ -1403,8 +1399,8 @@ mod tests {
         assert_eq!(styles2[3], hl.theme.todotxt_priority);
 
         // "2024-05-01" (index 4 to 13)
-        for i in 4..14 {
-            assert_eq!(styles2[i], hl.theme.paragraph); // Because no todotxt_date exists, it falls back to paragraph in our implementation
+        for style in &styles2[4..14] {
+            assert_eq!(*style, hl.theme.paragraph); // Because no todotxt_date exists, it falls back to paragraph in our implementation
         }
 
         // " Simple " is paragraph
