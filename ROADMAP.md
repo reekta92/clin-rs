@@ -79,7 +79,7 @@
 ## Planned
 
 #### General
-- [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
+- [ ] **More filtypes** — more text filetypes(`.org`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
 - [ ] **Feature toggles** — nearly every big feature will be toggleable for which means if you don't use canvas files, you will be able to disable it which will dismiss it's code from runtime
 
 #### Notes View
@@ -97,6 +97,7 @@
 - [ ] **QOL** — UI improvements for telling the state of the node, text alignment options for nodes
 - [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
 - [ ] **New node types** — more node types like link nodes, etc. (image nodes implemented as placeholders)
+- [ ] **Keyboard mode** — keyboard focused mode that allows for doing mouse actions like moving nodes, panning etc. with keyboard commands only, similar to `vim` commands
 
 #### Draw View
 - [ ] **Text size** — changable text size
