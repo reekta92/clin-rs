@@ -66,6 +66,7 @@
 - [X] **Pin status preserved through encrypt/decrypt** — pinned flag survives `.md` ↔ `.clin` conversion
 - [X] **Hint bar style customization** — custom `hint_bar_style` options (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
 - [X] **CLI mode** — list, quick-note, find, config, storage, and keybind tools via `clin` subcommands
+- [x] **todo.txt** — todo.txt standardization support
 
 ## Planned
 
@@ -110,7 +111,6 @@
 - [ ] **To-do view** — a new view for specifically managing to-dos
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
-- [x] **todo.txt** — todo.txt standardization support
 
 #### Project Management View
 - [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.
