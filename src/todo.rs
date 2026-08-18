@@ -1,7 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use regex::Regex;
 
@@ -38,16 +38,127 @@ pub fn update_todo_state(storage: &crate::storage::Storage, state: &mut TodoStat
     let strict_pattern =
         Regex::new(r#"^(?:\([A-Z]\)\s+|\d{4}-\d{2}-\d{2}\s+)"#).expect("valid regex");
 
-    state.items = content
+    let mut tasks: Vec<(char, usize, String)> = content
         .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .filter(|l| !l.starts_with("x ") && !l.starts_with("X "))
         .filter(|l| strict_pattern.is_match(l))
-        .map(|l| l.to_string())
+        .enumerate()
+        .map(|(orig_idx, l)| {
+            let priority = if l.len() >= 4 && l.starts_with('(') && l[2..4] == *") " {
+                let c = l.chars().nth(1).expect("len >= 4");
+                if c.is_ascii_uppercase() {
+                    c
+                } else {
+                    '~' // lowest priority fallback
+                }
+            } else {
+                '~' // lowest priority for no priority
+            };
+            (priority, orig_idx, l.to_string())
+        })
         .collect();
 
+    // Sort by priority (A is highest), then original index to keep stable
+    tasks.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    state.items = tasks.into_iter().map(|(_, _, task)| task).collect();
+
     state.last_modified = modified;
+}
+
+fn highlight_todo_task<'a>(task: &'a str, theme: &AppThemeColors) -> Line<'a> {
+    let chars: Vec<char> = task.chars().collect();
+    if chars.is_empty() {
+        return Line::default();
+    }
+    let mut styles = vec![Style::default().fg(theme.text); chars.len()];
+
+    let mut i = 0;
+    if i + 3 < chars.len()
+        && chars[i] == '('
+        && chars[i + 2] == ')'
+        && chars[i + 3] == ' '
+        && chars[i + 1].is_ascii_uppercase()
+    {
+        let p_style = Style::default().fg(theme.warning);
+        styles[i] = p_style;
+        styles[i + 1] = p_style;
+        styles[i + 2] = p_style;
+        styles[i + 3] = p_style;
+        i += 4;
+    }
+
+    for _ in 0..2 {
+        if i + 10 <= chars.len() {
+            let is_date = chars[i..i + 10]
+                .iter()
+                .all(|&c| c.is_ascii_digit() || c == '-')
+                && chars[i + 4] == '-'
+                && chars[i + 7] == '-';
+            let is_valid_end = i + 10 == chars.len() || chars[i + 10].is_whitespace();
+            if is_date && is_valid_end {
+                i += 10;
+                if i < chars.len() && chars[i].is_whitespace() {
+                    i += 1;
+                }
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    while i < chars.len() {
+        if chars[i].is_whitespace() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && !chars[i].is_whitespace() {
+            i += 1;
+        }
+        let word_len = i - start;
+        if word_len > 1 {
+            let word_style = if chars[start] == '+' {
+                Style::default().fg(theme.success)
+            } else if chars[start] == '@' {
+                Style::default().fg(theme.accent)
+            } else if let Some(colon_pos) = chars[start..i].iter().position(|&c| c == ':') {
+                if colon_pos > 0 && colon_pos < word_len - 1 {
+                    Style::default().fg(theme.tag)
+                } else {
+                    Style::default().fg(theme.text)
+                }
+            } else {
+                Style::default().fg(theme.text)
+            };
+
+            if word_style != Style::default().fg(theme.text) {
+                for style in &mut styles[start..i] {
+                    *style = word_style;
+                }
+            }
+        }
+    }
+
+    let mut spans = Vec::new();
+    let mut current_style = styles[0];
+    let mut current_text = String::new();
+    for (c, s) in chars.iter().zip(styles.iter()) {
+        if *s == current_style {
+            current_text.push(*c);
+        } else {
+            spans.push(Span::styled(current_text.clone(), current_style));
+            current_style = *s;
+            current_text = c.to_string();
+        }
+    }
+    spans.push(Span::styled(current_text, current_style));
+
+    Line::from(spans)
 }
 
 #[allow(clippy::implicit_hasher)]
@@ -94,7 +205,7 @@ pub fn draw_todo(
         if i > 0 {
             lines.push(Line::from(separator.clone()).style(Style::default().fg(theme.muted)));
         }
-        lines.push(Line::from(task.clone()).style(Style::default().fg(theme.text)));
+        lines.push(highlight_todo_task(task, theme));
     }
 
     if lines.is_empty() {
