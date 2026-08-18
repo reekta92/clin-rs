@@ -2,6 +2,34 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.11.1] - 2026-08-18
+
+### Added
+
+- Added todo.txt incompleted tasks widget
+- Add todo widget to notes view bottom section
+- Added todo.txt parsing to the edit view
+- Add builtin todotxt parsing and rendering support
+
+### CI
+
+- Fixed clippy warnings
+- Fixed clippy and fmt warnings
+
+### Documentation
+
+- Mark todo.txt widget complete in roadmap
+
+### Fixed
+
+- Fixed draw widget bg color
+- Fixed calendar widget activity tracking
+
+### Miscellaneous
+
+- Update ROADMAP.md
+- ROADMAP.md update
+- ROADMAP.md updates
 ## [0.11.0] - 2026-08-18
 
 ### CI
@@ -22,6 +50,10 @@ All notable changes to clin are documented in this file.
 ### Comp
 
 - Compatibility changes for rand bump
+
+### Release
+
+- V0.11.0
 ## [0.11.0-rc.1] - 2026-08-17
 
 ### Added
