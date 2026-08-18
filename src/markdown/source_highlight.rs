@@ -102,7 +102,10 @@ impl SourceHighlighter {
 
     /// Return one [`Style`] per character of `line`, considering its role
     /// in the document (code block vs inline markdown).
-    pub fn highlight_line(&mut self, line: &str, row: usize) -> Vec<Style> {
+    pub fn highlight_line(&mut self, line: &str, row: usize, is_todo_txt: bool) -> Vec<Style> {
+        if is_todo_txt {
+            return self.highlight_todotxt_line(line);
+        }
         if row < self.lines.len() && self.lines[row].tag == LineTag::CodeBlock {
             let mut style = self.theme.code_block;
             if let Some(bg) = self.theme.code_block_bg {
@@ -111,6 +114,115 @@ impl SourceHighlighter {
             return vec![style; line.chars().count()];
         }
         self.highlight_inline(line)
+    }
+
+    fn highlight_todotxt_line(&self, line: &str) -> Vec<Style> {
+        let chars: Vec<char> = line.chars().collect();
+        if chars.is_empty() {
+            return Vec::new();
+        }
+
+        let mut styles = vec![self.theme.paragraph; chars.len()];
+        let mut i = 0;
+
+        // Skip leading spaces
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+
+        if i == chars.len() {
+            return styles;
+        }
+
+        let mut is_completed = false;
+
+        // 1. Completed
+        if i + 1 < chars.len() && chars[i] == 'x' && chars[i + 1] == ' ' {
+            is_completed = true;
+            styles[i] = self.theme.todotxt_completed;
+            styles[i + 1] = self.theme.todotxt_completed;
+            i += 2;
+        }
+
+        let base_style = if is_completed {
+            self.theme.todotxt_completed
+        } else {
+            self.theme.paragraph
+        };
+
+        // Fill rest with base_style initially
+        for j in i..chars.len() {
+            styles[j] = base_style;
+        }
+
+        // 2. Priority
+        if !is_completed && i + 3 < chars.len() && chars[i] == '(' && chars[i + 2] == ')' && chars[i + 3] == ' ' && chars[i + 1].is_ascii_uppercase() {
+            styles[i] = self.theme.todotxt_priority;
+            styles[i + 1] = self.theme.todotxt_priority;
+            styles[i + 2] = self.theme.todotxt_priority;
+            styles[i + 3] = self.theme.todotxt_priority;
+            i += 4;
+        }
+
+        // 3. Dates (up to 2 dates YYYY-MM-DD)
+        for _ in 0..2 {
+            if i + 10 <= chars.len() {
+                let is_date = chars[i..i + 10].iter().all(|&c| c.is_ascii_digit() || c == '-') 
+                              && chars[i + 4] == '-' && chars[i + 7] == '-';
+                let is_valid_end = i + 10 == chars.len() || chars[i + 10].is_whitespace();
+                if is_date && is_valid_end {
+                    for j in 0..10 {
+                        styles[i + j] = if is_completed { self.theme.todotxt_completed } else { self.theme.paragraph };
+                    }
+                    i += 10;
+                    if i < chars.len() && chars[i].is_whitespace() {
+                        i += 1;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // 4. Words (Projects, Contexts, Tags)
+        while i < chars.len() {
+            if chars[i].is_whitespace() {
+                i += 1;
+                continue;
+            }
+            let start = i;
+            while i < chars.len() && !chars[i].is_whitespace() {
+                i += 1;
+            }
+            let word_len = i - start;
+            if word_len > 1 {
+                let word_style = if is_completed {
+                    self.theme.todotxt_completed
+                } else if chars[start] == '+' {
+                    self.theme.todotxt_project
+                } else if chars[start] == '@' {
+                    self.theme.todotxt_context
+                } else if let Some(colon_pos) = chars[start..i].iter().position(|&c| c == ':') {
+                    if colon_pos > 0 && colon_pos < word_len - 1 {
+                        self.theme.todotxt_tag
+                    } else {
+                        base_style
+                    }
+                } else {
+                    base_style
+                };
+                
+                if word_style != base_style {
+                    for j in start..i {
+                        styles[j] = word_style;
+                    }
+                }
+            }
+        }
+
+        styles
     }
 
     /// Return whether `row` is inside a fenced code block.
@@ -1060,11 +1172,11 @@ mod tests {
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["# H1".to_string(), "## H2".to_string()];
         hl.rescan(&doc);
-        let styles_h1 = hl.highlight_line("# H1", 0);
+        let styles_h1 = hl.highlight_line("# H1", 0, false);
         assert_eq!(styles_h1.len(), "# H1".chars().count());
         // With ghost_syntax=false, entire line gets heading style
         assert_eq!(styles_h1[0], hl.theme.h1_banner);
-        let styles_h2 = hl.highlight_line("## H2", 1);
+        let styles_h2 = hl.highlight_line("## H2", 1, false);
         assert_eq!(styles_h2.len(), "## H2".chars().count());
         let mut expected_h2 = hl.theme.h2;
         if let Some(fg) = expected_h2.fg {
@@ -1080,7 +1192,7 @@ mod tests {
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["text `code` more".to_string()];
         hl.rescan(&doc);
-        let styles = hl.highlight_line("text `code` more", 0);
+        let styles = hl.highlight_line("text `code` more", 0, false);
         let code_start = "text ".len();
         let code_end = code_start + "`code`".len();
         #[allow(clippy::needless_range_loop)]
@@ -1098,7 +1210,7 @@ mod tests {
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["a [text](url) b".to_string()];
         hl.rescan(&doc);
-        let styles = hl.highlight_line("a [text](url) b", 0);
+        let styles = hl.highlight_line("a [text](url) b", 0, false);
         let link_text_start = "a ".len();
         assert_eq!(styles[link_text_start], hl.theme.link_text);
         let url_start = link_text_start + "[text]".len();
@@ -1122,7 +1234,7 @@ mod tests {
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["- [ ] task".to_string(), "- [x] done".to_string()];
         hl.rescan(&doc);
-        let styles = hl.highlight_line("- [ ] task", 0);
+        let styles = hl.highlight_line("- [ ] task", 0, false);
         // With ghost_syntax=false: brackets get paragraph style, checkmark gets task style
         let bracket_start = "- ".len(); // index 2 = '['
         let checkmark_idx = bracket_start + 1; // index 3 = ' ' (or 'x')
@@ -1136,7 +1248,7 @@ mod tests {
             styles[checkmark_idx], hl.theme.task_unchecked,
             "unchecked checkmark"
         );
-        let styles2 = hl.highlight_line("- [x] done", 1);
+        let styles2 = hl.highlight_line("- [x] done", 1, false);
         assert_eq!(
             styles2[bracket_start], hl.theme.paragraph,
             "bracket should be paragraph"
@@ -1156,20 +1268,20 @@ mod tests {
             "```".to_string(),
         ];
         hl.rescan(&doc);
-        let styles_fence_open = hl.highlight_line("```rust", 0);
+        let styles_fence_open = hl.highlight_line("```rust", 0, false);
         let mut expected_fence_style = hl.theme.code_block;
         if let Some(bg) = hl.theme.code_block_bg {
             expected_fence_style = expected_fence_style.bg(bg);
         }
         assert_eq!(styles_fence_open[0], expected_fence_style);
 
-        let styles_interior = hl.highlight_line("fn main() {}", 1);
+        let styles_interior = hl.highlight_line("fn main() {}", 1, false);
         assert_eq!(styles_interior.len(), "fn main() {}".chars().count());
         for style in styles_interior {
             assert_eq!(style, expected_fence_style);
         }
 
-        let styles_fence_close = hl.highlight_line("```", 2);
+        let styles_fence_close = hl.highlight_line("```", 2, false);
         assert_eq!(styles_fence_close[0], expected_fence_style);
     }
 
@@ -1181,14 +1293,14 @@ mod tests {
         // 1. Heading 1 styles exactly its source characters.
         let doc1 = vec!["# H1".to_string()];
         hl.rescan(&doc1);
-        let styles_h1 = hl.highlight_line("# H1", 0);
+        let styles_h1 = hl.highlight_line("# H1", 0, false);
         assert_eq!(styles_h1.len(), "# H1".chars().count());
         assert_eq!(styles_h1[0], hl.theme.h1_banner);
 
         // 2. Bold nested in Heading 1
         let doc2 = vec!["# H1 **bold**".to_string()];
         hl.rescan(&doc2);
-        let styles_nested = hl.highlight_line("# H1 **bold**", 0);
+        let styles_nested = hl.highlight_line("# H1 **bold**", 0, false);
         // `# H1 ` has length 5. `**` bold delimiter style is heading style (h1_banner)
         assert_eq!(styles_nested[5], hl.theme.h1_banner);
         // `bold` is indices 7..11. It should have h1_banner style + BOLD modifier
@@ -1198,14 +1310,14 @@ mod tests {
         // 3. Pipe character (table delimiter)
         let doc3 = vec!["| col |".to_string()];
         hl.rescan(&doc3);
-        let styles_table = hl.highlight_line("| col |", 0);
+        let styles_table = hl.highlight_line("| col |", 0, false);
         assert_eq!(styles_table[0], hl.theme.table_border);
         assert_eq!(styles_table[6], hl.theme.table_border);
 
         // 4. Blockquote nested formatting
         let doc4 = vec!["> **quote**".to_string()];
         hl.rescan(&doc4);
-        let styles_bq = hl.highlight_line("> **quote**", 0);
+        let styles_bq = hl.highlight_line("> **quote**", 0, false);
         assert_eq!(styles_bq[0], hl.theme.blockquote_bar); // marker
         // `quote` is nested. It should have blockquote style + BOLD modifier
         let expected_bq_bold = hl.theme.blockquote.add_modifier(Modifier::BOLD);
@@ -1214,14 +1326,14 @@ mod tests {
         // 5. List marker styling
         let doc5 = vec!["- item".to_string()];
         hl.rescan(&doc5);
-        let styles_list = hl.highlight_line("- item", 0);
+        let styles_list = hl.highlight_line("- item", 0, false);
         assert_eq!(styles_list[0], hl.theme.h3); // list marker
         assert_eq!(styles_list[2], hl.theme.paragraph); // text
 
         // 6. Heading 2 nested formatting retaining background
         let doc6 = vec!["## H2 *italic*".to_string()];
         hl.rescan(&doc6);
-        let styles_h2_nested = hl.highlight_line("## H2 *italic*", 0);
+        let styles_h2_nested = hl.highlight_line("## H2 *italic*", 0, false);
         let expected_h2 = hl.theme.h2;
         let mut expected_h2_bg = expected_h2;
         if let Some(fg) = expected_h2.fg {
@@ -1242,12 +1354,57 @@ mod tests {
         let line = "**boéld**";
         highlighter.rescan(&[line.to_string()]);
 
-        let styles = highlighter.highlight_line(line, 0);
+        let styles = highlighter.highlight_line(line, 0, false);
         assert_eq!(styles.len(), line.chars().count());
         assert_eq!(
             styles[2],
             highlighter.theme.paragraph.add_modifier(Modifier::BOLD)
         );
+    }
+    #[test]
+    fn todotxt_highlight() {
+        let colors = crate::app_theme::AppThemeColors::default();
+        let mut hl = SourceHighlighter::new(&colors, false, false);
+        
+        let line = "x (A) 2024-05-01 2024-04-01 measure space for +chapelShelving @chapel due:2024-05-30";
+        let styles = hl.highlight_line(line, 0, true);
+        
+        // The length of styles should be exactly the character count of the line
+        assert_eq!(styles.len(), line.chars().count());
+        
+        // The first character 'x' and ' ' should be todotxt_completed
+        assert_eq!(styles[0], hl.theme.todotxt_completed);
+        assert_eq!(styles[1], hl.theme.todotxt_completed);
+        
+        // Because it's completed, the date and words will fall back to todotxt_completed
+        // Let's test an uncompleted one to see specific colors
+        
+        let line2 = "(B) 2024-05-01 Simple +project @context tag:val";
+        let styles2 = hl.highlight_line(line2, 0, true);
+        
+        // "(B) "
+        assert_eq!(styles2[0], hl.theme.todotxt_priority);
+        assert_eq!(styles2[1], hl.theme.todotxt_priority);
+        assert_eq!(styles2[2], hl.theme.todotxt_priority);
+        assert_eq!(styles2[3], hl.theme.todotxt_priority);
+        
+        // "2024-05-01" (index 4 to 13)
+        for i in 4..14 {
+            assert_eq!(styles2[i], hl.theme.paragraph); // Because no todotxt_date exists, it falls back to paragraph in our implementation
+        }
+        
+        // " Simple " is paragraph
+        let start_project = line2.find("+project").unwrap();
+        assert_eq!(styles2[start_project], hl.theme.todotxt_project);
+        assert_eq!(styles2[start_project + 1], hl.theme.todotxt_project);
+        
+        let start_context = line2.find("@context").unwrap();
+        assert_eq!(styles2[start_context], hl.theme.todotxt_context);
+        assert_eq!(styles2[start_context + 1], hl.theme.todotxt_context);
+        
+        let start_tag = line2.find("tag:val").unwrap();
+        assert_eq!(styles2[start_tag], hl.theme.todotxt_tag);
+        assert_eq!(styles2[start_tag + 6], hl.theme.todotxt_tag);
     }
 
     #[test]
@@ -1269,7 +1426,7 @@ mod tests {
 
         for (row, line) in document.iter().enumerate() {
             assert_eq!(
-                highlighter.highlight_line(line, row).len(),
+                highlighter.highlight_line(line, row, false).len(),
                 line.chars().count(),
                 "style count for {line:?}"
             );
@@ -1286,7 +1443,7 @@ mod tests {
             "```".to_string(),
         ];
         hl.rescan(&doc);
-        let styles_fence_open = hl.highlight_line("```rust", 0);
+        let styles_fence_open = hl.highlight_line("```rust", 0, false);
         let mut expected_fence_style = hl.theme.code_block;
         if let Some(bg) = hl.theme.code_block_bg {
             expected_fence_style = expected_fence_style.bg(bg);
@@ -1304,7 +1461,7 @@ mod tests {
         // 1. Multi-backtick and background fix
         let doc = vec!["``code``".to_string()];
         hl.rescan(&doc);
-        let styles = hl.highlight_line("``code``", 0);
+        let styles = hl.highlight_line("``code``", 0, false);
         let mut expected_code = hl.theme.code_inline;
         if let Some(bg) = hl.theme.code_inline.bg {
             expected_code = expected_code.bg(bg);
@@ -1316,7 +1473,7 @@ mod tests {
         // Multi-backticks with ghost = true
         let mut hl_ghost = SourceHighlighter::new(&colors, true, true);
         hl_ghost.rescan(&doc);
-        let styles_ghost = hl_ghost.highlight_line("``code``", 0);
+        let styles_ghost = hl_ghost.highlight_line("``code``", 0, false);
         let mut expected_ghost_code = hl_ghost.theme.ghost_syntax;
         if let Some(bg) = hl_ghost.theme.code_inline.bg {
             expected_ghost_code = expected_ghost_code.bg(bg);
@@ -1331,7 +1488,7 @@ mod tests {
         // 2. Bare URL
         let doc_url = vec!["Visit https://google.com now".to_string()];
         hl.rescan(&doc_url);
-        let styles_url = hl.highlight_line("Visit https://google.com now", 0);
+        let styles_url = hl.highlight_line("Visit https://google.com now", 0, false);
         let url_start = "Visit ".len();
         assert_eq!(styles_url[url_start], hl.theme.link_url);
         assert_eq!(
@@ -1346,7 +1503,7 @@ mod tests {
         // 3. Bold italic nested style
         let doc_bi = vec!["***bold italic***".to_string()];
         hl.rescan(&doc_bi);
-        let styles_bi = hl.highlight_line("***bold italic***", 0);
+        let styles_bi = hl.highlight_line("***bold italic***", 0, false);
         let expected_bi = hl
             .theme
             .paragraph
@@ -1356,7 +1513,7 @@ mod tests {
         // 4. Dimmed escapes
         let doc_esc = vec!["\\*".to_string()];
         hl.rescan(&doc_esc);
-        let styles_esc = hl.highlight_line("\\*", 0);
+        let styles_esc = hl.highlight_line("\\*", 0, false);
         // With ghost=false but extended=true: escape backslash is themed.ghost_syntax
         assert_eq!(styles_esc[0], hl.theme.ghost_syntax);
         assert_eq!(styles_esc[1], hl.theme.paragraph);
@@ -1364,7 +1521,7 @@ mod tests {
         // 5. Description list markers
         let doc_desc = vec![": definition".to_string()];
         hl.rescan(&doc_desc);
-        let styles_desc = hl.highlight_line(": definition", 0);
+        let styles_desc = hl.highlight_line(": definition", 0, false);
         assert_eq!(styles_desc[0], hl.theme.h5);
         assert_eq!(styles_desc[1], hl.theme.h5);
         assert_eq!(styles_desc[2], hl.theme.paragraph);
@@ -1372,7 +1529,7 @@ mod tests {
         // 6. Wikilink syntax separation
         let doc_wiki = vec!["[[link|title]]".to_string()];
         hl_ghost.rescan(&doc_wiki);
-        let styles_wiki = hl_ghost.highlight_line("[[link|title]]", 0);
+        let styles_wiki = hl_ghost.highlight_line("[[link|title]]", 0, false);
         // [[ and link| get ghost syntax
         assert_eq!(styles_wiki[0], hl_ghost.theme.ghost_syntax);
         assert_eq!(styles_wiki[6], hl_ghost.theme.ghost_syntax); // '|'
@@ -1382,7 +1539,7 @@ mod tests {
         // 7. Footnote definitions
         let doc_fn = vec!["[^1]: footnote text".to_string()];
         hl.rescan(&doc_fn);
-        let styles_fn = hl.highlight_line("[^1]: footnote text", 0);
+        let styles_fn = hl.highlight_line("[^1]: footnote text", 0, false);
         assert_eq!(styles_fn[0], hl.theme.footnote_ref);
         assert_eq!(styles_fn[5], hl.theme.footnote_ref);
         assert_eq!(styles_fn[6], hl.theme.paragraph);
