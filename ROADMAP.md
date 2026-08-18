@@ -2,6 +2,14 @@
 
 ## Completed
 
+- [x] **Orthagonal connections** — arrow like connections between nodes, toggleable
+- [x] **Group titlebar** — add clickable titlebar for group nodes for easier navigation
+- [x] **Connection properties** — more properties for connections between nodes; color, type, text etc.
+- [x] **Create links** — create/remove wikilinks from graph view
+- [x] **Right-click menu** — context actions on nodes
+- [x] **Looking glass** — similar to minimap, a enlarged version of the selected note for easier identification.
+- [x] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
+- [x] **todo.txt** — todo.txt standardization support
 - [X] **Theme system** — 19 built-in themes, backgrounds, per-color overrides, theme switcher
 - [X] **Trash** — move notes/folders to trash, restore, empty trash
 - [X] **OCR paste** — clipboard image → OCR text (`tesseract`) via command palette
@@ -70,7 +78,6 @@
 ## Planned
 
 #### General
-- [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
 - [ ] **Feature toggles** — nearly every big feature will be toggleable for which means if you don't use canvas files, you will be able to disable it which will dismiss it's code from runtime
 
@@ -79,21 +86,14 @@
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
-- [ ] **Cursor insert** — insert content at cursor from command palette actions
 
 #### Graph View
 - [ ] **Date/time linking** — categorize nodes by note date
-- [ ] **Create links** — create/remove wikilinks from graph view
 - [ ] **Assign tags** — tag notes directly from graph
-- [ ] **Right-click menu** — context actions on nodes
-- [ ] **Looking glass** — similar to minimap, a enlarged version of the selected note for easier identification.
 
 #### Pinstar View
 - [ ] **Insert note links** — embed note references as objects
 - [ ] **QOL** — UI improvements for telling the state of the node, text alignment options for nodes
-- [ ] **Orthagonal connections** — arrow like connections between nodes, toggleable
-- [ ] **Group titlebar** — add clickable titlebar for group nodes for easier navigation
-- [ ] **Connection properties** — more properties for connections between nodes; color, type, text etc.
 - [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
 - [ ] **New node types** — more node types like link nodes, etc. (image nodes implemented as placeholders)
 
@@ -110,7 +110,6 @@
 - [ ] **To-do view** — a new view for specifically managing to-dos
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
-- [ ] **todo.txt** — todo.txt standardization support
 
 #### Project Management View
 - [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.
