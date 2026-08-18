@@ -39,6 +39,7 @@ pub mod snapshot;
 pub mod statusline;
 pub mod templates;
 pub mod text_edit;
+pub mod todo;
 
 use crate::cli::{
     CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd,

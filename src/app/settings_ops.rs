@@ -213,7 +213,8 @@ impl App {
             crate::config::NotesSection::Calendar => crate::config::NotesSection::Goals,
             crate::config::NotesSection::Goals => crate::config::NotesSection::Draw,
             crate::config::NotesSection::Draw => crate::config::NotesSection::Graf,
-            crate::config::NotesSection::Graf => crate::config::NotesSection::Calendar,
+            crate::config::NotesSection::Graf => crate::config::NotesSection::Todo,
+            crate::config::NotesSection::Todo => crate::config::NotesSection::Calendar,
         };
         self.set_temporary_status_static("Section changed");
         self.persist_list_layout();
@@ -956,12 +957,21 @@ mod tests {
     }
 
     #[test]
-    fn test_cycle_section_graf_wraps_to_calendar() {
+    fn test_cycle_section_todo_wraps_to_calendar() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let mut app = make_app();
+        app.list.sections = vec![crate::config::NotesSection::Todo];
+        app.cycle_section(0);
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
+    }
+
+    #[test]
+    fn test_cycle_section_graf_to_todo() {
         let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         app.list.sections = vec![crate::config::NotesSection::Graf];
         app.cycle_section(0);
-        assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Todo);
     }
 
     #[test]

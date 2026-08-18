@@ -1844,6 +1844,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     app.ensure_graph_preview();
                     draw_strip_graf(frame, r, app, bottom_border, cal_rect);
                 }
+                crate::config::NotesSection::Todo => {
+                    crate::todo::update_todo_state(&app.storage, &mut app.todo_state);
+                    crate::todo::draw_todo(
+                        frame,
+                        r,
+                        &app.app_theme,
+                        &app.todo_state,
+                        bottom_border,
+                        cal_rect,
+                    );
+                }
             }
         }
     }
