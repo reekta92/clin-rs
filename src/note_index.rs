@@ -2,7 +2,6 @@ use crate::config::structs::CustomSmartFolder;
 use crate::storage::NoteSummary;
 use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::path::Path;
 use std::sync::Arc;
 
 pub struct NoteIndex {
@@ -11,18 +10,15 @@ pub struct NoteIndex {
     pub min_membership_expiry: Option<u64>,
     pub canonical_ids: Arc<[Arc<str>]>,
     pub by_id: HashMap<Arc<str>, usize>,
-    pub by_stem: HashMap<String, usize>,
     pub notes_by_folder: HashMap<String, Vec<usize>>,
     pub child_folders_by_parent: HashMap<String, Vec<String>>,
     pub recursive_note_counts: HashMap<String, usize>,
     pub notes_by_exact_tag: HashMap<String, Vec<usize>>,
-    pub notes_by_lowercase_tag: HashMap<String, Vec<usize>>,
     pub pinned_indices: Vec<usize>,
     pub today_indices: Vec<usize>,
     pub this_week_indices: Vec<usize>,
     pub untagged_indices: Vec<usize>,
     pub custom_smart_folder_indices: HashMap<String, Vec<usize>>,
-    pub search_keys: Vec<String>,
     pub activity_by_day: HashMap<NaiveDate, usize>,
 }
 
@@ -42,25 +38,13 @@ impl NoteIndex {
             .into();
 
         let mut by_id = HashMap::with_capacity(notes.len());
-        let mut by_stem = HashMap::with_capacity(notes.len());
-        let mut search_keys = Vec::with_capacity(notes.len());
 
-        for (i, (id_arc, note)) in canonical_ids.iter().zip(notes.iter()).enumerate() {
+        for (i, (id_arc, _)) in canonical_ids.iter().zip(notes.iter()).enumerate() {
             by_id.insert(id_arc.clone(), i);
-
-            let stem = Path::new(&note.id)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            by_stem.entry(stem.to_string()).or_insert(i);
-
-            let key = format!("{}\0{}", note.title.to_lowercase(), note.id);
-            search_keys.push(key);
         }
 
         let mut notes_by_folder: HashMap<String, Vec<usize>> = HashMap::new();
         let mut notes_by_exact_tag: HashMap<String, Vec<usize>> = HashMap::new();
-        let mut notes_by_lowercase_tag: HashMap<String, Vec<usize>> = HashMap::new();
         let mut pinned_indices = Vec::new();
         let mut untagged_indices = Vec::new();
         let mut today_indices = Vec::new();
@@ -91,10 +75,6 @@ impl NoteIndex {
             } else {
                 for tag in &note.tags {
                     notes_by_exact_tag.entry(tag.clone()).or_default().push(i);
-                    notes_by_lowercase_tag
-                        .entry(tag.to_lowercase())
-                        .or_default()
-                        .push(i);
                 }
             }
 
@@ -241,18 +221,15 @@ impl NoteIndex {
             min_membership_expiry,
             canonical_ids,
             by_id,
-            by_stem,
             notes_by_folder,
             child_folders_by_parent,
             recursive_note_counts,
             notes_by_exact_tag,
-            notes_by_lowercase_tag,
             pinned_indices,
             today_indices,
             this_week_indices,
             untagged_indices,
             custom_smart_folder_indices,
-            search_keys,
             activity_by_day,
         }
     }
@@ -292,7 +269,6 @@ mod tests {
 
         assert_eq!(index.canonical_ids.len(), 2);
         assert_eq!(index.by_id.get("folder1/a.md").copied(), Some(0));
-        assert_eq!(index.by_stem.get("b").copied(), Some(1));
         assert_eq!(index.pinned_indices, vec![0]);
         assert_eq!(index.recursive_note_counts.get("folder1").copied(), Some(2));
         assert_eq!(

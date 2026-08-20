@@ -195,19 +195,6 @@ pub enum NodeColorMode {
     Uniform,
 }
 
-impl FromStr for NodeColorMode {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "tag" => Ok(NodeColorMode::Tag),
-            "folder" => Ok(NodeColorMode::Folder),
-            "link_count" | "linkcount" => Ok(NodeColorMode::LinkCount),
-            "uniform" => Ok(NodeColorMode::Uniform),
-            _ => Err(format!("Unknown node_color_mode: {s}")),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeColorMode {
@@ -215,18 +202,6 @@ pub enum EdgeColorMode {
     Target,
     #[default]
     Uniform,
-}
-
-impl FromStr for EdgeColorMode {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "source" => Ok(EdgeColorMode::Source),
-            "target" => Ok(EdgeColorMode::Target),
-            "uniform" => Ok(EdgeColorMode::Uniform),
-            _ => Err(format!("Unknown edge_color_mode: {s}")),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -237,19 +212,6 @@ pub enum LabelMode {
     Neighbors,
     All,
     None,
-}
-
-impl FromStr for LabelMode {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "selected" => Ok(LabelMode::Selected),
-            "neighbors" => Ok(LabelMode::Neighbors),
-            "all" => Ok(LabelMode::All),
-            "none" => Ok(LabelMode::None),
-            _ => Err(format!("Unknown label_mode: {s}")),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
@@ -269,17 +231,6 @@ pub enum NodeSizeMode {
     LinkCount,
 }
 
-impl FromStr for NodeSizeMode {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "fixed" => Ok(NodeSizeMode::Fixed),
-            "link_count" | "linkcount" => Ok(NodeSizeMode::LinkCount),
-            _ => Err(format!("Unknown node_size_mode: {s}")),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasMarker {
@@ -287,18 +238,6 @@ pub enum CanvasMarker {
     Braille,
     HalfBlock,
     Dot,
-}
-
-impl FromStr for CanvasMarker {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "braille" => Ok(CanvasMarker::Braille),
-            "half_block" | "halfblock" => Ok(CanvasMarker::HalfBlock),
-            "dot" => Ok(CanvasMarker::Dot),
-            _ => Err(format!("Unknown canvas_marker: {s}")),
-        }
-    }
 }
 
 impl From<CanvasMarker> for ratatui::symbols::Marker {
@@ -320,18 +259,6 @@ pub enum NodeShape {
     Diamond,
 }
 
-impl FromStr for NodeShape {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "circle" => Ok(NodeShape::Circle),
-            "square" => Ok(NodeShape::Square),
-            "diamond" => Ok(NodeShape::Diamond),
-            _ => Err(format!("Unknown node_shape: {s}")),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LegendPosition {
@@ -340,19 +267,6 @@ pub enum LegendPosition {
     TopLeft,
     BottomRight,
     BottomLeft,
-}
-
-impl FromStr for LegendPosition {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "top_right" | "topright" => Ok(LegendPosition::TopRight),
-            "top_left" | "topleft" => Ok(LegendPosition::TopLeft),
-            "bottom_right" | "bottomright" => Ok(LegendPosition::BottomRight),
-            "bottom_left" | "bottomleft" => Ok(LegendPosition::BottomLeft),
-            _ => Err(format!("Unknown legend position: {s}")),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
@@ -539,17 +453,6 @@ pub enum PhysicsTickRate {
     #[default]
     Auto,
     Fixed,
-}
-
-impl FromStr for PhysicsTickRate {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "auto" => Ok(PhysicsTickRate::Auto),
-            "fixed" => Ok(PhysicsTickRate::Fixed),
-            _ => Err(format!("Unknown physics tick_rate: {s}")),
-        }
-    }
 }
 
 impl std::fmt::Display for PhysicsTickRate {

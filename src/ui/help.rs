@@ -12,18 +12,6 @@ use crate::keybinds::{HelpAction, Keybinds, ListAction};
 use crate::storage::Storage;
 use strum::IntoEnumIterator;
 
-pub fn help_tab_names() -> [&'static str; 8] {
-    [
-        "Notes",
-        "Editor",
-        "Graph",
-        "Draw",
-        "Canvas",
-        "Backup",
-        "Templates",
-        "About",
-    ]
-}
 ///
 /// Help-view tab (label, glyph) pairs, in `HelpTab` order.
 /// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
@@ -1472,7 +1460,6 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Save" => kb.canvas_keys_display(CanvasAction::Save),
             "MenuClose" => kb.canvas_keys_display(CanvasAction::MenuClose),
             "EditorUnfocus" => kb.canvas_keys_display(CanvasAction::EditorUnfocus),
-            "EditorSyncRaw" => kb.canvas_keys_display(CanvasAction::EditorSyncRaw),
             _ => format!("[ERR:{}]", token),
         },
         "backup" => match action {

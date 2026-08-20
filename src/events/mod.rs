@@ -107,6 +107,95 @@ pub(crate) fn route_text_input_popup(
     }
 }
 
+/// Route a key through a text-input popup, re-inserting it on Submit/Edited.
+/// `on_submit` runs with the popup already re-inserted. Returns `true` if consumed.
+fn route_text(
+    mut popup: crate::popups::ActivePopup,
+    key: KeyEvent,
+    app: &mut App,
+    on_submit: impl FnOnce(&mut App),
+) -> bool {
+    let action = match &mut popup {
+        crate::popups::ActivePopup::CreateNote(p, _) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::Import(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::Folder(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::Goals(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::NoteRename(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        _ => return false,
+    };
+    match action {
+        TextInputPopupAction::Cancel => {}
+        TextInputPopupAction::Submit => {
+            app.popups.active = Some(popup);
+            on_submit(app);
+        }
+        TextInputPopupAction::Edited => {
+            app.popups.active = Some(popup);
+        }
+    }
+    true
+}
+
+/// Route a key through a selection-list popup, re-inserting it on nav/confirm.
+/// `on_nav`/`on_confirm` run with the popup already re-inserted; `on_cancel`
+/// runs without re-inserting. Returns `true` if consumed.
+fn route_selection_popup(
+    mut popup: crate::popups::ActivePopup,
+    key: KeyEvent,
+    app: &mut App,
+    on_nav: impl FnOnce(&mut App),
+    on_confirm: impl FnOnce(&mut App),
+    on_cancel: impl FnOnce(&mut App),
+) -> bool {
+    app.seq_matcher.clear();
+    let action = match &mut popup {
+        crate::popups::ActivePopup::IconMode(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 2)
+        }
+        crate::popups::ActivePopup::HintBarStyle(p) => route_selection_list(
+            &key,
+            &app.keybinds,
+            &mut p.selected,
+            crate::config::HintBarStyle::ALL.len() - 1,
+        ),
+        crate::popups::ActivePopup::KeybindPreset(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
+        }
+        crate::popups::ActivePopup::Sort(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
+        }
+        crate::popups::ActivePopup::CreateFormat(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
+        }
+        _ => return false,
+    };
+    match action {
+        SelListAction::Up | SelListAction::Down => {
+            app.popups.active = Some(popup);
+            on_nav(app);
+        }
+        SelListAction::Confirm => {
+            app.popups.active = Some(popup);
+            on_confirm(app);
+        }
+        SelListAction::Cancel => on_cancel(app),
+        SelListAction::Other => {
+            app.popups.active = Some(popup);
+        }
+    }
+    true
+}
+
 /// Route a terminal bracketed-paste (`Event::Paste`) into the currently focused
 /// text field. This is the ONLY paste delivery on terminals (kitty, most VTE
 /// emulators) that intercept Ctrl+Shift+V themselves. Returns true if a field
@@ -864,44 +953,20 @@ impl crate::popups::ActivePopup {
     fn handle_key(self, key: KeyEvent, app: &mut App) -> bool {
         use crate::popups::ActivePopup;
         match self {
-            ActivePopup::CreateNote(mut popup, format) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::CreateNote(popup, format));
-                        app.confirm_create_note();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::CreateNote(popup, format));
-                    }
-                }
-                true
+            ActivePopup::CreateNote(popup, format) => {
+                route_text(ActivePopup::CreateNote(popup, format), key, app, |app| {
+                    app.confirm_create_note();
+                })
             }
-            ActivePopup::Import(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::Import(popup));
-                        app.confirm_import();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::Import(popup));
-                    }
-                }
-                true
+            ActivePopup::Import(popup) => {
+                route_text(ActivePopup::Import(popup), key, app, |app| {
+                    app.confirm_import();
+                })
             }
-            ActivePopup::Folder(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::Folder(popup));
-                        app.confirm_folder_popup();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::Folder(popup));
-                    }
-                }
-                true
+            ActivePopup::Folder(popup) => {
+                route_text(ActivePopup::Folder(popup), key, app, |app| {
+                    app.confirm_folder_popup();
+                })
             }
             ActivePopup::Tag(mut popup) => {
                 if app.popups.confirm.is_some() {
@@ -1004,18 +1069,10 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::Goals(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::Goals(popup));
-                        app.confirm_goals_popup();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::Goals(popup));
-                    }
-                }
-                true
+            ActivePopup::Goals(popup) => {
+                route_text(ActivePopup::Goals(popup), key, app, |app| {
+                    app.confirm_goals_popup();
+                })
             }
             ActivePopup::Subnotes(mut popup) => {
                 let now_unix_secs = || {
@@ -1277,18 +1334,10 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::NoteRename(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::NoteRename(popup));
-                        app.confirm_rename_note();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::NoteRename(popup));
-                    }
-                }
-                true
+            ActivePopup::NoteRename(popup) => {
+                route_text(ActivePopup::NoteRename(popup), key, app, |app| {
+                    app.confirm_rename_note();
+                })
             }
             ActivePopup::Search(mut popup) => {
                 let has_title = !popup.title_result_ids.is_empty();
@@ -1789,101 +1838,52 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::IconMode(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 2) {
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::IconMode(popup));
-                        app.select_icon_mode();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_icon_mode_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::IconMode(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::HintBarStyle(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(
-                    &key,
-                    &app.keybinds,
-                    &mut popup.selected,
-                    crate::config::HintBarStyle::ALL.len() - 1,
-                ) {
-                    SelListAction::Up | SelListAction::Down => {
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                        app.select_hint_bar_style();
-                    }
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                        app.select_hint_bar_style();
-                        app.close_hint_bar_style_popup();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_hint_bar_style_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::KeybindPreset(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
-                    SelListAction::Up | SelListAction::Down => {
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                        app.select_keybind_preset();
-                    }
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                        app.select_keybind_preset();
-                        app.close_keybind_preset_popup();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_keybind_preset_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::Sort(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::Sort(popup));
-                        app.select_sort();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_sort_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::Sort(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::CreateFormat(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
-                        app.confirm_create_format();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_create_format_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
-                    }
-                }
-                true
-            }
+            ActivePopup::IconMode(popup) => route_selection_popup(
+                ActivePopup::IconMode(popup),
+                key,
+                app,
+                |_| {},
+                |app| app.select_icon_mode(),
+                |app| app.close_icon_mode_popup(),
+            ),
+            ActivePopup::HintBarStyle(popup) => route_selection_popup(
+                ActivePopup::HintBarStyle(popup),
+                key,
+                app,
+                |app| app.select_hint_bar_style(),
+                |app| {
+                    app.select_hint_bar_style();
+                    app.close_hint_bar_style_popup();
+                },
+                |app| app.close_hint_bar_style_popup(),
+            ),
+            ActivePopup::KeybindPreset(popup) => route_selection_popup(
+                ActivePopup::KeybindPreset(popup),
+                key,
+                app,
+                |app| app.select_keybind_preset(),
+                |app| {
+                    app.select_keybind_preset();
+                    app.close_keybind_preset_popup();
+                },
+                |app| app.close_keybind_preset_popup(),
+            ),
+            ActivePopup::Sort(popup) => route_selection_popup(
+                ActivePopup::Sort(popup),
+                key,
+                app,
+                |_| {},
+                |app| app.select_sort(),
+                |app| app.close_sort_popup(),
+            ),
+            ActivePopup::CreateFormat(popup) => route_selection_popup(
+                ActivePopup::CreateFormat(popup),
+                key,
+                app,
+                |_| {},
+                |app| app.confirm_create_format(),
+                |app| app.close_create_format_popup(),
+            ),
 
             ActivePopup::RemoveTags(mut popup) => {
                 // Handle confirm overlay for "remove all tags"

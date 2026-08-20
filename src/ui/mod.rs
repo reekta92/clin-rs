@@ -43,7 +43,7 @@ pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 #[allow(unused_imports)]
 pub(crate) use list_view::{
-    draw_list_view, get_preview_info, list_detail_line, list_view_layout, section_rects,
+    draw_list_view, get_preview_info, list_view_layout, section_rects,
 };
 pub use popups::*;
 pub use setup::draw_setup_view;
@@ -1749,43 +1749,6 @@ pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
         }
     }
     (scroll_row, scroll_col)
-}
-pub fn line_number_gutter(
-    line_count: usize,
-    cursor_row: usize,
-    scroll_row: usize,
-    height: u16,
-    theme: &AppThemeColors,
-    top_padding: u16,
-) -> Paragraph<'static> {
-    let digits = line_count.max(1).to_string().len();
-    let display_lines = height as usize;
-    let mut gutter_lines: Vec<Line<'static>> = Vec::with_capacity(display_lines);
-    for i in 0..display_lines.min(line_count.saturating_sub(scroll_row)) {
-        let current_line_idx = i + scroll_row;
-        let is_current = current_line_idx == cursor_row;
-        let style = if is_current {
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.muted)
-        };
-        gutter_lines.push(Line::from(vec![Span::styled(
-            format!("{:>width$} ", current_line_idx + 1, width = digits),
-            style,
-        )]));
-    }
-    for _ in gutter_lines.len()..display_lines {
-        gutter_lines.push(Line::from(Span::raw(" ")));
-    }
-    Paragraph::new(gutter_lines)
-        .style(theme.preview_bg_style())
-        .block(
-            Block::default()
-                .padding(Padding::new(0, 0, top_padding, 0))
-                .style(theme.preview_bg_style()),
-        )
 }
 
 pub fn render_textarea_with_theme(

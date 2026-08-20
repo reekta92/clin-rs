@@ -329,31 +329,6 @@ impl MarkdownRenderer {
         }
     }
 
-    pub fn next_page_wrap(&mut self) {
-        let tp = self.total_pages();
-        if tp <= 1 {
-            return;
-        }
-        if self.current_page < tp - 1 {
-            self.current_page += 1;
-        } else {
-            self.current_page = 0;
-        }
-        self.update_viewport_for_current_page();
-    }
-
-    pub fn prev_page_wrap(&mut self) {
-        let tp = self.total_pages();
-        if tp <= 1 {
-            return;
-        }
-        if self.current_page > 0 {
-            self.current_page -= 1;
-        } else {
-            self.current_page = tp - 1;
-        }
-        self.update_viewport_for_current_page();
-    }
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
     }
@@ -384,17 +359,6 @@ impl MarkdownRenderer {
 
     pub fn page_down(&mut self, visible_height: usize) {
         self.scroll_down(visible_height, visible_height);
-    }
-
-    pub fn scroll_top(&mut self) {
-        self.scroll_offset = 0;
-        self.update_viewport_for_scroll();
-    }
-
-    pub fn scroll_bottom(&mut self, visible_height: usize) {
-        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
-        self.scroll_offset = len.saturating_sub(visible_height);
-        self.update_viewport_for_scroll();
     }
 
     pub fn source_to_rendered_line(&self, source_line_0_based: usize) -> usize {

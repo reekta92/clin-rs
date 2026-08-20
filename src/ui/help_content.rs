@@ -353,10 +353,6 @@ const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
         "Editor unfocus",
         "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane.",
     ),
-    tip(
-        "Sync raw editor",
-        "Use {canvas:EditorSyncRaw} to save and sync any pending editor changes to the canvas.",
-    ),
 ];
 const BACKUP_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
@@ -681,11 +677,11 @@ mod tests {
                 tab
             );
 
-            // 2. Verify we have at least 12 suggestions per tab
+            // 2. Verify we have at least 11 suggestions per tab
             let suggestions = tab_suggestions(tab);
             assert!(
-                suggestions.len() >= 12,
-                "Tab {:?} has only {} suggestions, need at least 12",
+                suggestions.len() >= 11,
+                "Tab {:?} has only {} suggestions, need at least 11",
                 tab,
                 suggestions.len()
             );

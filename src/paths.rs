@@ -173,37 +173,9 @@ impl AppPaths {
         self.keybinds_dir().join(format!("{preset}.toml"))
     }
 
-    /// Legacy flat keybind file in the effective config root
-    /// (`<config_dir>/keybinds_<preset>.toml`).
-    pub fn legacy_flat_keybinds_path_for_preset(&self, preset: &str) -> PathBuf {
-        self.config_dir.join(format!("keybinds_{preset}.toml"))
-    }
-
-    /// Legacy generic keybind file (`<config_dir>/keybinds.toml`).
-    pub fn legacy_generic_keybinds_path(&self) -> PathBuf {
-        self.config_dir.join("keybinds.toml")
-    }
-
-    /// Legacy keybinds file in the *default* config root
-    /// (`<default_config_dir>/keybinds_<preset>.toml`).
-    pub fn default_root_legacy_keybinds_path_for_preset(&self, preset: &str) -> PathBuf {
-        self.default_config_dir
-            .join(format!("keybinds_{preset}.toml"))
-    }
-
     /// Themes directory (`<config_dir>/themes/`).
     pub fn themes_dir(&self) -> PathBuf {
         self.config_dir.join("themes")
-    }
-
-    /// Legacy graf file (`<config_dir>/graf.toml`).
-    pub fn legacy_graf_path(&self) -> PathBuf {
-        self.config_dir.join("graf.toml")
-    }
-
-    /// Default-root legacy graf file (`<default_config_dir>/graf.toml`).
-    pub fn default_root_legacy_graf_path(&self) -> PathBuf {
-        self.default_config_dir.join("graf.toml")
     }
 
     /// Legacy key file in the effective config root (`<config_dir>/key.bin`).
@@ -214,16 +186,6 @@ impl AppPaths {
     /// Legacy key file in the default config root (`<default_config_dir>/key.bin`).
     pub fn default_config_root_key_path(&self) -> PathBuf {
         self.default_config_dir.join("key.bin")
-    }
-
-    /// Legacy goals file (`<config_dir>/goals_progress.json`).
-    pub fn legacy_goals_path(&self) -> PathBuf {
-        self.config_dir.join("goals_progress.json")
-    }
-
-    /// Default-root legacy goals file (`<default_config_dir>/goals_progress.json`).
-    pub fn default_root_legacy_goals_path(&self) -> PathBuf {
-        self.default_config_dir.join("goals_progress.json")
     }
 
     /// Legacy note cache in the effective config root (`<config_dir>/note_cache.bin`).
@@ -290,7 +252,6 @@ mod tests {
         assert!(paths.summary_cache_path().is_absolute());
         assert!(paths.keybinds_dir().is_absolute());
         assert!(paths.themes_dir().is_absolute());
-        assert!(paths.legacy_graf_path().is_absolute());
         assert!(paths.scoped_summary_cache_path(&[0; 32]).is_absolute());
     }
 

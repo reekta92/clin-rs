@@ -1,6 +1,5 @@
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::mpsc::Sender;
-use std::time::Instant;
 
 use image::DynamicImage;
 use ratatui_image::picker::Picker;
@@ -11,8 +10,7 @@ use crate::image_render::worker::{DecodedImage, ImageJob};
 
 /// LRU-evicting cache of decoded images and their protocol renderers for one view.
 pub struct ImageCache {
-    map: HashMap<ImageKey, ImageEntry>,
-    limit: usize,
+    map: lru::LruCache<ImageKey, ImageEntry>,
 }
 
 struct ImageEntry {
@@ -20,14 +18,12 @@ struct ImageEntry {
     decoded: Option<DynamicImage>,
     /// Created lazily from decoded + picker; `None` while decode pending.
     proto: Option<StatefulProtocol>,
-    last_used: Instant,
 }
 
 impl ImageCache {
     pub fn new(limit: usize) -> Self {
         Self {
-            map: HashMap::new(),
-            limit: limit.max(1),
+            map: lru::LruCache::new(NonZeroUsize::new(limit.max(1)).expect("limit >= 1")),
         }
     }
 
@@ -41,24 +37,22 @@ impl ImageCache {
         tx: &Sender<ImageJob>,
         _picker: &Picker,
     ) {
-        let entry = self.map.entry(key);
-        use std::collections::hash_map::Entry;
-        if let Entry::Vacant(e) = entry {
-            let _ = tx.send(ImageJob::Decode {
-                key: e.key().clone(),
-                max_dim,
-            });
-            e.insert(ImageEntry {
+        if self.map.contains(&key) {
+            // Touch existing entry
+            let _ = self.map.get_mut(&key);
+            return;
+        }
+        let _ = tx.send(ImageJob::Decode {
+            key: key.clone(),
+            max_dim,
+        });
+        self.map.put(
+            key,
+            ImageEntry {
                 decoded: None,
                 proto: None,
-                last_used: Instant::now(),
-            });
-        } else {
-            // Touch existing entry
-            if let Entry::Occupied(mut e) = entry {
-                e.get_mut().last_used = Instant::now();
-            }
-        }
+            },
+        );
     }
 
     /// Install a completed decode result and build the protocol renderer.
@@ -67,35 +61,12 @@ impl ImageCache {
             let proto = picker.new_resize_protocol(img.image.clone());
             entry.decoded = Some(img.image);
             entry.proto = Some(proto);
-            entry.last_used = Instant::now();
         }
     }
 
     /// Get a mutable reference to the protocol for rendering, if ready.
     pub fn get_proto(&mut self, key: &ImageKey) -> Option<&mut StatefulProtocol> {
-        if let Some(entry) = self.map.get_mut(key) {
-            entry.last_used = Instant::now();
-            entry.proto.as_mut()
-        } else {
-            None
-        }
-    }
-
-    /// Evict least-recently-used entries when over capacity.
-    pub fn evict_stale(&mut self) {
-        while self.map.len() > self.limit {
-            let oldest_key = self
-                .map
-                .iter()
-                .min_by_key(|(_, e)| e.last_used)
-                .map(|(k, _)| k.clone());
-
-            if let Some(k) = oldest_key {
-                self.map.remove(&k);
-            } else {
-                break;
-            }
-        }
+        self.map.get_mut(key).and_then(|entry| entry.proto.as_mut())
     }
 }
 
@@ -138,14 +109,13 @@ mod tests {
 
         // Insert third — should evict k2 (oldest)
         cache.request(k3.clone(), 100, &tx, &picker);
-        cache.evict_stale();
         assert_eq!(cache.map.len(), 2);
-        assert!(cache.map.contains_key(&k1), "k1 should survive");
+        assert!(cache.map.contains(&k1), "k1 should survive");
         assert!(
-            !cache.map.contains_key(&k2),
+            !cache.map.contains(&k2),
             "k2 should be evicted as oldest"
         );
-        assert!(cache.map.contains_key(&k3), "k3 should survive");
+        assert!(cache.map.contains(&k3), "k3 should survive");
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&dir);

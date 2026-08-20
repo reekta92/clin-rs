@@ -1455,8 +1455,7 @@ where
     match ev {
         // Global Ctrl+C — immediately signal exit
         Event::Key(key)
-            if app.host.ctrl_c_quits()
-                && key.kind == KeyEventKind::Press
+            if key.kind == KeyEventKind::Press
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
@@ -1836,7 +1835,7 @@ where
 }
 
 pub use event_source::{ChannelEventSource, CrosstermEventSource, EventSource};
-pub use host::{GuiHost, HostHooks, TuiHost};
+pub use host::TuiHost;
 pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 #[cfg(test)]
 mod tests {

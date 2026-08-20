@@ -142,8 +142,7 @@ where
     let area = Rect::new(0, 0, size.width, size.height);
     match event {
         Event::Key(key)
-            if app.host.ctrl_c_quits()
-                && key.kind == KeyEventKind::Press
+            if key.kind == KeyEventKind::Press
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {

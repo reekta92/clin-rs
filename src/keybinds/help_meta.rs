@@ -140,10 +140,6 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
             group: "Actions",
             description: "Open file location",
         },
-        ListAction::CreatePinstar => HelpMeta {
-            group: "Actions",
-            description: "Create new pinstar drawing",
-        },
         ListAction::ManageSubnotes => HelpMeta {
             group: "Actions",
             description: "Manage subnotes",
@@ -691,10 +687,6 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
         CanvasAction::EditorUnfocus => HelpMeta {
             group: "Interface",
             description: "Exit editor focus",
-        },
-        CanvasAction::EditorSyncRaw => HelpMeta {
-            group: "Interface",
-            description: "Save raw editor changes",
         },
         CanvasAction::MenuClose => HelpMeta {
             group: "Menus & Popups",

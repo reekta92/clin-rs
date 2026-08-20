@@ -856,10 +856,6 @@ impl Default for Keybinds {
             CanvasAction::EditorUnfocus,
             vec![KeyCombo::simple(KeyCode::Esc)],
         );
-        canvas.insert(
-            CanvasAction::EditorSyncRaw,
-            vec![KeyCombo::ctrl(KeyCode::Char('s'))],
-        );
 
         let mut backup = HashMap::new();
         backup.insert(
@@ -2334,7 +2330,7 @@ mod tests {
             let keybinds = preset.base_keybinds();
             for action in DrawAction::iter() {
                 assert!(
-                    keybinds.bindings_for_draw().contains_key(&action),
+                    keybinds.draw.contains_key(&action),
                     "{preset} is missing {action:?}"
                 );
             }
