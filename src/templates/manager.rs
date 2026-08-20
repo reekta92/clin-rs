@@ -115,7 +115,9 @@ impl TemplateManager {
     }
 
     pub fn has_templates(&self) -> bool {
-        self.list().map(|t| !t.is_empty()).unwrap_or(false)
+        fs::read_dir(&self.templates_dir)
+            .map(|mut e| e.next().is_some())
+            .unwrap_or(false)
     }
 
     pub fn create_examples(&self) -> Result<()> {

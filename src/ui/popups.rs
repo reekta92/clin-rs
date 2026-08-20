@@ -457,18 +457,21 @@ pub fn draw_theme_popup(
     frame.render_widget(graph_block, chunks[2]);
     frame.render_widget(graph_para, graph_inner);
 }
-pub fn draw_sort_popup(
+
+fn draw_option_list_popup(
     frame: &mut Frame,
-    popup: &crate::popups::SortPopup,
     area: Rect,
-    theme: &AppThemeColors,
+    title: &str,
+    options: &[&str],
+    selected: usize,
     keybinds: &crate::keybinds::Keybinds,
+    theme: &AppThemeColors,
     mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
         area,
-        "SORT BY",
+        title,
         PopupSize::Medium,
         PopupHints::Keybinds(&[
             (
@@ -491,227 +494,6 @@ pub fn draw_sort_popup(
         theme,
     );
 
-    let options = [
-        "Title (A-Z)",
-        "Title (Z-A)",
-        "Modified (newest)",
-        "Modified (oldest)",
-    ];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_icon_mode_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::IconModePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "ICON MODE",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options = ["Nerd Font", "Unicode", "None"];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_create_format_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::CreateFormatPopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "CREATE NEW",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options = [
-        "Markdown Note (.md)",
-        "Plain Text (.txt)",
-        "Drawing (.draw)",
-        "Canvas (.canvas)",
-    ];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_hint_bar_style_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::HintBarStylePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "HINT BAR STYLE",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options: Vec<&str> = crate::config::HintBarStyle::ALL
-        .iter()
-        .map(|s| s.name())
-        .collect();
     let items: Vec<ListItem> = options
         .iter()
         .map(|opt| ListItem::new(Line::from(Span::raw(*opt))))
@@ -731,7 +513,7 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    let state = render_list_with_selection(frame, list, content_area, Some(selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -746,6 +528,102 @@ pub fn draw_hint_bar_style_popup(
         theme.hover_style(),
     );
 }
+
+pub fn draw_sort_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::SortPopup,
+    area: Rect,
+    theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
+) {
+    let options = [
+        "Title (A-Z)",
+        "Title (Z-A)",
+        "Modified (newest)",
+        "Modified (oldest)",
+    ];
+    draw_option_list_popup(
+        frame,
+        area,
+        "SORT BY",
+        &options,
+        popup.selected,
+        keybinds,
+        theme,
+        mouse_pos,
+    );
+}
+pub fn draw_icon_mode_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::IconModePopup,
+    area: Rect,
+    theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
+) {
+    let options = ["Nerd Font", "Unicode", "None"];
+    draw_option_list_popup(
+        frame,
+        area,
+        "ICON MODE",
+        &options,
+        popup.selected,
+        keybinds,
+        theme,
+        mouse_pos,
+    );
+}
+
+pub fn draw_create_format_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::CreateFormatPopup,
+    area: Rect,
+    theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
+) {
+    let options = [
+        "Markdown Note (.md)",
+        "Plain Text (.txt)",
+        "Drawing (.draw)",
+        "Canvas (.canvas)",
+    ];
+    draw_option_list_popup(
+        frame,
+        area,
+        "CREATE NEW",
+        &options,
+        popup.selected,
+        keybinds,
+        theme,
+        mouse_pos,
+    );
+}
+pub fn draw_hint_bar_style_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::HintBarStylePopup,
+    area: Rect,
+    theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
+) {
+    let options: Vec<&str> = crate::config::HintBarStyle::ALL
+        .iter()
+        .map(|s| s.name())
+        .collect();
+    draw_option_list_popup(
+        frame,
+        area,
+        "HINT BAR STYLE",
+        &options,
+        popup.selected,
+        keybinds,
+        theme,
+        mouse_pos,
+    );
+}
+
 pub fn draw_keybind_preset_popup(
     frame: &mut Frame,
     popup: &crate::popups::KeybindPresetPopup,
@@ -754,70 +632,21 @@ pub fn draw_keybind_preset_popup(
     keybinds: &crate::keybinds::Keybinds,
     mouse_pos: Option<(u16, u16)>,
 ) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "KEYBIND PRESET",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
     let options = [
         "default \u{2014} Default CUA",
         "helix \u{2014} Space leader",
         "vim \u{2014} : commands",
         "emacs \u{2014} Ctrl-x prefix",
     ];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
+    draw_option_list_popup(
         frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
+        area,
+        "KEYBIND PRESET",
+        &options,
+        popup.selected,
+        keybinds,
+        theme,
         mouse_pos,
-        theme.hover_style(),
     );
 }
 

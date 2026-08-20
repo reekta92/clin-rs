@@ -36,6 +36,35 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
+fn suspend_for_external() {
+    if let Err(e) = crossterm::terminal::disable_raw_mode() {
+        eprintln!("Failed to disable raw mode: {e}");
+    }
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::LeaveAlternateScreen,
+        crossterm::event::DisableMouseCapture,
+        crossterm::event::DisableBracketedPaste
+    ) {
+        eprintln!("Failed to reset terminal: {e}");
+    }
+}
+
+fn resume_from_external() {
+    if let Err(e) = crossterm::terminal::enable_raw_mode() {
+        eprintln!("Failed to enable raw mode: {e}");
+    }
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::EnterAlternateScreen,
+        crossterm::event::EnableMouseCapture,
+        crossterm::event::EnableBracketedPaste,
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+    ) {
+        eprintln!("Failed to restore terminal: {e}");
+    }
+}
+
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
 pub const VIRTUAL_SMART_PATH: &str = "__clin_virtual__/smart";
@@ -348,14 +377,12 @@ pub struct App {
     pub preview_encryption: bool,
     pub mouse_pos: Option<(u16, u16)>,
     pub preview_position: crate::config::PreviewPosition,
-    pub calendar_position: crate::config::CalendarPosition,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
     pub mouse_enabled: bool,
     pub date_format: String,
     pub last_auto_backup: Option<std::time::Instant>,
     pub return_mode: Option<ViewMode>,
-    pub host: crate::host::TuiHost,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_state: Option<crate::graf::app::GrafAppState>,
     pub draw_state: Option<crate::draw::app::DrawAppState>,
@@ -508,7 +535,6 @@ impl App {
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
-        list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
         list.pinned_folders = bootstrap_config
             .list
@@ -603,7 +629,6 @@ impl App {
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
-            calendar_position: bootstrap_config.list.calendar_position,
             config_errors,
             graph_state: None,
             draw_state: None,
@@ -615,7 +640,6 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
-            host: crate::host::TuiHost,
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
@@ -766,7 +790,6 @@ impl App {
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
-        list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
         list.pinned_folders = bootstrap_config
             .list
@@ -869,7 +892,6 @@ impl App {
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
-            calendar_position: bootstrap_config.list.calendar_position,
             config_errors,
             graph_state: None,
             draw_state: None,
@@ -881,7 +903,6 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
-            host: crate::host::TuiHost,
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
@@ -1418,7 +1439,7 @@ impl App {
         command: &str,
         extra_args: &[String],
     ) -> (std::io::Result<std::process::ExitStatus>, String) {
-        self.host.suspend_for_external();
+        suspend_for_external();
 
         let parts: Vec<&str> = command.split_whitespace().collect();
         let (program, cmd_args) = parts
@@ -1434,7 +1455,7 @@ impl App {
         }
         let result = command.status();
 
-        self.host.resume_from_external();
+        resume_from_external();
         self.needs_full_redraw = true;
         (result, program.to_string())
     }

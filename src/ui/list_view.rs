@@ -905,7 +905,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.preview_fullscreen,
         app.list.preview_width_ratio,
         app.list.calendar_height,
-        app.calendar_position,
+        app.config.list.calendar_position,
     );
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
@@ -1733,7 +1733,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if !path.exists() {
                     continue;
                 }
-                let key = crate::image_render::ImageKey { path, mtime: 0 };
+                let key = crate::image_render::ImageKey { path };
                 if app.list.image_cache.get_proto(&key).is_none() {
                     app.list
                         .image_cache
@@ -1772,10 +1772,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         {
             let inner_pad = 2_u16;
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
-            let key = crate::image_render::ImageKey {
-                path: path.clone(),
-                mtime: 0,
-            };
+            let key = crate::image_render::ImageKey { path: path.clone() };
             if app.list.image_cache.get_proto(&key).is_none() {
                 app.list
                     .image_cache
@@ -1821,7 +1818,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
     if let Some(cal_rect) = calendar_area {
-        let bottom_border = app.calendar_position == crate::config::CalendarPosition::Top;
+        let bottom_border =
+            app.config.list.calendar_position == crate::config::CalendarPosition::Top;
         let active = app.active_strip_sections_for(cal_rect.width);
         let rects = section_rects(cal_rect, &active);
         for (sec, r) in active.iter().zip(rects.iter().copied()) {
@@ -2012,7 +2010,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
     if app.layout_edit && app.list.calendar_enabled {
-        let hdiv_y = match app.calendar_position {
+        let hdiv_y = match app.config.list.calendar_position {
             crate::config::CalendarPosition::Bottom => list_area.y + list_area.height,
             crate::config::CalendarPosition::Top => list_area.y.saturating_sub(1),
         };

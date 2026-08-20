@@ -1,58 +1,61 @@
-//! Host-provided input source. crossterm `Event` is the app's input lingua
-//! franca for both the TUI and GUI hosts.
+//! Input source: crossterm directly, or fed from an mpsc channel (tests,
+//! external editor pumping).
 
-pub trait EventSource {
-    fn poll(&mut self, timeout: std::time::Duration) -> std::io::Result<bool>;
-    fn read(&mut self) -> std::io::Result<crossterm::event::Event>;
+use std::collections::VecDeque;
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
+
+use crossterm::event::Event;
+
+pub enum EventSource {
+    Crossterm,
+    Channel {
+        rx: Receiver<Event>,
+        stashed: VecDeque<Event>,
+    },
 }
 
-/// TUI host: delegates to crossterm's queue.
-pub struct CrosstermEventSource;
-impl EventSource for CrosstermEventSource {
-    fn poll(&mut self, timeout: std::time::Duration) -> std::io::Result<bool> {
-        crossterm::event::poll(timeout)
-    }
-    fn read(&mut self) -> std::io::Result<crossterm::event::Event> {
-        crossterm::event::read()
-    }
-}
-
-/// GUI host: fed from an mpsc channel by the windowing thread.
-pub struct ChannelEventSource {
-    rx: std::sync::mpsc::Receiver<crossterm::event::Event>,
-    stashed: std::collections::VecDeque<crossterm::event::Event>,
-}
-impl ChannelEventSource {
-    pub fn new(rx: std::sync::mpsc::Receiver<crossterm::event::Event>) -> Self {
-        Self {
+impl EventSource {
+    pub fn channel(rx: Receiver<Event>) -> Self {
+        Self::Channel {
             rx,
-            stashed: std::collections::VecDeque::new(),
+            stashed: VecDeque::new(),
         }
     }
-}
-impl EventSource for ChannelEventSource {
-    fn poll(&mut self, timeout: std::time::Duration) -> std::io::Result<bool> {
-        while let Ok(ev) = self.rx.try_recv() {
-            self.stashed.push_back(ev);
-        }
-        if !self.stashed.is_empty() {
-            return Ok(true);
-        }
-        match self.rx.recv_timeout(timeout) {
-            Ok(ev) => {
-                self.stashed.push_back(ev);
-                Ok(true)
+
+    pub fn poll(&mut self, timeout: Duration) -> std::io::Result<bool> {
+        match self {
+            Self::Crossterm => crossterm::event::poll(timeout),
+            Self::Channel { rx, stashed } => {
+                while let Ok(ev) = rx.try_recv() {
+                    stashed.push_back(ev);
+                }
+                if !stashed.is_empty() {
+                    return Ok(true);
+                }
+                match rx.recv_timeout(timeout) {
+                    Ok(ev) => {
+                        stashed.push_back(ev);
+                        Ok(true)
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                    | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(false),
+                }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-            | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(false),
         }
     }
-    fn read(&mut self) -> std::io::Result<crossterm::event::Event> {
-        while let Ok(ev) = self.rx.try_recv() {
-            self.stashed.push_back(ev);
+
+    pub fn read(&mut self) -> std::io::Result<Event> {
+        match self {
+            Self::Crossterm => crossterm::event::read(),
+            Self::Channel { rx, stashed } => {
+                while let Ok(ev) = rx.try_recv() {
+                    stashed.push_back(ev);
+                }
+                stashed.pop_front().ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::WouldBlock, "EventSource channel empty")
+                })
+            }
         }
-        self.stashed.pop_front().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::WouldBlock, "ChannelEventSource empty")
-        })
     }
 }

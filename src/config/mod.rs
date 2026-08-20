@@ -9,14 +9,12 @@ use anyhow::{Context, Result};
 use parking_lot::Mutex;
 
 pub mod custom_themes;
-pub mod de;
-pub mod defaults;
 pub mod merge;
 pub mod path;
 pub mod structs;
 pub mod types;
 
-pub use {custom_themes::*, de::*, defaults::*, merge::*, path::*, structs::*, types::*};
+pub use {custom_themes::*, merge::*, path::*, structs::*, types::*};
 
 #[path = "../graf/themes.rs"]
 pub mod themes;
@@ -621,7 +619,7 @@ impl ClinConfig {
         secs.retain(|s| seen.insert(*s));
         secs.truncate(2);
         if secs.is_empty() {
-            secs.extend(default_sections());
+            secs.extend([NotesSection::Calendar, NotesSection::Goals]);
         }
     }
 
@@ -983,7 +981,7 @@ show_status_bar = false
     fn default_config_template_parses_and_calendar_visible_by_default() {
         // The embedded default template is what a first-run user gets. It must
         // be valid ClinConfig TOML and ship with the calendar visible.
-        let config: ClinConfig = toml::from_str(merge::default_config_content()).unwrap();
+        let config: ClinConfig = toml::from_str(&merge::default_config_content()).unwrap();
         assert!(config.list.calendar_enabled);
         // Sanity: a few other shipped defaults still hold.
         assert!(config.list.preview_enabled);
@@ -996,7 +994,7 @@ show_status_bar = false
 
     #[test]
     fn test_goals_config_deserialization() {
-        let config: ClinConfig = toml::from_str(merge::default_config_content()).unwrap();
+        let config: ClinConfig = toml::from_str(&merge::default_config_content()).unwrap();
         assert!(config.goals.enabled);
         assert_eq!(config.goals.word_goal, 500);
         assert_eq!(config.goals.note_goal, 3);
@@ -1009,7 +1007,18 @@ show_status_bar = false
 
     #[test]
     fn test_merge_toml_value_preserves_comments() {
-        let initial_toml = merge::default_config_content();
+        let initial_toml = r#"# Clin configuration
+[core]
+# Enable mouse support (clicking, scrolling, panning).
+mouse_enabled = true
+
+[ui]
+# Show the status bar at the bottom of the screen.
+show_status_bar = true
+
+[list]
+preview_enabled = true
+"#;
 
         let mut doc = initial_toml.parse::<toml_edit::DocumentMut>().unwrap();
 
@@ -1064,10 +1073,14 @@ grid_color = "#222222"
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 
+        std::fs::write(
+            &config_file_path,
+            "# Enable mouse support (clicking, scrolling, panning).\n[core]\nmouse_enabled = true\n",
+        )
+        .unwrap();
         set_config_path_override(config_file_path.clone());
 
         let mut config = ClinConfig::load().0.unwrap();
-        assert!(config_file_path.exists());
 
         let initial_content = fs::read_to_string(&config_file_path).unwrap();
         assert!(initial_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
@@ -1250,7 +1263,7 @@ sections = ["draw", "draw", "graf"]
     fn test_default_config_content_roundtrip() {
         // The default config template must parse and produce defaults matching Rust impl
         let content = merge::default_config_content();
-        let parsed: ClinConfig = toml::from_str(content).unwrap();
+        let parsed: ClinConfig = toml::from_str(&content).unwrap();
         let default = ClinConfig::default();
 
         // Compare field-by-field (some fields have #[serde(skip)] or special comparison)
@@ -1273,7 +1286,7 @@ sections = ["draw", "draw", "graf"]
         let content = merge::default_config_content();
         // Must parse without errors
         let value: toml::Value =
-            toml::from_str(content).expect("default_config_content must be valid TOML");
+            toml::from_str(&content).expect("default_config_content must be valid TOML");
         // Must contain all expected sections
         let table = value.as_table().expect("must be a table");
         for section in &[

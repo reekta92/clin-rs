@@ -28,20 +28,13 @@ pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
 
-#[allow(unused_imports)]
-pub(crate) use camera::{
-    ZoomDir, clamp_world, nearest_in_dir, nearest_to_point, pan_centered, zoom_step,
-};
 pub(crate) use canvas_grid::{CanvasGridProjection, CanvasGridState, draw_canvas_grid};
-#[allow(unused_imports)]
 pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
-#[allow(unused_imports)]
-pub(crate) use canvas_overlay::{MarqueeDragState, draw_canvas_rect_filled};
+pub(crate) use canvas_overlay::MarqueeDragState;
 pub(crate) use canvas_selection::CanvasSelection;
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
-#[allow(unused_imports)]
 pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout, section_rects};
 pub use popups::*;
 pub use setup::draw_setup_view;

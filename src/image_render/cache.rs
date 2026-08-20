@@ -1,21 +1,17 @@
 use std::num::NonZeroUsize;
 use std::sync::mpsc::Sender;
 
-use image::DynamicImage;
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
 
 use crate::image_render::ImageKey;
 use crate::image_render::worker::{DecodedImage, ImageJob};
-
 /// LRU-evicting cache of decoded images and their protocol renderers for one view.
 pub struct ImageCache {
     map: lru::LruCache<ImageKey, ImageEntry>,
 }
 
 struct ImageEntry {
-    /// Set immediately on first request; `Some` once decode worker returns.
-    decoded: Option<DynamicImage>,
     /// Created lazily from decoded + picker; `None` while decode pending.
     proto: Option<StatefulProtocol>,
 }
@@ -27,9 +23,8 @@ impl ImageCache {
         }
     }
 
-    /// Request an image for display. If the key is absent (or mtime changed),
-    /// sends a decode job to the worker. Call `install_decoded` when the
-    /// result arrives.
+    /// Request an image for display. If the key is absent, sends a decode job
+    /// to the worker. Call `install_decoded` when the result arrives.
     pub fn request(
         &mut self,
         key: ImageKey,
@@ -42,24 +37,17 @@ impl ImageCache {
             let _ = self.map.get_mut(&key);
             return;
         }
-        let _ = tx.send(ImageJob::Decode {
+        let _ = tx.send(ImageJob {
             key: key.clone(),
             max_dim,
         });
-        self.map.put(
-            key,
-            ImageEntry {
-                decoded: None,
-                proto: None,
-            },
-        );
+        self.map.put(key, ImageEntry { proto: None });
     }
 
     /// Install a completed decode result and build the protocol renderer.
     pub fn install_decoded(&mut self, img: DecodedImage, picker: &Picker) {
         if let Some(entry) = self.map.get_mut(&img.key) {
-            let proto = picker.new_resize_protocol(img.image.clone());
-            entry.decoded = Some(img.image);
+            let proto = picker.new_resize_protocol(img.image);
             entry.proto = Some(proto);
         }
     }
@@ -84,18 +72,9 @@ mod tests {
         let path_b = dir.join("b.png");
         let path_c = dir.join("c.png");
 
-        let k1 = ImageKey {
-            path: path_a,
-            mtime: 1,
-        };
-        let k2 = ImageKey {
-            path: path_b,
-            mtime: 2,
-        };
-        let k3 = ImageKey {
-            path: path_c,
-            mtime: 3,
-        };
+        let k1 = ImageKey { path: path_a };
+        let k2 = ImageKey { path: path_b };
+        let k3 = ImageKey { path: path_c };
 
         // Insert two
         let (tx, _) = std::sync::mpsc::channel();

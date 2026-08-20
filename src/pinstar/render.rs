@@ -27,16 +27,7 @@ fn is_image_ext(path: &str) -> bool {
 }
 fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     match color_code {
-        Some(s) if s.starts_with('#') => {
-            if s.len() == 7 {
-                let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-                let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-                let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-                Color::Rgb(r, g, b)
-            } else {
-                theme.accent
-            }
-        }
+        Some(s) if s.starts_with('#') => crate::config::parse_hex_color(s).unwrap_or(theme.accent),
         Some(s) => {
             if let Ok(idx) = s.parse::<usize>()
                 && idx >= 1
@@ -61,29 +52,17 @@ fn get_edge_color(color: Option<&str>, selected: bool, theme: &AppThemeColors) -
     if selected {
         return theme.accent;
     }
-    match color {
-        Some(s) if s.starts_with('#') && s.len() == 7 => {
-            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-            Color::Rgb(r, g, b)
-        }
-        _ => theme.muted,
-    }
+    color
+        .and_then(crate::config::parse_hex_color)
+        .unwrap_or(theme.muted)
 }
 
 /// Color for an edge's text in the overlay: the edge's own color when set,
 /// else the default text color.
 fn edge_overlay_color(color: Option<&str>, theme: &AppThemeColors) -> Color {
-    match color {
-        Some(s) if s.starts_with('#') && s.len() == 7 => {
-            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-            Color::Rgb(r, g, b)
-        }
-        _ => theme.text,
-    }
+    color
+        .and_then(crate::config::parse_hex_color)
+        .unwrap_or(theme.text)
 }
 
 /// Dimmed variant of a color, so "(no title)" text stays muted but still
@@ -575,7 +554,6 @@ pub fn draw_pinstar_view(
             let picker = state.image_picker.as_ref().expect("checked above");
             let key = crate::image_render::ImageKey {
                 path: std::path::PathBuf::from(&file_path),
-                mtime: 0,
             };
             if let Some(tx) = &state.image_decode_tx {
                 state.image_cache.request(key.clone(), 2048, tx, picker);

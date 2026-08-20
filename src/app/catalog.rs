@@ -77,13 +77,11 @@ pub enum CatalogEvent {
     },
 }
 
-#[allow(dead_code)]
 pub(crate) struct BlockingCatalogLoad {
     pub summaries: Vec<NoteSummary>,
     pub map: HashMap<String, (FileStamp, NoteSummary)>,
     pub folders: Vec<String>,
     pub complete: bool,
-    pub warnings: Vec<String>,
 }
 
 pub(crate) fn load_notes_blocking(
@@ -120,7 +118,6 @@ pub(crate) fn load_notes_blocking(
         map,
         folders: scan.folders,
         complete: scan.complete,
-        warnings: scan.warnings,
     })
 }
 

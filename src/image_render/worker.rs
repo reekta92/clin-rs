@@ -5,8 +5,9 @@ use image::DynamicImage;
 
 use crate::image_render::ImageKey;
 
-pub enum ImageJob {
-    Decode { key: ImageKey, max_dim: u32 },
+pub struct ImageJob {
+    pub key: ImageKey,
+    pub max_dim: u32,
 }
 
 pub struct DecodedImage {
@@ -51,14 +52,12 @@ pub fn spawn() -> (Sender<ImageJob>, Receiver<Result<DecodedImage>>) {
 
     (tx, result_rx)
 }
-
 fn process_job(job: ImageJob, result_tx: &Sender<Result<DecodedImage>>) {
-    match job {
-        ImageJob::Decode { key, max_dim } => {
-            let result = decode_image(&key, max_dim);
-            let _ = result_tx.send(result.map(|img| DecodedImage { key, image: img }));
-        }
-    }
+    let result = decode_image(&job.key, job.max_dim);
+    let _ = result_tx.send(result.map(|img| DecodedImage {
+        key: job.key,
+        image: img,
+    }));
 }
 
 fn decode_image(key: &ImageKey, max_dim: u32) -> Result<DynamicImage> {

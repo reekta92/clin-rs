@@ -51,6 +51,7 @@ impl EditorDocument {
             change: Some(DocumentChange::Full),
         }
     }
+
     #[allow(dead_code)]
     pub(crate) fn from_lines(lines: impl IntoIterator<Item = String>) -> Self {
         let textarea = TextArea::from(lines.into_iter().collect::<Vec<_>>());
@@ -86,10 +87,6 @@ impl EditorDocument {
     pub(crate) fn line_count(&self) -> usize {
         self.textarea.lines().len()
     }
-    #[allow(dead_code)]
-    pub(crate) fn line(&self, row: usize) -> Option<&str> {
-        self.textarea.lines().get(row).map(String::as_str)
-    }
 
     pub(crate) fn cursor(&self) -> TextPosition {
         let cursor = self.textarea.cursor();
@@ -121,6 +118,7 @@ impl EditorDocument {
     pub(crate) fn insert_str(&mut self, text: impl AsRef<str>) -> EditEffect {
         self.mutate(|textarea| textarea.insert_str(text))
     }
+
     #[allow(dead_code)]
     pub(crate) fn delete_str(&mut self, chars: usize) -> EditEffect {
         self.mutate(|textarea| textarea.delete_str(chars))

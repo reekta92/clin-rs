@@ -370,7 +370,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         if !path.exists() {
                             continue;
                         }
-                        let key = crate::image_render::ImageKey { path, mtime: 0 };
+                        let key = crate::image_render::ImageKey { path };
                         if app.editor.image_cache.get_proto(&key).is_none() {
                             app.editor
                                 .image_cache

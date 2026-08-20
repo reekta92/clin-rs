@@ -380,7 +380,7 @@ fn layout_static_components(
     let spacing = if spacing.is_finite() && spacing > 0.0 {
         spacing
     } else {
-        crate::config::defaults::default_ideal_distance()
+        80.0
     };
 
     for c in components.iter_mut() {

@@ -5,15 +5,14 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use crate::app::{App, EditFocus, ViewMode};
-use crate::event_source::EventSource;
 use crate::text_edit::MouseTextSelection;
 
 /// Run Edit mode without generic application queue draining or unconditional
 /// redraws. The session remains in-process and mutates the same `App`.
-pub(crate) fn run_editor_session<B: ratatui::backend::Backend, S: EventSource>(
+pub(crate) fn run_editor_session<B: ratatui::backend::Backend>(
     terminal: &mut ratatui::Terminal<B>,
     app: &mut App,
-    events: &mut S,
+    events: &mut crate::event_source::EventSource,
     pre_draw_hook: &mut dyn FnMut(&mut App) -> bool,
 ) -> Result<()>
 where
@@ -214,7 +213,7 @@ mod tests {
         sender
             .send(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
             .expect("send exit");
-        let mut events = crate::event_source::ChannelEventSource::new(receiver);
+        let mut events = crate::event_source::EventSource::channel(receiver);
         let mut terminal = ratatui::Terminal::new(TestBackend::new(100, 30)).expect("terminal");
         let mut draws = 0;
         run_editor_session(&mut terminal, &mut app, &mut events, &mut |_| {
