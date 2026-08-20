@@ -5,7 +5,6 @@ use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 
-
 #[cfg(test)]
 use parking_lot::Mutex;
 
@@ -132,8 +131,8 @@ impl ClinConfig {
     /// Resolves Documents via XDG user dirs (Linux), `~/Documents` (macOS) or the
     /// known folder (Windows); falls back to `$HOME/Documents` when unresolvable.
     pub fn default_storage_path() -> Result<PathBuf> {
-        let user_dirs = directories::UserDirs::new()
-            .context("could not determine home directory")?;
+        let user_dirs =
+            directories::UserDirs::new().context("could not determine home directory")?;
         let documents = user_dirs
             .document_dir()
             .map(Path::to_path_buf)

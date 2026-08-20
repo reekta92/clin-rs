@@ -549,8 +549,6 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             let notes_dst = to.clone();
             let templates_dst = to.join(".clin").join("templates");
 
-
-
             // Migrate notes
             if notes_src.exists() && notes_src.is_dir() {
                 fs::create_dir_all(&notes_dst)?;

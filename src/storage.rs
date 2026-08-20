@@ -272,8 +272,7 @@ impl Storage {
         let notes_dir = data_dir.clone();
         let templates_dir = data_dir.join(".clin").join("templates");
 
-        fs::create_dir_all(&templates_dir)
-            .context("failed to create .clin/templates directory")?;
+        fs::create_dir_all(&templates_dir).context("failed to create .clin/templates directory")?;
         // --- Key migration to AppPaths canonical location ---
         let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
         let target_key_path = app_paths.key_path(); // <data_local_dir>/key.bin
