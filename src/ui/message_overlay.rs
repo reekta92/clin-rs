@@ -145,7 +145,7 @@ pub fn draw_message_overlay(
         dropdown_area,
     );
     // --- Render lines: alternating bg per MESSAGE, not per line ---
-    let alt_bg = darken(base_color, 36);
+    let alt_bg = crate::app_theme::darken(base_color, 36);
 
     for (i, wl) in wrapped_lines
         .iter()
@@ -184,14 +184,3 @@ pub fn draw_message_overlay(
     }
 }
 
-/// Darken an RGB color by subtracting `delta` from each channel.
-fn darken(c: Color, delta: u8) -> Color {
-    match c {
-        Color::Rgb(r, g, b) => Color::Rgb(
-            r.saturating_sub(delta),
-            g.saturating_sub(delta),
-            b.saturating_sub(delta),
-        ),
-        other => other,
-    }
-}

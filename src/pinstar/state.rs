@@ -273,9 +273,6 @@ impl PinstarState {
         Ok(())
     }
 
-    pub fn all_selected_node_ids(&self) -> std::collections::HashSet<String> {
-        self.selection.all()
-    }
     pub fn select_nodes_in_rect(&mut self, x1: f64, y1: f64, x2: f64, y2: f64) {
         let (min_x, max_x) = if x1 < x2 { (x1, x2) } else { (x2, x1) };
         let (min_y, max_y) = if y1 < y2 { (y1, y2) } else { (y2, y1) };

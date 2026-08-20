@@ -514,20 +514,15 @@ impl ClinConfig {
                 .context("default config must be valid TOML")?
         };
 
-        let self_toml_str = toml::to_string(self).context("failed to serialize config")?;
-        let self_value: toml::Value =
-            toml::from_str(&self_toml_str).context("serialized config must be valid TOML")?;
-
-        if let toml::Value::Table(toml_tbl) = self_value {
-            for (k, v) in toml_tbl {
-                if doc.contains_key(&k) {
-                    if let Some(item) = doc.get_mut(&k) {
-                        merge::merge_toml_value(item, &v);
-                    } else {
-                        continue;
-                    }
-                } else {
-                    doc.insert(&k, merge::toml_value_to_item(&v));
+        let self_doc: toml_edit::DocumentMut = toml_edit::ser::to_string_pretty(self)
+            .context("failed to serialize config")?
+            .parse()
+            .context("serialized config must be valid TOML")?;
+        for (k, item) in self_doc.iter() {
+            match doc.get_mut(k) {
+                Some(existing) => merge::merge_edit_item(existing, item.clone()),
+                None => {
+                    doc.insert(k, item.clone());
                 }
             }
         }
@@ -992,48 +987,6 @@ show_status_bar = false
         assert!(empty_config.goals.enabled);
         assert_eq!(empty_config.goals.word_goal, 500);
         assert_eq!(empty_config.goals.note_goal, 3);
-    }
-
-    #[test]
-    fn test_merge_toml_value_preserves_comments() {
-        let initial_toml = r#"# Clin configuration
-[core]
-# Enable mouse support (clicking, scrolling, panning).
-mouse_enabled = true
-
-[ui]
-# Show the status bar at the bottom of the screen.
-show_status_bar = true
-
-[list]
-preview_enabled = true
-"#;
-
-        let mut doc = initial_toml.parse::<toml_edit::DocumentMut>().unwrap();
-
-        let mut config = ClinConfig::default();
-        config.core.mouse_enabled = false;
-        config.ui.show_status_bar = false;
-        config.list.preview_enabled = false;
-
-        let self_toml_str = toml::to_string(&config).unwrap();
-        let self_value: toml::Value = toml::from_str(&self_toml_str).unwrap();
-
-        if let toml::Value::Table(toml_tbl) = self_value {
-            for (k, v) in toml_tbl {
-                if doc.contains_key(&k) {
-                    merge::merge_toml_value(doc.get_mut(&k).unwrap(), &v);
-                }
-            }
-        }
-
-        let merged_str = doc.to_string();
-        assert!(merged_str.contains("# Clin configuration"));
-        assert!(merged_str.contains("# Enable mouse support (clicking, scrolling, panning)."));
-        assert!(merged_str.contains("# Show the status bar at the bottom of the screen."));
-        assert!(merged_str.contains("mouse_enabled = false"));
-        assert!(merged_str.contains("show_status_bar = false"));
-        assert!(merged_str.contains("preview_enabled = false"));
     }
 
     #[test]

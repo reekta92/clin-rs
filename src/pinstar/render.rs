@@ -551,12 +551,11 @@ pub fn draw_pinstar_view(
                 crate::pinstar::data::CanvasNode::File(n) => n.file.clone(),
                 _ => String::new(),
             };
-            let picker = state.image_picker.as_ref().expect("checked above");
             let key = crate::image_render::ImageKey {
                 path: std::path::PathBuf::from(&file_path),
             };
             if let Some(tx) = &state.image_decode_tx {
-                state.image_cache.request(key.clone(), 2048, tx, picker);
+                state.image_cache.request(key.clone(), 2048, tx);
             }
             if let Some(proto) = state.image_cache.get_proto(&key)
                 && node_rect.width > 2

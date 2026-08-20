@@ -19,10 +19,6 @@ const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
 /// Shared between renderer and mouse handler to prevent drift.
 pub(crate) const SUBNOTE_GRAPH_BASE_SPAN: f64 = 15.0;
 
-/// Viewport base span for FolderGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
-/// Shared between renderer and mouse handler to prevent drift.
-pub(crate) const FOLDER_GRAPH_BASE_SPAN: f64 = 15.0;
-
 /// A hollow (outlined) circle drawn on a ratatui Canvas via Line segments.
 struct HollowCircle {
     cx: f64,
@@ -319,173 +315,24 @@ pub(crate) fn orbit_positions(n: usize, r: f64) -> Vec<(f64, f64)> {
         })
         .collect()
 }
-/// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
-pub fn render_subnote_graph_static(
-    frame: &mut Frame,
-    rect: Rect,
-    parent_title: &str,
-    subnotes: &[crate::storage::SubNote],
-    theme: &crate::app_theme::AppThemeColors,
-) {
-    use ratatui::symbols::Marker;
-    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
-
-    let zoom = 1.0;
-    let pan_x = 0.0;
-    let pan_y = 0.0;
-
-    // Background
-    let bg = theme.preview_bg_style();
-    frame.render_widget(Block::default().style(bg), rect);
-
-    if subnotes.is_empty() {
-        let line = Line::from(vec![Span::styled(
-            "No subnotes",
-            Style::default().fg(theme.muted),
-        )]);
-        let p = ratatui::widgets::Paragraph::new(line)
-            .style(theme.preview_bg_style())
-            .alignment(ratatui::layout::Alignment::Center);
-        frame.render_widget(p, rect);
-        return;
-    }
-
-    // World-coordinate layout: parent at origin, subnotes on a circle.
-    let layout_r = 10.0_f64;
-    let parent_r = 3.0_f64;
-    let sub_r = 1.5_f64;
-    let positions = orbit_positions(subnotes.len(), layout_r);
-
-    // Viewport bounds from zoom/pan.
-    let aspect = rect.width as f64 / rect.height as f64;
-    let cell_aspect = 2.0; // terminal cells are ~2× taller than wide
-    let span_x = SUBNOTE_GRAPH_BASE_SPAN / zoom;
-    let span_y = span_x * cell_aspect / aspect;
-    let x_bounds = [pan_x - span_x, pan_x + span_x];
-    let y_bounds = [pan_y - span_y, pan_y + span_y];
-
-    // For on-screen sizing of circles and title offsets.
-    let cells_per_world = rect.width as f64 / (2.0 * span_x);
-
-    // Build shapes.
-    let mut edges: Vec<CanvasLine> = Vec::new();
-    for &(sx, sy) in &positions {
-        let (x1, y1, x2, y2) = shorten_segment_to_borders(0.0, 0.0, parent_r, sx, sy, sub_r);
-        edges.push(CanvasLine {
-            x1,
-            y1,
-            x2,
-            y2,
-            color: theme.border,
-        });
-    }
-    // Wikilink edges: subnote -> subnote.
-    let title_to_idx: std::collections::HashMap<String, usize> = subnotes
-        .iter()
-        .enumerate()
-        .map(|(i, s)| (s.title.to_lowercase(), i))
-        .collect();
-    let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    for (i, sub) in subnotes.iter().enumerate() {
-        let (sx, sy) = positions[i];
-        for link in crate::storage::extract_wikilinks(&sub.content) {
-            if let Some(&j) = title_to_idx.get(&link.to_lowercase())
-                && j != i
-            {
-                let key = if i < j { (i, j) } else { (j, i) };
-                if drawn.insert(key) {
-                    let (tx, ty) = positions[j];
-                    let (x1, y1, x2, y2) = shorten_segment_to_borders(sx, sy, sub_r, tx, ty, sub_r);
-                    edges.push(CanvasLine {
-                        x1,
-                        y1,
-                        x2,
-                        y2,
-                        color: theme.success,
-                    });
-                }
-            }
-        }
-    }
-    let parent_circle = HollowCircle {
-        cx: 0.0,
-        cy: 0.0,
-        radius: parent_r,
-        color: theme.accent,
-    };
-    let sub_circles: Vec<HollowCircle> = positions
-        .iter()
-        .map(|&(sx, sy)| HollowCircle {
-            cx: sx,
-            cy: sy,
-            radius: sub_r,
-            color: theme.tag,
-        })
-        .collect();
-
-    // Render Canvas with Braille marker.
-    let canvas = Canvas::default()
-        .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
-        .block(Block::default().style(bg))
-        .marker(Marker::Braille)
-        .x_bounds(x_bounds)
-        .y_bounds(y_bounds)
-        .paint(|ctx| {
-            for edge in &edges {
-                ctx.draw(edge);
-            }
-            ctx.draw(&parent_circle);
-            for sc in &sub_circles {
-                ctx.draw(sc);
-            }
-        });
-    frame.render_widget(canvas, rect);
-
-    // Post-canvas: world -> screen transform for text overlay.
-    let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
-        let col =
-            rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
-        let row = rect.y as f64 + rect.height as f64
-            - (wy - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * rect.height as f64;
-        (col, row)
-    };
-    let buf = frame.buffer_mut();
-    let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
-
-    // Parent title.
-    let (px, py) = world_to_screen(0.0, parent_r);
-    draw_title_above(
-        buf,
-        px,
-        py,
-        parent_title,
-        max_title_len,
-        rect,
-        Style::default().fg(theme.fg),
-    );
-
-    // Subnote titles.
-    for (&(sx, sy), sub) in positions.iter().zip(subnotes.iter()) {
-        let (scx, scy) = world_to_screen(sx, sy);
-        draw_title_above(
-            buf,
-            scx,
-            scy - sub_r * cells_per_world,
-            &sub.title,
-            max_title_len,
-            rect,
-            Style::default().fg(theme.fg),
-        );
-    }
+/// A pre-positioned node in the shared orbit graph renderer.
+struct OrbitNode {
+    x: f64,
+    y: f64,
+    label: String,
+    color: ratatui::style::Color,
+    links: Vec<String>,
+    is_note: bool,
 }
 
-/// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
-/// and focus transitions into subfolders (re-focus) or notes (content card).
-pub fn render_folder_graph_static(
+/// Render a radial orbit graph: parent at origin, children on a circle,
+/// wikilink edges among note children, zoom/pan viewport, text overlay.
+fn render_orbit_graph_static(
     frame: &mut Frame,
     rect: Rect,
-    focused_label: &str,
-    children: &[crate::list_view::FolderGraphNode],
+    parent_label: &str,
+    children: &[OrbitNode],
+    empty_text: &str,
     theme: &crate::app_theme::AppThemeColors,
 ) {
     use ratatui::symbols::Marker;
@@ -495,13 +342,12 @@ pub fn render_folder_graph_static(
     let pan_x = 0.0;
     let pan_y = 0.0;
 
-    // Background
     let bg = theme.preview_bg_style();
     frame.render_widget(Block::default().style(bg), rect);
 
     if children.is_empty() {
         let line = Line::from(vec![Span::styled(
-            "Empty folder",
+            empty_text,
             Style::default().fg(theme.muted),
         )]);
         let p = ratatui::widgets::Paragraph::new(line)
@@ -511,19 +357,17 @@ pub fn render_folder_graph_static(
         return;
     }
 
-    // World-coordinate layout: parent at origin, children on a circle.
     let parent_r = 3.0_f64;
     let child_r = 1.5_f64;
 
-    // Viewport bounds from zoom/pan.
     let aspect = rect.width as f64 / rect.height as f64;
     let cell_aspect = 2.0;
-    let span_x = FOLDER_GRAPH_BASE_SPAN / zoom;
+    let span_x = SUBNOTE_GRAPH_BASE_SPAN / zoom;
     let span_y = span_x * cell_aspect / aspect;
     let x_bounds = [pan_x - span_x, pan_x + span_x];
     let y_bounds = [pan_y - span_y, pan_y + span_y];
     let cells_per_world = rect.width as f64 / (2.0 * span_x);
-    // Build shapes: parent->child edges.
+
     let mut edges: Vec<CanvasLine> = Vec::new();
     for child in children {
         let (x1, y1, x2, y2) =
@@ -536,9 +380,8 @@ pub fn render_folder_graph_static(
             color: theme.border,
         });
     }
-    // Wikilink edges between note children within the focused folder.
-    let notes_only: Vec<&crate::list_view::FolderGraphNode> =
-        children.iter().filter(|c| c.is_note).collect();
+    // Wikilink edges between note children.
+    let notes_only: Vec<&OrbitNode> = children.iter().filter(|c| c.is_note).collect();
     if notes_only.len() > 1 {
         let title_to_idx: std::collections::HashMap<String, usize> = notes_only
             .iter()
@@ -582,11 +425,10 @@ pub fn render_folder_graph_static(
             cx: c.x,
             cy: c.y,
             radius: child_r,
-            color: if c.is_note { theme.tag } else { theme.folder },
+            color: c.color,
         })
         .collect();
 
-    // Render Canvas
     let canvas = Canvas::default()
         .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
         .block(Block::default().style(bg))
@@ -604,7 +446,6 @@ pub fn render_folder_graph_static(
         });
     frame.render_widget(canvas, rect);
 
-    // Post-canvas: world -> screen transform for text overlay.
     let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
         let col =
             rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
@@ -615,19 +456,17 @@ pub fn render_folder_graph_static(
     let buf = frame.buffer_mut();
     let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
 
-    // Parent title.
     let (px, py) = world_to_screen(0.0, parent_r);
     draw_title_above(
         buf,
         px,
         py,
-        focused_label,
+        parent_label,
         max_title_len,
         rect,
         Style::default().fg(theme.fg),
     );
 
-    // Child labels.
     for child in children {
         let (scx, scy) = world_to_screen(child.x, child.y);
         draw_title_above(
@@ -640,6 +479,53 @@ pub fn render_folder_graph_static(
             Style::default().fg(theme.fg),
         );
     }
+}
+
+/// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
+pub fn render_subnote_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    parent_title: &str,
+    subnotes: &[crate::storage::SubNote],
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let positions = orbit_positions(subnotes.len(), 10.0);
+    let children: Vec<OrbitNode> = subnotes
+        .iter()
+        .zip(positions.iter())
+        .map(|(s, &(x, y))| OrbitNode {
+            x,
+            y,
+            label: s.title.clone(),
+            color: theme.tag,
+            links: crate::storage::extract_wikilinks(&s.content),
+            is_note: true,
+        })
+        .collect();
+    render_orbit_graph_static(frame, rect, parent_title, &children, "No subnotes", theme);
+}
+
+/// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
+/// and focus transitions into subfolders (re-focus) or notes (content card).
+pub fn render_folder_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    focused_label: &str,
+    children: &[crate::list_view::FolderGraphNode],
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let nodes: Vec<OrbitNode> = children
+        .iter()
+        .map(|c| OrbitNode {
+            x: c.x,
+            y: c.y,
+            label: c.label.clone(),
+            color: if c.is_note { theme.tag } else { theme.folder },
+            links: c.links.clone(),
+            is_note: c.is_note,
+        })
+        .collect();
+    render_orbit_graph_static(frame, rect, focused_label, &nodes, "Empty folder", theme);
 }
 /// Draw `text` centered above position (x, y_top) in the buffer, clamped to rect.
 fn draw_title_above(
@@ -1713,7 +1599,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
             &app.list.preview_content
             && let Some(doc) = renderer.document()
-            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+            && let (Some(_), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
         {
             let page = renderer.current_page_range();
             let scroll = app.list.snapshot_scroll_offset as usize;
@@ -1737,7 +1623,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if app.list.image_cache.get_proto(&key).is_none() {
                     app.list
                         .image_cache
-                        .request(key.clone(), 512, decode_tx, picker);
+                        .request(key.clone(), 512, decode_tx);
                 }
                 if let Some(proto) = app.list.image_cache.get_proto(&key) {
                     let row = inner.y + local_line_idx as u16;
@@ -1768,7 +1654,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         // Overlay standalone image file on the preview pane
         if (content_is_current || app.list.pending_preview_update)
             && let Some(crate::list_view::PreviewContent::Image(path)) = &app.list.preview_content
-            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+            && let (Some(_), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
         {
             let inner_pad = 2_u16;
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
@@ -1776,7 +1662,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             if app.list.image_cache.get_proto(&key).is_none() {
                 app.list
                     .image_cache
-                    .request(key.clone(), 512, decode_tx, picker);
+                    .request(key.clone(), 512, decode_tx);
             }
             if let Some(proto) = app.list.image_cache.get_proto(&key) {
                 // available area (full preview minus padding) — the bounding box

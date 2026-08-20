@@ -360,7 +360,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 frame.render_widget(widget, inner);
 
                 // Overlay images continuously
-                if let (Some(picker), Some(decode_tx)) =
+                if let (Some(_), Some(decode_tx)) =
                     (&app.editor.image_picker, &app.editor.image_decode_tx)
                 {
                     let col_width = inner.width;
@@ -374,7 +374,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         if app.editor.image_cache.get_proto(&key).is_none() {
                             app.editor
                                 .image_cache
-                                .request(key.clone(), 2048, decode_tx, picker);
+                                .request(key.clone(), 2048, decode_tx);
                         }
 
                         if let Some(proto) = app.editor.image_cache.get_proto(&key) {

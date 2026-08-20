@@ -25,13 +25,7 @@ impl ImageCache {
 
     /// Request an image for display. If the key is absent, sends a decode job
     /// to the worker. Call `install_decoded` when the result arrives.
-    pub fn request(
-        &mut self,
-        key: ImageKey,
-        max_dim: u32,
-        tx: &Sender<ImageJob>,
-        _picker: &Picker,
-    ) {
+    pub fn request(&mut self, key: ImageKey, max_dim: u32, tx: &Sender<ImageJob>) {
         if self.map.contains(&key) {
             // Touch existing entry
             let _ = self.map.get_mut(&key);
@@ -78,16 +72,15 @@ mod tests {
 
         // Insert two
         let (tx, _) = std::sync::mpsc::channel();
-        let picker = Picker::halfblocks();
-        cache.request(k1.clone(), 100, &tx, &picker);
-        cache.request(k2.clone(), 100, &tx, &picker);
+        cache.request(k1.clone(), 100, &tx);
+        cache.request(k2.clone(), 100, &tx);
         assert_eq!(cache.map.len(), 2);
 
         // Touch k1 so it's more recent
         cache.get_proto(&k1);
 
         // Insert third — should evict k2 (oldest)
-        cache.request(k3.clone(), 100, &tx, &picker);
+        cache.request(k3.clone(), 100, &tx);
         assert_eq!(cache.map.len(), 2);
         assert!(cache.map.contains(&k1), "k1 should survive");
         assert!(!cache.map.contains(&k2), "k2 should be evicted as oldest");

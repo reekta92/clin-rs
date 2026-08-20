@@ -3,6 +3,16 @@ use crate::config::themes::theme_colors;
 use crate::config::{Background, Theme};
 use ratatui::style::{Color, Style};
 
+/// Slot order of `ThemeColors::node_colors`, defined by PALETTES in config/themes.rs.
+const SLOT_ACCENT: usize = 0;
+const SLOT_TAG: usize = 1;
+const SLOT_FOLDER: usize = 2;
+const SLOT_HEADING: usize = 3;
+const SLOT_PINNED: usize = 4;
+const SLOT_DESTRUCTIVE: usize = 5;
+const SLOT_SMART: usize = 6;
+const SLOT_SUBNOTE: usize = 7;
+
 /// App chrome colors (accent/heading/border). Distinct from
 /// [`ThemeColors`](crate::config::ThemeColors) (graph viz).
 #[derive(Debug, Clone)]
@@ -67,11 +77,11 @@ impl AppThemeColors {
             crate::config::custom_themes::ResolvedTheme::Builtin(t) => {
                 let tc = theme_colors(t, bg_enum.clone());
                 Self {
-                    accent: tc.node_colors.first().copied().unwrap_or(Color::Cyan),
-                    heading: tc.node_colors.get(3).copied().unwrap_or(Color::Yellow),
-                    success: tc.node_colors.get(3).copied().unwrap_or(Color::Green),
-                    warning: tc.node_colors.get(3).copied().unwrap_or(Color::Yellow),
-                    destructive: tc.node_colors.get(5).copied().unwrap_or(Color::Red),
+                    accent: tc.node_colors.get(SLOT_ACCENT).copied().unwrap_or(Color::Cyan),
+                    heading: tc.node_colors.get(SLOT_HEADING).copied().unwrap_or(Color::Yellow),
+                    success: tc.node_colors.get(SLOT_HEADING).copied().unwrap_or(Color::Green),
+                    warning: tc.node_colors.get(SLOT_HEADING).copied().unwrap_or(Color::Yellow),
+                    destructive: tc.node_colors.get(SLOT_DESTRUCTIVE).copied().unwrap_or(Color::Red),
                     muted: tc.border_color,
                     text: tc.label_color,
                     fg: tc.selected_indicator_color,
@@ -79,19 +89,19 @@ impl AppThemeColors {
                     border: tc.border_color,
                     tag: tc
                         .node_colors
-                        .get(1)
+                        .get(SLOT_TAG)
                         .copied()
                         .unwrap_or(Color::LightMagenta),
-                    folder: tc.node_colors.get(2).copied().unwrap_or(Color::Blue),
-                    pinned: tc.node_colors.get(4).copied().unwrap_or(Color::Yellow),
+                    folder: tc.node_colors.get(SLOT_FOLDER).copied().unwrap_or(Color::Blue),
+                    pinned: tc.node_colors.get(SLOT_PINNED).copied().unwrap_or(Color::Yellow),
                     smart: tc
                         .node_colors
-                        .get(6)
+                        .get(SLOT_SMART)
                         .copied()
                         .unwrap_or(Color::LightMagenta),
-                    subnote: tc.node_colors.get(7).copied().unwrap_or(Color::LightCyan),
+                    subnote: tc.node_colors.get(SLOT_SUBNOTE).copied().unwrap_or(Color::LightCyan),
                     highlight_fg: tc.background_color.unwrap_or(Color::Black),
-                    highlight_bg: tc.node_colors.first().copied().unwrap_or(Color::Cyan),
+                    highlight_bg: tc.node_colors.get(SLOT_ACCENT).copied().unwrap_or(Color::Cyan),
                     hint_bar_style: crate::config::HintBarStyle::default(),
                 }
             }
@@ -334,6 +344,16 @@ pub fn mix_colors(a: Color, b: Color, alpha: f32) -> Color {
     let g = ((1.0 - alpha) * g1 as f32 + alpha * g2 as f32).round() as u8;
     let b = ((1.0 - alpha) * b1 as f32 + alpha * b2 as f32).round() as u8;
     Color::Rgb(r, g, b)
+}
+
+/// Darken an RGB color by subtracting `delta` from each channel.
+pub(crate) fn darken(c: Color, delta: u8) -> Color {
+    match c {
+        Color::Rgb(r, g, b) => {
+            Color::Rgb(r.saturating_sub(delta), g.saturating_sub(delta), b.saturating_sub(delta))
+        }
+        other => other,
+    }
 }
 
 #[cfg(test)]

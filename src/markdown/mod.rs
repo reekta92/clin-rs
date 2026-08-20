@@ -283,13 +283,6 @@ impl MarkdownRenderer {
         start..end
     }
 
-    pub fn visible_range(&self, height: usize) -> Range<usize> {
-        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
-        let start = self.scroll_offset.min(len);
-        let end = (start + height).min(len);
-        start..end
-    }
-
     pub fn visible_start(&self) -> usize {
         if self.page_height > 0 {
             self.current_page * self.page_height
@@ -351,14 +344,6 @@ impl MarkdownRenderer {
         let max = len.saturating_sub(visible_height);
         self.scroll_offset = (self.scroll_offset + lines).min(max);
         self.update_viewport_for_scroll();
-    }
-
-    pub fn page_up(&mut self, visible_height: usize) {
-        self.scroll_up(visible_height);
-    }
-
-    pub fn page_down(&mut self, visible_height: usize) {
-        self.scroll_down(visible_height, visible_height);
     }
 
     pub fn source_to_rendered_line(&self, source_line_0_based: usize) -> usize {

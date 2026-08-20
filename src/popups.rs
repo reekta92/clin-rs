@@ -478,21 +478,71 @@ impl ActivePopup {
             ActivePopup::Theme(p) => {
                 crate::ui::draw_theme_popup(frame, p, area, theme, keybinds, mouse_pos)
             }
-            ActivePopup::IconMode(p) => {
-                crate::ui::draw_icon_mode_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::HintBarStyle(p) => {
-                crate::ui::draw_hint_bar_style_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::KeybindPreset(p) => {
-                crate::ui::draw_keybind_preset_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::Sort(p) => {
-                crate::ui::draw_sort_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::CreateFormat(p) => {
-                crate::ui::draw_create_format_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
+            ActivePopup::IconMode(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "ICON MODE",
+                &["Nerd Font", "Unicode", "None"],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::HintBarStyle(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "HINT BAR STYLE",
+                &crate::config::HintBarStyle::ALL.map(|s| s.name()),
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::KeybindPreset(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "KEYBIND PRESET",
+                &[
+                    "default \u{2014} Default CUA",
+                    "helix \u{2014} Space leader",
+                    "vim \u{2014} : commands",
+                    "emacs \u{2014} Ctrl-x prefix",
+                ],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::Sort(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "SORT BY",
+                &[
+                    "Title (A-Z)",
+                    "Title (Z-A)",
+                    "Modified (newest)",
+                    "Modified (oldest)",
+                ],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::CreateFormat(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "CREATE NEW",
+                &[
+                    "Markdown Note (.md)",
+                    "Plain Text (.txt)",
+                    "Drawing (.draw)",
+                    "Canvas (.canvas)",
+                ],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
             ActivePopup::Subnotes(p) => crate::ui::draw_subnotes_popup(frame, p, area, theme),
             ActivePopup::Info(p) => crate::ui::draw_info_popup(frame, area, p, theme),
             _ => {}

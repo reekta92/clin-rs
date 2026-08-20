@@ -5,130 +5,37 @@ use super::structs::{
     VisualConfig,
 };
 
-fn extract_decor(item: &toml_edit::Item) -> Option<toml_edit::Decor> {
-    match item {
-        toml_edit::Item::Value(v) => Some(v.decor().clone()),
-        toml_edit::Item::Table(t) => Some(t.decor().clone()),
-        _ => None,
-    }
-}
-
-/// Merge a `toml::Value` into a `toml_edit::Item`, preserving comments/decor.
-pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value) {
-    match toml_val {
-        toml::Value::Table(toml_tbl) => {
-            if !edit_item.is_table() {
-                let decor = extract_decor(edit_item);
-                let mut new_table = toml_edit::Table::new();
-                if let Some(d) = decor {
-                    *new_table.decor_mut() = d;
-                }
-                *edit_item = toml_edit::Item::Table(new_table);
+/// Merge a serialized `toml_edit::Item` into an existing one, preserving comments/decor.
+pub fn merge_edit_item(dst: &mut toml_edit::Item, src: toml_edit::Item) {
+    if let (Some(dst_tbl), Some(src_tbl)) = (dst.as_table_mut(), src.as_table()) {
+        let keys: Vec<String> = dst_tbl.iter().map(|(k, _)| k.to_string()).collect();
+        for k in keys {
+            if !src_tbl.contains_key(&k) {
+                dst_tbl.remove(&k);
             }
-            if let Some(edit_tbl) = edit_item.as_table_mut() {
-                let keys_to_remove: Vec<String> = edit_tbl
-                    .iter()
-                    .map(|(k, _)| k.to_string())
-                    .filter(|k| !toml_tbl.contains_key(k))
-                    .collect();
-                for k in keys_to_remove {
-                    edit_tbl.remove(&k);
-                }
-
-                for (k, v) in toml_tbl {
-                    if let Some(edit_item) = edit_tbl.get_mut(k) {
-                        merge_toml_value(edit_item, v);
-                    } else {
-                        let new_item = toml_value_to_item(v);
-                        edit_tbl.insert(k, new_item);
-                    }
+        }
+        for (k, v) in src_tbl {
+            match dst_tbl.get_mut(k) {
+                Some(d) => merge_edit_item(d, v.clone()),
+                None => {
+                    dst_tbl.insert(k, v.clone());
                 }
             }
         }
-        toml::Value::Array(toml_arr) => {
-            let is_existing_aot = matches!(edit_item, toml_edit::Item::ArrayOfTables(_));
-            let is_new_aot = toml_arr.iter().any(|v| v.is_table());
-            if is_existing_aot || is_new_aot {
-                let mut new_aot = toml_edit::ArrayOfTables::new();
-                for val in toml_arr {
-                    if let toml_edit::Item::Table(t) = toml_value_to_item(val) {
-                        new_aot.push(t);
-                    }
-                }
-                *edit_item = toml_edit::Item::ArrayOfTables(new_aot);
-            } else {
-                let decor = extract_decor(edit_item);
-                let mut edit_arr = toml_edit::Array::new();
-                for val in toml_arr {
-                    edit_arr.push(
-                        toml_value_to_item(val)
-                            .as_value()
-                            .expect("toml_value_to_item for non-table/non-array returns value")
-                            .clone(),
-                    );
-                }
-                let mut new_item = toml_edit::Item::Value(toml_edit::Value::Array(edit_arr));
-                if let Some(d) = decor
-                    && let Some(v) = new_item.as_value_mut()
-                {
-                    *v.decor_mut() = d;
-                }
-                *edit_item = new_item;
+    } else {
+        // preserve decor on the replaced value
+        let decor = match dst {
+            toml_edit::Item::Value(v) => Some(v.decor().clone()),
+            toml_edit::Item::Table(t) => Some(t.decor().clone()),
+            _ => None,
+        };
+        *dst = src;
+        if let Some(d) = decor {
+            match dst {
+                toml_edit::Item::Value(v) => *v.decor_mut() = d,
+                toml_edit::Item::Table(t) => *t.decor_mut() = d,
+                _ => {}
             }
-        }
-        _ => {
-            let decor = extract_decor(edit_item);
-            let mut new_item = toml_value_to_item(toml_val);
-            if let Some(d) = decor {
-                match &mut new_item {
-                    toml_edit::Item::Value(v) => *v.decor_mut() = d,
-                    toml_edit::Item::Table(t) => *t.decor_mut() = d,
-                    _ => {}
-                }
-            }
-            *edit_item = new_item;
-        }
-    }
-}
-
-/// Convert a `toml::Value` into `toml_edit::Item`.
-pub fn toml_value_to_item(v: &toml::Value) -> toml_edit::Item {
-    match v {
-        toml::Value::String(s) => toml_edit::value(s),
-        toml::Value::Integer(i) => toml_edit::value(*i),
-        toml::Value::Float(f) => toml_edit::value(*f),
-        toml::Value::Boolean(b) => toml_edit::value(*b),
-        toml::Value::Datetime(dt) => toml_edit::value(dt.to_string()),
-        toml::Value::Array(arr) => {
-            if arr.iter().any(|v| v.is_table()) {
-                let mut edit_aot = toml_edit::ArrayOfTables::new();
-                for val in arr {
-                    if let toml_edit::Item::Table(t) = toml_value_to_item(val) {
-                        edit_aot.push(t);
-                    } else {
-                        panic!("Expected table in array of tables");
-                    }
-                }
-                toml_edit::Item::ArrayOfTables(edit_aot)
-            } else {
-                let mut edit_arr = toml_edit::Array::new();
-                for val in arr {
-                    edit_arr.push(
-                        toml_value_to_item(val)
-                            .as_value()
-                            .expect("toml_value_to_item for non-table/non-array returns value")
-                            .clone(),
-                    );
-                }
-                toml_edit::Item::Value(toml_edit::Value::Array(edit_arr))
-            }
-        }
-        toml::Value::Table(tbl) => {
-            let mut edit_tbl = toml_edit::Table::new();
-            for (k, v) in tbl {
-                edit_tbl.insert(k, toml_value_to_item(v));
-            }
-            toml_edit::Item::Table(edit_tbl)
         }
     }
 }

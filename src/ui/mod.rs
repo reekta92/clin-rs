@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::{TextArea, WrapMode};
+use std::ffi::OsStr;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 
@@ -1452,20 +1453,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
-pub fn open_in_file_manager(path: &Path) -> Result<()> {
-    use std::process::Stdio;
-
-    let command = if cfg!(target_os = "linux") {
-        "xdg-open"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(target_os = "windows") {
-        "explorer"
-    } else {
-        anyhow::bail!("opening file manager is not supported on this platform")
-    };
-
-    Command::new(command)
+fn spawn_opener(command: &str, args: &[&OsStr], path: &Path) -> Result<()> {
+    let mut cmd = Command::new(command);
+    cmd.args(args)
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1475,9 +1465,20 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn open_with_default_application(path: &Path) -> Result<()> {
-    use std::process::Stdio;
+pub fn open_in_file_manager(path: &Path) -> Result<()> {
+    let command = if cfg!(target_os = "linux") {
+        "xdg-open"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        anyhow::bail!("opening file manager is not supported on this platform")
+    };
+    spawn_opener(command, &[], path)
+}
 
+pub fn open_with_default_application(path: &Path) -> Result<()> {
     let command = if cfg!(target_os = "linux") {
         "xdg-open"
     } else if cfg!(target_os = "macos") {
@@ -1487,19 +1488,16 @@ pub fn open_with_default_application(path: &Path) -> Result<()> {
     } else {
         anyhow::bail!("opening files is not supported on this platform")
     };
-
-    let mut cmd = Command::new(command);
     if cfg!(target_os = "windows") {
         // `cmd /C start "" <path>` invokes the associated application.
-        cmd.arg("/C").arg("start").arg("");
+        spawn_opener(
+            command,
+            &[OsStr::new("/C"), OsStr::new("start"), OsStr::new("")],
+            path,
+        )
+    } else {
+        spawn_opener(command, &[], path)
     }
-    cmd.arg(path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| format!("failed to launch {command}"))?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

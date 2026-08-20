@@ -1,6 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
-use std::borrow::Cow;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::PopupSize;
@@ -458,7 +457,7 @@ pub fn draw_theme_popup(
     frame.render_widget(graph_para, graph_inner);
 }
 
-fn draw_option_list_popup(
+pub fn draw_option_list_popup(
     frame: &mut Frame,
     area: Rect,
     title: &str,
@@ -526,127 +525,6 @@ fn draw_option_list_popup(
         options.len(),
         mouse_pos,
         theme.hover_style(),
-    );
-}
-
-pub fn draw_sort_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::SortPopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let options = [
-        "Title (A-Z)",
-        "Title (Z-A)",
-        "Modified (newest)",
-        "Modified (oldest)",
-    ];
-    draw_option_list_popup(
-        frame,
-        area,
-        "SORT BY",
-        &options,
-        popup.selected,
-        keybinds,
-        theme,
-        mouse_pos,
-    );
-}
-pub fn draw_icon_mode_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::IconModePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let options = ["Nerd Font", "Unicode", "None"];
-    draw_option_list_popup(
-        frame,
-        area,
-        "ICON MODE",
-        &options,
-        popup.selected,
-        keybinds,
-        theme,
-        mouse_pos,
-    );
-}
-
-pub fn draw_create_format_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::CreateFormatPopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let options = [
-        "Markdown Note (.md)",
-        "Plain Text (.txt)",
-        "Drawing (.draw)",
-        "Canvas (.canvas)",
-    ];
-    draw_option_list_popup(
-        frame,
-        area,
-        "CREATE NEW",
-        &options,
-        popup.selected,
-        keybinds,
-        theme,
-        mouse_pos,
-    );
-}
-pub fn draw_hint_bar_style_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::HintBarStylePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let options: Vec<&str> = crate::config::HintBarStyle::ALL
-        .iter()
-        .map(|s| s.name())
-        .collect();
-    draw_option_list_popup(
-        frame,
-        area,
-        "HINT BAR STYLE",
-        &options,
-        popup.selected,
-        keybinds,
-        theme,
-        mouse_pos,
-    );
-}
-
-pub fn draw_keybind_preset_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::KeybindPresetPopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let options = [
-        "default \u{2014} Default CUA",
-        "helix \u{2014} Space leader",
-        "vim \u{2014} : commands",
-        "emacs \u{2014} Ctrl-x prefix",
-    ];
-    draw_option_list_popup(
-        frame,
-        area,
-        "KEYBIND PRESET",
-        &options,
-        popup.selected,
-        keybinds,
-        theme,
-        mouse_pos,
     );
 }
 
@@ -886,34 +764,19 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
-pub struct StatusBarBadge {
-    pub label: Cow<'static, str>,
-    pub style: Style,
-}
-
-pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
-    let label = if enabled { "ext:on" } else { "ext:off" };
-    let style = if enabled {
-        Style::default()
-            .fg(theme.success)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.muted)
-    };
-    StatusBarBadge {
-        label: format!(" {label} ").into(),
-        style,
-    }
-}
-
 pub fn ext_badge_spans<'a>(
     enabled: bool,
     theme: &AppThemeColors,
     next_bg: Option<Color>,
 ) -> Vec<Span<'a>> {
-    let b = ext_badge(enabled, theme);
+    let label = if enabled { " ext:on " } else { " ext:off " };
+    let (fg, bold) = if enabled {
+        (theme.success, Modifier::BOLD)
+    } else {
+        (theme.muted, Modifier::empty())
+    };
     let mut spans = Vec::new();
-    let pwr_bg = b.style.fg.unwrap_or(theme.accent);
+    let pwr_bg = fg;
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Sharp
         | crate::config::HintBarStyle::Rounded
@@ -934,8 +797,8 @@ pub fn ext_badge_spans<'a>(
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
-                .add_modifier(b.style.add_modifier);
-            spans.push(Span::styled(b.label, pwr_style));
+                .add_modifier(bold);
+            spans.push(Span::styled(label, pwr_style));
 
             if theme.hint_bar_style.is_gradient() {
                 let resolved_next_bg = next_bg.unwrap_or(theme.bg.unwrap_or(Color::Black));
@@ -968,10 +831,10 @@ pub fn ext_badge_spans<'a>(
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
-                .add_modifier(b.style.add_modifier);
+                .add_modifier(bold);
 
             spans.push(Span::styled(cap_l, Style::default().fg(pwr_bg)));
-            spans.push(Span::styled(b.label, pwr_style));
+            spans.push(Span::styled(label, pwr_style));
 
             spans.push(Span::styled(cap_r, Style::default().fg(pwr_bg)));
             spans.push(Span::raw(" "));
@@ -979,14 +842,14 @@ pub fn ext_badge_spans<'a>(
         crate::config::HintBarStyle::Brackets => {
             spans.push(Span::styled("[", Style::default().fg(theme.fg)));
             spans.push(Span::styled(
-                b.label.trim().to_string(),
+                label.trim().to_string(),
                 Style::default().fg(pwr_bg).add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled("]", Style::default().fg(theme.fg)));
             spans.push(Span::raw(" "));
         }
         crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact => {
-            spans.push(Span::styled(b.label, b.style));
+            spans.push(Span::styled(label, Style::default().fg(fg).add_modifier(bold)));
             spans.push(Span::raw(" "));
         }
     }
