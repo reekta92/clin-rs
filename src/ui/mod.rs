@@ -1369,7 +1369,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .iter()
             .map(|item| {
                 let name = item.name.to_string_lossy();
-                let when = crate::ui::format_relative_time(item.time_deleted as u64);
+                let when = crate::statusline::list_relative_age(item.time_deleted as u64);
                 ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
                     Span::styled(

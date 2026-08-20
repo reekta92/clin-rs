@@ -152,7 +152,11 @@ impl AppPaths {
 
     /// Path to the vault-scoped note-summary cache (`<cache_dir>/vaults/<hex>/note_cache.bin`).
     pub fn scoped_summary_cache_path(&self, vault_digest: &[u8; 32]) -> PathBuf {
-        let hex: String = vault_digest.iter().map(|b| format!("{b:02x}")).collect();
+        let mut hex = String::with_capacity(64);
+        for b in vault_digest {
+            use std::fmt::Write;
+            let _ = write!(hex, "{b:02x}");
+        }
         self.cache_dir
             .join("vaults")
             .join(hex)

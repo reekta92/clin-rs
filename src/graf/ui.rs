@@ -97,8 +97,10 @@ pub fn draw_ui(
                     ratatui::style::Style::default().fg(theme.highlight_fg)
                 };
                 let prefix = if is_selected { "▸ " } else { "  " };
-                let display =
-                    crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
+                let display = crate::fsutil::truncate_ellipsis(
+                    title,
+                    (popup_width as usize).saturating_sub(6),
+                );
                 ratatui::text::Line::styled(format!("{prefix}{display}"), style)
             },
             config.ui.icon_mode,

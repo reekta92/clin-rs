@@ -651,7 +651,7 @@ fn draw_title_above(
     rect: Rect,
     style: Style,
 ) {
-    let truncated = crate::graf::util::truncate(text, max_len);
+    let truncated = crate::fsutil::truncate_ellipsis(text, max_len);
     if truncated.is_empty() {
         return;
     }
@@ -1444,7 +1444,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
 
                 // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
-                let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
+                let sanitized = crate::fsutil::sanitize_for_terminal(&raw_name);
                 let mut chars: Vec<char> = sanitized.chars().collect();
                 if chars.len() > inner_w {
                     chars.truncate(inner_w - 1);

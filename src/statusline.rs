@@ -2,7 +2,7 @@ use crate::app::{App, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::config::{IconMode, StatuslineConfig};
 use crate::storage::NoteSummary;
-use crate::ui::{PreviewHeaderInfo, format_date, format_relative_time, format_size};
+use crate::ui::{PreviewHeaderInfo, format_date, format_size};
 use ratatui::prelude::*;
 use std::borrow::Cow;
 use std::path::Path;
@@ -742,13 +742,7 @@ impl StatuslineContext<'_> {
             "note_updated_rel" => {
                 let relative = self
                     .note
-                    .map(|note| {
-                        if self.view == ViewMode::List {
-                            list_relative_age(note.updated_at)
-                        } else {
-                            crate::ui::format_relative_time(note.updated_at).into_owned()
-                        }
-                    })
+                    .map(|note| list_relative_age(note.updated_at))
                     .unwrap_or_default();
                 Some(relative.into())
             }
@@ -1200,7 +1194,7 @@ impl StatuslineContext<'_> {
                     "last_commit_time" => backup
                         .commits
                         .first()
-                        .map(|c| format_relative_time(c.time).into_owned())
+                        .map(|c| list_relative_age(c.time))
                         .unwrap_or_default(),
                     "remote" => backup.settings.remote_name.lines().join(""),
                     "remote_url" => backup.settings.remote_url.lines().join(""),

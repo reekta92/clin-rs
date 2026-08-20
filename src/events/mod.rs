@@ -44,15 +44,6 @@ pub fn dismiss_popup_on_outside_click(
     false
 }
 
-pub fn hit_test_list_row(mouse_row: u16, list_top_y: u16, len: usize) -> Option<usize> {
-    if len > 0 {
-        let row = mouse_row.saturating_sub(list_top_y) as usize;
-        Some(row.min(len.saturating_sub(1)))
-    } else {
-        None
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SelListAction {
     Up,

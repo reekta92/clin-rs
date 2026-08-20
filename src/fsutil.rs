@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -116,6 +117,47 @@ pub fn remove_file_if_exists(path: &Path) -> std::io::Result<bool> {
         Err(e) => Err(e),
     }
 }
+
+/// Strip ASCII/Unicode control characters from a string destined for the
+/// terminal. Borrows the input when it is already clean.
+pub fn sanitize_for_terminal(s: &str) -> Cow<'_, str> {
+    let needs_sanitization = s.chars().any(char::is_control);
+    if needs_sanitization {
+        Cow::Owned(s.chars().filter(|c| !c.is_control()).collect())
+    } else {
+        Cow::Borrowed(s)
+    }
+}
+
+/// Truncate `s` to at most `max` bytes (ellipsis included) on a char boundary,
+/// appending `…`. Returns the input unchanged when it already fits.
+pub fn truncate_ellipsis(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == 0 {
+        return String::new();
+    }
+    let mut end = end.saturating_sub(1);
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == 0 {
+        return s
+            .chars()
+            .next()
+            .map(|c| format!("{c}…"))
+            .unwrap_or_default();
+    }
+    format!("{}…", &s[..end])
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +184,19 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sanitize_strips_control_chars() {
+        assert_eq!(sanitize_for_terminal("a\nb\tc\x07d"), "abcd");
+        assert_eq!(sanitize_for_terminal("café 日本語"), "café 日本語");
+    }
+
+    #[test]
+    fn truncate_ellipsis_respects_bytes_and_char_boundaries() {
+        assert_eq!(truncate_ellipsis("hello", 4), "hel…");
+        assert_eq!(truncate_ellipsis("hello", 10), "hello");
+        assert_eq!(truncate_ellipsis("hello", 0), "");
+        assert_eq!(truncate_ellipsis("café", 4), "ca…");
     }
 }

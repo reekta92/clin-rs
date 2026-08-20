@@ -232,7 +232,7 @@ fn sanitize_import_content(content: String) -> String {
 
 fn sanitized(title: String, content: String) -> (String, String) {
     (
-        crate::sanitize::sanitize_for_terminal(&title).into_owned(),
+        crate::fsutil::sanitize_for_terminal(&title).into_owned(),
         sanitize_import_content(content),
     )
 }

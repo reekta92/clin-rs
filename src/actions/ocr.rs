@@ -128,7 +128,7 @@ impl Action for OcrPasteAction {
         }
 
         let extracted_text =
-            crate::sanitize::sanitize_for_terminal(String::from_utf8_lossy(&output.stdout).trim())
+            crate::fsutil::sanitize_for_terminal(String::from_utf8_lossy(&output.stdout).trim())
                 .into_owned();
 
         if extracted_text.is_empty() {

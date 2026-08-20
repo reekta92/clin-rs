@@ -10,7 +10,6 @@ mod popups;
 mod search;
 pub(crate) mod search_worker;
 mod settings_ops;
-mod status;
 mod tags;
 mod trash;
 mod views;
@@ -25,7 +24,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::ListItem;
 use std::borrow::Cow;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
@@ -1144,7 +1143,7 @@ impl App {
                 } else {
                     String::new()
                 };
-                let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                let sanitized_name = crate::fsutil::sanitize_for_terminal(name);
                 let mut display_name = sanitized_name.into_owned();
                 if *is_pinned {
                     let pin_icon =
@@ -1265,7 +1264,7 @@ impl App {
                 }
 
                 let sanitized_title =
-                    crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
+                    crate::fsutil::sanitize_for_terminal(summary.title.as_str()).into_owned();
                 spans.push(Span::styled(sanitized_title, text_style));
                 if self.list.inline_info {
                     if self.notes_with_subnotes.contains(&summary.id) {
@@ -1282,7 +1281,7 @@ impl App {
 
                     for tag in &summary.tags {
                         spans.push(Span::raw(" "));
-                        let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
+                        let sanitized_tag = crate::fsutil::sanitize_for_terminal(tag);
                         spans.push(Span::styled(
                             format!("[{sanitized_tag}]"),
                             Style::default().fg(self.app_theme.tag),
@@ -1296,10 +1295,7 @@ impl App {
                             summary.folder.clone()
                         };
                         spans.push(Span::styled(
-                            format!(
-                                "  (from {})",
-                                crate::sanitize::sanitize_for_terminal(&source)
-                            ),
+                            format!("  (from {})", crate::fsutil::sanitize_for_terminal(&source)),
                             Style::default().fg(self.app_theme.muted),
                         ));
                     }
@@ -1379,7 +1375,7 @@ impl App {
                 } else {
                     String::new()
                 };
-                let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
+                let sanitized_name = crate::fsutil::sanitize_for_terminal(label);
 
                 let text = if icon.is_empty() {
                     format!("{indent}{sanitized_name}{count_suffix}")
@@ -1412,7 +1408,7 @@ impl App {
                         }
                     })
                     .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
-                let sanitized = crate::sanitize::sanitize_for_terminal(&title);
+                let sanitized = crate::fsutil::sanitize_for_terminal(&title);
                 let text = if icon.is_empty() {
                     format!("{indent}{}", sanitized.into_owned())
                 } else {
@@ -1809,6 +1805,36 @@ impl App {
         self.editor.source_highlighter = None;
         self.editor.md_highlight_memo.clear();
         self.editor.md_highlight_lines = 0;
+    }
+
+    pub fn default_status_text(&self) -> Cow<'static, str> {
+        Cow::Borrowed("")
+    }
+
+    pub fn set_default_status(&mut self) {
+        self.status = self.default_status_text();
+        self.status_until = None;
+    }
+
+    pub fn set_temporary_status(&mut self, message: &str) {
+        self.status = Cow::Owned(message.to_string());
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    pub fn set_temporary_status_static(&mut self, message: &'static str) {
+        self.status = Cow::Borrowed(message);
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    pub fn tick_status(&mut self) -> bool {
+        if let Some(until) = self.status_until
+            && Instant::now() >= until
+        {
+            self.set_default_status();
+            true
+        } else {
+            false
+        }
     }
 }
 

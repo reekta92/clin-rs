@@ -737,11 +737,6 @@ impl Storage {
             .unwrap_or(0)
     }
 
-    pub fn attachments_dir(&self, attachments_subdir: &str) -> Result<PathBuf> {
-        let relative = Self::validated_attachment_subdir(attachments_subdir)?;
-        Ok(self.notes_dir.join(relative))
-    }
-
     pub fn import_attachment(&self, src: &Path, attachments_subdir: &str) -> Result<String> {
         let relative = Self::validated_attachment_subdir(attachments_subdir)?;
         let dir = self.notes_dir.join(&relative);

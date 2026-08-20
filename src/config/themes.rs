@@ -5,7 +5,6 @@ use super::{Background, Theme, ThemeColors};
 struct GraphThemePalette {
     nodes: [[u8; 3]; 8],
     chrome: [u8; 3],
-    title: [u8; 3],
     text: [u8; 3],
     fg: [u8; 3],
     bg: [u8; 3],
@@ -21,16 +20,12 @@ impl GraphThemePalette {
             node_colors: self.nodes.map(Self::rgb).to_vec(),
             edge_color: Self::rgb(self.chrome),
             border_color: Self::rgb(self.chrome),
-            title_color: Self::rgb(self.title),
             label_color: Self::rgb(self.text),
-            legend_text_color: Self::rgb(self.text),
-            legend_border_color: Self::rgb(self.chrome),
             selected_indicator_color: Self::rgb(self.fg),
             background_color: match background {
                 Background::Transparent => None,
                 Background::Solid => Some(Self::rgb(self.bg)),
             },
-            status_bar_color: Self::rgb(self.chrome),
             minimap_border_color: Self::rgb(self.chrome),
             minimap_viewport_color: Self::rgb(self.fg),
             minimap_bg_color: Some(Self::rgb(self.bg)),
@@ -51,7 +46,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [255, 158, 100], // [7] subnote — Subnotes category
         ],
         chrome: [86, 95, 137],
-        title: [187, 154, 247],
         text: [203, 206, 215],
         fg: [255, 255, 255],
         bg: [26, 27, 38],
@@ -68,7 +62,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [250, 179, 135], // [7] subnote — Subnotes category
         ],
         chrome: [108, 112, 134],
-        title: [205, 214, 244],
         text: [205, 214, 244],
         fg: [205, 214, 244],
         bg: [30, 30, 46],
@@ -85,7 +78,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [171, 178, 191], // [7] subnote — Subnotes category
         ],
         chrome: [92, 99, 112],
-        title: [171, 178, 191],
         text: [171, 178, 191],
         fg: [220, 223, 228],
         bg: [40, 44, 52],
@@ -102,7 +94,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [254, 128, 25],  // [7] subnote — Subnotes category
         ],
         chrome: [102, 92, 84],
-        title: [235, 219, 178],
         text: [235, 219, 178],
         fg: [251, 241, 199],
         bg: [40, 40, 40],
@@ -119,7 +110,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [255, 255, 150], // [7] subnote — Subnotes category
         ],
         chrome: [98, 114, 164],
-        title: [248, 248, 242],
         text: [248, 248, 242],
         fg: [255, 255, 255],
         bg: [40, 42, 54],
@@ -136,7 +126,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [163, 190, 140], // [7] subnote — Subnotes category
         ],
         chrome: [108, 120, 140],
-        title: [216, 222, 233],
         text: [216, 222, 233],
         fg: [236, 239, 244],
         bg: [46, 52, 64],
@@ -153,7 +142,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [209, 193, 168], // [7] subnote — Subnotes category
         ],
         chrome: [102, 110, 129],
-        title: [87, 82, 121],
         text: [87, 82, 121],
         fg: [87, 82, 121],
         bg: [40, 37, 61],
@@ -170,7 +158,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [200, 230, 150], // [7] subnote — Subnotes category
         ],
         chrome: [95, 120, 102],
-        title: [60, 76, 67],
         text: [60, 76, 67],
         fg: [60, 76, 67],
         bg: [30, 38, 34],
@@ -187,7 +174,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [242, 205, 205], // [7] subnote — Subnotes category
         ],
         chrome: [95, 115, 135],
-        title: [98, 114, 164],
         text: [98, 114, 164],
         fg: [98, 114, 164],
         bg: [26, 30, 48],
@@ -204,7 +190,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [133, 153, 0],   // [7] subnote — Subnotes category
         ],
         chrome: [147, 161, 161],
-        title: [131, 148, 150],
         text: [131, 148, 150],
         fg: [253, 246, 227],
         bg: [0, 43, 54],
@@ -222,7 +207,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [239, 159, 118], // [7] subnote — Subnotes category
         ],
         chrome: [115, 121, 148],
-        title: [198, 208, 245],
         text: [198, 208, 245],
         fg: [181, 191, 226],
         bg: [48, 52, 70],
@@ -240,7 +224,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [245, 169, 127], // [7] subnote — Subnotes category
         ],
         chrome: [110, 115, 141],
-        title: [202, 211, 245],
         text: [202, 211, 245],
         fg: [184, 192, 224],
         bg: [36, 39, 58],
@@ -258,7 +241,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [235, 188, 186], // [7] subnote — Subnotes category
         ],
         chrome: [96, 92, 116],
-        title: [224, 222, 244],
         text: [224, 222, 244],
         fg: [224, 222, 244],
         bg: [35, 33, 54],
@@ -276,7 +258,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [240, 235, 215], // [7] subnote — Subnotes category
         ],
         chrome: [108, 100, 96],
-        title: [235, 219, 178],
         text: [235, 219, 178],
         fg: [251, 241, 199],
         bg: [40, 40, 40],
@@ -294,7 +275,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [139, 148, 158], // [7] subnote — Subnotes category
         ],
         chrome: [100, 108, 120],
-        title: [201, 209, 217],
         text: [201, 209, 217],
         fg: [255, 255, 255],
         bg: [13, 17, 23],
@@ -312,7 +292,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [193, 202, 214], // [7] subnote — Subnotes category
         ],
         chrome: [100, 110, 125],
-        title: [203, 204, 198],
         text: [203, 204, 198],
         fg: [255, 255, 255],
         bg: [31, 36, 48],
@@ -330,7 +309,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [152, 154, 206], // [7] subnote — Subnotes category
         ],
         chrome: [108, 103, 131],
-        title: [248, 248, 242],
         text: [248, 248, 242],
         fg: [255, 255, 255],
         bg: [36, 29, 53],
@@ -348,7 +326,6 @@ const PALETTES: [GraphThemePalette; 18] = [
             [255, 139, 174], // [7] subnote — Subnotes category
         ],
         chrome: [80, 80, 80],
-        title: [238, 255, 255],
         text: [238, 255, 255],
         fg: [255, 255, 255],
         bg: [28, 28, 28],
@@ -373,16 +350,12 @@ fn default_theme_colors(background: Background) -> ThemeColors {
         ],
         edge_color: dark_gray,
         border_color: dark_gray,
-        title_color: gray,
         label_color: gray,
-        legend_text_color: gray,
-        legend_border_color: dark_gray,
         selected_indicator_color: reset,
         background_color: match background {
             Background::Transparent => None,
             Background::Solid => Some(Color::Black),
         },
-        status_bar_color: dark_gray,
         minimap_border_color: dark_gray,
         minimap_viewport_color: white,
         minimap_bg_color: Some(Color::Black),
@@ -436,7 +409,6 @@ pub fn custom_theme_colors(g: &crate::config::CustomGraph, background: Backgroun
     };
 
     let chrome = parse(&g.chrome);
-    let title = parse(&g.title);
     let text = parse(&g.text);
     let fg = parse(&g.fg);
     let bg_color =
@@ -447,16 +419,12 @@ pub fn custom_theme_colors(g: &crate::config::CustomGraph, background: Backgroun
         node_colors,
         edge_color: chrome,
         border_color: chrome,
-        title_color: title,
         label_color: text,
-        legend_text_color: text,
-        legend_border_color: chrome,
         selected_indicator_color: fg,
         background_color: match background {
             Background::Transparent => None,
             Background::Solid => bg_color,
         },
-        status_bar_color: chrome,
         minimap_border_color: chrome,
         minimap_viewport_color: fg,
         minimap_bg_color: bg_color.or(Some(Color::Black)),

@@ -354,7 +354,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState, scrollba
                         format!(
                             " ({}, {})",
                             commit.author,
-                            crate::ui::format_relative_time(commit.time)
+                            crate::statusline::list_relative_age(commit.time)
                         ),
                         Style::default().fg(theme.muted),
                     ),

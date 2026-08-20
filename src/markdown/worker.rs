@@ -4,7 +4,7 @@ use super::style::{RenderLine, RenderedDocument};
 use std::ops::Range;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Once};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RenderViewport {
@@ -59,17 +59,14 @@ pub(crate) static POOL: LazyLock<rayon::ThreadPool> = LazyLock::new(|| {
         .expect("failed to build markdown ThreadPool")
 });
 
-static PREWARM_STARTED: AtomicBool = AtomicBool::new(false);
+static PREWARM: Once = Once::new();
 
 pub(crate) fn prewarm_syntax_assets(code_theme: Arc<str>) {
-    if PREWARM_STARTED
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
-    {
+    PREWARM.call_once(|| {
         POOL.spawn(move || {
             super::builtin::load_syntax_assets(&code_theme);
         });
-    }
+    });
 }
 
 fn block_distance(

@@ -762,14 +762,9 @@ pub fn clamp_selected_to_view(
     if item_count == 0 {
         return 0;
     }
+    let offset = offset.min(item_count - 1);
     let bottom = (offset + viewport).saturating_sub(1).min(item_count - 1);
-    if selected < offset {
-        offset
-    } else if selected > bottom {
-        bottom
-    } else {
-        selected
-    }
+    selected.clamp(offset, bottom)
 }
 /// Initialize a [`ListState`] with an optional selection.
 pub fn list_state_selected(selected: Option<usize>, offset: usize) -> ListState {
@@ -854,16 +849,6 @@ pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
     secs.into()
 }
 
-pub fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
-    if s.chars().count() > max_chars {
-        let mut t: String = s.chars().take(max_chars).collect();
-        t.push('…');
-        t
-    } else {
-        s.to_string()
-    }
-}
-
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
     if content.is_empty() {
         TextArea::default()
@@ -878,24 +863,6 @@ pub fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_secs()
-}
-
-pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
-    let now = now_unix_secs();
-    let diff = now.saturating_sub(unix_ts);
-
-    if diff < 60 {
-        return Cow::Borrowed("just now");
-    }
-    if diff < 3600 {
-        return Cow::Owned(format!("{}m ago", diff / 60));
-    }
-    if diff < 86_400 {
-        return Cow::Owned(format!("{}h ago", diff / 3600));
-    }
-
-    let dt = unix_ts_to_local(unix_ts);
-    Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
 pub fn format_date(unix_ts: u64, date_format: &str) -> String {

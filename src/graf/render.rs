@@ -475,8 +475,10 @@ impl RenderCache {
         self.label_texts.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
-            let truncated =
-                crate::graf::util::truncate(&node.data.title, config.graf.visual.label_max_length);
+            let truncated = crate::fsutil::truncate_ellipsis(
+                &node.data.title,
+                config.graf.visual.label_max_length,
+            );
             self.label_texts.insert(idx, truncated);
         }
         self.cached_label_max_length = config.graf.visual.label_max_length;
@@ -650,7 +652,7 @@ impl RenderCache {
             self.label_texts.clear();
             for idx in graph.node_indices() {
                 let node = &graph[idx];
-                let truncated = crate::graf::util::truncate(
+                let truncated = crate::fsutil::truncate_ellipsis(
                     &node.data.title,
                     config.graf.visual.label_max_length,
                 );
@@ -1341,8 +1343,10 @@ pub fn draw_looking_glass(
         return;
     };
 
-    let title =
-        crate::graf::util::truncate(&node.data.title, overlay.width.saturating_sub(4) as usize);
+    let title = crate::fsutil::truncate_ellipsis(
+        &node.data.title,
+        overlay.width.saturating_sub(4) as usize,
+    );
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(colors.minimap_border_color))
@@ -1445,7 +1449,7 @@ pub fn draw_looking_glass(
             .take(tag_count)
             .map(|(tag, color)| {
                 let label =
-                    crate::graf::util::truncate(tag, inner.width.saturating_sub(2) as usize);
+                    crate::fsutil::truncate_ellipsis(tag, inner.width.saturating_sub(2) as usize);
                 ratatui::text::Line::from(Span::styled(
                     format!("#{label}"),
                     Style::default().fg(*color),

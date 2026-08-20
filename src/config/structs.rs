@@ -13,9 +13,6 @@ pub struct ColorOverrides {
     pub label_color: Option<Color>,
     pub selection_ring_color: Option<Color>,
     pub border_color: Option<Color>,
-    pub title_color: Option<Color>,
-    pub legend_text_color: Option<Color>,
-    pub status_bar_color: Option<Color>,
     pub background_color: Option<Color>,
 }
 
@@ -25,7 +22,7 @@ impl serde::Serialize for ColorOverrides {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("ColorOverrides", 9)?;
+        let mut s = serializer.serialize_struct("ColorOverrides", 6)?;
         fn fmt_color(c: &Color) -> String {
             if let Color::Rgb(r, g, b) = c {
                 format!("#{r:02x}{g:02x}{b:02x}")
@@ -47,15 +44,6 @@ impl serde::Serialize for ColorOverrides {
         }
         if let Some(v) = &self.border_color {
             s.serialize_field("border_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.title_color {
-            s.serialize_field("title_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.legend_text_color {
-            s.serialize_field("legend_text_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.status_bar_color {
-            s.serialize_field("status_bar_color", &fmt_color(v))?;
         }
         if let Some(v) = &self.background_color {
             s.serialize_field("background_color", &fmt_color(v))?;
@@ -82,12 +70,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
             #[serde(default, deserialize_with = "deserialize_optional_color")]
             border_color: Option<Color>,
             #[serde(default, deserialize_with = "deserialize_optional_color")]
-            title_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
-            legend_text_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
-            status_bar_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
             background_color: Option<Color>,
         }
         let raw = ColorOverridesRaw::deserialize(deserializer)?;
@@ -97,9 +79,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
             label_color: raw.label_color,
             selection_ring_color: raw.selection_ring_color,
             border_color: raw.border_color,
-            title_color: raw.title_color,
-            legend_text_color: raw.legend_text_color,
-            status_bar_color: raw.status_bar_color,
             background_color: raw.background_color,
         })
     }
@@ -628,13 +607,9 @@ pub struct ThemeColors {
     pub node_colors: Vec<Color>,
     pub edge_color: Color,
     pub border_color: Color,
-    pub title_color: Color,
     pub label_color: Color,
-    pub legend_text_color: Color,
-    pub legend_border_color: Color,
     pub selected_indicator_color: Color,
     pub background_color: Option<Color>,
-    pub status_bar_color: Color,
     pub minimap_border_color: Color,
     pub minimap_viewport_color: Color,
     pub minimap_bg_color: Option<Color>,

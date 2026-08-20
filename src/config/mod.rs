@@ -592,17 +592,7 @@ impl ClinConfig {
         }
         if let Some(c) = self.graf.visual.colors.border_color {
             colors.border_color = c;
-            colors.legend_border_color = c;
             colors.minimap_border_color = c;
-        }
-        if let Some(c) = self.graf.visual.colors.title_color {
-            colors.title_color = c;
-        }
-        if let Some(c) = self.graf.visual.colors.legend_text_color {
-            colors.legend_text_color = c;
-        }
-        if let Some(c) = self.graf.visual.colors.status_bar_color {
-            colors.status_bar_color = c;
         }
         if let Some(c) = self.graf.visual.colors.background_color {
             colors.background_color = Some(c);
