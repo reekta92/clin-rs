@@ -958,16 +958,12 @@ impl crate::popups::ActivePopup {
                     app.confirm_create_note();
                 })
             }
-            ActivePopup::Import(popup) => {
-                route_text(ActivePopup::Import(popup), key, app, |app| {
-                    app.confirm_import();
-                })
-            }
-            ActivePopup::Folder(popup) => {
-                route_text(ActivePopup::Folder(popup), key, app, |app| {
-                    app.confirm_folder_popup();
-                })
-            }
+            ActivePopup::Import(popup) => route_text(ActivePopup::Import(popup), key, app, |app| {
+                app.confirm_import();
+            }),
+            ActivePopup::Folder(popup) => route_text(ActivePopup::Folder(popup), key, app, |app| {
+                app.confirm_folder_popup();
+            }),
             ActivePopup::Tag(mut popup) => {
                 if app.popups.confirm.is_some() {
                     app.popups.active = Some(ActivePopup::Tag(popup));
@@ -1069,11 +1065,9 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::Goals(popup) => {
-                route_text(ActivePopup::Goals(popup), key, app, |app| {
-                    app.confirm_goals_popup();
-                })
-            }
+            ActivePopup::Goals(popup) => route_text(ActivePopup::Goals(popup), key, app, |app| {
+                app.confirm_goals_popup();
+            }),
             ActivePopup::Subnotes(mut popup) => {
                 let now_unix_secs = || {
                     std::time::SystemTime::now()

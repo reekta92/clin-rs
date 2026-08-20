@@ -2032,7 +2032,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     app.mouse_pos = saved_mouse_pos;
-
 }
 
 pub(crate) fn list_view_layout(
@@ -2972,8 +2971,12 @@ mod tests {
             crate::statusline::compact_list_tags(&app.notes[0].tags),
             "123456789012, 界界界界界… +3"
         );
-        let note_detail =
-            Line::from(list_detail_value(&app).expect("note detail").spans_without(&[])).to_string();
+        let note_detail = Line::from(
+            list_detail_value(&app)
+                .expect("note detail")
+                .spans_without(&[]),
+        )
+        .to_string();
         assert!(note_detail.contains("123456789012, 界界界界界… +3"));
         assert!(note_detail.contains(&crate::ui::format_size(1_536)));
 
@@ -2988,9 +2991,13 @@ mod tests {
             is_pinned: false,
         }];
         assert!(
-            Line::from(list_detail_value(&app).expect("folder detail").spans_without(&[]))
-                .to_string()
-                .contains("2+3")
+            Line::from(
+                list_detail_value(&app)
+                    .expect("folder detail")
+                    .spans_without(&[])
+            )
+            .to_string()
+            .contains("2+3")
         );
         app.list.visual_list = vec![crate::list_view::VisualItem::SmartFolder {
             kind: crate::list_view::SmartFolderKind::Today,
@@ -3000,9 +3007,13 @@ mod tests {
             note_count: 5,
         }];
         assert_eq!(
-            Line::from(list_detail_value(&app).expect("smart detail").spans_without(&[]))
-                .to_string()
-                .trim(),
+            Line::from(
+                list_detail_value(&app)
+                    .expect("smart detail")
+                    .spans_without(&[])
+            )
+            .to_string()
+            .trim(),
             "5"
         );
     }

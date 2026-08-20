@@ -42,9 +42,7 @@ pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 #[allow(unused_imports)]
-pub(crate) use list_view::{
-    draw_list_view, get_preview_info, list_view_layout, section_rects,
-};
+pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout, section_rects};
 pub use popups::*;
 pub use setup::draw_setup_view;
 pub use title_bar::*;

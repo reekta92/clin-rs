@@ -111,10 +111,7 @@ mod tests {
         cache.request(k3.clone(), 100, &tx, &picker);
         assert_eq!(cache.map.len(), 2);
         assert!(cache.map.contains(&k1), "k1 should survive");
-        assert!(
-            !cache.map.contains(&k2),
-            "k2 should be evicted as oldest"
-        );
+        assert!(!cache.map.contains(&k2), "k2 should be evicted as oldest");
         assert!(cache.map.contains(&k3), "k3 should survive");
 
         // Cleanup
