@@ -2,6 +2,15 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.11.2] - 2026-08-20
+
+### CI
+
+- Cargo fmt fixes
+
+### Changed
+
+- Changed default vault directory to 'Documents/clin Vault'
 ## [0.11.1] - 2026-08-18
 
 ### Added
@@ -30,6 +39,10 @@ All notable changes to clin are documented in this file.
 - Update ROADMAP.md
 - ROADMAP.md update
 - ROADMAP.md updates
+
+### Release
+
+- V0.11.1
 ## [0.11.0] - 2026-08-18
 
 ### CI
