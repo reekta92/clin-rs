@@ -274,15 +274,15 @@ const DEFAULT_SETUP: &[(SetupAction, &[&str])] = &[
 impl Default for Keybinds {
     fn default() -> Self {
         Self {
-            list: build(&DEFAULT_LIST),
-            edit: build(&DEFAULT_EDIT),
-            help: build(&DEFAULT_HELP),
-            graph: build(&DEFAULT_GRAPH),
-            draw: build(&DEFAULT_DRAW),
-            canvas: build(&DEFAULT_CANVAS),
-            backup: build(&DEFAULT_BACKUP),
-            outline: build(&DEFAULT_OUTLINE),
-            setup: build(&DEFAULT_SETUP),
+            list: build(DEFAULT_LIST),
+            edit: build(DEFAULT_EDIT),
+            help: build(DEFAULT_HELP),
+            graph: build(DEFAULT_GRAPH),
+            draw: build(DEFAULT_DRAW),
+            canvas: build(DEFAULT_CANVAS),
+            backup: build(DEFAULT_BACKUP),
+            outline: build(DEFAULT_OUTLINE),
+            setup: build(DEFAULT_SETUP),
         }
     }
 }

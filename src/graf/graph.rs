@@ -56,13 +56,13 @@ pub fn graf_menu_item_from_label(label: &str) -> Option<GrafMenuItem> {
         _ => None,
     }
 }
-pub(crate) fn nodes_in_rect<'a>(
-    graph: &'a ForceGraph<GraphNodeData, ()>,
+pub(crate) fn nodes_in_rect(
+    graph: &ForceGraph<GraphNodeData, ()>,
     min_x: f64,
     min_y: f64,
     max_x: f64,
     max_y: f64,
-) -> impl Iterator<Item = NodeIndex> + 'a {
+) -> impl Iterator<Item = NodeIndex> + '_ {
     graph.node_indices().filter(move |idx| {
         let l = graph[*idx].location;
         (l.x as f64) >= min_x
