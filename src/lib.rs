@@ -532,7 +532,6 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             let mut conflict_action: Option<migration::ConflictAction> = None;
 
             let source_is_vault = is_existing_vault(&from);
-            let target_is_vault = bootstrap.has_custom_storage_path();
 
             // Determine effective source dirs (vault mode: notes at root, .clin/templates/)
             let notes_src = if source_is_vault {
@@ -546,17 +545,11 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 from.join("templates")
             };
 
-            // Determine effective target dirs
-            let notes_dst = if target_is_vault {
-                to.clone()
-            } else {
-                to.join("notes")
-            };
-            let templates_dst = if target_is_vault {
-                to.join(".clin").join("templates")
-            } else {
-                to.join("templates")
-            };
+            // Determine effective target dirs (always vault layout now)
+            let notes_dst = to.clone();
+            let templates_dst = to.join(".clin").join("templates");
+
+
 
             // Migrate notes
             if notes_src.exists() && notes_src.is_dir() {

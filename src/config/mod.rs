@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
+
 
 #[cfg(test)]
 use parking_lot::Mutex;
@@ -127,10 +127,18 @@ impl ClinConfig {
         Ok(clin_config_dir()?.join("config.toml"))
     }
 
+    /// Default vault location: `<Documents>/clin Vault`.
+    ///
+    /// Resolves Documents via XDG user dirs (Linux), `~/Documents` (macOS) or the
+    /// known folder (Windows); falls back to `$HOME/Documents` when unresolvable.
     pub fn default_storage_path() -> Result<PathBuf> {
-        let proj_dirs = ProjectDirs::from("com", "clin", "clin")
-            .context("could not determine data directory")?;
-        Ok(proj_dirs.data_local_dir().to_path_buf())
+        let user_dirs = directories::UserDirs::new()
+            .context("could not determine home directory")?;
+        let documents = user_dirs
+            .document_dir()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| user_dirs.home_dir().join("Documents"));
+        Ok(documents.join("clin Vault"))
     }
 
     pub fn load() -> (Result<Self>, Vec<String>) {
@@ -688,6 +696,12 @@ mod tests {
         let config = ClinConfig::default();
         assert!(config.core.storage_path.is_none());
         assert!(!config.has_custom_storage_path());
+    }
+
+    #[test]
+    fn default_storage_path_is_clin_vault_under_documents() {
+        let path = ClinConfig::default_storage_path().unwrap();
+        assert_eq!(path.file_name().unwrap().to_str().unwrap(), "clin Vault");
     }
 
     #[test]

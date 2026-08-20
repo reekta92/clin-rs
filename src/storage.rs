@@ -164,10 +164,71 @@ pub(crate) fn is_existing_vault(dir: &Path) -> bool {
                 {
                     continue;
                 }
+                return true;
             }
             false
         }
         Err(_) => false,
+    }
+}
+
+/// Copy a legacy classic-layout default vault into the current vault-layout
+/// default path. No-op unless `old` holds user content and `new` is absent.
+fn migrate_legacy_default_vault_at(old: &Path, new: &Path, warnings: &mut Vec<String>) {
+    if old == new || !old.is_dir() || new.exists() {
+        return;
+    }
+    let notes = old.join("notes");
+    let has_data = old.join(".git").is_dir()
+        || old.join(".clin").is_dir()
+        || fs::read_dir(&notes)
+            .map(|mut i| i.next().is_some())
+            .unwrap_or(false)
+        || fs::read_dir(old.join("templates"))
+            .map(|mut i| i.next().is_some())
+            .unwrap_or(false);
+    if !has_data {
+        return;
+    }
+    let result = (|| -> Result<()> {
+        fs::create_dir_all(new.join(".clin").join("templates"))?;
+        if notes.is_dir() {
+            copy_dir_recursive(&notes, new)?;
+        }
+        if old.join("templates").is_dir() {
+            copy_dir_recursive(&old.join("templates"), &new.join(".clin").join("templates"))?;
+        }
+        if old.join(".clin").is_dir() {
+            copy_dir_recursive(&old.join(".clin"), &new.join(".clin"))?;
+        }
+        if old.join(".git").is_dir() {
+            fs::create_dir_all(new.join(".git"))?;
+            copy_dir_recursive(&old.join(".git"), &new.join(".git"))?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => warnings.push(format!(
+            "Default vault location is now {}. Your data was copied there from {}. The old copy remains at {} (clin also keeps its encryption key and app state there, so do not delete that directory).",
+            new.display(),
+            old.display(),
+            old.display()
+        )),
+        Err(e) => {
+            // `new` did not exist on entry, so the partial copy is ours to remove;
+            // removing it lets the next boot retry.
+            let _ = fs::remove_dir_all(new);
+            warnings.push(format!(
+                "Failed to migrate legacy default vault from {}: {e}",
+                old.display()
+            ));
+        }
+    }
+}
+
+fn migrate_legacy_default_vault(new: &Path, warnings: &mut Vec<String>) {
+    if let Some(proj) = directories::ProjectDirs::from("com", "clin", "clin") {
+        migrate_legacy_default_vault_at(proj.data_local_dir(), new, warnings);
     }
 }
 
@@ -201,31 +262,18 @@ impl Storage {
         let data_dir = bootstrap
             .effective_storage_path()
             .context("failed to determine storage path")?;
+        if !bootstrap.has_custom_storage_path() {
+            migrate_legacy_default_vault(&data_dir, warnings);
+        }
 
         let config_dir =
             crate::config::clin_config_dir().context("could not determine config directory")?;
 
-        let vault_mode = bootstrap.has_custom_storage_path();
+        let notes_dir = data_dir.clone();
+        let templates_dir = data_dir.join(".clin").join("templates");
 
-        let notes_dir = if vault_mode {
-            data_dir.clone()
-        } else {
-            data_dir.join("notes")
-        };
-
-        let templates_dir = if vault_mode {
-            data_dir.join(".clin").join("templates")
-        } else {
-            data_dir.join("templates")
-        };
-
-        if vault_mode {
-            fs::create_dir_all(data_dir.join(".clin").join("templates"))
-                .context("failed to create .clin/templates directory")?;
-        } else {
-            fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
-            fs::create_dir_all(&templates_dir).context("failed to create templates directory")?;
-        }
+        fs::create_dir_all(&templates_dir)
+            .context("failed to create .clin/templates directory")?;
         // --- Key migration to AppPaths canonical location ---
         let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
         let target_key_path = app_paths.key_path(); // <data_local_dir>/key.bin
@@ -393,9 +441,7 @@ impl Storage {
         };
         storage.migrate_native_subnotes_metadata()?;
         storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
-        if !vault_mode {
-            storage.migrate_extensions();
-        }
+        storage.migrate_extensions();
         storage.ensure_key()?;
         Ok(storage)
     }
@@ -2056,9 +2102,8 @@ impl Storage {
         let _ = std::fs::create_dir_all(&data_dir);
         let config_dir = std::env::temp_dir().join("clin_fallback_config");
         let _ = std::fs::create_dir_all(&config_dir);
-        let notes_dir = data_dir.join("notes");
-        let _ = std::fs::create_dir_all(&notes_dir);
-        let templates_dir = data_dir.join("templates");
+        let notes_dir = data_dir.clone();
+        let templates_dir = data_dir.join(".clin").join("templates");
         let _ = std::fs::create_dir_all(&templates_dir);
         Self {
             data_dir,
@@ -2095,6 +2140,69 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_existing_vault_detects_user_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vault = tmp.path().join("v");
+        std::fs::create_dir_all(vault.join("notes")).unwrap();
+        std::fs::create_dir_all(vault.join("templates")).unwrap();
+        std::fs::create_dir_all(vault.join(".clin")).unwrap();
+        std::fs::write(vault.join("key.bin"), "k").unwrap();
+        std::fs::write(vault.join("state.json"), "{}").unwrap();
+        assert!(!is_existing_vault(&vault)); // only managed content
+        std::fs::write(vault.join("mynote.md"), "x").unwrap();
+        assert!(is_existing_vault(&vault)); // one user file
+    }
+
+    #[test]
+    fn migrate_legacy_default_vault_copies_classic_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("old");
+        let new = tmp.path().join("new");
+        std::fs::create_dir_all(old.join("notes/sub")).unwrap();
+        std::fs::create_dir_all(old.join("templates")).unwrap();
+        std::fs::create_dir_all(old.join(".clin")).unwrap();
+        std::fs::create_dir_all(old.join(".git")).unwrap();
+        std::fs::write(old.join("notes/sub/a.md"), "# a").unwrap();
+        std::fs::write(old.join("templates/t.md"), "t").unwrap();
+        std::fs::write(old.join(".clin/editor_draft.bin"), "d").unwrap();
+        std::fs::write(old.join(".git/HEAD"), "ref").unwrap();
+        std::fs::write(old.join("key.bin"), "k").unwrap(); // must NOT be copied
+        let mut warnings = Vec::new();
+        migrate_legacy_default_vault_at(&old, &new, &mut warnings);
+        assert!(new.join("sub/a.md").is_file()); // notes/ content → vault root
+        assert!(new.join(".clin/templates/t.md").is_file());
+        assert!(new.join(".clin/editor_draft.bin").is_file());
+        assert!(new.join(".git/HEAD").is_file());
+        assert!(!new.join("key.bin").exists());
+        assert!(old.join("notes/sub/a.md").is_file()); // old copy kept
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("Default vault location is now"));
+    }
+
+    #[test]
+    fn migrate_legacy_default_vault_noops() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("old");
+        let new = tmp.path().join("new");
+        // Scaffold only: empty notes/, key.bin, state.json — no user content.
+        std::fs::create_dir_all(old.join("notes")).unwrap();
+        std::fs::write(old.join("key.bin"), "k").unwrap();
+        std::fs::write(old.join("state.json"), "{}").unwrap();
+        let mut warnings = Vec::new();
+        migrate_legacy_default_vault_at(&old, &new, &mut warnings);
+        assert!(!new.exists());
+        assert!(warnings.is_empty());
+        // Destination already exists → never touched.
+        std::fs::write(old.join("notes/a.md"), "a").unwrap();
+        std::fs::create_dir_all(&new).unwrap();
+        std::fs::write(new.join("existing.md"), "keep").unwrap();
+        migrate_legacy_default_vault_at(&old, &new, &mut warnings);
+        assert!(new.join("existing.md").is_file());
+        assert!(!new.join("a.md").exists());
+        assert!(warnings.is_empty());
+    }
 
     #[test]
     fn test_split_frontmatter_payload() {
