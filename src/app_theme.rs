@@ -77,11 +77,31 @@ impl AppThemeColors {
             crate::config::custom_themes::ResolvedTheme::Builtin(t) => {
                 let tc = theme_colors(t, bg_enum.clone());
                 Self {
-                    accent: tc.node_colors.get(SLOT_ACCENT).copied().unwrap_or(Color::Cyan),
-                    heading: tc.node_colors.get(SLOT_HEADING).copied().unwrap_or(Color::Yellow),
-                    success: tc.node_colors.get(SLOT_HEADING).copied().unwrap_or(Color::Green),
-                    warning: tc.node_colors.get(SLOT_HEADING).copied().unwrap_or(Color::Yellow),
-                    destructive: tc.node_colors.get(SLOT_DESTRUCTIVE).copied().unwrap_or(Color::Red),
+                    accent: tc
+                        .node_colors
+                        .get(SLOT_ACCENT)
+                        .copied()
+                        .unwrap_or(Color::Cyan),
+                    heading: tc
+                        .node_colors
+                        .get(SLOT_HEADING)
+                        .copied()
+                        .unwrap_or(Color::Yellow),
+                    success: tc
+                        .node_colors
+                        .get(SLOT_HEADING)
+                        .copied()
+                        .unwrap_or(Color::Green),
+                    warning: tc
+                        .node_colors
+                        .get(SLOT_HEADING)
+                        .copied()
+                        .unwrap_or(Color::Yellow),
+                    destructive: tc
+                        .node_colors
+                        .get(SLOT_DESTRUCTIVE)
+                        .copied()
+                        .unwrap_or(Color::Red),
                     muted: tc.border_color,
                     text: tc.label_color,
                     fg: tc.selected_indicator_color,
@@ -92,16 +112,32 @@ impl AppThemeColors {
                         .get(SLOT_TAG)
                         .copied()
                         .unwrap_or(Color::LightMagenta),
-                    folder: tc.node_colors.get(SLOT_FOLDER).copied().unwrap_or(Color::Blue),
-                    pinned: tc.node_colors.get(SLOT_PINNED).copied().unwrap_or(Color::Yellow),
+                    folder: tc
+                        .node_colors
+                        .get(SLOT_FOLDER)
+                        .copied()
+                        .unwrap_or(Color::Blue),
+                    pinned: tc
+                        .node_colors
+                        .get(SLOT_PINNED)
+                        .copied()
+                        .unwrap_or(Color::Yellow),
                     smart: tc
                         .node_colors
                         .get(SLOT_SMART)
                         .copied()
                         .unwrap_or(Color::LightMagenta),
-                    subnote: tc.node_colors.get(SLOT_SUBNOTE).copied().unwrap_or(Color::LightCyan),
+                    subnote: tc
+                        .node_colors
+                        .get(SLOT_SUBNOTE)
+                        .copied()
+                        .unwrap_or(Color::LightCyan),
                     highlight_fg: tc.background_color.unwrap_or(Color::Black),
-                    highlight_bg: tc.node_colors.get(SLOT_ACCENT).copied().unwrap_or(Color::Cyan),
+                    highlight_bg: tc
+                        .node_colors
+                        .get(SLOT_ACCENT)
+                        .copied()
+                        .unwrap_or(Color::Cyan),
                     hint_bar_style: crate::config::HintBarStyle::default(),
                 }
             }
@@ -349,9 +385,11 @@ pub fn mix_colors(a: Color, b: Color, alpha: f32) -> Color {
 /// Darken an RGB color by subtracting `delta` from each channel.
 pub(crate) fn darken(c: Color, delta: u8) -> Color {
     match c {
-        Color::Rgb(r, g, b) => {
-            Color::Rgb(r.saturating_sub(delta), g.saturating_sub(delta), b.saturating_sub(delta))
-        }
+        Color::Rgb(r, g, b) => Color::Rgb(
+            r.saturating_sub(delta),
+            g.saturating_sub(delta),
+            b.saturating_sub(delta),
+        ),
         other => other,
     }
 }

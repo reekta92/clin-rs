@@ -273,13 +273,11 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "left" => Some(KeyCode::Left),
         "right" => Some(KeyCode::Right),
 
-        _ if s_lower.len() >= 2 && s_lower.len() <= 3 && s_lower.starts_with('f') => {
-            s_lower[1..]
-                .parse::<u8>()
-                .ok()
-                .filter(|&n| (1..=12).contains(&n))
-                .map(KeyCode::F)
-        }
+        _ if s_lower.len() >= 2 && s_lower.len() <= 3 && s_lower.starts_with('f') => s_lower[1..]
+            .parse::<u8>()
+            .ok()
+            .filter(|&n| (1..=12).contains(&n))
+            .map(KeyCode::F),
 
         _ if s.len() == 1 => {
             let c = s.chars().next()?;

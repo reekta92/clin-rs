@@ -1621,9 +1621,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 let key = crate::image_render::ImageKey { path };
                 if app.list.image_cache.get_proto(&key).is_none() {
-                    app.list
-                        .image_cache
-                        .request(key.clone(), 512, decode_tx);
+                    app.list.image_cache.request(key.clone(), 512, decode_tx);
                 }
                 if let Some(proto) = app.list.image_cache.get_proto(&key) {
                     let row = inner.y + local_line_idx as u16;
@@ -1660,9 +1658,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
             let key = crate::image_render::ImageKey { path: path.clone() };
             if app.list.image_cache.get_proto(&key).is_none() {
-                app.list
-                    .image_cache
-                    .request(key.clone(), 512, decode_tx);
+                app.list.image_cache.request(key.clone(), 512, decode_tx);
             }
             if let Some(proto) = app.list.image_cache.get_proto(&key) {
                 // available area (full preview minus padding) — the bounding box

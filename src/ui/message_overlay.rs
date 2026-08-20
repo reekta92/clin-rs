@@ -183,4 +183,3 @@ pub fn draw_message_overlay(
         frame.render_widget(Paragraph::new(styled_line), content_area);
     }
 }
-

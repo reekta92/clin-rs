@@ -849,7 +849,10 @@ pub fn ext_badge_spans<'a>(
             spans.push(Span::raw(" "));
         }
         crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact => {
-            spans.push(Span::styled(label, Style::default().fg(fg).add_modifier(bold)));
+            spans.push(Span::styled(
+                label,
+                Style::default().fg(fg).add_modifier(bold),
+            ));
             spans.push(Span::raw(" "));
         }
     }

@@ -201,4 +201,3 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         }
     }
 }
-
