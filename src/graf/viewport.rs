@@ -229,33 +229,35 @@ impl Viewport {
         let mut contained: Option<(NodeIndex, f64)> = None;
         let mut near: Option<(NodeIndex, f64)> = None;
 
-        state
-            .spatial_grid
-            .for_each_near(world_x, world_y, query, |idx| {
-                let node = &graph[idx];
-                let dx = node.location.x as f64 - world_x;
-                let dy = node.location.y as f64 - world_y;
-                let dist = (dx * dx + dy * dy).sqrt();
-                if !dist.is_finite() {
-                    return;
+        for idx in super::graph::nodes_in_rect(
+            graph,
+            world_x - query,
+            world_y - query,
+            world_x + query,
+            world_y + query,
+        ) {
+            let node = &graph[idx];
+            let dx = node.location.x as f64 - world_x;
+            let dy = node.location.y as f64 - world_y;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if !dist.is_finite() {
+                continue;
+            }
+            let nr = node_world_radius(config, max_link_count, node.data.link_count);
+            let click_thresh = (nr + pad_world).max(min_hit_world);
+            if dist <= nr {
+                match contained {
+                    Some((bi, bd)) if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
+                    _ => contained = Some((idx, dist)),
                 }
-                let nr = node_world_radius(config, max_link_count, node.data.link_count);
-                let click_thresh = (nr + pad_world).max(min_hit_world);
-                if dist <= nr {
-                    match contained {
-                        Some((bi, bd))
-                            if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
-                        _ => contained = Some((idx, dist)),
-                    }
+            }
+            if dist <= click_thresh {
+                match near {
+                    Some((bi, bd)) if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
+                    _ => near = Some((idx, dist)),
                 }
-                if dist <= click_thresh {
-                    match near {
-                        Some((bi, bd))
-                            if dist >= bd && !(dist == bd && idx.index() < bi.index()) => {}
-                        _ => near = Some((idx, dist)),
-                    }
-                }
-            });
+            }
+        }
 
         contained.or(near).map(|(idx, _)| idx)
     }
@@ -264,7 +266,6 @@ impl Viewport {
 mod tests {
     use super::*;
     use crate::graf::graph::GraphNodeData;
-    use crate::graf::spatial::SpatialGrid;
     use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
     use parking_lot::Mutex;
 
@@ -358,7 +359,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
@@ -375,8 +375,6 @@ mod tests {
             node.location.x = x as f32;
             node.location.y = y as f32;
         }
-
-        gs.spatial_grid.rebuild(gs.simulation.get_graph());
 
         let vp = Viewport {
             zoom: 1.0,
@@ -425,7 +423,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
@@ -443,7 +440,6 @@ mod tests {
             node.location.x = x as f32;
             node.location.y = y as f32;
         }
-        gs.spatial_grid.rebuild(gs.simulation.get_graph());
         (gs, idxs)
     }
 

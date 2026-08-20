@@ -8,6 +8,10 @@ pub struct HelpMeta {
     pub description: &'static str,
 }
 
+const fn meta(group: &'static str, description: &'static str) -> HelpMeta {
+    HelpMeta { group, description }
+}
+
 pub fn list_group_order() -> &'static [&'static str] {
     &["Navigation", "Actions", "Display", "General"]
 }
@@ -44,827 +48,236 @@ pub fn backup_group_order() -> &'static [&'static str] {
 
 pub fn list_action_meta(a: ListAction) -> HelpMeta {
     match a {
-        ListAction::MoveUp => HelpMeta {
-            group: "Navigation",
-            description: "Move up",
-        },
-        ListAction::MoveDown => HelpMeta {
-            group: "Navigation",
-            description: "Move down",
-        },
-        ListAction::MoveLeft => HelpMeta {
-            group: "Navigation",
-            description: "Move left (grid)",
-        },
-        ListAction::MoveRight => HelpMeta {
-            group: "Navigation",
-            description: "Move right (grid)",
-        },
-        ListAction::JumpToTop => HelpMeta {
-            group: "Navigation",
-            description: "Jump to top",
-        },
-        ListAction::JumpToBottom => HelpMeta {
-            group: "Navigation",
-            description: "Jump to bottom",
-        },
-        ListAction::PageUp => HelpMeta {
-            group: "Navigation",
-            description: "Scroll up half page",
-        },
-        ListAction::PageDown => HelpMeta {
-            group: "Navigation",
-            description: "Scroll down half page",
-        },
-        ListAction::CollapseFolder => HelpMeta {
-            group: "Navigation",
-            description: "Collapse folder",
-        },
-        ListAction::ExpandFolder => HelpMeta {
-            group: "Navigation",
-            description: "Expand folder",
-        },
-        ListAction::Open => HelpMeta {
-            group: "Actions",
-            description: "Open selected item",
-        },
-        ListAction::CreateNote => HelpMeta {
-            group: "Actions",
-            description: "Create new note",
-        },
-        ListAction::CreateFolder => HelpMeta {
-            group: "Actions",
-            description: "Create new folder",
-        },
-        ListAction::Rename => HelpMeta {
-            group: "Actions",
-            description: "Rename note",
-        },
-        ListAction::RenameFolder => HelpMeta {
-            group: "Actions",
-            description: "Rename folder",
-        },
-        ListAction::Delete => HelpMeta {
-            group: "Actions",
-            description: "Delete",
-        },
-        ListAction::Duplicate => HelpMeta {
-            group: "Actions",
-            description: "Duplicate note",
-        },
-        ListAction::MoveNote => HelpMeta {
-            group: "Actions",
-            description: "Move note or folder",
-        },
-        ListAction::MoveToParent => HelpMeta {
-            group: "Actions",
-            description: "Move note to parent folder",
-        },
-        ListAction::ManageTags => HelpMeta {
-            group: "Actions",
-            description: "Manage tags",
-        },
-        ListAction::RemoveTagsFromSelected => HelpMeta {
-            group: "Actions",
-            description: "Remove tags from selected notes",
-        },
-        ListAction::TogglePin => HelpMeta {
-            group: "Actions",
-            description: "Toggle pin",
-        },
-        ListAction::ToggleExternalEditor => HelpMeta {
-            group: "Actions",
-            description: "Toggle external editor",
-        },
-        ListAction::OpenLocation => HelpMeta {
-            group: "Actions",
-            description: "Open file location",
-        },
-        ListAction::ManageSubnotes => HelpMeta {
-            group: "Actions",
-            description: "Manage subnotes",
-        },
-        ListAction::Search => HelpMeta {
-            group: "Display",
-            description: "Search",
-        },
-        ListAction::ToggleSelectMode => HelpMeta {
-            group: "Display",
-            description: "Toggle select mode",
-        },
-        ListAction::ToggleSelectItem => HelpMeta {
-            group: "Display",
-            description: "Toggle select item",
-        },
-        ListAction::TogglePreview => HelpMeta {
-            group: "Display",
-            description: "Toggle preview pane",
-        },
-        ListAction::TogglePreviewFullscreen => HelpMeta {
-            group: "Display",
-            description: "Toggle preview fullscreen",
-        },
-        ListAction::ToggleWrap => HelpMeta {
-            group: "Display",
-            description: "Toggle word wrap (editor and preview)",
-        },
-        ListAction::PreviewPageUp => HelpMeta {
-            group: "Display",
-            description: "Page preview up",
-        },
-        ListAction::ToggleCalendar => HelpMeta {
-            group: "Display",
-            description: "Toggle calendar",
-        },
-        ListAction::OpenCommandPalette => HelpMeta {
-            group: "Display",
-            description: "Open command palette",
-        },
-        ListAction::OpenGraph => HelpMeta {
-            group: "Display",
-            description: "Open graph view",
-        },
-        ListAction::OpenCanvas => HelpMeta {
-            group: "Display",
-            description: "Open canvas view",
-        },
-        ListAction::CollapseAll => HelpMeta {
-            group: "Display",
-            description: "Collapse all folders",
-        },
-        ListAction::ExpandAll => HelpMeta {
-            group: "Display",
-            description: "Expand all folders",
-        },
-        ListAction::ExpandToLevel => HelpMeta {
-            group: "Display",
-            description: "Expand folders to level (e.g. 3E)",
-        },
-        ListAction::ToggleFoldersFirst => HelpMeta {
-            group: "Display",
-            description: "Toggle folders-first sort",
-        },
-        ListAction::RefreshNotes => HelpMeta {
-            group: "Display",
-            description: "Refresh notes (external changes)",
-        },
-        ListAction::Quit => HelpMeta {
-            group: "General",
-            description: "Quit",
-        },
-        ListAction::Help => HelpMeta {
-            group: "General",
-            description: "Help",
-        },
-        ListAction::CycleFocus => HelpMeta {
-            group: "General",
-            description: "Cycle focus between panes",
-        },
-        ListAction::ReverseCycleFocus => HelpMeta {
-            group: "General",
-            description: "Reverse cycle focus between panes",
-        },
-        ListAction::Confirm => HelpMeta {
-            group: "General",
-            description: "Confirm action",
-        },
-        ListAction::Cancel => HelpMeta {
-            group: "General",
-            description: "Cancel action",
-        },
-        ListAction::NewFromTemplate => HelpMeta {
-            group: "General",
-            description: "New note from template",
-        },
-        ListAction::CycleSort => HelpMeta {
-            group: "General",
-            description: "Cycle sort order",
-        },
-        ListAction::OpenTrash => HelpMeta {
-            group: "General",
-            description: "Open trash",
-        },
-        ListAction::ShowInfo => HelpMeta {
-            group: "General",
-            description: "Show note info",
-        },
-        ListAction::PreviewPageDown => HelpMeta {
-            group: "Display",
-            description: "Page preview down",
-        },
+        ListAction::MoveUp => meta("Navigation", "Move up"),
+        ListAction::MoveDown => meta("Navigation", "Move down"),
+        ListAction::MoveLeft => meta("Navigation", "Move left (grid)"),
+        ListAction::MoveRight => meta("Navigation", "Move right (grid)"),
+        ListAction::JumpToTop => meta("Navigation", "Jump to top"),
+        ListAction::JumpToBottom => meta("Navigation", "Jump to bottom"),
+        ListAction::PageUp => meta("Navigation", "Scroll up half page"),
+        ListAction::PageDown => meta("Navigation", "Scroll down half page"),
+        ListAction::CollapseFolder => meta("Navigation", "Collapse folder"),
+        ListAction::ExpandFolder => meta("Navigation", "Expand folder"),
+        ListAction::Open => meta("Actions", "Open selected item"),
+        ListAction::CreateNote => meta("Actions", "Create new note"),
+        ListAction::CreateFolder => meta("Actions", "Create new folder"),
+        ListAction::Rename => meta("Actions", "Rename note"),
+        ListAction::RenameFolder => meta("Actions", "Rename folder"),
+        ListAction::Delete => meta("Actions", "Delete"),
+        ListAction::Duplicate => meta("Actions", "Duplicate note"),
+        ListAction::MoveNote => meta("Actions", "Move note or folder"),
+        ListAction::MoveToParent => meta("Actions", "Move note to parent folder"),
+        ListAction::ManageTags => meta("Actions", "Manage tags"),
+        ListAction::RemoveTagsFromSelected => meta("Actions", "Remove tags from selected notes"),
+        ListAction::TogglePin => meta("Actions", "Toggle pin"),
+        ListAction::ToggleExternalEditor => meta("Actions", "Toggle external editor"),
+        ListAction::OpenLocation => meta("Actions", "Open file location"),
+        ListAction::ManageSubnotes => meta("Actions", "Manage subnotes"),
+        ListAction::Search => meta("Display", "Search"),
+        ListAction::ToggleSelectMode => meta("Display", "Toggle select mode"),
+        ListAction::ToggleSelectItem => meta("Display", "Toggle select item"),
+        ListAction::TogglePreview => meta("Display", "Toggle preview pane"),
+        ListAction::TogglePreviewFullscreen => meta("Display", "Toggle preview fullscreen"),
+        ListAction::ToggleWrap => meta("Display", "Toggle word wrap (editor and preview)"),
+        ListAction::PreviewPageUp => meta("Display", "Page preview up"),
+        ListAction::ToggleCalendar => meta("Display", "Toggle calendar"),
+        ListAction::OpenCommandPalette => meta("Display", "Open command palette"),
+        ListAction::OpenGraph => meta("Display", "Open graph view"),
+        ListAction::OpenCanvas => meta("Display", "Open canvas view"),
+        ListAction::CollapseAll => meta("Display", "Collapse all folders"),
+        ListAction::ExpandAll => meta("Display", "Expand all folders"),
+        ListAction::ExpandToLevel => meta("Display", "Expand folders to level (e.g. 3E)"),
+        ListAction::ToggleFoldersFirst => meta("Display", "Toggle folders-first sort"),
+        ListAction::RefreshNotes => meta("Display", "Refresh notes (external changes)"),
+        ListAction::Quit => meta("General", "Quit"),
+        ListAction::Help => meta("General", "Help"),
+        ListAction::CycleFocus => meta("General", "Cycle focus between panes"),
+        ListAction::ReverseCycleFocus => meta("General", "Reverse cycle focus between panes"),
+        ListAction::Confirm => meta("General", "Confirm action"),
+        ListAction::Cancel => meta("General", "Cancel action"),
+        ListAction::NewFromTemplate => meta("General", "New note from template"),
+        ListAction::CycleSort => meta("General", "Cycle sort order"),
+        ListAction::OpenTrash => meta("General", "Open trash"),
+        ListAction::ShowInfo => meta("General", "Show note info"),
+        ListAction::PreviewPageDown => meta("Display", "Page preview down"),
     }
 }
 
 pub fn edit_action_meta(a: EditAction) -> HelpMeta {
     match a {
-        EditAction::CycleFocus => HelpMeta {
-            group: "Navigation",
-            description: "Cycle focus (Title, Content)",
-        },
-        EditAction::InsertTab => HelpMeta {
-            group: "Editing",
-            description: "Insert tab character",
-        },
-        EditAction::Back => HelpMeta {
-            group: "Navigation",
-            description: "Return to notes (auto-saves)",
-        },
-        EditAction::Copy => HelpMeta {
-            group: "Editing",
-            description: "Copy",
-        },
-        EditAction::Cut => HelpMeta {
-            group: "Editing",
-            description: "Cut",
-        },
-        EditAction::Paste => HelpMeta {
-            group: "Editing",
-            description: "Paste",
-        },
-        EditAction::SelectAll => HelpMeta {
-            group: "Editing",
-            description: "Select all",
-        },
-        EditAction::Undo => HelpMeta {
-            group: "Editing",
-            description: "Undo",
-        },
-        EditAction::Redo => HelpMeta {
-            group: "Editing",
-            description: "Redo",
-        },
-        EditAction::DeleteWord => HelpMeta {
-            group: "Editing",
-            description: "Delete previous word",
-        },
-        EditAction::DeleteNextWord => HelpMeta {
-            group: "Editing",
-            description: "Delete next word",
-        },
-        EditAction::MoveToTop => HelpMeta {
-            group: "Editing",
-            description: "Move cursor to top",
-        },
-        EditAction::MoveToBottom => HelpMeta {
-            group: "Editing",
-            description: "Move cursor to bottom",
-        },
-        EditAction::ManageSubnotes => HelpMeta {
-            group: "Editing",
-            description: "Manage subnotes",
-        },
-        EditAction::ToggleMarkdownPreview => HelpMeta {
-            group: "Preview",
-            description: "Toggle markdown preview",
-        },
-        EditAction::TogglePreviewFullscreen => HelpMeta {
-            group: "Preview",
-            description: "Toggle preview fullscreen",
-        },
-        EditAction::ToggleWrap => HelpMeta {
-            group: "Editing",
-            description: "Toggle word wrap (editor and preview)",
-        },
-        EditAction::PreviewPageUp => HelpMeta {
-            group: "Preview",
-            description: "Page preview up",
-        },
-        EditAction::PreviewPageDown => HelpMeta {
-            group: "Preview",
-            description: "Page preview down",
-        },
-        EditAction::ToggleOutline => HelpMeta {
-            group: "Panels",
-            description: "Toggle outline pane",
-        },
-        EditAction::ToggleLinks => HelpMeta {
-            group: "Panels",
-            description: "Toggle links pane",
-        },
-        EditAction::PreviewLink => HelpMeta {
-            group: "Panels",
-            description: "Preview linked note under cursor",
-        },
-        EditAction::GoToLine => HelpMeta {
-            group: "Editor",
-            description: "Go to line number",
-        },
-        EditAction::PasteImage => HelpMeta {
-            group: "Editing",
-            description: "Paste image from clipboard",
-        },
-        EditAction::InsertImageFromFile => HelpMeta {
-            group: "Editing",
-            description: "Insert image from file",
-        },
-        EditAction::Find => HelpMeta {
-            group: "Editing",
-            description: "Find in document",
-        },
-        EditAction::InsertDate => HelpMeta {
-            group: "Editing",
-            description: "Insert date/time",
-        },
-        EditAction::Save => HelpMeta {
-            group: "General",
-            description: "Save",
-        },
+        EditAction::CycleFocus => meta("Navigation", "Cycle focus (Title, Content)"),
+        EditAction::InsertTab => meta("Editing", "Insert tab character"),
+        EditAction::Back => meta("Navigation", "Return to notes (auto-saves)"),
+        EditAction::Copy => meta("Editing", "Copy"),
+        EditAction::Cut => meta("Editing", "Cut"),
+        EditAction::Paste => meta("Editing", "Paste"),
+        EditAction::SelectAll => meta("Editing", "Select all"),
+        EditAction::Undo => meta("Editing", "Undo"),
+        EditAction::Redo => meta("Editing", "Redo"),
+        EditAction::DeleteWord => meta("Editing", "Delete previous word"),
+        EditAction::DeleteNextWord => meta("Editing", "Delete next word"),
+        EditAction::MoveToTop => meta("Editing", "Move cursor to top"),
+        EditAction::MoveToBottom => meta("Editing", "Move cursor to bottom"),
+        EditAction::ManageSubnotes => meta("Editing", "Manage subnotes"),
+        EditAction::ToggleMarkdownPreview => meta("Preview", "Toggle markdown preview"),
+        EditAction::TogglePreviewFullscreen => meta("Preview", "Toggle preview fullscreen"),
+        EditAction::ToggleWrap => meta("Editing", "Toggle word wrap (editor and preview)"),
+        EditAction::PreviewPageUp => meta("Preview", "Page preview up"),
+        EditAction::PreviewPageDown => meta("Preview", "Page preview down"),
+        EditAction::ToggleOutline => meta("Panels", "Toggle outline pane"),
+        EditAction::ToggleLinks => meta("Panels", "Toggle links pane"),
+        EditAction::PreviewLink => meta("Panels", "Preview linked note under cursor"),
+        EditAction::GoToLine => meta("Editor", "Go to line number"),
+        EditAction::PasteImage => meta("Editing", "Paste image from clipboard"),
+        EditAction::InsertImageFromFile => meta("Editing", "Insert image from file"),
+        EditAction::Find => meta("Editing", "Find in document"),
+        EditAction::InsertDate => meta("Editing", "Insert date/time"),
+        EditAction::Save => meta("General", "Save"),
     }
 }
 
 pub fn graph_action_meta(a: GraphAction) -> HelpMeta {
     match a {
-        GraphAction::PanUp => HelpMeta {
-            group: "Navigation",
-            description: "Pan up",
-        },
-        GraphAction::PanDown => HelpMeta {
-            group: "Navigation",
-            description: "Pan down",
-        },
-        GraphAction::PanLeft => HelpMeta {
-            group: "Navigation",
-            description: "Pan left",
-        },
-        GraphAction::PanRight => HelpMeta {
-            group: "Navigation",
-            description: "Pan right",
-        },
-        GraphAction::ZoomIn => HelpMeta {
-            group: "Navigation",
-            description: "Zoom in",
-        },
-        GraphAction::ZoomOut => HelpMeta {
-            group: "Navigation",
-            description: "Zoom out",
-        },
-        GraphAction::OpenNote => HelpMeta {
-            group: "Navigation",
-            description: "Open selected note",
-        },
-        GraphAction::AutoFit => HelpMeta {
-            group: "Navigation",
-            description: "Auto-fit graph to viewport",
-        },
-        GraphAction::ToggleSearch => HelpMeta {
-            group: "Navigation",
-            description: "Search nodes",
-        },
-        GraphAction::ToggleMinimap => HelpMeta {
-            group: "Display",
-            description: "Toggle minimap",
-        },
-        GraphAction::ToggleLegend => HelpMeta {
-            group: "Display",
-            description: "Toggle legend",
-        },
-        GraphAction::ToggleGrid => HelpMeta {
-            group: "Display",
-            description: "Toggle background grid",
-        },
-        GraphAction::ToggleStatus => HelpMeta {
-            group: "Display",
-            description: "Toggle status bar",
-        },
-        GraphAction::TogglePreview => HelpMeta {
-            group: "Display",
-            description: "Toggle preview",
-        },
-        GraphAction::OpenContextMenu => HelpMeta {
-            group: "Menu",
-            description: "Open context menu",
-        },
-        GraphAction::CreateConnection => HelpMeta {
-            group: "Actions",
-            description: "Create connection",
-        },
-        GraphAction::DeleteConnection => HelpMeta {
-            group: "Actions",
-            description: "Delete connection",
-        },
-        GraphAction::LocalGraph => HelpMeta {
-            group: "Actions",
-            description: "Local graph",
-        },
-        GraphAction::ShowGroup => HelpMeta {
-            group: "Actions",
-            description: "Show group",
-        },
-        GraphAction::DeleteNode => HelpMeta {
-            group: "Actions",
-            description: "Delete node",
-        },
-        GraphAction::MenuClose => HelpMeta {
-            group: "Menu",
-            description: "Close menu",
-        },
-        GraphAction::MenuUp => HelpMeta {
-            group: "Menu",
-            description: "Menu up",
-        },
-        GraphAction::MenuDown => HelpMeta {
-            group: "Menu",
-            description: "Menu down",
-        },
-        GraphAction::MenuSelect => HelpMeta {
-            group: "Menu",
-            description: "Select menu item",
-        },
-        GraphAction::LookingGlass => HelpMeta {
-            group: "Display",
-            description: "Toggle looking glass",
-        },
-        GraphAction::Refresh => HelpMeta {
-            group: "System",
-            description: "Refresh physics",
-        },
-        GraphAction::ReloadConfig => HelpMeta {
-            group: "System",
-            description: "Reload config",
-        },
-        GraphAction::Help => HelpMeta {
-            group: "System",
-            description: "Help",
-        },
-        GraphAction::Quit => HelpMeta {
-            group: "System",
-            description: "Quit graph view",
-        },
+        GraphAction::PanUp => meta("Navigation", "Pan up"),
+        GraphAction::PanDown => meta("Navigation", "Pan down"),
+        GraphAction::PanLeft => meta("Navigation", "Pan left"),
+        GraphAction::PanRight => meta("Navigation", "Pan right"),
+        GraphAction::ZoomIn => meta("Navigation", "Zoom in"),
+        GraphAction::ZoomOut => meta("Navigation", "Zoom out"),
+        GraphAction::OpenNote => meta("Navigation", "Open selected note"),
+        GraphAction::AutoFit => meta("Navigation", "Auto-fit graph to viewport"),
+        GraphAction::ToggleSearch => meta("Navigation", "Search nodes"),
+        GraphAction::ToggleMinimap => meta("Display", "Toggle minimap"),
+        GraphAction::ToggleLegend => meta("Display", "Toggle legend"),
+        GraphAction::ToggleGrid => meta("Display", "Toggle background grid"),
+        GraphAction::ToggleStatus => meta("Display", "Toggle status bar"),
+        GraphAction::TogglePreview => meta("Display", "Toggle preview"),
+        GraphAction::OpenContextMenu => meta("Menu", "Open context menu"),
+        GraphAction::CreateConnection => meta("Actions", "Create connection"),
+        GraphAction::DeleteConnection => meta("Actions", "Delete connection"),
+        GraphAction::LocalGraph => meta("Actions", "Local graph"),
+        GraphAction::ShowGroup => meta("Actions", "Show group"),
+        GraphAction::DeleteNode => meta("Actions", "Delete node"),
+        GraphAction::MenuClose => meta("Menu", "Close menu"),
+        GraphAction::MenuUp => meta("Menu", "Menu up"),
+        GraphAction::MenuDown => meta("Menu", "Menu down"),
+        GraphAction::MenuSelect => meta("Menu", "Select menu item"),
+        GraphAction::LookingGlass => meta("Display", "Toggle looking glass"),
+        GraphAction::Refresh => meta("System", "Refresh physics"),
+        GraphAction::ReloadConfig => meta("System", "Reload config"),
+        GraphAction::Help => meta("System", "Help"),
+        GraphAction::Quit => meta("System", "Quit graph view"),
     }
 }
 
 pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
     match a {
-        DrawAction::SelectCursorTool => HelpMeta {
-            group: "Tools",
-            description: "Select and transform element",
-        },
-        DrawAction::SelectDrawTool => HelpMeta {
-            group: "Tools",
-            description: "Draw freehand strokes",
-        },
-        DrawAction::ToggleShapeSelector => HelpMeta {
-            group: "Tools",
-            description: "Shape tool (opens picker)",
-        },
-        DrawAction::SelectTextTool => HelpMeta {
-            group: "Tools",
-            description: "Place text label",
-        },
-        DrawAction::SelectEraseTool => HelpMeta {
-            group: "Tools",
-            description: "Erase elements",
-        },
-        DrawAction::ShapeSelectorUp => HelpMeta {
-            group: "Shape Selector",
-            description: "Select previous shape",
-        },
-        DrawAction::ShapeSelectorDown => HelpMeta {
-            group: "Shape Selector",
-            description: "Select next shape",
-        },
-        DrawAction::ShapeSelectorConfirm => HelpMeta {
-            group: "Shape Selector",
-            description: "Confirm shape selection",
-        },
-        DrawAction::ShapeSelectorCancel => HelpMeta {
-            group: "Shape Selector",
-            description: "Cancel shape selection",
-        },
-        DrawAction::ToggleColorSelector => HelpMeta {
-            group: "Tools",
-            description: "Color picker (opens picker)",
-        },
-        DrawAction::ColorSelectorUp => HelpMeta {
-            group: "Color Selector",
-            description: "Select previous color",
-        },
-        DrawAction::ColorSelectorDown => HelpMeta {
-            group: "Color Selector",
-            description: "Select next color",
-        },
-        DrawAction::ColorSelectorConfirm => HelpMeta {
-            group: "Color Selector",
-            description: "Confirm color selection",
-        },
-        DrawAction::ColorSelectorCancel => HelpMeta {
-            group: "Color Selector",
-            description: "Cancel color selection",
-        },
-        DrawAction::TextEditorConfirm => HelpMeta {
-            group: "Text Editor",
-            description: "Confirm text edit",
-        },
-        DrawAction::TextEditorCancel => HelpMeta {
-            group: "Text Editor",
-            description: "Cancel text edit",
-        },
-        DrawAction::MenuClose => HelpMeta {
-            group: "Context Menu",
-            description: "Close context menu",
-        },
-        DrawAction::MenuUp => HelpMeta {
-            group: "Context Menu",
-            description: "Select previous menu item",
-        },
-        DrawAction::MenuDown => HelpMeta {
-            group: "Context Menu",
-            description: "Select next menu item",
-        },
-        DrawAction::MenuSelect => HelpMeta {
-            group: "Context Menu",
-            description: "Activate selected menu item",
-        },
-        DrawAction::Copy => HelpMeta {
-            group: "Editing",
-            description: "Copy selected element",
-        },
-        DrawAction::Paste => HelpMeta {
-            group: "Editing",
-            description: "Paste copied element",
-        },
-        DrawAction::Undo => HelpMeta {
-            group: "Editing",
-            description: "Undo last draw change",
-        },
-        DrawAction::Redo => HelpMeta {
-            group: "Editing",
-            description: "Redo last draw change",
-        },
-        DrawAction::ToggleGrid => HelpMeta {
-            group: "Tools",
-            description: "Toggle grid overlay",
-        },
-        DrawAction::Help => HelpMeta {
-            group: "General",
-            description: "Help",
-        },
-        DrawAction::Quit => HelpMeta {
-            group: "General",
-            description: "Exit draw view",
-        },
+        DrawAction::SelectCursorTool => meta("Tools", "Select and transform element"),
+        DrawAction::SelectDrawTool => meta("Tools", "Draw freehand strokes"),
+        DrawAction::ToggleShapeSelector => meta("Tools", "Shape tool (opens picker)"),
+        DrawAction::SelectTextTool => meta("Tools", "Place text label"),
+        DrawAction::SelectEraseTool => meta("Tools", "Erase elements"),
+        DrawAction::ShapeSelectorUp => meta("Shape Selector", "Select previous shape"),
+        DrawAction::ShapeSelectorDown => meta("Shape Selector", "Select next shape"),
+        DrawAction::ShapeSelectorConfirm => meta("Shape Selector", "Confirm shape selection"),
+        DrawAction::ShapeSelectorCancel => meta("Shape Selector", "Cancel shape selection"),
+        DrawAction::ToggleColorSelector => meta("Tools", "Color picker (opens picker)"),
+        DrawAction::ColorSelectorUp => meta("Color Selector", "Select previous color"),
+        DrawAction::ColorSelectorDown => meta("Color Selector", "Select next color"),
+        DrawAction::ColorSelectorConfirm => meta("Color Selector", "Confirm color selection"),
+        DrawAction::ColorSelectorCancel => meta("Color Selector", "Cancel color selection"),
+        DrawAction::TextEditorConfirm => meta("Text Editor", "Confirm text edit"),
+        DrawAction::TextEditorCancel => meta("Text Editor", "Cancel text edit"),
+        DrawAction::MenuClose => meta("Context Menu", "Close context menu"),
+        DrawAction::MenuUp => meta("Context Menu", "Select previous menu item"),
+        DrawAction::MenuDown => meta("Context Menu", "Select next menu item"),
+        DrawAction::MenuSelect => meta("Context Menu", "Activate selected menu item"),
+        DrawAction::Copy => meta("Editing", "Copy selected element"),
+        DrawAction::Paste => meta("Editing", "Paste copied element"),
+        DrawAction::Undo => meta("Editing", "Undo last draw change"),
+        DrawAction::Redo => meta("Editing", "Redo last draw change"),
+        DrawAction::ToggleGrid => meta("Tools", "Toggle grid overlay"),
+        DrawAction::Help => meta("General", "Help"),
+        DrawAction::Quit => meta("General", "Exit draw view"),
     }
 }
 
 pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
     match a {
-        CanvasAction::Undo => HelpMeta {
-            group: "Editing",
-            description: "Undo last canvas edit",
-        },
-        CanvasAction::Redo => HelpMeta {
-            group: "Editing",
-            description: "Redo canvas edit",
-        },
-        CanvasAction::MoveUp => HelpMeta {
-            group: "Navigation",
-            description: "Move up",
-        },
-        CanvasAction::MoveDown => HelpMeta {
-            group: "Navigation",
-            description: "Move down",
-        },
-        CanvasAction::MoveLeft => HelpMeta {
-            group: "Navigation",
-            description: "Move left",
-        },
-        CanvasAction::MoveRight => HelpMeta {
-            group: "Navigation",
-            description: "Move right",
-        },
-        CanvasAction::ZoomIn => HelpMeta {
-            group: "Navigation",
-            description: "Zoom in",
-        },
-        CanvasAction::ZoomOut => HelpMeta {
-            group: "Navigation",
-            description: "Zoom out",
-        },
-        CanvasAction::ZoomFineIn => HelpMeta {
-            group: "Navigation",
-            description: "Zoom in (fine)",
-        },
-        CanvasAction::ZoomFineOut => HelpMeta {
-            group: "Navigation",
-            description: "Zoom out (fine)",
-        },
-        CanvasAction::EditOrConnect => HelpMeta {
-            group: "Editing",
-            description: "Open / edit / connect",
-        },
-        CanvasAction::OpenContextMenu => HelpMeta {
-            group: "Editing",
-            description: "Context menu",
-        },
-        CanvasAction::Save => HelpMeta {
-            group: "Editing",
-            description: "Save canvas file",
-        },
-        CanvasAction::RenameConfirm => HelpMeta {
-            group: "Editing",
-            description: "Rename confirm",
-        },
-        CanvasAction::ToggleOrthogonal => HelpMeta {
-            group: "Display",
-            description: "Toggle orthogonal edge routing",
-        },
-        CanvasAction::RenameCancel => HelpMeta {
-            group: "Editing",
-            description: "Rename cancel",
-        },
-        CanvasAction::ToggleGrid => HelpMeta {
-            group: "Interface",
-            description: "Toggle grid",
-        },
-        CanvasAction::ToggleEditorPane => HelpMeta {
-            group: "Interface",
-            description: "Toggle editor pane",
-        },
-        CanvasAction::CycleFocus => HelpMeta {
-            group: "Interface",
-            description: "Cycle focus",
-        },
-        CanvasAction::EditorUnfocus => HelpMeta {
-            group: "Interface",
-            description: "Exit editor focus",
-        },
-        CanvasAction::MenuClose => HelpMeta {
-            group: "Menus & Popups",
-            description: "Close context menu",
-        },
-        CanvasAction::MenuUp => HelpMeta {
-            group: "Menus & Popups",
-            description: "Menu select up",
-        },
-        CanvasAction::MenuDown => HelpMeta {
-            group: "Menus & Popups",
-            description: "Menu select down",
-        },
-        CanvasAction::MenuSelect => HelpMeta {
-            group: "Menus & Popups",
-            description: "Menu confirm",
-        },
-        CanvasAction::CloseEditor => HelpMeta {
-            group: "Menus & Popups",
-            description: "Close editor",
-        },
-        CanvasAction::CloseEditorAlt => HelpMeta {
-            group: "Menus & Popups",
-            description: "Close editor (alt)",
-        },
-        CanvasAction::ConfirmResize => HelpMeta {
-            group: "Menus & Popups",
-            description: "Resize confirm",
-        },
-        CanvasAction::CancelResize => HelpMeta {
-            group: "Menus & Popups",
-            description: "Resize cancel",
-        },
-        CanvasAction::CreateConnection => HelpMeta {
-            group: "Connections",
-            description: "Create connection from selected node",
-        },
-        CanvasAction::DeleteConnection => HelpMeta {
-            group: "Connections",
-            description: "Delete connection from selected node",
-        },
-        CanvasAction::DeleteAllConnections => HelpMeta {
-            group: "Connections",
-            description: "Delete all connections on selected node",
-        },
-        CanvasAction::RenameNode => HelpMeta {
-            group: "Editing",
-            description: "Rename selected node",
-        },
-        CanvasAction::ResizeMode => HelpMeta {
-            group: "Editing",
-            description: "Enter resize mode",
-        },
-        CanvasAction::SetColor => HelpMeta {
-            group: "Editing",
-            description: "Set color of selected node(s)",
-        },
-        CanvasAction::DeleteNode => HelpMeta {
-            group: "Editing",
-            description: "Delete selected node(s)",
-        },
-        CanvasAction::AddTextNode => HelpMeta {
-            group: "Editing",
-            description: "Add text node at cursor",
-        },
-        CanvasAction::AddGroup => HelpMeta {
-            group: "Editing",
-            description: "Add group at cursor",
-        },
-        CanvasAction::AddImageNode => HelpMeta {
-            group: "Editing",
-            description: "Add image node at cursor",
-        },
-        CanvasAction::Help => HelpMeta {
-            group: "General",
-            description: "Help",
-        },
-        CanvasAction::Quit => HelpMeta {
-            group: "General",
-            description: "Quit canvas view",
-        },
+        CanvasAction::Undo => meta("Editing", "Undo last canvas edit"),
+        CanvasAction::Redo => meta("Editing", "Redo canvas edit"),
+        CanvasAction::MoveUp => meta("Navigation", "Move up"),
+        CanvasAction::MoveDown => meta("Navigation", "Move down"),
+        CanvasAction::MoveLeft => meta("Navigation", "Move left"),
+        CanvasAction::MoveRight => meta("Navigation", "Move right"),
+        CanvasAction::ZoomIn => meta("Navigation", "Zoom in"),
+        CanvasAction::ZoomOut => meta("Navigation", "Zoom out"),
+        CanvasAction::ZoomFineIn => meta("Navigation", "Zoom in (fine)"),
+        CanvasAction::ZoomFineOut => meta("Navigation", "Zoom out (fine)"),
+        CanvasAction::EditOrConnect => meta("Editing", "Open / edit / connect"),
+        CanvasAction::OpenContextMenu => meta("Editing", "Context menu"),
+        CanvasAction::Save => meta("Editing", "Save canvas file"),
+        CanvasAction::RenameConfirm => meta("Editing", "Rename confirm"),
+        CanvasAction::ToggleOrthogonal => meta("Display", "Toggle orthogonal edge routing"),
+        CanvasAction::RenameCancel => meta("Editing", "Rename cancel"),
+        CanvasAction::ToggleGrid => meta("Interface", "Toggle grid"),
+        CanvasAction::ToggleEditorPane => meta("Interface", "Toggle editor pane"),
+        CanvasAction::CycleFocus => meta("Interface", "Cycle focus"),
+        CanvasAction::EditorUnfocus => meta("Interface", "Exit editor focus"),
+        CanvasAction::MenuClose => meta("Menus & Popups", "Close context menu"),
+        CanvasAction::MenuUp => meta("Menus & Popups", "Menu select up"),
+        CanvasAction::MenuDown => meta("Menus & Popups", "Menu select down"),
+        CanvasAction::MenuSelect => meta("Menus & Popups", "Menu confirm"),
+        CanvasAction::CloseEditor => meta("Menus & Popups", "Close editor"),
+        CanvasAction::CloseEditorAlt => meta("Menus & Popups", "Close editor (alt)"),
+        CanvasAction::ConfirmResize => meta("Menus & Popups", "Resize confirm"),
+        CanvasAction::CancelResize => meta("Menus & Popups", "Resize cancel"),
+        CanvasAction::CreateConnection => {
+            meta("Connections", "Create connection from selected node")
+        }
+        CanvasAction::DeleteConnection => {
+            meta("Connections", "Delete connection from selected node")
+        }
+        CanvasAction::DeleteAllConnections => {
+            meta("Connections", "Delete all connections on selected node")
+        }
+        CanvasAction::RenameNode => meta("Editing", "Rename selected node"),
+        CanvasAction::ResizeMode => meta("Editing", "Enter resize mode"),
+        CanvasAction::SetColor => meta("Editing", "Set color of selected node(s)"),
+        CanvasAction::DeleteNode => meta("Editing", "Delete selected node(s)"),
+        CanvasAction::AddTextNode => meta("Editing", "Add text node at cursor"),
+        CanvasAction::AddGroup => meta("Editing", "Add group at cursor"),
+        CanvasAction::AddImageNode => meta("Editing", "Add image node at cursor"),
+        CanvasAction::Help => meta("General", "Help"),
+        CanvasAction::Quit => meta("General", "Quit canvas view"),
     }
 }
 
 pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
     match a {
-        BackupAction::MoveUp => HelpMeta {
-            group: "Navigation",
-            description: "Move up",
-        },
-        BackupAction::MoveDown => HelpMeta {
-            group: "Navigation",
-            description: "Move down",
-        },
-        BackupAction::ScrollDiffUp => HelpMeta {
-            group: "Navigation",
-            description: "Scroll diff up",
-        },
-        BackupAction::ScrollDiffDown => HelpMeta {
-            group: "Navigation",
-            description: "Scroll diff down",
-        },
-        BackupAction::CycleSection => HelpMeta {
-            group: "Navigation",
-            description: "Cycle sections",
-        },
-        BackupAction::StageFile => HelpMeta {
-            group: "Actions",
-            description: "Stage file",
-        },
-        BackupAction::UnstageFile => HelpMeta {
-            group: "Actions",
-            description: "Unstage file",
-        },
-        BackupAction::StageAll => HelpMeta {
-            group: "Actions",
-            description: "Stage all changes",
-        },
-        BackupAction::Refresh => HelpMeta {
-            group: "Actions",
-            description: "Refresh status",
-        },
-        BackupAction::EnterCommit => HelpMeta {
-            group: "Actions",
-            description: "Enter commit",
-        },
-        BackupAction::ConfirmCommit => HelpMeta {
-            group: "Actions",
-            description: "Confirm commit",
-        },
-        BackupAction::CancelCommit => HelpMeta {
-            group: "Actions",
-            description: "Cancel commit",
-        },
-        BackupAction::Push => HelpMeta {
-            group: "Actions",
-            description: "Push to remote",
-        },
-        BackupAction::Pull => HelpMeta {
-            group: "Actions",
-            description: "Pull from remote",
-        },
-        BackupAction::OpenSettings => HelpMeta {
-            group: "Actions",
-            description: "Open settings",
-        },
-        BackupAction::CloseSettings => HelpMeta {
-            group: "Actions",
-            description: "Close settings",
-        },
-        BackupAction::NextField => HelpMeta {
-            group: "Settings Fields",
-            description: "Next field",
-        },
-        BackupAction::PrevField => HelpMeta {
-            group: "Settings Fields",
-            description: "Previous field",
-        },
-        BackupAction::ActivateField => HelpMeta {
-            group: "Settings Fields",
-            description: "Activate field",
-        },
-        BackupAction::ConfirmEditField => HelpMeta {
-            group: "Settings Fields",
-            description: "Confirm edit field",
-        },
-        BackupAction::CancelEditField => HelpMeta {
-            group: "Settings Fields",
-            description: "Cancel edit field",
-        },
-        BackupAction::Help => HelpMeta {
-            group: "General",
-            description: "Show help",
-        },
-        BackupAction::Back => HelpMeta {
-            group: "General",
-            description: "Back to list",
-        },
+        BackupAction::MoveUp => meta("Navigation", "Move up"),
+        BackupAction::MoveDown => meta("Navigation", "Move down"),
+        BackupAction::ScrollDiffUp => meta("Navigation", "Scroll diff up"),
+        BackupAction::ScrollDiffDown => meta("Navigation", "Scroll diff down"),
+        BackupAction::CycleSection => meta("Navigation", "Cycle sections"),
+        BackupAction::StageFile => meta("Actions", "Stage file"),
+        BackupAction::UnstageFile => meta("Actions", "Unstage file"),
+        BackupAction::StageAll => meta("Actions", "Stage all changes"),
+        BackupAction::Refresh => meta("Actions", "Refresh status"),
+        BackupAction::EnterCommit => meta("Actions", "Enter commit"),
+        BackupAction::ConfirmCommit => meta("Actions", "Confirm commit"),
+        BackupAction::CancelCommit => meta("Actions", "Cancel commit"),
+        BackupAction::Push => meta("Actions", "Push to remote"),
+        BackupAction::Pull => meta("Actions", "Pull from remote"),
+        BackupAction::OpenSettings => meta("Actions", "Open settings"),
+        BackupAction::CloseSettings => meta("Actions", "Close settings"),
+        BackupAction::NextField => meta("Settings Fields", "Next field"),
+        BackupAction::PrevField => meta("Settings Fields", "Previous field"),
+        BackupAction::ActivateField => meta("Settings Fields", "Activate field"),
+        BackupAction::ConfirmEditField => meta("Settings Fields", "Confirm edit field"),
+        BackupAction::CancelEditField => meta("Settings Fields", "Cancel edit field"),
+        BackupAction::Help => meta("General", "Show help"),
+        BackupAction::Back => meta("General", "Back to list"),
     }
 }
 

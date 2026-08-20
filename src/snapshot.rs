@@ -10,10 +10,6 @@ use crate::draw::state::DrawData;
 use crate::pinstar::data::{CanvasData, CanvasNode};
 use unicode_width::UnicodeWidthChar;
 
-const PREVIEW_COLS: u16 = 78;
-
-const PREVIEW_ROWS: u16 = 38;
-
 pub fn render_canvas_snapshot(
     data: &CanvasData,
     theme: &AppThemeColors,
@@ -317,23 +313,6 @@ pub fn render_canvas_snapshot(
     });
 
     extract_grid(terminal, width, height)
-}
-
-pub fn render_draw_snapshot(
-    data: &DrawData,
-    theme: &AppThemeColors,
-    icon_mode: crate::config::IconMode,
-) -> Vec<Vec<(char, Style)>> {
-    render_draw_snapshot_with_size(
-        data,
-        theme,
-        icon_mode,
-        PREVIEW_COLS,
-        PREVIEW_ROWS,
-        1.0,
-        0.0,
-        0.0,
-    )
 }
 
 pub fn render_draw_snapshot_with_size(

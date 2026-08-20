@@ -52,7 +52,7 @@ impl EditorDocument {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn from_lines(lines: impl IntoIterator<Item = String>) -> Self {
         let textarea = TextArea::from(lines.into_iter().collect::<Vec<_>>());
         Self {
@@ -119,7 +119,7 @@ impl EditorDocument {
         self.mutate(|textarea| textarea.insert_str(text))
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn delete_str(&mut self, chars: usize) -> EditEffect {
         self.mutate(|textarea| textarea.delete_str(chars))
     }

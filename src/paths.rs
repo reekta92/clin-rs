@@ -26,7 +26,6 @@
 //! Data/cache roots always come from `ProjectDirs`.
 
 use sha2::{Digest, Sha256};
-use std::fmt::Write as _;
 
 /// Compute a 32-byte SHA-256 digest of platform-stable vault path bytes.
 pub fn vault_cache_digest(path: &Path) -> [u8; 32] {
@@ -153,10 +152,7 @@ impl AppPaths {
 
     /// Path to the vault-scoped note-summary cache (`<cache_dir>/vaults/<hex>/note_cache.bin`).
     pub fn scoped_summary_cache_path(&self, vault_digest: &[u8; 32]) -> PathBuf {
-        let mut hex = String::with_capacity(64);
-        for b in vault_digest {
-            let _ = write!(hex, "{:02x}", b);
-        }
+        let hex: String = vault_digest.iter().map(|b| format!("{b:02x}")).collect();
         self.cache_dir
             .join("vaults")
             .join(hex)

@@ -14,7 +14,6 @@ use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape,
 };
 use crate::graf::graph::GraphState;
-use crate::graf::spatial::SpatialGrid;
 use crate::graf::viewport::{Viewport, node_world_radius};
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
@@ -540,16 +539,17 @@ impl RenderCache {
         selected_nodes: &HashSet<NodeIndex>,
         selection_ring_color: Color,
         hovered_node: Option<NodeIndex>,
-        spatial_grid: &SpatialGrid,
         x_bounds: [f64; 2],
         y_bounds: [f64; 2],
     ) -> LodTier {
         self.nodes.clear();
         self.visible_nodes.clear();
 
-        spatial_grid.for_each_in_rect(x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1], |idx| {
+        for idx in
+            super::graph::nodes_in_rect(graph, x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1])
+        {
             self.visible_nodes.insert(idx);
-        });
+        }
 
         // Always include selected node(s) even if off-screen
         if let Some(sel) = selected_node {
@@ -771,7 +771,6 @@ pub fn draw_graph_view(
         &selected_set,
         colors.selected_indicator_color,
         hovered_node,
-        &state.spatial_grid,
         x_bounds,
         y_bounds,
     );
@@ -1465,14 +1464,7 @@ mod tests {
     use super::*;
     use crate::config::ClinConfig;
     use crate::graf::graph::GraphNodeData;
-    use crate::graf::spatial::SpatialGrid;
     use fdg_sim::{ForceGraph, ForceGraphHelper};
-
-    fn setup_spatial_grid(graph: &ForceGraph<GraphNodeData, ()>) -> SpatialGrid {
-        let mut grid = SpatialGrid::new(100.0);
-        grid.rebuild(graph);
-        grid
-    }
 
     // Generous bounds covering all nodes in test graphs
     const TEST_X_BOUNDS: [f64; 2] = [-1000.0, 1000.0];
@@ -1513,7 +1505,6 @@ mod tests {
 
         let mut cache = RenderCache::new();
         let mut config = ClinConfig::default();
-        let grid = setup_spatial_grid(&graph);
         let selected_nodes = std::collections::HashSet::new();
 
         // 1. LabelMode::None
@@ -1525,7 +1516,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1541,7 +1531,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1557,7 +1546,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1577,7 +1565,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1600,7 +1587,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );

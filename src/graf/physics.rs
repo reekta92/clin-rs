@@ -127,7 +127,6 @@ pub fn simulation_step(state: &mut GraphState, timestep: f32) {
 
     let graph = state.simulation.get_graph();
     state.graph_bounds = super::render::compute_graph_bounds(graph);
-    state.spatial_grid.rebuild(state.simulation.get_graph());
 
     // Temperature decays towards 0 (mathematical energy minimum)
     state.alpha *= 0.95;
@@ -384,7 +383,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: true,
             physics_ideal_distance: 80.0,
             context_menu: None,
@@ -430,7 +428,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: crate::graf::spatial::SpatialGrid::new(80.0),
             physics_worker_active: true,
             physics_ideal_distance: 80.0,
             context_menu: None,
@@ -457,16 +454,17 @@ mod tests {
         for &idx in &nodes {
             let node = &g[idx];
             let mut found = false;
-            state_read.spatial_grid.for_each_near(
-                node.location.x as f64,
-                node.location.y as f64,
-                1.0,
-                |n_idx| {
-                    if n_idx == idx {
-                        found = true;
-                    }
-                },
-            );
+            for n_idx in crate::graf::graph::nodes_in_rect(
+                g,
+                node.location.x as f64 - 1.0,
+                node.location.y as f64 - 1.0,
+                node.location.x as f64 + 1.0,
+                node.location.y as f64 + 1.0,
+            ) {
+                if n_idx == idx {
+                    found = true;
+                }
+            }
             assert!(
                 found,
                 "Node {:?} not found in spatial grid near location {:?}",
@@ -497,7 +495,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
@@ -540,7 +537,6 @@ mod tests {
             gs.is_settled = true;
             let graph = gs.simulation.get_graph();
             gs.graph_bounds = super::super::render::compute_graph_bounds(graph);
-            gs.spatial_grid.rebuild(graph);
             gs.render_cache.lock().minimap_dirty = true;
         }
 

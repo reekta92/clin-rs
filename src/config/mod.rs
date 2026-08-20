@@ -16,7 +16,6 @@ pub mod types;
 
 pub use {custom_themes::*, merge::*, path::*, structs::*, types::*};
 
-#[path = "../graf/themes.rs"]
 pub mod themes;
 
 // ── Path overrides ──────────────────────────────────────────────────────────

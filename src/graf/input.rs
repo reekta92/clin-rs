@@ -460,9 +460,6 @@ pub fn handle_graph_mouse(
                         let bounds =
                             super::render::compute_graph_bounds(state_ref.simulation.get_graph());
                         state_ref.graph_bounds = bounds;
-                        state_ref
-                            .spatial_grid
-                            .rebuild(state_ref.simulation.get_graph());
                         state_ref.render_cache.lock().minimap_dirty = true;
                     }
                 }

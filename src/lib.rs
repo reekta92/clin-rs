@@ -1294,16 +1294,14 @@ where
             Duration::from_millis(100)
         } else if active_catalog || active_search {
             Duration::from_millis(32)
-        } else if app.is_first_cache_build
-            || matches!(
-                app.list.preview_content,
-                Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
-            )
-            || app
-                .editor
-                .md_preview_renderer
-                .as_ref()
-                .is_some_and(|r| r.is_pending())
+        } else if matches!(
+            app.list.preview_content,
+            Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
+        ) || app
+            .editor
+            .md_preview_renderer
+            .as_ref()
+            .is_some_and(|r| r.is_pending())
         {
             Duration::from_millis(50)
         } else {

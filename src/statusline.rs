@@ -2155,7 +2155,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,

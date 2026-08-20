@@ -196,7 +196,7 @@ impl OutlineState {
 mod tests {
     use super::*;
 
-    #[allow(dead_code)]
+    #[test]
     fn test_outline_state() {
         let content = "
 # H1
