@@ -71,8 +71,11 @@ pub(crate) static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 use anyhow::{Context, Result};
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
-    KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-    PushKeyboardEnhancementFlags,
+    KeyCode, KeyEventKind, KeyModifiers,
+};
+#[cfg(not(windows))]
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -93,12 +96,13 @@ pub fn run() -> Result<()> {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         disable_raw_mode().ok();
+        #[cfg(not(windows))]
+        let _ = execute!(io::stderr(), PopKeyboardEnhancementFlags);
         let _ = execute!(
             io::stderr(),
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
-            PopKeyboardEnhancementFlags,
             crossterm::cursor::Show,
         );
         prev(panic_info);
@@ -976,6 +980,18 @@ impl TerminalGuard {
     fn enter(mouse_enabled: bool) -> Result<Self> {
         enable_raw_mode().context("failed to enable raw mode")?;
         let mut stdout = io::stdout();
+        #[cfg(windows)]
+        let entered = if mouse_enabled {
+            execute!(
+                stdout,
+                EnterAlternateScreen,
+                EnableMouseCapture,
+                EnableBracketedPaste
+            )
+        } else {
+            execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)
+        };
+        #[cfg(not(windows))]
         let entered = if mouse_enabled {
             execute!(
                 stdout,
@@ -993,6 +1009,14 @@ impl TerminalGuard {
             )
         };
         if let Err(e) = entered {
+            #[cfg(not(windows))]
+            let _ = execute!(stdout, PopKeyboardEnhancementFlags);
+            let _ = execute!(
+                stdout,
+                LeaveAlternateScreen,
+                DisableMouseCapture,
+                DisableBracketedPaste
+            );
             disable_raw_mode().ok(); // guard won't be built; clean up raw mode ourselves
             return Err(e).context("failed to enter alternate screen");
         }
@@ -1003,12 +1027,13 @@ impl TerminalGuard {
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         disable_raw_mode().ok();
+        #[cfg(not(windows))]
+        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         let _ = execute!(
             io::stdout(),
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
-            PopKeyboardEnhancementFlags,
             crossterm::cursor::Show,
         );
     }
@@ -1018,12 +1043,16 @@ impl Drop for TerminalGuard {
 /// Bypasses graceful shutdown, saves, and confirm dialogs.
 pub fn force_quit() -> ! {
     crossterm::terminal::disable_raw_mode().ok();
+    #[cfg(not(windows))]
+    let _ = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::PopKeyboardEnhancementFlags
+    );
     let _ = crossterm::execute!(
         std::io::stdout(),
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::event::DisableMouseCapture,
         crossterm::event::DisableBracketedPaste,
-        crossterm::event::PopKeyboardEnhancementFlags,
         crossterm::cursor::Show,
     );
     std::process::exit(130);
