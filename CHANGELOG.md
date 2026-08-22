@@ -2,6 +2,11 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.11.3] - 2026-08-22
+
+### Fixed
+
+- Don't push Kitty keyboard enhancement flags on Windows
 ## [0.11.2] - 2026-08-20
 
 ### CI
@@ -11,6 +16,10 @@ All notable changes to clin are documented in this file.
 ### Changed
 
 - Changed default vault directory to 'Documents/clin Vault'
+
+### Release
+
+- V0.11.2
 ## [0.11.1] - 2026-08-18
 
 ### Added
