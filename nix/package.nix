@@ -25,6 +25,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
         (root + /src)
         (root + /Cargo.toml)
         (root + /Cargo.lock)
+        (root + /assets/clin.desktop)
+        (root + /assets/clin.png)
       ];
     };
 
@@ -41,6 +43,11 @@ rustPlatform.buildRustPackage (finalAttrs: {
     libx11
     libxcb
   ];
+
+  postInstall = ''
+    install -Dm444 assets/clin.desktop -t $out/share/applications
+    install -Dm444 assets/clin.png -t $out/share/icons/hicolor/256x256/apps
+  '';
 
   meta = {
     description = "Feature-packed terminal note management app inspired by Obsidian";
