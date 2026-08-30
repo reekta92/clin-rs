@@ -1,13 +1,25 @@
 {
   lib,
+  stdenv,
   rustPlatform,
+  makeBinaryWrapper,
   pkg-config,
   openssl,
   zlib,
   libgit2,
   libx11,
   libxcb,
+
+  wl-clipboard,
+  tesseract,
+
+  waylandSupport ? stdenv.hostPlatform.isLinux,
+  ocrSupport ? false,
 }:
+let
+  runtimeDeps = lib.optional waylandSupport wl-clipboard ++ lib.optional ocrSupport tesseract;
+  doWrap = runtimeDeps != [ ];
+in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "clin";
   version = (lib.importTOML ../Cargo.toml).package.version;
@@ -34,7 +46,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   nativeBuildInputs = [
     pkg-config
-  ];
+  ]
+  ++ lib.optional doWrap makeBinaryWrapper;
 
   buildInputs = [
     openssl
@@ -47,6 +60,11 @@ rustPlatform.buildRustPackage (finalAttrs: {
   postInstall = ''
     install -Dm444 assets/clin.desktop -t $out/share/applications
     install -Dm444 assets/clin.png -t $out/share/icons/hicolor/256x256/apps
+  '';
+
+  postFixup = lib.optionalString doWrap ''
+    wrapProgram $out/bin/clin \
+      --prefix PATH : ${lib.makeBinPath runtimeDeps}
   '';
 
   meta = {
