@@ -41,12 +41,7 @@ pub(crate) fn draw_canvas_grid(
     muted: Color,
     zoom: f64,
 ) {
-    if !visible
-        || area.is_empty()
-        || !projection.is_valid()
-        || !zoom.is_finite()
-        || zoom <= 0.0
-    {
+    if !visible || area.is_empty() || !projection.is_valid() || !zoom.is_finite() || zoom <= 0.0 {
         return;
     }
 
@@ -272,12 +267,7 @@ mod tests {
         // Set cols/rows per world to make dots appear at 0, 20
         // cols_per_world_x * 800.0 = 20 => 0.025
         // rows_per_world_y * 800.0 = 10 => 0.0125
-        let buffer = render_grid(
-            area,
-            true,
-            projection(0.025, 0.0125, 800.0, 800.0),
-            zoom,
-        );
+        let buffer = render_grid(area, true, projection(0.025, 0.0125, 800.0, 800.0), zoom);
         assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
         assert_eq!(buffer.cell((20, 10)).unwrap().symbol(), "·");
         assert_eq!(buffer.cell((10, 5)).unwrap().symbol(), " ");

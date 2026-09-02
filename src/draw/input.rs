@@ -2,9 +2,7 @@ use crate::draw::app::{
     DrawAppState, DrawEventAction, DrawInteraction, DrawMenuItem, DrawMenuKind, DrawMenuTarget,
     draw_menu_items, draw_menu_shortcut_index,
 };
-use crate::draw::state::{
-    DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke, Text,
-};
+use crate::draw::state::{DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke, Text};
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -795,11 +793,7 @@ fn copy_item(
     }
 }
 
-fn begin_paste(
-    app: &mut DrawAppState,
-    clipboard: Option<&DrawItem>,
-    anchor: Option<(f64, f64)>,
-) {
+fn begin_paste(app: &mut DrawAppState, clipboard: Option<&DrawItem>, anchor: Option<(f64, f64)>) {
     let Some(clipboard) = clipboard else {
         return;
     };
@@ -1499,10 +1493,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["Paste"]
         );
-        assert_eq!(
-            clipboard.as_ref().map(|saved| &saved.id),
-            Some(&source_id)
-        );
+        assert_eq!(clipboard.as_ref().map(|saved| &saved.id), Some(&source_id));
 
         handle_event(
             key(KeyCode::Char('v')),

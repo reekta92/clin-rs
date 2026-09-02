@@ -519,7 +519,9 @@ template = """
             (SortField::Modified, SortOrder::Ascending) => 3,
         };
         self.popups.active = Some(crate::popups::ActivePopup::Sort(
-            crate::popups::SelectionPopup { selected: current_idx },
+            crate::popups::SelectionPopup {
+                selected: current_idx,
+            },
         ));
     }
 
@@ -561,7 +563,9 @@ template = """
             crate::config::IconMode::None => 2,
         };
         self.popups.active = Some(crate::popups::ActivePopup::IconMode(
-            crate::popups::SelectionPopup { selected: current_idx },
+            crate::popups::SelectionPopup {
+                selected: current_idx,
+            },
         ));
     }
 
@@ -595,7 +599,9 @@ template = """
     pub fn begin_hint_bar_style_selection(&mut self) {
         let current_idx = self.config.ui.hint_bar_style.index();
         self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(
-            crate::popups::SelectionPopup { selected: current_idx },
+            crate::popups::SelectionPopup {
+                selected: current_idx,
+            },
         ));
     }
 

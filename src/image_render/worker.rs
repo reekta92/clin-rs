@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, Sender};
 use anyhow::Result;
 use image::DynamicImage;
+use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, Sender};
 
 pub struct ImageJob {
     pub key: PathBuf,
