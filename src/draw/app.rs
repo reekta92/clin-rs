@@ -468,7 +468,6 @@ impl crate::overlay::OverlayView for DrawAppState {
         if let Some(action) = action {
             match action {
                 DrawEventAction::Quit => {
-
                     self.save_draw()?;
                     return Ok(crate::overlay::OverlayResult::Exit);
                 }

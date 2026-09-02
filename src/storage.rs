@@ -726,7 +726,6 @@ impl Storage {
             .unwrap_or_else(|| self.notes_dir.join("invalid"))
     }
 
-
     pub fn import_attachment(&self, src: &Path, attachments_subdir: &str) -> Result<String> {
         let relative = Self::validated_attachment_subdir(attachments_subdir)?;
         let dir = self.notes_dir.join(&relative);
@@ -2252,7 +2251,6 @@ mod tests {
         let result = storage.decrypt(truncated);
         assert!(result.is_err(), "truncated payload must error, not panic");
     }
-
 
     #[test]
     fn test_duplicate_preserves_extension() -> Result<()> {

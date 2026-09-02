@@ -1001,7 +1001,6 @@ impl App {
         self.list.last_selection_change = None;
     }
 
-
     pub fn request_editor_preview_update(&mut self) {
         let now = Instant::now();
         self.editor.last_editor_change = Some(now);

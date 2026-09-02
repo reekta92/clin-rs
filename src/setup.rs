@@ -11,7 +11,6 @@ use std::path::PathBuf;
 pub const OPTION_ROWS: usize = 6;
 pub const DONE_ROW: usize = 6;
 
-
 pub const SETUP_THEMES: &[&str] = &[
     "default",
     "tokyo_night",

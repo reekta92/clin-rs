@@ -1,4 +1,3 @@
-
 use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 

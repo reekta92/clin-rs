@@ -7,7 +7,6 @@ use std::borrow::Cow;
 use std::io::Read;
 use std::process::{Command, Stdio};
 
-
 pub struct OcrPasteAction;
 
 fn is_wayland() -> bool {

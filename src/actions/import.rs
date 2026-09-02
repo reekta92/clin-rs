@@ -8,7 +8,6 @@ use std::io::Cursor;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-
 pub struct ImportAction {
     pub source: ImportSource,
     pub target: ImportTarget,
@@ -422,7 +421,11 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
         .unwrap_or_else(|| ".html".to_string());
 
     let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path(&ext));
-    let temp_path = temp_file.path().to_str().expect("temp path is UTF-8").to_string();
+    let temp_path = temp_file
+        .path()
+        .to_str()
+        .expect("temp path is UTF-8")
+        .to_string();
 
     let output = Command::new("curl")
         .args(["-sL", "-o", &temp_path, url])
@@ -449,10 +452,13 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
             if !md.is_empty() {
                 // Still need title extraction for the note name
                 let mut title = None;
-                let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path(
-                    "html",
-                ));
-                let temp_path = temp_file.path().to_str().expect("temp path is UTF-8").to_string();
+                let temp_file =
+                    crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("html"));
+                let temp_path = temp_file
+                    .path()
+                    .to_str()
+                    .expect("temp path is UTF-8")
+                    .to_string();
                 let _ = Command::new("curl")
                     .args(["-sL", "-o", &temp_path, url])
                     .status();

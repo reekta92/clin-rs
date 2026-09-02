@@ -339,8 +339,6 @@ impl App {
         }
     }
 
-
-
     /// Jump to list top (top=true) or bottom (top=false). With a count, jump to
     /// absolute 0-based index `count - 1` instead (vim `nG`/`ngg` parity).
     pub fn jump_to(&mut self, count: Option<u32>, top: bool) {
