@@ -918,9 +918,6 @@ fn handle_event(
                         app_state.refresh_simulation(config);
                         return Ok(None);
                     }
-                    GraphInputAction::ReloadConfig => {
-                        return Ok(None);
-                    }
                     GraphInputAction::TogglePreview => {
                         app_state.preview_enabled = !app_state.preview_enabled;
                         if app_state.preview_enabled {

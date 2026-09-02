@@ -238,10 +238,6 @@ const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
         "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view.",
     ),
     tip(
-        "Reload configuration",
-        "Press {graph:ReloadConfig} to reload graph visualization configurations from the configuration file.",
-    ),
-    tip(
         "Toggle status bar",
         "Press {graph:ToggleStatus} to show or hide the **status bar** at the bottom of the graph view.",
     ),

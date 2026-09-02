@@ -25,31 +25,32 @@
 //! so `--config` matches existing `custom_themes_dir()` behaviour.
 //! Data/cache roots always come from `ProjectDirs`.
 
-use sha2::{Digest, Sha256};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 
-/// Compute a 32-byte SHA-256 digest of platform-stable vault path bytes.
-pub fn vault_cache_digest(path: &Path) -> [u8; 32] {
-    let mut hasher = Sha256::new();
+/// Compute a 64-bit digest of platform-stable vault path bytes.
+pub fn vault_cache_digest(path: &Path) -> u64 {
+    let mut hasher = DefaultHasher::new();
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        hasher.update(b"unix\0");
-        hasher.update(path.as_os_str().as_bytes());
+        hasher.write(b"unix\0");
+        hasher.write(path.as_os_str().as_bytes());
     }
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
-        hasher.update(b"windows\0");
+        hasher.write(b"windows\0");
         for unit in path.as_os_str().encode_wide() {
-            hasher.update(&unit.to_le_bytes());
+            hasher.write(&unit.to_le_bytes());
         }
     }
     #[cfg(not(any(unix, windows)))]
     {
-        hasher.update(b"other\0");
-        hasher.update(path.to_string_lossy().as_bytes());
+        hasher.write(b"other\0");
+        hasher.write(path.to_string_lossy().as_bytes());
     }
-    hasher.finalize().into()
+    hasher.finish()
 }
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
@@ -120,11 +121,6 @@ impl AppPaths {
     pub fn config_dir(&self) -> &Path {
         &self.config_dir
     }
-
-    pub fn default_config_dir(&self) -> &Path {
-        &self.default_config_dir
-    }
-
     pub fn data_local_dir(&self) -> &Path {
         &self.data_local_dir
     }
@@ -151,31 +147,11 @@ impl AppPaths {
     }
 
     /// Path to the vault-scoped note-summary cache (`<cache_dir>/vaults/<hex>/note_cache.bin`).
-    pub fn scoped_summary_cache_path(&self, vault_digest: &[u8; 32]) -> PathBuf {
-        let mut hex = String::with_capacity(64);
-        for b in vault_digest {
-            use std::fmt::Write;
-            let _ = write!(hex, "{b:02x}");
-        }
+    pub fn scoped_summary_cache_path(&self, vault_digest: u64) -> PathBuf {
         self.cache_dir
             .join("vaults")
-            .join(hex)
+            .join(format!("{vault_digest:016x}"))
             .join("note_cache.bin")
-    }
-
-    /// Keybinds directory (`<config_dir>/keybinds/`).
-    pub fn keybinds_dir(&self) -> PathBuf {
-        self.config_dir.join("keybinds")
-    }
-
-    /// Path for a specific preset's keybind file (`<config_dir>/keybinds/<preset>.toml`).
-    pub fn keybinds_path_for_preset(&self, preset: &str) -> PathBuf {
-        self.keybinds_dir().join(format!("{preset}.toml"))
-    }
-
-    /// Themes directory (`<config_dir>/themes/`).
-    pub fn themes_dir(&self) -> PathBuf {
-        self.config_dir.join("themes")
     }
 
     /// Legacy key file in the effective config root (`<config_dir>/key.bin`).
@@ -237,10 +213,6 @@ mod tests {
         assert_eq!(paths.key_path(), data.join("key.bin"));
         assert_eq!(paths.state_path(), data.join("state.json"));
         assert_eq!(paths.summary_cache_path(), cache.join("note_cache.bin"));
-        assert_eq!(
-            paths.keybinds_path_for_preset("default"),
-            config_file.parent().unwrap().join("keybinds/default.toml")
-        );
     }
 
     #[test]
@@ -250,9 +222,7 @@ mod tests {
         assert!(paths.key_path().is_absolute());
         assert!(paths.state_path().is_absolute());
         assert!(paths.summary_cache_path().is_absolute());
-        assert!(paths.keybinds_dir().is_absolute());
-        assert!(paths.themes_dir().is_absolute());
-        assert!(paths.scoped_summary_cache_path(&[0; 32]).is_absolute());
+        assert!(paths.scoped_summary_cache_path(0).is_absolute());
     }
 
     #[test]
@@ -264,8 +234,8 @@ mod tests {
         let d1 = vault_cache_digest(v1);
         let d2 = vault_cache_digest(v2);
         assert_ne!(d1, d2);
-        let p1 = paths.scoped_summary_cache_path(&d1);
-        let p2 = paths.scoped_summary_cache_path(&d2);
+        let p1 = paths.scoped_summary_cache_path(d1);
+        let p2 = paths.scoped_summary_cache_path(d2);
         assert_ne!(p1, p2);
     }
 }

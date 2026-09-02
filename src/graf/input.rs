@@ -21,7 +21,6 @@ pub enum GraphInputAction {
     ToggleGrid,
     ToggleStatus,
     Refresh,
-    ReloadConfig,
     TogglePreview,
     ToggleLookingGlass,
     MenuAction(GrafMenuItem),
@@ -174,9 +173,6 @@ pub fn handle_graph_keys(
             }
             GraphAction::Refresh => {
                 return Some(GraphInputAction::Refresh);
-            }
-            GraphAction::ReloadConfig => {
-                return Some(GraphInputAction::ReloadConfig);
             }
             GraphAction::TogglePreview => {
                 return Some(GraphInputAction::TogglePreview);

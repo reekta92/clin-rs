@@ -752,7 +752,7 @@ fn run_cache(action: CacheCmd) -> Result<()> {
             let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
             let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
             let digest = crate::paths::vault_cache_digest(&vault_id);
-            let scoped_cache = app_paths.scoped_summary_cache_path(&digest);
+            let scoped_cache = app_paths.scoped_summary_cache_path(digest);
 
             let mut cache_locations = vec![scoped_cache, app_paths.summary_cache_path()];
             cache_locations.push(app_paths.config_root_cache_path());

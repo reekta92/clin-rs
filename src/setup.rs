@@ -10,7 +10,7 @@ use std::path::PathBuf;
 /// button, so selectable indices run `0..=DONE_ROW`.
 pub const OPTION_ROWS: usize = 6;
 pub const DONE_ROW: usize = 6;
-pub const ROW_COUNT: usize = 7;
+
 
 pub const SETUP_THEMES: &[&str] = &[
     "default",
@@ -377,7 +377,7 @@ mod tests {
         );
         s.move_sel(false);
         assert_eq!(s.selected, 0);
-        for _ in 0..ROW_COUNT {
+        for _ in 0..=DONE_ROW {
             s.move_sel(true);
         }
         assert_eq!(s.selected, DONE_ROW);

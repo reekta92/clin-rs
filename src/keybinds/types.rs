@@ -171,7 +171,6 @@ pub enum GraphAction {
     ToggleGrid,
     ToggleStatus,
     Refresh,
-    ReloadConfig,
     TogglePreview,
     OpenContextMenu,
     CreateConnection,

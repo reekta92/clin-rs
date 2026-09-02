@@ -811,12 +811,12 @@ impl App {
             }
 
             self.list.visual_list = visual;
-            self.request_preview_update_immediate();
+            self.request_preview_update();
             return;
         }
 
         self.list.visual_list = visual;
-        self.request_preview_update_immediate();
+        self.request_preview_update();
     }
 
     /// Poll only state owned by Edit mode. Generic list/setup work stays out of
@@ -1001,15 +1001,6 @@ impl App {
         self.list.last_selection_change = None;
     }
 
-    pub fn request_preview_update_immediate(&mut self) {
-        if !(self.list.preview_enabled || self.preview_fullscreen) {
-            return;
-        }
-
-        self.update_preview();
-        self.list.pending_preview_update = false;
-        self.list.last_selection_change = None;
-    }
 
     pub fn request_editor_preview_update(&mut self) {
         let now = Instant::now();

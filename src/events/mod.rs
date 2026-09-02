@@ -1060,12 +1060,6 @@ impl crate::popups::ActivePopup {
                 app.confirm_goals_popup();
             }),
             ActivePopup::Subnotes(mut popup) => {
-                let now_unix_secs = || {
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs()
-                };
                 let commit_edits = |popup: &mut crate::popups::SubnotesPopup| {
                     let cur_idx = popup.selected;
                     if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
@@ -1076,7 +1070,7 @@ impl crate::popups::ActivePopup {
                         {
                             popup.subnotes[cur_idx].title = new_title;
                             popup.subnotes[cur_idx].content = new_content;
-                            popup.subnotes[cur_idx].updated_at = now_unix_secs();
+                            popup.subnotes[cur_idx].updated_at = crate::ui::now_unix_secs();
                             popup.is_dirty = true;
                         }
                     }
@@ -1101,7 +1095,7 @@ impl crate::popups::ActivePopup {
                         id: uuid::Uuid::new_v4().to_string(),
                         title: "New Note".to_string(),
                         content: "".to_string(),
-                        updated_at: now_unix_secs(),
+                        updated_at: crate::ui::now_unix_secs(),
                     };
                     popup.subnotes.push(new_subnote);
                     popup.selected = popup.subnotes.len().saturating_sub(1);
@@ -1158,7 +1152,7 @@ impl crate::popups::ActivePopup {
                                 id: uuid::Uuid::new_v4().to_string(),
                                 title: "New Note".to_string(),
                                 content: "".to_string(),
-                                updated_at: now_unix_secs(),
+                                updated_at: crate::ui::now_unix_secs(),
                             };
                             popup.subnotes.push(new_subnote);
                             popup.selected = popup.subnotes.len().saturating_sub(1);

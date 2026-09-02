@@ -135,7 +135,6 @@ const DEFAULT_GRAPH: &[(GraphAction, &[&str])] = &[
     (GraphAction::ToggleGrid, &["Shift+G"]),
     (GraphAction::ToggleStatus, &["Shift+S"]),
     (GraphAction::Refresh, &["r"]),
-    (GraphAction::ReloadConfig, &["Ctrl+r"]),
     (GraphAction::TogglePreview, &["Shift+P"]),
     (GraphAction::CreateConnection, &["c"]),
     (GraphAction::DeleteConnection, &["d"]),

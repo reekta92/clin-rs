@@ -6,7 +6,7 @@ use image::{DynamicImage, RgbaImage};
 use std::borrow::Cow;
 use std::io::Read;
 use std::process::{Command, Stdio};
-use tempfile::NamedTempFile;
+
 
 pub struct OcrPasteAction;
 
@@ -107,7 +107,7 @@ impl Action for OcrPasteAction {
             get_clipboard_image_arboard()?
         };
 
-        let temp_file = NamedTempFile::new().context("Failed to create temporary image file")?;
+        let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("png"));
         let temp_path = temp_file.path().to_owned();
 
         dynamic_image
@@ -188,7 +188,7 @@ impl Action for PasteImageAction {
         };
 
         // Save to temp file then import
-        let temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
+        let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("png"));
         let temp_path = temp_file.path().to_owned();
         dynamic_image
             .save_with_format(&temp_path, image::ImageFormat::Png)

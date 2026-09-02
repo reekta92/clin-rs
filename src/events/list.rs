@@ -601,7 +601,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 let pos = (new_frac * max_pos as f32).round() as usize;
                 app.list.list_state.select(Some(pos.min(max_pos)));
                 app.list.visual_index = pos.min(max_pos);
-                app.request_preview_update_immediate();
+                app.request_preview_update();
                 return;
             }
         }
@@ -955,7 +955,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         .grid_scroll
                         .saturating_mul(columns)
                         .min(app.list.visual_list.len().saturating_sub(1));
-                    app.request_preview_update_immediate();
+                    app.request_preview_update();
                 }
                 return;
             }
@@ -980,7 +980,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         app.open_selected();
                     } else {
                         app.list.visual_index = clicked;
-                        app.request_preview_update_immediate();
+                        app.request_preview_update();
                     }
                     return;
                 }
@@ -990,7 +990,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             for tile in &app.list.grid_tiles {
                 if contains_cell(tile.rect, mouse_event.column, mouse_event.row) {
                     app.list.visual_index = tile.visual_index;
-                    app.request_preview_update_immediate();
+                    app.request_preview_update();
                     break;
                 }
             }
@@ -1023,7 +1023,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         };
         app.list.list_viewport_offset = None;
         app.list.visual_index = clicked_visual_index;
-        app.request_preview_update_immediate();
+        app.request_preview_update();
         if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
             app.list.visual_list.get(app.list.visual_index)
         {
@@ -1073,7 +1073,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             app.open_selected();
         } else {
             app.list.visual_index = clicked_visual_index;
-            app.request_preview_update_immediate();
+            app.request_preview_update();
         }
         // Check strip section clicks (Draw→open draw, Graf→open graph)
         if app.list.calendar_enabled {

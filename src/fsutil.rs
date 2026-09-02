@@ -91,6 +91,37 @@ pub fn cleanup_orphaned_temp_files() {
     }
 }
 
+/// Unique temp-file path in the clin temp dir (`<tmp>/clin/`), cleaned by
+/// `cleanup_orphaned_temp_files` after 24h if a session crashes.
+pub fn unique_temp_path(suffix: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("clin");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join(format!(
+        "clin_{}.{}",
+        uuid::Uuid::new_v4(),
+        suffix.trim_start_matches('.')
+    ))
+}
+
+/// RAII guard: removes a non-secret temp file on drop.
+pub struct TempFileGuard(PathBuf);
+
+impl TempFileGuard {
+    pub fn new(path: PathBuf) -> Self {
+        Self(path)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// RAII guard: zero-fills then removes a file containing secret plaintext on drop.
 pub struct SecretTempFile(PathBuf);
 

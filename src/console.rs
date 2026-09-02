@@ -22,19 +22,19 @@ fn paint(text: &str, color: Color) -> String {
     }
 }
 
-pub fn green(s: &str) -> String {
+fn green(s: &str) -> String {
     paint(s, Color::Green)
 }
-pub fn red(s: &str) -> String {
+fn red(s: &str) -> String {
     paint(s, Color::Red)
 }
 pub fn yellow(s: &str) -> String {
     paint(s, Color::Yellow)
 }
-pub fn cyan(s: &str) -> String {
+fn cyan(s: &str) -> String {
     paint(s, Color::Cyan)
 }
-pub fn blue(s: &str) -> String {
+fn blue(s: &str) -> String {
     paint(s, Color::Blue)
 }
 

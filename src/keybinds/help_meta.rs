@@ -164,7 +164,6 @@ pub fn graph_action_meta(a: GraphAction) -> HelpMeta {
         GraphAction::MenuSelect => meta("Menu", "Select menu item"),
         GraphAction::LookingGlass => meta("Display", "Toggle looking glass"),
         GraphAction::Refresh => meta("System", "Refresh physics"),
-        GraphAction::ReloadConfig => meta("System", "Reload config"),
         GraphAction::Help => meta("System", "Help"),
         GraphAction::Quit => meta("System", "Quit graph view"),
     }

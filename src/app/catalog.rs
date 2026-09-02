@@ -8,12 +8,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::time::{Duration, Instant};
 
-const NOTE_CACHE_VERSION: u16 = 2;
+const NOTE_CACHE_VERSION: u16 = 3;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct PersistedNoteCache {
     version: u16,
-    vault_digest: [u8; 32],
+    vault_digest: u64,
     show_hidden: bool,
     show_all: bool,
     folders: Vec<String>,
@@ -124,7 +124,7 @@ pub(crate) fn load_notes_blocking(
 pub(crate) fn load_persisted_note_cache(
     storage: &Storage,
     cache_path: &Path,
-    vault_digest: &[u8; 32],
+    vault_digest: u64,
     show_hidden: bool,
     show_all: bool,
 ) -> (
@@ -147,7 +147,7 @@ pub(crate) fn load_persisted_note_cache(
             Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
         };
 
-    if cache.version != NOTE_CACHE_VERSION || &cache.vault_digest != vault_digest {
+    if cache.version != NOTE_CACHE_VERSION || cache.vault_digest != vault_digest {
         return (Vec::new(), HashMap::new(), Vec::new());
     }
 
@@ -193,7 +193,7 @@ fn save_persisted_note_cache(
     storage: &Storage,
     cache_path: &Path,
     legacy_cache_path: &Path,
-    vault_digest: &[u8; 32],
+    vault_digest: u64,
     show_hidden: bool,
     show_all: bool,
     folders: &[String],
@@ -210,7 +210,7 @@ fn save_persisted_note_cache(
 
     let cache_obj = PersistedNoteCache {
         version: NOTE_CACHE_VERSION,
-        vault_digest: *vault_digest,
+        vault_digest,
         show_hidden,
         show_all,
         folders: sorted_folders,
@@ -265,7 +265,7 @@ pub(crate) fn spawn_catalog_worker(
     pool: Arc<rayon::ThreadPool>,
     cache_path: PathBuf,
     legacy_cache_path: PathBuf,
-    vault_digest: [u8; 32],
+    vault_digest: u64,
     show_hidden: bool,
     show_all: bool,
     initial_map: HashMap<String, (FileStamp, NoteSummary)>,
@@ -293,7 +293,7 @@ pub(crate) fn spawn_catalog_worker(
                         &storage,
                         &cache_path,
                         &legacy_cache_path,
-                        &vault_digest,
+                        vault_digest,
                         show_hidden,
                         show_all,
                         &folders,
@@ -325,7 +325,7 @@ pub(crate) fn spawn_catalog_worker(
                                 &storage,
                                 &cache_path,
                                 &legacy_cache_path,
-                                &vault_digest,
+                                vault_digest,
                                 show_hidden,
                                 show_all,
                                 &folders,
@@ -695,7 +695,7 @@ mod tests {
         let storage = make_test_storage(tmp.path());
         let cache_path = tmp.path().join("cache/note_cache.bin");
         let legacy_path = tmp.path().join("cache/legacy.bin");
-        let digest = [42u8; 32];
+        let digest = 42u64;
 
         let summary = NoteSummary {
             id: "folder/secret_note.md".to_string(),
@@ -723,7 +723,7 @@ mod tests {
             &storage,
             &cache_path,
             &legacy_path,
-            &digest,
+            digest,
             false,
             false,
             &folders,
@@ -744,7 +744,7 @@ mod tests {
         }
 
         let (reloaded_summaries, reloaded_map, reloaded_folders) =
-            load_persisted_note_cache(&storage, &cache_path, &digest, false, false);
+            load_persisted_note_cache(&storage, &cache_path, digest, false, false);
 
         assert_eq!(reloaded_folders, folders);
         assert_eq!(reloaded_summaries.len(), 1);
@@ -757,10 +757,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let storage = make_test_storage(tmp.path());
         let cache_path = tmp.path().join("cache/note_cache.bin");
-        let digest = [1u8; 32];
+        let digest = 1u64;
 
         let (summaries, _, _) =
-            load_persisted_note_cache(&storage, &cache_path, &digest, false, false);
+            load_persisted_note_cache(&storage, &cache_path, digest, false, false);
         assert!(summaries.is_empty());
     }
 

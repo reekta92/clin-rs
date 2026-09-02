@@ -561,7 +561,7 @@ impl App {
         let app_paths = crate::paths::AppPaths::discover(
             crate::config::ClinConfig::config_path().unwrap_or_default(),
         )?;
-        let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
+        let scoped_cache_path = app_paths.scoped_summary_cache_path(digest);
         let legacy_cache_path = app_paths.summary_cache_path();
 
         let notes = load.summaries;
@@ -811,7 +811,7 @@ impl App {
         );
         let scoped_cache_path = app_paths
             .as_ref()
-            .map(|p| p.scoped_summary_cache_path(&digest))
+            .map(|p| p.scoped_summary_cache_path(digest))
             .unwrap_or_default();
         let legacy_cache_path = app_paths
             .as_ref()
@@ -822,7 +822,7 @@ impl App {
             crate::app::catalog::load_persisted_note_cache(
                 &storage,
                 &scoped_cache_path,
-                &digest,
+                digest,
                 bootstrap_config.list.show_hidden_files,
                 bootstrap_config.list.show_all_files,
             );

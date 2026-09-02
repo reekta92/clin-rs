@@ -177,7 +177,7 @@ pub struct DrawAppState {
     pub viewport: Viewport,
     pub storage: crate::storage::Storage,
     pub current_file: Option<String>,
-    pub running: bool,
+
     pub active_tool: crate::draw::state::DrawTool,
     pub selection: crate::ui::CanvasSelection<DrawItemId>,
     pub hovered: Option<DrawItemId>,
@@ -237,7 +237,7 @@ impl DrawAppState {
             viewport: Viewport::default(),
             storage,
             current_file: file_id,
-            running: true,
+
             active_tool: crate::draw::state::DrawTool::Cursor,
             selection: crate::ui::CanvasSelection::new(),
             hovered: None,
@@ -468,7 +468,7 @@ impl crate::overlay::OverlayView for DrawAppState {
         if let Some(action) = action {
             match action {
                 DrawEventAction::Quit => {
-                    self.running = false;
+
                     self.save_draw()?;
                     return Ok(crate::overlay::OverlayResult::Exit);
                 }
