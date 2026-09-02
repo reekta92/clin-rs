@@ -29,7 +29,7 @@ pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
 
-pub(crate) use canvas_grid::{CanvasGridProjection, CanvasGridState, draw_canvas_grid};
+pub(crate) use canvas_grid::{CanvasGridProjection, draw_canvas_grid};
 pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
 pub(crate) use canvas_overlay::MarqueeDragState;
 pub(crate) use canvas_selection::CanvasSelection;
@@ -156,7 +156,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     ctx.vault_path = Some(&app.storage.data_dir);
                     ctx.date_format = Some(&app.date_format);
                     ctx.graph_fps = graf.canvas_fps();
-                    ctx.graph_grid_visible = graf.grid.visible;
+                    ctx.graph_grid_visible = graf.grid;
                     if let Some(graph_state) = &graf.graph_state {
                         guard = graph_state.read();
                         ctx.graph = Some(&guard);
@@ -354,21 +354,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("confirm")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Tag popup
@@ -915,22 +909,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Note rename popup
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             "RENAME",
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("rename")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Goals popup
@@ -951,21 +938,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ],
             ),
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Prompt,
             PopupHints::Keybinds(&keybinds),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Create note popup
@@ -976,16 +957,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("create")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-        popup.input.set_block(popup_block("", &app.app_theme));
-        frame.render_widget(&popup.input, content);
     }
 
     // Import popup
@@ -997,21 +977,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Large,
             PopupHints::Keybinds(&text_input_hints("import")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.muted),
             &app.app_theme,
         );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.muted)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Search popup
@@ -1453,6 +1427,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
+fn draw_text_prompt_popup(
+    frame: &mut Frame,
+    title: &str,
+    size: PopupSize,
+    hints: PopupHints<'_>,
+    input: &mut TextArea,
+    border_style: Style,
+    theme: &AppThemeColors,
+) {
+    let content = draw_popup_frame(frame, frame.area(), title, size, hints, theme);
+    input.set_block(
+        Block::default()
+            .style(theme.bg_style())
+            .borders(Borders::ALL)
+            .border_style(border_style),
+    );
+    frame.render_widget(&*input, content);
+}
+
 fn spawn_opener(command: &str, args: &[&OsStr], path: &Path) -> Result<()> {
     let mut cmd = Command::new(command);
     cmd.args(args)
@@ -1525,7 +1518,7 @@ pub fn pick_directory(prompt: &str) -> Result<DirectoryPickerOutcome> {
     }
 
     if cfg!(target_os = "linux") {
-        if which::which("zenity").is_ok() {
+        if crate::fsutil::can_run("zenity") {
             return selected(
                 Command::new("zenity")
                     .args([
@@ -1537,7 +1530,7 @@ pub fn pick_directory(prompt: &str) -> Result<DirectoryPickerOutcome> {
                     .context("failed to launch zenity")?,
             );
         }
-        if which::which("kdialog").is_ok() {
+        if crate::fsutil::can_run("kdialog") {
             return selected(
                 Command::new("kdialog")
                     .args(["--getexistingdirectory", "."])
@@ -1591,7 +1584,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
     };
 
     if cfg!(target_os = "linux") {
-        if which::which("zenity").is_ok() {
+        if crate::fsutil::can_run("zenity") {
             let output = Command::new("zenity")
                 .arg("--file-selection")
                 .arg(format!("--file-filter={filter_name} | {zenity_glob}"))
@@ -1601,7 +1594,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
                     String::from_utf8_lossy(&output.stdout).trim().to_string(),
                 ));
             }
-        } else if which::which("kdialog").is_ok() {
+        } else if crate::fsutil::can_run("kdialog") {
             let output = Command::new("kdialog")
                 .arg("--getopenfilename")
                 .arg(".")

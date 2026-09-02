@@ -1,12 +1,25 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 pub mod actions;
 pub mod app_theme;
-pub mod backup;
+pub mod backup {
+    pub mod app;
+    pub mod git_ops;
+    pub mod input;
+    pub mod render;
+    pub mod state;
+    pub mod worker;
+}
 pub mod calendar;
 pub mod cli;
 pub mod config;
 pub mod console;
-pub mod draw;
+pub mod draw {
+    pub mod app;
+    pub mod geometry;
+    pub mod input;
+    pub mod render;
+    pub mod state;
+}
 pub mod editor;
 pub(crate) mod editor_document;
 pub(crate) mod editor_session;
@@ -14,15 +27,37 @@ pub mod event_source;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
-pub mod graf;
-pub mod image_render;
+pub mod graf {
+    pub mod app;
+    pub mod ui;
+
+    pub mod graph;
+    pub mod input;
+    pub mod physics;
+    pub mod render;
+    pub mod viewport;
+}
+pub mod image_render {
+    pub mod cache;
+    pub mod worker;
+
+    /// Settle duration (150 ms) after the last zoom/scroll event before the
+    /// view is considered settled and real pixel images resume rendering.
+    pub const TRANSFORM_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
+}
 pub mod keybinds;
 pub mod list_view;
 pub mod local_state;
 pub mod markdown;
 pub mod migration;
 pub mod note_index;
-pub mod outline;
+pub mod outline {
+    pub mod app;
+    pub mod input;
+    pub mod parse;
+    pub mod render;
+    pub mod state;
+}
 pub mod overlay;
 pub mod palette;
 pub mod paths;
@@ -57,10 +92,6 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use uuid::Uuid;
 
-use mimalloc::MiMalloc;
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
 pub(crate) static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> =
     LazyLock::new(|| Arc::new(AtomicBool::new(false)));
 pub(crate) static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);

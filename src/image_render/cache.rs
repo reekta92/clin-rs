@@ -1,14 +1,14 @@
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
 
-use crate::image_render::ImageKey;
 use crate::image_render::worker::{DecodedImage, ImageJob};
 /// LRU-evicting cache of decoded images and their protocol renderers for one view.
 pub struct ImageCache {
-    map: lru::LruCache<ImageKey, ImageEntry>,
+    map: lru::LruCache<PathBuf, ImageEntry>,
 }
 
 struct ImageEntry {
@@ -25,7 +25,7 @@ impl ImageCache {
 
     /// Request an image for display. If the key is absent, sends a decode job
     /// to the worker. Call `install_decoded` when the result arrives.
-    pub fn request(&mut self, key: ImageKey, max_dim: u32, tx: &Sender<ImageJob>) {
+    pub fn request(&mut self, key: PathBuf, max_dim: u32, tx: &Sender<ImageJob>) {
         if self.map.contains(&key) {
             // Touch existing entry
             let _ = self.map.get_mut(&key);
@@ -47,7 +47,7 @@ impl ImageCache {
     }
 
     /// Get a mutable reference to the protocol for rendering, if ready.
-    pub fn get_proto(&mut self, key: &ImageKey) -> Option<&mut StatefulProtocol> {
+    pub fn get_proto(&mut self, key: &PathBuf) -> Option<&mut StatefulProtocol> {
         self.map.get_mut(key).and_then(|entry| entry.proto.as_mut())
     }
 }
@@ -66,9 +66,9 @@ mod tests {
         let path_b = dir.join("b.png");
         let path_c = dir.join("c.png");
 
-        let k1 = ImageKey { path: path_a };
-        let k2 = ImageKey { path: path_b };
-        let k3 = ImageKey { path: path_c };
+        let k1 = path_a;
+        let k2 = path_b;
+        let k3 = path_c;
 
         // Insert two
         let (tx, _) = std::sync::mpsc::channel();

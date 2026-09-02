@@ -60,7 +60,7 @@ pub struct CommandPalette {
     pub context_note_id: Option<String>,
     pub active_tab: usize,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
     pub last_results_area: Option<ratatui::layout::Rect>,
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
 }

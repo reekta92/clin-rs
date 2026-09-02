@@ -80,17 +80,6 @@ pub fn hint(msg: &str) -> String {
     format!("  {} {}", dim("→"), msg)
 }
 
-/// ─ Title ──────── — section divider with bold title.
-pub fn section(title: &str) -> String {
-    let padding = 50usize.saturating_sub(title.len() + 3);
-    let bar = "─".repeat(padding);
-    if enabled() {
-        format!("{} {} {}", dim("─"), bold(title), dim(&bar))
-    } else {
-        format!("─ {title} {bar}")
-    }
-}
-
 /// Color a filesystem path in cyan.
 pub fn path(p: impl AsRef<std::path::Path>) -> String {
     cyan(&p.as_ref().display().to_string())

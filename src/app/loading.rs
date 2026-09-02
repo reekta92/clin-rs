@@ -1203,6 +1203,18 @@ impl App {
         (children, label)
     }
 
+    fn set_list_preview_geometry(&mut self, width: u16, height: u16) {
+        let scale = self.list.preview_scale;
+        let offset_x = self.list.preview_offset_x;
+        let offset_y = self.list.preview_offset_y;
+        let list = &mut self.list;
+        list.preview_content_width = Some(width);
+        list.preview_content_height = Some(height);
+        list.preview_content_scale = Some(scale);
+        list.preview_content_offset_x = Some(offset_x);
+        list.preview_content_offset_y = Some(offset_y);
+    }
+
     pub fn update_preview(&mut self) {
         if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
@@ -1250,11 +1262,7 @@ impl App {
                             offset_y,
                         );
                         self.list.preview_content = Some(PreviewContent::DrawGrid { data, grid });
-                        self.list.preview_content_width = Some(width);
-                        self.list.preview_content_height = Some(height);
-                        self.list.preview_content_scale = Some(scale);
-                        self.list.preview_content_offset_x = Some(offset_x);
-                        self.list.preview_content_offset_y = Some(offset_y);
+                        self.set_list_preview_geometry(width, height);
                         self.list.preview_content_index = Some(self.list.visual_index);
                         return;
                     }
@@ -1282,11 +1290,7 @@ impl App {
                                         data: Box::new(data),
                                         grid,
                                     });
-                                    self.list.preview_content_width = Some(width);
-                                    self.list.preview_content_height = Some(height);
-                                    self.list.preview_content_scale = Some(scale);
-                                    self.list.preview_content_offset_x = Some(offset_x);
-                                    self.list.preview_content_offset_y = Some(offset_y);
+                                    self.set_list_preview_geometry(width, height);
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
@@ -1323,11 +1327,7 @@ impl App {
                             offset_y,
                         );
                         self.list.preview_content = Some(PreviewContent::CanvasGrid { data, grid });
-                        self.list.preview_content_width = Some(width);
-                        self.list.preview_content_height = Some(height);
-                        self.list.preview_content_scale = Some(scale);
-                        self.list.preview_content_offset_x = Some(offset_x);
-                        self.list.preview_content_offset_y = Some(offset_y);
+                        self.set_list_preview_geometry(width, height);
                         self.list.preview_content_index = Some(self.list.visual_index);
                         return;
                     }
@@ -1356,11 +1356,7 @@ impl App {
                                         data: Box::new(data),
                                         grid,
                                     });
-                                    self.list.preview_content_width = Some(width);
-                                    self.list.preview_content_height = Some(height);
-                                    self.list.preview_content_scale = Some(scale);
-                                    self.list.preview_content_offset_x = Some(offset_x);
-                                    self.list.preview_content_offset_y = Some(offset_y);
+                                    self.set_list_preview_geometry(width, height);
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
@@ -1384,11 +1380,10 @@ impl App {
                 if crate::storage::is_image_ext(ext) {
                     let path = self.storage.note_path(id);
                     self.list.preview_content = Some(PreviewContent::Image(path));
-                    self.list.preview_content_width = Some(self.desired_list_preview_width());
-                    self.list.preview_content_height = Some(self.desired_list_preview_height());
-                    self.list.preview_content_scale = Some(self.list.preview_scale);
-                    self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
-                    self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                    self.set_list_preview_geometry(
+                        self.desired_list_preview_width(),
+                        self.desired_list_preview_height(),
+                    );
                     self.list.preview_content_index = Some(self.list.visual_index);
                     return;
                 }
@@ -1462,11 +1457,10 @@ impl App {
                         focused_path: folder_path,
                     });
                     self.list.preview_content_index = Some(self.list.visual_index);
-                    self.list.preview_content_width = Some(self.desired_list_preview_width());
-                    self.list.preview_content_height = Some(self.desired_list_preview_height());
-                    self.list.preview_content_scale = Some(self.list.preview_scale);
-                    self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
-                    self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                    self.set_list_preview_geometry(
+                        self.desired_list_preview_width(),
+                        self.desired_list_preview_height(),
+                    );
                     return;
                 }
 

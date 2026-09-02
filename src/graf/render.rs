@@ -326,7 +326,7 @@ pub struct LabelData {
 
 pub struct FeatureFlags {
     pub show_legend: bool,
-    pub grid: crate::ui::CanvasGridState,
+    pub grid: bool,
     pub show_minimap: bool,
     pub show_status_bar: bool,
     pub show_looking_glass: bool,
@@ -934,7 +934,7 @@ pub fn draw_graph_view(
         let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
         ctx.area = Some(status_area);
         ctx.graph = Some(state);
-        ctx.graph_grid_visible = flags.grid.visible;
+        ctx.graph_grid_visible = flags.grid;
         ctx.hints = Some(hint_line.spans);
         if let Some(p) = pending {
             ctx.pending = Some(vec![Span::styled(

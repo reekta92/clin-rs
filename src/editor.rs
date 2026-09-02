@@ -135,7 +135,7 @@ pub struct NoteEditor {
     pub last_body_width: u16,
     pub last_body_height: u16,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
     /// Cache of per-line highlight styles, one entry per source line, rebuilt when the doc changes.
     pub md_highlight_cache: Vec<std::rc::Rc<[ratatui::style::Style]>>,

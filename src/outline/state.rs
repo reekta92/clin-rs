@@ -13,7 +13,7 @@ pub struct OutlineState {
     pub last_area: ratatui::layout::Rect,
     pub mouse_pos: Option<(u16, u16)>,
     pub last_tree_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
     pub tree_scroll_offset: usize,
     pub tree_list_rect: ratatui::layout::Rect,
 }

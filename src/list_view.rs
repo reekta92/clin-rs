@@ -166,7 +166,7 @@ pub struct ListView {
     pub preview_drag_last_pos: Option<(u16, u16)>,
     pub drag_hover: Option<usize>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
     /// When set, the list viewport is panned independently of `visual_index`
     /// (scrollbar pan mode). Cleared on any keypress / row click / wheel.
     pub list_viewport_offset: Option<usize>,

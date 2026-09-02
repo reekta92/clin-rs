@@ -551,9 +551,7 @@ pub fn draw_pinstar_view(
                 crate::pinstar::data::CanvasNode::File(n) => n.file.clone(),
                 _ => String::new(),
             };
-            let key = crate::image_render::ImageKey {
-                path: std::path::PathBuf::from(&file_path),
-            };
+            let key = std::path::PathBuf::from(&file_path);
             if let Some(tx) = &state.image_decode_tx {
                 state.image_cache.request(key.clone(), 2048, tx);
             }

@@ -3,7 +3,6 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
-use regex::Regex;
 
 use crate::app_theme::AppThemeColors;
 
@@ -35,15 +34,13 @@ pub fn update_todo_state(storage: &crate::storage::Storage, state: &mut TodoStat
 
     // Strict parsing: lines must start with priority (e.g. `(A) `) or date (e.g. `2023-01-01 `)
     // and MUST NOT start with `x ` (which marks completion).
-    let strict_pattern =
-        Regex::new(r#"^(?:\([A-Z]\)\s+|\d{4}-\d{2}-\d{2}\s+)"#).expect("valid regex");
 
     let mut tasks: Vec<(char, usize, String)> = content
         .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
         .filter(|l| !l.starts_with("x ") && !l.starts_with("X "))
-        .filter(|l| strict_pattern.is_match(l))
+        .filter(|l| is_strict_todo_line(l))
         .enumerate()
         .map(|(orig_idx, l)| {
             let priority = if l.len() >= 4 && l.starts_with('(') && l[2..4] == *") " {
@@ -66,6 +63,26 @@ pub fn update_todo_state(storage: &crate::storage::Storage, state: &mut TodoStat
     state.items = tasks.into_iter().map(|(_, _, task)| task).collect();
 
     state.last_modified = modified;
+}
+
+/// True if `l` starts with a todo.txt priority `(A) ` or date `YYYY-MM-DD `.
+fn is_strict_todo_line(l: &str) -> bool {
+    let b = l.as_bytes();
+    if b.len() >= 4
+        && b[0] == b'('
+        && b[1].is_ascii_uppercase()
+        && b[2] == b')'
+        && b[3].is_ascii_whitespace()
+    {
+        return true;
+    }
+    b.len() >= 11
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b[10].is_ascii_whitespace()
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[8..10].iter().all(u8::is_ascii_digit)
 }
 
 fn highlight_todo_task<'a>(task: &'a str, theme: &AppThemeColors) -> Line<'a> {

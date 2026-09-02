@@ -158,6 +158,30 @@ pub fn truncate_ellipsis(s: &str, max: usize) -> String {
     }
     format!("{}…", &s[..end])
 }
+/// Return true if `bin` exists and is executable on PATH.
+pub fn can_run(bin: &str) -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|dir| {
+        let candidate = dir.join(bin);
+        candidate.is_file() && is_executable(&candidate)
+    })
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|m| m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(_path: &Path) -> bool {
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

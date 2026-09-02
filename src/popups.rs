@@ -263,7 +263,7 @@ impl SearchPopup {
     }
 }
 
-pub struct SortPopup {
+pub struct SelectionPopup {
     pub selected: usize,
 }
 /// A single item in the info popup layout.
@@ -282,17 +282,6 @@ pub enum InfoItem {
 pub struct InfoPopup {
     pub title: String,
     pub items: Vec<InfoItem>,
-}
-
-pub struct IconModePopup {
-    pub selected: usize,
-}
-pub struct HintBarStylePopup {
-    pub selected: usize,
-}
-
-pub struct KeybindPresetPopup {
-    pub selected: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -448,11 +437,11 @@ pub enum ActivePopup {
     Theme(ThemePopup),
     Info(InfoPopup),
     Tag(TagPopup),
-    IconMode(IconModePopup),
-    HintBarStyle(HintBarStylePopup),
+    IconMode(SelectionPopup),
+    HintBarStyle(SelectionPopup),
     RemoveTags(RemoveTagsPopup),
-    KeybindPreset(KeybindPresetPopup),
-    Sort(SortPopup),
+    KeybindPreset(SelectionPopup),
+    Sort(SelectionPopup),
     Folder(FolderPopup),
     FolderPicker(FolderPicker),
     NoteRename(NoteRenamePopup),
@@ -573,7 +562,7 @@ pub struct PopupManager {
     pub active: Option<ActivePopup>,
     pub(crate) text_selection: Option<(PopupTextField, crate::text_edit::MouseTextSelection)>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
 }
 
 impl PopupManager {

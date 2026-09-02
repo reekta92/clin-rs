@@ -1,17 +1,15 @@
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
-
 use anyhow::Result;
 use image::DynamicImage;
 
-use crate::image_render::ImageKey;
-
 pub struct ImageJob {
-    pub key: ImageKey,
+    pub key: PathBuf,
     pub max_dim: u32,
 }
 
 pub struct DecodedImage {
-    pub key: ImageKey,
+    pub key: PathBuf,
     pub image: DynamicImage,
 }
 
@@ -60,10 +58,10 @@ fn process_job(job: ImageJob, result_tx: &Sender<Result<DecodedImage>>) {
     }));
 }
 
-fn decode_image(key: &ImageKey, max_dim: u32) -> Result<DynamicImage> {
-    let img = image::ImageReader::open(&key.path)?
+fn decode_image(key: &PathBuf, max_dim: u32) -> Result<DynamicImage> {
+    let img = image::ImageReader::open(key)?
         .decode()
-        .map_err(|e| anyhow::anyhow!("Failed to decode image {}: {e}", key.path.display()))?;
+        .map_err(|e| anyhow::anyhow!("Failed to decode image {}: {e}", key.display()))?;
 
     if max_dim > 0 {
         let w = img.width();

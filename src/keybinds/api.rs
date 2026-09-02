@@ -150,10 +150,6 @@ keybind_resolve!(outline, OutlineAction, resolve_outline, true);
 keybind_resolve!(setup, SetupAction, resolve_setup, false);
 
 impl Keybinds {
-    pub fn load(path: &Path) -> Result<Self> {
-        Self::load_layered(path, Self::default(), &mut Vec::new())
-    }
-
     pub fn load_layered(
         path: &Path,
         base: Keybinds,
@@ -473,7 +469,8 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("keybinds.toml");
         keybinds.save(&path).unwrap();
-        let loaded_keybinds = Keybinds::load(&path).unwrap();
+        let loaded_keybinds =
+            Keybinds::load_layered(&path, Keybinds::default(), &mut Vec::new()).unwrap();
         assert_eq!(loaded_keybinds.draw, keybinds.draw);
         assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
         assert_eq!(loaded_keybinds.backup, keybinds.backup);
@@ -517,7 +514,7 @@ mod tests {
         assert!(toml_text.contains("preview_page_up"));
         assert!(toml_text.contains("preview_page_down"));
 
-        let loaded = Keybinds::load(&path).unwrap();
+        let loaded = Keybinds::load_layered(&path, Keybinds::default(), &mut Vec::new()).unwrap();
         assert_eq!(loaded.list, keybinds.list);
         assert_eq!(loaded.edit, keybinds.edit);
     }

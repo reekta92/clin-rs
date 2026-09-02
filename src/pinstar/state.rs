@@ -34,7 +34,7 @@ pub struct PinstarState {
     pub(crate) text_selection_target: Option<PinstarTextField>,
     pub(crate) floating_editor_rect: Option<ratatui::layout::Rect>,
     pub edge_overlay_rect: Option<ratatui::layout::Rect>,
-    pub grid: crate::ui::CanvasGridState,
+    pub grid: bool,
     pub help_requested: bool,
     pub footer_hint: String,
     pub keybinds: crate::keybinds::Keybinds,
@@ -44,18 +44,13 @@ pub struct PinstarState {
     pub image_picker: Option<ratatui_image::picker::Picker>,
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub is_panning: bool,
-    pub undo_stack: Vec<PinstarSnapshot>,
-    pub redo_stack: Vec<PinstarSnapshot>,
+    pub undo_stack: Vec<CanvasData>,
+    pub redo_stack: Vec<CanvasData>,
     pub marquee: crate::ui::MarqueeDragState,
     pub right_down_screen: Option<(u16, u16)>,
     pub last_zoom_at: Option<std::time::Instant>,
     pub orthogonal_connections: bool,
     pub has_dragged: bool,
-}
-
-#[derive(Clone)]
-pub struct PinstarSnapshot {
-    pub data: CanvasData,
 }
 
 #[derive(Clone, Copy)]
@@ -199,7 +194,7 @@ impl PinstarState {
             rename_popup: None,
             last_mouse_canvas_pos: None,
             drag_captured_nodes: std::collections::HashSet::new(),
-            grid: crate::ui::CanvasGridState::default(),
+            grid: true,
             mouse_selection: crate::text_edit::MouseTextSelection::default(),
             text_selection_target: None,
             floating_editor_rect: None,
@@ -238,9 +233,7 @@ impl PinstarState {
     }
 
     pub fn record_undo_state(&mut self) {
-        self.undo_stack.push(PinstarSnapshot {
-            data: self.data.clone(),
-        });
+        self.undo_stack.push(self.data.clone());
         if self.undo_stack.len() > 20 {
             self.undo_stack.remove(0);
         }
@@ -248,10 +241,8 @@ impl PinstarState {
     }
     pub fn undo(&mut self) -> Result<()> {
         if let Some(snapshot) = self.undo_stack.pop() {
-            self.redo_stack.push(PinstarSnapshot {
-                data: self.data.clone(),
-            });
-            self.data = snapshot.data;
+            self.redo_stack.push(self.data.clone());
+            self.data = snapshot;
             self.selection.clear();
             self.selected_edge_id = None;
             self.save()?;
@@ -261,10 +252,8 @@ impl PinstarState {
     }
     pub fn redo(&mut self) -> Result<()> {
         if let Some(snapshot) = self.redo_stack.pop() {
-            self.undo_stack.push(PinstarSnapshot {
-                data: self.data.clone(),
-            });
-            self.data = snapshot.data;
+            self.undo_stack.push(self.data.clone());
+            self.data = snapshot;
             self.selection.clear();
             self.selected_edge_id = None;
             self.save()?;

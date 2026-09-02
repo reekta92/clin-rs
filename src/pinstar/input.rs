@@ -855,7 +855,7 @@ pub fn handle_pinstar_event(
                 }
             }
             CanvasAction::ToggleGrid => {
-                state.grid.toggle();
+                state.grid = !state.grid;
             }
             CanvasAction::ToggleOrthogonal => {
                 state.orthogonal_connections = !state.orthogonal_connections;

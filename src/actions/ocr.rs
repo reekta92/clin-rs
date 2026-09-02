@@ -15,7 +15,7 @@ fn is_wayland() -> bool {
 }
 
 fn get_clipboard_image_wayland() -> Result<DynamicImage> {
-    if which::which("wl-paste").is_err() {
+    if !crate::fsutil::can_run("wl-paste") {
         anyhow::bail!("wl-paste is not installed. Please install wl-clipboard.");
     }
 

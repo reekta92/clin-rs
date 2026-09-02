@@ -1619,7 +1619,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if !path.exists() {
                     continue;
                 }
-                let key = crate::image_render::ImageKey { path };
+                let key = path;
                 if app.list.image_cache.get_proto(&key).is_none() {
                     app.list.image_cache.request(key.clone(), 512, decode_tx);
                 }
@@ -1656,7 +1656,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         {
             let inner_pad = 2_u16;
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
-            let key = crate::image_render::ImageKey { path: path.clone() };
+            let key = path.clone();
             if app.list.image_cache.get_proto(&key).is_none() {
                 app.list.image_cache.request(key.clone(), 512, decode_tx);
             }

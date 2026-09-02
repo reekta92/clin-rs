@@ -118,14 +118,12 @@ trash = "5"
 ratatui-textarea = { version = "0.9", features = ["search"] }
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
-which = "8.0.2"
 comrak = { version = "0.36", default-features = false }
 syntect = { version = "5.2", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 unicode-width = "0.2"
 unicode-segmentation = "1.13"
 git2 = { version = "0.21", features = ["ssh", "https"] }
-mimalloc = "0.1"
 notify = "8.2.0"
 rayon = "1.12"
 regex = "1"

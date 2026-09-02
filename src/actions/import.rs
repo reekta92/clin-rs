@@ -238,11 +238,11 @@ fn sanitized(title: String, content: String) -> (String, String) {
 }
 
 pub fn convert_file(path: &str) -> Result<(String, String)> {
-    let mut cmd = if which::which("markitdown").is_ok() {
+    let mut cmd = if crate::fsutil::can_run("markitdown") {
         let mut c = Command::new("markitdown");
         c.arg(path);
         c
-    } else if which::which("pandoc").is_ok() {
+    } else if crate::fsutil::can_run("pandoc") {
         let mut c = Command::new("pandoc");
         // If it looks like HTML, tell pandoc explicitly to avoid raw HTML output
         if path.to_lowercase().ends_with(".html") || path.to_lowercase().ends_with(".htm") {
@@ -407,7 +407,7 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
 }
 
 pub fn convert_url(url: &str) -> Result<(String, String)> {
-    if which::which("curl").is_err() {
+    if !crate::fsutil::can_run("curl") {
         bail!("curl is required to fetch URLs");
     }
 
@@ -440,7 +440,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
     }
 
     // If markitdown is available, let it handle the URL directly for better results
-    if which::which("markitdown").is_ok() {
+    if crate::fsutil::can_run("markitdown") {
         let output = Command::new("markitdown")
             .arg(url)
             .stdout(Stdio::piped())

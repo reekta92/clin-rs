@@ -24,7 +24,6 @@ struct PersistedNoteCache {
 pub enum PathChange {
     Upsert(String),
     Remove(String),
-    FullReconcile,
 }
 
 pub enum CatalogCommand {
@@ -598,9 +597,6 @@ pub(crate) fn spawn_catalog_worker(
                                         &generation,
                                         cmd_gen,
                                     );
-                                }
-                                PathChange::FullReconcile => {
-                                    // Full reconcile will be triggered on next iteration
                                 }
                             }
                         }

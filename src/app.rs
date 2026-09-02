@@ -385,7 +385,7 @@ pub struct App {
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_state: Option<crate::graf::app::GrafAppState>,
     pub draw_state: Option<crate::draw::app::DrawAppState>,
-    pub draw_clipboard: Option<crate::draw::state::DrawClipboard>,
+    pub draw_clipboard: Option<crate::draw::state::DrawItem>,
     pub backup_state: Option<crate::backup::state::BackupState>,
     pub outline_state: Option<crate::outline::state::OutlineState>,
     pub setup_state: Option<crate::setup::SetupState>,

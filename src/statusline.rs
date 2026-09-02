@@ -1044,7 +1044,7 @@ impl StatuslineContext<'_> {
                     "element_count" => draw.data.elements.len().to_string(),
                     "draw_width" => draw.data.width.to_string(),
                     "draw_height" => draw.data.height.to_string(),
-                    "draw_grid" => (if draw.grid.visible { "on" } else { "off" }).to_string(),
+                    "draw_grid" => (if draw.grid { "on" } else { "off" }).to_string(),
                     "draw_zoom" => format!("{:.1}", draw.viewport.zoom),
                     "text_editing" => (if draw.text_editor.is_some() {
                         "on"
@@ -1072,7 +1072,7 @@ impl StatuslineContext<'_> {
                     "canvas_pan_x" => canvas.viewport_x.to_string(),
                     "canvas_pan_y" => canvas.viewport_y.to_string(),
                     "canvas_selected" => canvas.selection.primary.clone().unwrap_or_default(),
-                    "canvas_grid" => (if canvas.grid.visible { "on" } else { "off" }).to_string(),
+                    "canvas_grid" => (if canvas.grid { "on" } else { "off" }).to_string(),
                     "canvas_editor" => {
                         (if canvas.show_editor_pane { "on" } else { "off" }).to_string()
                     }
