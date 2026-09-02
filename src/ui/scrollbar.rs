@@ -16,9 +16,6 @@ pub struct ScrollbarMeta {
     pub viewport_len: usize, // visible units
 }
 
-/// Active drag: signed row offset within the thumb where the press landed,
-/// so the thumb tracks the cursor 1:1.
-
 /// Rightmost single column of `area` — the scrollbar gutter.
 pub fn track_rect(area: Rect) -> Rect {
     Rect {
@@ -91,6 +88,7 @@ fn clamp01(v: f32) -> f32 {
 
 /// Handle a mouse event over a scrollbar.
 /// `current_fraction` = position/max_position in [0,1].
+/// `drag` holds the row offset within the thumb where the press landed.
 /// Returns `Some(new_fraction)` when the event is consumed and position must
 /// change (Down on the track/thumb, or Drag). Clears `*drag` on Up or when the
 /// press leaves the track. Returns `None` when the event is not a scrollbar
