@@ -18,6 +18,7 @@ Run `clin config show` to print the active configuration file path.
 | `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
 | `preview_wrap` | `bool` | `true` | Wrap markdown preview to pane width (toggle at runtime with Ctrl+w) |
 | `syntax_highlighting` | `bool` | `true` | Enable syntax highlighting in markdown fenced code blocks (requires re-render) |
+| `accent_hint_migrated` | `bool` | `false` | Internal flag used for one-time theme migration. Do not set manually. |
 | `code_theme` | `string` | `"base16-ocean.dark"` | syntect theme name for code-block highlighting (unknown names fall back to plain) |
 | `code_line_numbers` | `bool` | `true` | Show line numbers in fenced code blocks |
 | `preview_wrap_indicator` | `bool` | `false` | Append a `┄` continuation glyph at the end of soft-wrapped preview lines |
@@ -83,6 +84,8 @@ Run `clin config show` to print the active configuration file path.
 | `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
 | `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
 | `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
+| `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
+| `scrollbar_pan_mode` | `bool` | `false` | Notes list scrollbar pans without moving selection |
 | `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blur"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |
 | `accent` | `String` | — | Hex color override for accent (#ff6600) |
 | `heading` | `String` | — | Hex color override for headings |
@@ -305,6 +308,9 @@ attachments_subdir = "attachments"
 | `canvas_marker` | `enum` | `"braille"` | Canvas rendering marker: `"braille"`, `"half_block"`, `"dot"` |
 | `node_shape` | `enum` | `"circle"` | Node shape: `"circle"`, `"square"`, `"diamond"` |
 | `label_offset` | `f64` | `4.0` | Distance of labels from nodes |
+| `show_looking_glass` | `bool` | `true` | Show zoom looking glass around cursor |
+| `looking_glass_width` | `u16` | `24` | Width of the looking glass in cells |
+| `looking_glass_height` | `u16` | `12` | Height of the looking glass in cells |
 #### `[graf.visual.colors]`
 
 All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
@@ -316,9 +322,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `label_color` | `String` | Theme default |
 | `selection_ring_color` | `String` | Theme default |
 | `border_color` | `String` | Theme default |
-| `title_color` | `String` | Theme default |
-| `legend_text_color` | `String` | Theme default |
-| `status_bar_color` | `String` | Theme default |
 | `background_color` | `String` | Theme default |
 
 ### `[graf.physics]`
@@ -326,6 +329,7 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `ideal_distance` | `f64` | `80.0` | Target distance between connected nodes |
+| `tick_rate` | `enum` | `"auto"` | Simulation tick rate: `"auto"`, `"fixed"` |
 
 ### `[graf.interaction]`
 
@@ -458,69 +462,87 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 
 | Action | Default Keys | Description |
 |---|---|---|
-| `move_up` | `Up`, `k` | Move selection up |
-| `move_down` | `Down`, `j` | Move selection down |
-| `move_left` | `Left`, `h` | Move selection left (grid) |
-| `move_right` | `Right`, `l` | Move selection right (grid) |
+| `move_up` | `Up`, `k` | Move up |
+| `move_down` | `Down`, `j` | Move down |
+| `move_left` | `Left`, `h` | Move left (grid) |
+| `move_right` | `Right`, `l` | Move right (grid) |
 | `open` | `Enter`, `o` | Open selected item |
-| `delete` | `d`, `Delete` | Delete item |
-| `quit` | `q` | Quit application |
-| `help` | `?`, `F1` | Show help |
+| `delete` | `d`, `Delete` | Delete |
+| `quit` | `q` | Quit |
+| `help` | `?` | Help |
 | `open_location` | `Ctrl+l` | Open file location |
-| `cycle_focus` | `Tab`, `BackTab` | Cycle focus between panes |
-| `confirm` | `y`, `Enter` | Confirm dialog |
-| `cancel` | `n`, `Esc` | Cancel dialog |
-| `toggle_external_editor` | `e` | Open current note in $EDITOR |
-| `new_from_template` | `t` | Create note from template |
-| `create_folder` | `Shift+N` | Create folder |
-| `create_note` | `n` | Create note |
+| `cycle_focus` | `Tab` | Cycle focus between panes |
+| `reverse_cycle_focus` | `BackTab` | Reverse cycle focus between panes |
+| `confirm` | `y`, `Enter` | Confirm action |
+| `cancel` | `n`, `Esc` | Cancel action |
+| `toggle_external_editor` | `Alt+e` | Toggle external editor |
+| `new_from_template` | `t` | New note from template |
+| `create_folder` | `Shift+N` | Create new folder |
+| `create_note` | `n` | Create new note |
 | `rename_folder` | `r` | Rename folder |
-| `rename` | `r` | Rename note (context) |
 | `move_note` | `m` | Move note or folder |
+| `move_to_parent` | `U` | Move note to parent folder |
 | `manage_tags` | `.` | Manage tags |
+| `remove_tags_from_selected` | `Ctrl+.` | Remove tags from selected notes |
 | `open_command_palette` | `:`, `Ctrl+p` | Open command palette |
+| `rename` | `r` | Rename note |
 | `duplicate` | `y` | Duplicate note |
-| `toggle_pin` | `p` | Pin/unpin note |
+| `toggle_pin` | `p` | Toggle pin |
 | `cycle_sort` | `s` | Cycle sort order |
-| `search` | `/` | Search notes |
-| `jump_to_top` | `Home`, `Ctrl+Up` | Jump to top of list |
-| `jump_to_bottom` | `End`, `Ctrl+Down` | Jump to bottom of list |
-| `page_up` | `Ctrl+u`, `PageUp` | Half page up |
-| `page_down` | `Ctrl+d`, `PageDown` | Half page down |
-| `open_trash` | `Shift+T` | Open trash view |
+| `search` | `/` | Search |
+| `jump_to_top` | `Home`, `Ctrl+Up` | Jump to top |
+| `page_up` | `Ctrl+u`, `PageUp` | Scroll up half page |
+| `page_down` | `Ctrl+d`, `PageDown` | Scroll down half page |
+| `jump_to_bottom` | `End`, `Ctrl+Down` | Jump to bottom |
+| `open_trash` | `Shift+T` | Open trash |
 | `toggle_preview` | `Shift+P` | Toggle preview pane |
-| `toggle_preview_fullscreen` | `Ctrl+e` | Preview/editor fullscreen |
-| `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
-| `preview_page_up` | `Shift+Up` | Page preview pane up |
-| `preview_page_down` | `Shift+Down` | Page preview pane down |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Toggle preview fullscreen |
+| `toggle_wrap` | `Ctrl+w` | Toggle word wrap (editor and preview) |
+| `preview_page_up` | `Shift+Up` | Page preview up |
+| `preview_page_down` | `Shift+Down` | Page preview down |
 | `toggle_calendar` | `Shift+C` | Toggle calendar |
+| `toggle_folders_first` | `Ctrl+h` | Toggle folders-first sort |
 | `open_graph` | `Ctrl+g` | Open graph view |
-| `toggle_select_mode` | `v` | Toggle multi-select mode |
-| `toggle_select_item` | `Space` | Toggle item selection |
+| `toggle_select_mode` | `v` | Toggle select mode |
+| `toggle_select_item` | `Space` | Toggle select item |
 | `collapse_all` | `c` | Collapse all folders |
+| `expand_all` | `e` | Expand all folders |
+| `expand_to_level` | `Shift+E` | Expand folders to level (e.g. 3E) |
 | `refresh_notes` | `Ctrl+r` | Refresh notes (external changes) |
+| `manage_subnotes` | `Alt+s` | Manage subnotes |
+| `show_info` | `i` | Show note info |
 
 ### Edit Actions (`[edit]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
 | `back` | `Esc` | Return to notes (auto-saves) |
-| `cycle_focus` | `Tab`, `BackTab` | Cycle focus (Title/Body) |
-| `select_all` | `Ctrl+a` | Select all text |
-| `copy` | `Ctrl+Shift+c`, `Ctrl+Insert` | Copy |
-| `cut` | `Ctrl+Shift+x`, `Shift+Delete` | Cut |
-| `paste` | `Ctrl+Shift+v`, `Shift+Insert` | Paste |
-| `undo` | `Ctrl+z` | Undo |
+| `save` | `Ctrl+s` | Save |
+| `cycle_focus` | `Ctrl+t` | Cycle focus (Title, Content) |
+| `insert_tab` | `Tab` | Insert tab character |
+| `select_all` | `Ctrl+a`, `Ctrl+Shift+a` | Select all |
+| `copy` | `Ctrl+Shift+c`, `Ctrl+Insert`, `Ctrl+c` | Copy |
+| `cut` | `Ctrl+Shift+x`, `Shift+Delete`, `Ctrl+x` | Cut |
+| `paste` | `Ctrl+Shift+v`, `Shift+Insert`, `Ctrl+v`, `Ctrl+z` | Paste |
 | `redo` | `Ctrl+y`, `Ctrl+Shift+z` | Redo |
 | `delete_word` | `Ctrl+Backspace` | Delete previous word |
 | `delete_next_word` | `Ctrl+Delete` | Delete next word |
 | `move_to_top` | `Ctrl+Home` | Move cursor to top |
 | `move_to_bottom` | `Ctrl+End` | Move cursor to bottom |
 | `toggle_markdown_preview` | `Ctrl+p` | Toggle markdown preview |
-| `toggle_preview_fullscreen` | `Ctrl+e` | Preview fullscreen |
-| `toggle_preview_wrap` | `Ctrl+w` | Toggle preview word-wrap |
-| `preview_page_up` | `PageUp` | Page markdown preview up |
-| `preview_page_down` | `PageDown` | Page markdown preview down |
+| `toggle_preview_fullscreen` | `F11` | Toggle preview fullscreen |
+| `toggle_wrap` | `F10` | Toggle word wrap (editor and preview) |
+| `preview_page_up` | `PageUp` | Page preview up |
+| `preview_page_down` | `PageDown` | Page preview down |
+| `manage_subnotes` | `Alt+s` | Manage subnotes |
+| `paste_image` | `Ctrl+g Ctrl+i` | Paste image from clipboard |
+| `insert_image_from_file` | `Ctrl+g Ctrl+f` | Insert image from file |
+| `find` | `Ctrl+f` | Find in document |
+| `go_to_line` | `Ctrl+g` | Go to line number |
+| `insert_date` | `Ctrl+;` | Insert date/time |
+| `toggle_outline` | `Ctrl+o` | Toggle outline pane |
+| `toggle_links` | `Ctrl+b` | Toggle links pane |
+| `preview_link` | `Alt+l` | Preview linked note under cursor |
 
 ### Help Actions (`[help]`)
 
@@ -532,6 +554,7 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | `scroll_up` | `Up`, `k` | Scroll up |
 | `scroll_down` | `Down`, `j` | Scroll down |
 | `search` | `/`, `Ctrl+f` | Search help |
+| `reroll` | `r` | Reroll help tips |
 
 > Note: digits `1`–`8` jump directly to the eight help tabs (Notes→About). These are fixed and not configurable in keybind files.
 
@@ -540,98 +563,137 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | Action | Default Keys | Description |
 |---|---|---|
 | `quit` | `Esc`, `q` | Quit graph view |
-| `pan_up` | `Up`, `k` | Jump to node above |
-| `pan_down` | `Down`, `j` | Jump to node below |
-| `pan_left` | `Left`, `h` | Jump to node left |
-| `pan_right` | `Right`, `l` | Jump to node right |
+| `pan_up` | `Up`, `k` | Pan up |
+| `pan_down` | `Down`, `j` | Pan down |
+| `pan_left` | `Left`, `h` | Pan left |
+| `pan_right` | `Right`, `l` | Pan right |
 | `zoom_in` | `+`, `=` | Zoom in |
 | `zoom_out` | `-`, `_` | Zoom out |
 | `open_note` | `Enter`, `o` | Open selected note |
-| `auto_fit` | `a` | Auto-fit view to all nodes |
-| `help` | `?`, `F1` | Show help |
-| `toggle_search` | `/` | Toggle node search |
+| `auto_fit` | `a` | Auto-fit graph to viewport |
+| `help` | `?` | Help |
+| `toggle_search` | `/` | Search nodes |
 | `toggle_minimap` | `Shift+M` | Toggle minimap |
 | `toggle_legend` | `Shift+L` | Toggle legend |
 | `toggle_grid` | `Shift+G` | Toggle background grid |
 | `toggle_status` | `Shift+S` | Toggle status bar |
+| `refresh` | `r` | Refresh physics |
 | `toggle_preview` | `Shift+P` | Toggle preview |
-| `refresh` | `r` | Refresh simulation |
-| `reload_config` | `Ctrl+r` | Reload config file |
+| `create_connection` | `c` | Create connection |
+| `delete_connection` | `d` | Delete connection |
+| `local_graph` | `l` | Local graph |
+| `show_group` | `g` | Show group |
+| `delete_node` | `x` | Delete node |
+| `menu_close` | `Esc` | Close menu |
+| `menu_up` | `Up`, `k` | Menu up |
+| `menu_down` | `Down`, `j` | Menu down |
+| `menu_select` | `Enter` | Select menu item |
+| `looking_glass` | `Shift+O` | Toggle looking glass |
 
 ### Draw Actions (`[draw]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
 | `quit` | `Esc`, `q` | Exit draw view |
-| `help` | `?` | Show help |
-| `select_draw_tool` | `d` | Select freehand draw tool |
-| `toggle_shape_selector` | `s` | Open shape picker |
-| `select_text_tool` | `t` | Select text tool |
-| `select_erase_tool` | `e` | Select erase tool |
-| `shape_selector_up` | `Up`, `k` | Previous shape |
-| `shape_selector_down` | `Down`, `j` | Next shape |
-| `shape_selector_confirm` | `Enter` | Confirm shape |
+| `help` | `?` | Help |
+| `select_draw_tool` | `d` | Draw freehand strokes |
+| `select_cursor_tool` | `a` | Select and transform element |
+| `toggle_shape_selector` | `s` | Shape tool (opens picker) |
+| `select_text_tool` | `t` | Place text label |
+| `select_erase_tool` | `e` | Erase elements |
+| `shape_selector_up` | `Up`, `k` | Select previous shape |
+| `shape_selector_down` | `Down`, `j` | Select next shape |
+| `shape_selector_confirm` | `Enter` | Confirm shape selection |
 | `shape_selector_cancel` | `Esc`, `q` | Cancel shape selection |
+| `toggle_color_selector` | `c` | Color picker (opens picker) |
+| `color_selector_up` | `Up`, `k` | Select previous color |
+| `color_selector_down` | `Down`, `j` | Select next color |
+| `color_selector_confirm` | `Enter` | Confirm color selection |
+| `color_selector_cancel` | `Esc`, `q` | Cancel color selection |
 | `text_editor_confirm` | `Enter` | Confirm text edit |
 | `text_editor_cancel` | `Esc` | Cancel text edit |
-| `toggle_grid` | `Shift+G` | Toggle grid |
+| `menu_close` | `Esc` | Close context menu |
+| `menu_up` | `Up`, `k` | Select previous menu item |
+| `menu_down` | `Down`, `j` | Select next menu item |
+| `menu_select` | `Enter` | Activate selected menu item |
+| `copy` | `c` | Copy selected element |
+| `paste` | `v` | Paste copied element |
+| `undo` | `Ctrl+z` | Undo last draw change |
+| `redo` | `Ctrl+y`, `Ctrl+Shift+z` | Redo last draw change |
+| `toggle_grid` | `Shift+G` | Toggle grid overlay |
 
 ### Canvas Actions (`[canvas]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
 | `quit` | `Esc`, `q` | Quit canvas view |
-| `save` | `Ctrl+s` | Save canvas |
+| `undo` | `Ctrl+z` | Undo last canvas edit |
+| `redo` | `Ctrl+y`, `Ctrl+Shift+z` | Redo canvas edit |
+| `save` | `Ctrl+s` | Save canvas file |
 | `zoom_fine_in` | `>`, `]` | Zoom in (fine) |
 | `zoom_fine_out` | `<`, `[` | Zoom out (fine) |
 | `zoom_in` | `+`, `=` | Zoom in |
 | `zoom_out` | `-`, `_` | Zoom out |
-| `move_left` | `Left`, `h` | Move selection left |
-| `move_right` | `Right`, `l` | Move selection right |
-| `move_up` | `Up`, `k` | Move selection up |
-| `move_down` | `Down`, `j` | Move selection down |
-| `edit_or_connect` | `i`, `Enter`, `o` | Edit node / connect |
-| `open_context_menu` | `a` | Open context menu |
+| `move_left` | `Left`, `h` | Move left |
+| `move_right` | `Right`, `l` | Move right |
+| `move_up` | `Up`, `k` | Move up |
+| `move_down` | `Down`, `j` | Move down |
+| `edit_or_connect` | `i`, `Enter` | Open / edit / connect |
+| `open_context_menu` | `a` | Context menu |
+| `create_connection` | `c` | Create connection |
+| `delete_connection` | `d` | Delete connection |
+| `rename_node` | `r` | Rename selected node |
+| `resize_mode` | `s` | Enter resize mode |
+| `set_color` | `o` | Set color of selected node(s) |
+| `delete_node` | `x` | Delete selected node(s) |
+| `delete_all_connections` | `b` | Delete all connections |
+| `add_text_node` | `t` | Add text node at cursor |
+| `add_group` | `g` | Add group at cursor |
+| `add_image_node` | `m` | Add image node at cursor |
 | `toggle_grid` | `Shift+G` | Toggle grid |
+| `toggle_orthogonal` | `Ctrl+o` | Toggle orthogonal edge routing |
 | `toggle_editor_pane` | `Ctrl+e` | Toggle editor pane |
 | `cycle_focus` | `Tab`, `BackTab` | Cycle focus |
-| `help` | `?` | Show help |
-| `rename_confirm` | `Enter` | Confirm rename |
-| `rename_cancel` | `Esc` | Cancel rename |
+| `help` | `?` | Help |
+| `rename_confirm` | `Enter` | Rename confirm |
+| `rename_cancel` | `Esc` | Rename cancel |
 | `menu_close` | `Esc` | Close context menu |
-| `menu_up` | `Up`, `k` | Menu up |
-| `menu_down` | `Down`, `j` | Menu down |
+| `menu_up` | `Up` | Menu select up |
+| `menu_down` | `Down` | Menu select down |
 | `menu_select` | `Enter` | Menu confirm |
 | `close_editor` | `Esc` | Close editor |
 | `close_editor_alt` | `Ctrl+Enter` | Close editor (alt) |
-| `confirm_resize` | `Enter` | Confirm resize |
-| `cancel_resize` | `Esc` | Cancel resize |
+| `confirm_resize` | `Enter` | Resize confirm |
+| `cancel_resize` | `Esc` | Resize cancel |
 | `editor_unfocus` | `Esc` | Exit editor focus |
-| `editor_sync_raw` | `Ctrl+s` | Save raw editor changes |
 
 ### Backup Actions (`[backup]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
 | `back` | `Esc`, `q` | Back to list |
-| `move_down` | `j`, `Down` | Move selection down |
-| `move_up` | `k`, `Up` | Move selection up |
+| `move_down` | `j`, `Down` | Move down |
+| `move_up` | `k`, `Up` | Move up |
 | `scroll_diff_down` | `Ctrl+d`, `PageDown` | Scroll diff down |
 | `scroll_diff_up` | `Ctrl+u`, `PageUp` | Scroll diff up |
 | `refresh` | `r` | Refresh status |
-| `enter_commit` | `c` | Enter commit message |
-| `confirm_commit` | `Enter` | Confirm commit |
-| `cancel_commit` | `Esc` | Cancel commit |
+| `enter_commit` | `c` | Enter commit |
 | `push` | `p` | Push to remote |
-| `open_settings` | `,`, `Shift+S` | Open settings |
-| `close_settings` | `Esc`, `q` | Close settings |
-| `toggle_file_select` | `Space` | Toggle file select |
+| `open_settings` | `,` | Open settings |
 | `cycle_section` | `Tab`, `BackTab` | Cycle sections |
-| `next_field` | `j`, `Down` | Next settings field |
-| `prev_field` | `k`, `Up` | Previous settings field |
-| `activate_field` | `Enter` | Activate settings field |
-| `confirm_edit_field` | `Enter` | Confirm field edit |
-| `cancel_edit_field` | `Esc` | Cancel field edit |
+| `help` | `?` | Show help |
+| `pull` | `Shift+P` | Pull from remote |
+| `stage_file` | `Space`, `s` | Stage file |
+| `unstage_file` | `u` | Unstage file |
+| `stage_all` | `Shift+S` | Stage all changes |
+| `cancel_commit` | `Esc` | Cancel commit |
+| `confirm_commit` | `Enter` | Confirm commit |
+| `close_settings` | `Esc`, `q` | Close settings |
+| `next_field` | `j`, `Down` | Next field |
+| `prev_field` | `k`, `Up` | Previous field |
+| `activate_field` | `Enter` | Activate field |
+| `cancel_edit_field` | `Esc` | Cancel edit field |
+| `confirm_edit_field` | `Enter` | Confirm edit field |
 
 ### Outline Actions (`[outline]`)
 
@@ -639,12 +701,11 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 |---|---|---|
 | `move_up` | `k`, `Up` | Move selection up |
 | `move_down` | `j`, `Down` | Move selection down |
-| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l` | Toggle collapse/expand |
-| `expand_all` | `e` | Expand all |
+| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l`, `e` | Toggle collapse/expand |
 | `collapse_all` | `c` | Collapse all |
 | `open` | `Enter`, `o` | Jump to section |
 | `back` | `Esc`, `q` | Back |
-| `help` | `?`, `F1` | Show help |
+| `help` | `?` | Show help |
 
 ---
 

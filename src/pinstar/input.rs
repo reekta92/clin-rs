@@ -1,8 +1,8 @@
 use crate::keybinds::{CanvasAction, Keybinds};
 use crate::pinstar::state::{PinstarMenuType, PinstarState, PinstarTextField};
-use crate::text_edit::apply_text_shortcuts;
+
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use ratatui_textarea::{Input, TextArea};
+use ratatui_textarea::TextArea;
 
 /// Sync the header-bar status with the active canvas mode (connection /
 /// delete-connection / resize). Called after any mode transition.
@@ -596,9 +596,7 @@ pub fn handle_pinstar_event(
                 state.rename_popup = None;
             }
             _ => {
-                if !apply_text_shortcuts(keybinds, textarea, key) {
-                    textarea.input(Input::from(key));
-                }
+                crate::text_edit::feed_key(keybinds, textarea, key);
             }
         }
         return true;
@@ -676,9 +674,7 @@ pub fn handle_pinstar_event(
                 state.sync_to_raw_editor();
             }
             _ => {
-                if !apply_text_shortcuts(keybinds, editor, key) {
-                    editor.input(Input::from(key));
-                }
+                crate::text_edit::feed_key(keybinds, editor, key);
                 if let Some(node_id) = &state.selection.primary {
                     let text = editor.lines().join("\n");
                     for node in &mut state.data.nodes {
@@ -715,9 +711,7 @@ pub fn handle_pinstar_event(
         if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) {
             state.editor_focus = false;
         } else {
-            if !apply_text_shortcuts(keybinds, &mut state.raw_editor, key) {
-                state.raw_editor.input(Input::from(key));
-            }
+            crate::text_edit::feed_key(keybinds, &mut state.raw_editor, key);
             let _ = state.sync_from_raw_editor();
         }
         return true;

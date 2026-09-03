@@ -467,10 +467,6 @@ pub struct PopupManager {
 }
 
 impl PopupManager {
-    pub fn has_any(&self) -> bool {
-        self.confirm.is_some() || self.active.is_some()
-    }
-
     /// True when a popup with a text input is active (and no confirm overlay
     /// is intercepting keys). Mirrors the prior text-input popup set.
     pub fn has_text_input(&self) -> bool {
@@ -490,11 +486,5 @@ impl PopupManager {
             Some(ActivePopup::Subnotes(popup)) => popup.focus != SubnotesFocus::List,
             _ => false,
         }
-    }
-
-    pub fn clear_all(&mut self) {
-        self.active = None;
-        self.confirm = None;
-        self.text_selection = None;
     }
 }

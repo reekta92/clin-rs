@@ -32,7 +32,6 @@ The `[image]` section in `config.toml`:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | bool | `true` | Master toggle for native pixel image rendering |
-| `max_dimension` | u32 | `2048` | Maximum decode dimension in pixels |
 | `cache_size` | usize | `32` | LRU cache entry count |
 | `preview_rows` | u8 | `8` | Rows occupied by preview images |
 | `attachments_subdir` | String | `"attachments"` | Subdirectory for pasted/imported image attachments |
@@ -42,7 +41,6 @@ Example:
 ```toml
 [image]
 enabled = true
-max_dimension = 2048
 cache_size = 32
 preview_rows = 8
 attachments_subdir = "attachments"

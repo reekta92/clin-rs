@@ -576,17 +576,6 @@ pub fn centered_rect(size: PopupSize, area: Rect) -> Rect {
     }
 }
 
-pub fn popup_block<'a>(title: &'a str, theme: &AppThemeColors) -> ratatui::widgets::Block<'a> {
-    let mut block = ratatui::widgets::Block::default()
-        .style(theme.bg_style())
-        .borders(ratatui::widgets::Borders::ALL)
-        .border_style(Style::default().fg(theme.heading));
-    if !title.is_empty() {
-        block = block.title(title);
-    }
-    block
-}
-
 pub fn build_list_widget<'a>(
     items: impl IntoIterator<Item = ListItem<'a>>,
     theme: &AppThemeColors,
@@ -725,15 +714,6 @@ pub fn render_list_with_selection(
 pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     secs.into()
-}
-
-pub fn text_area_from_content(content: &str) -> TextArea<'static> {
-    if content.is_empty() {
-        TextArea::default()
-    } else {
-        let lines: Vec<String> = content.lines().map(ToString::to_string).collect();
-        TextArea::from(lines)
-    }
 }
 
 pub fn now_unix_secs() -> u64 {

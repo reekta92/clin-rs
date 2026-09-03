@@ -1014,13 +1014,7 @@ impl crate::popups::ActivePopup {
                                     app.begin_delete_tag_with_name(tag);
                                 }
                             } else {
-                                if !crate::text_edit::apply_text_shortcuts(
-                                    &app.keybinds,
-                                    &mut popup.input,
-                                    key,
-                                ) {
-                                    popup.input.input(ratatui_textarea::Input::from(key));
-                                }
+                                crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                                 app.popups.active = Some(ActivePopup::Tag(popup));
                                 app.update_tag_suggestions();
                             }
@@ -1274,13 +1268,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Char('l') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1317,13 +1305,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1336,13 +1318,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1358,13 +1334,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Right | KeyCode::Char(' ') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1383,26 +1353,14 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
                     KeyCode::Left => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1421,26 +1379,14 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
                     _ => {
                         popup.focus = crate::popups::SearchFocus::Input;
-                        if !crate::text_edit::apply_text_shortcuts(
-                            &app.keybinds,
-                            &mut popup.input,
-                            key,
-                        ) {
-                            popup.input.input(ratatui_textarea::Input::from(key));
-                        }
+                        crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                         app.popups.active = Some(reinsert(popup));
                         app.update_search();
                     }
@@ -1522,13 +1468,7 @@ impl crate::popups::ActivePopup {
                         },
                         crate::app::FolderPickerFocus::Search => {
                             let old_query = picker.input.lines().join("");
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut picker.input,
-                                key,
-                            ) {
-                                picker.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut picker.input, key);
                             let new_query = picker.input.lines().join("");
                             if old_query != new_query {
                                 app.popups.active = Some(reinsert(picker));
@@ -1564,13 +1504,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.open_help_page_with_tab(crate::app::HelpTab::Templates);
                         } else {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_template_popup_filter();
                         }
@@ -1580,13 +1514,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.create_template_from_popup();
                         } else {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_template_popup_filter();
                         }
@@ -1643,13 +1571,7 @@ impl crate::popups::ActivePopup {
                                 app.popups.active = Some(reinsert(popup));
                             }
                             _ => {
-                                if !crate::text_edit::apply_text_shortcuts(
-                                    &app.keybinds,
-                                    &mut popup.input,
-                                    key,
-                                ) {
-                                    popup.input.input(ratatui_textarea::Input::from(key));
-                                }
+                                crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                                 app.popups.active = Some(reinsert(popup));
                                 app.update_template_popup_filter();
                             }
