@@ -601,7 +601,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 let pos = (new_frac * max_pos as f32).round() as usize;
                 app.list.list_state.select(Some(pos.min(max_pos)));
                 app.list.visual_index = pos.min(max_pos);
-                app.request_preview_update_immediate();
+                app.request_preview_update();
                 return;
             }
         }
@@ -955,7 +955,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         .grid_scroll
                         .saturating_mul(columns)
                         .min(app.list.visual_list.len().saturating_sub(1));
-                    app.request_preview_update_immediate();
+                    app.request_preview_update();
                 }
                 return;
             }
@@ -980,7 +980,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         app.open_selected();
                     } else {
                         app.list.visual_index = clicked;
-                        app.request_preview_update_immediate();
+                        app.request_preview_update();
                     }
                     return;
                 }
@@ -990,7 +990,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             for tile in &app.list.grid_tiles {
                 if contains_cell(tile.rect, mouse_event.column, mouse_event.row) {
                     app.list.visual_index = tile.visual_index;
-                    app.request_preview_update_immediate();
+                    app.request_preview_update();
                     break;
                 }
             }
@@ -1023,7 +1023,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         };
         app.list.list_viewport_offset = None;
         app.list.visual_index = clicked_visual_index;
-        app.request_preview_update_immediate();
+        app.request_preview_update();
         if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
             app.list.visual_list.get(app.list.visual_index)
         {
@@ -1073,7 +1073,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             app.open_selected();
         } else {
             app.list.visual_index = clicked_visual_index;
-            app.request_preview_update_immediate();
+            app.request_preview_update();
         }
         // Check strip section clicks (Draw→open draw, Graf→open graph)
         if app.list.calendar_enabled {
@@ -1085,7 +1085,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 app.preview_fullscreen,
                 app.list.preview_width_ratio,
                 app.list.calendar_height,
-                app.calendar_position,
+                app.config.list.calendar_position,
             );
             if let Some(cal_rect) = calendar_area {
                 let active = app.active_strip_sections_for(cal_rect.width);
@@ -1190,7 +1190,7 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
         app.preview_fullscreen,
         app.list.preview_width_ratio,
         app.list.calendar_height,
-        app.calendar_position,
+        app.config.list.calendar_position,
     );
     // Compute section rects for cycling
     let active = app.active_strip_sections_for(calendar_area.map(|c| c.width).unwrap_or(0));
@@ -1210,7 +1210,7 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
 
     // Compute horizontal divider (list ↔ calendar)
     let hdiv_y = calendar_area.map(|c| {
-        match app.calendar_position {
+        match app.config.list.calendar_position {
             crate::config::CalendarPosition::Bottom => c.y, // top edge of bottom calendar
             crate::config::CalendarPosition::Top => c.bottom(), // bottom edge of top calendar
         }
@@ -1305,7 +1305,7 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
                 app.adjust_preview_width_to(ratio);
             }
             Some(crate::app::LayoutDrag::HDivider) => {
-                let new_h = match app.calendar_position {
+                let new_h = match app.config.list.calendar_position {
                     crate::config::CalendarPosition::Bottom => col_bot.saturating_sub(mouse.row),
                     crate::config::CalendarPosition::Top => {
                         mouse.row.saturating_sub(col_top).saturating_add(1)
@@ -1329,8 +1329,10 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
                 Some(crate::app::LayoutDrag::CalendarSwap) => {
                     let mid = col_top + (col_bot - col_top) / 2;
                     let on_top = mouse.row < mid;
-                    let start_top =
-                        matches!(app.calendar_position, crate::config::CalendarPosition::Top);
+                    let start_top = matches!(
+                        app.config.list.calendar_position,
+                        crate::config::CalendarPosition::Top
+                    );
                     if on_top != start_top {
                         app.swap_calendar_position();
                     }

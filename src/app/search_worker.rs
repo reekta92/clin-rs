@@ -140,7 +140,7 @@ fn run_search(
                 if is_hit {
                     match_count += 1;
                     if lines.len() < 200 && global_line_count < 20_000 {
-                        let snippet = crate::ui::truncate_with_ellipsis(trimmed, 56).to_string();
+                        let snippet = crate::fsutil::truncate_ellipsis(trimmed, 56);
                         lines.push(SearchLineHit {
                             line_number: line_idx + 1,
                             snippet,

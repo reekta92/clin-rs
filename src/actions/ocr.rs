@@ -6,7 +6,6 @@ use image::{DynamicImage, RgbaImage};
 use std::borrow::Cow;
 use std::io::Read;
 use std::process::{Command, Stdio};
-use tempfile::NamedTempFile;
 
 pub struct OcrPasteAction;
 
@@ -15,7 +14,7 @@ fn is_wayland() -> bool {
 }
 
 fn get_clipboard_image_wayland() -> Result<DynamicImage> {
-    if which::which("wl-paste").is_err() {
+    if !crate::fsutil::can_run("wl-paste") {
         anyhow::bail!("wl-paste is not installed. Please install wl-clipboard.");
     }
 
@@ -107,7 +106,7 @@ impl Action for OcrPasteAction {
             get_clipboard_image_arboard()?
         };
 
-        let temp_file = NamedTempFile::new().context("Failed to create temporary image file")?;
+        let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("png"));
         let temp_path = temp_file.path().to_owned();
 
         dynamic_image
@@ -128,7 +127,7 @@ impl Action for OcrPasteAction {
         }
 
         let extracted_text =
-            crate::sanitize::sanitize_for_terminal(String::from_utf8_lossy(&output.stdout).trim())
+            crate::fsutil::sanitize_for_terminal(String::from_utf8_lossy(&output.stdout).trim())
                 .into_owned();
 
         if extracted_text.is_empty() {
@@ -188,7 +187,7 @@ impl Action for PasteImageAction {
         };
 
         // Save to temp file then import
-        let temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
+        let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("png"));
         let temp_path = temp_file.path().to_owned();
         dynamic_image
             .save_with_format(&temp_path, image::ImageFormat::Png)

@@ -92,11 +92,11 @@ pub(crate) fn repair_legacy_preset_sequences(
     Ok(changed)
 }
 
-/// Emits the four parallel accessor families (`matches_*`, `*_keys_display`,
-/// `bindings_for_*`, `display_*`) for one keybind scope from a single template.
+/// Emits the three parallel accessor families (`matches_*`, `*_keys_display`,
+/// `display_*`) for one keybind scope from a single template.
 /// Add a scope by adding one `keybind_scope!(...)` line below.
 macro_rules! keybind_scope {
-    ($field:ident, $Action:ty, $matches:ident, $kd:ident, $bindings:ident, $display:ident) => {
+    ($field:ident, $Action:ty, $matches:ident, $kd:ident, $display:ident) => {
         impl Keybinds {
             pub fn $matches(&self, action: $Action, event: &KeyEvent) -> bool {
                 self.$field
@@ -113,9 +113,6 @@ macro_rules! keybind_scope {
                             .join("/")
                     })
                     .unwrap_or_default()
-            }
-            pub fn $bindings(&self) -> &HashMap<$Action, Vec<KeyCombo>> {
-                &self.$field
             }
             pub fn $display(&self, action: $Action) -> String {
                 self.$field
@@ -153,10 +150,6 @@ keybind_resolve!(outline, OutlineAction, resolve_outline, true);
 keybind_resolve!(setup, SetupAction, resolve_setup, false);
 
 impl Keybinds {
-    pub fn load(path: &Path) -> Result<Self> {
-        Self::load_layered(path, Self::default(), &mut Vec::new())
-    }
-
     pub fn load_layered(
         path: &Path,
         base: Keybinds,
@@ -253,7 +246,6 @@ keybind_scope!(
     ListAction,
     matches_list,
     list_keys_display,
-    bindings_for_list,
     display_list
 );
 keybind_scope!(
@@ -261,7 +253,6 @@ keybind_scope!(
     EditAction,
     matches_edit,
     edit_keys_display,
-    bindings_for_edit,
     display_edit
 );
 keybind_scope!(
@@ -269,7 +260,6 @@ keybind_scope!(
     HelpAction,
     matches_help,
     help_keys_display,
-    bindings_for_help,
     display_help
 );
 keybind_scope!(
@@ -277,7 +267,6 @@ keybind_scope!(
     GraphAction,
     matches_graph,
     graph_keys_display,
-    bindings_for_graph,
     display_graph
 );
 keybind_scope!(
@@ -285,7 +274,6 @@ keybind_scope!(
     DrawAction,
     matches_draw,
     draw_keys_display,
-    bindings_for_draw,
     display_draw
 );
 keybind_scope!(
@@ -293,7 +281,6 @@ keybind_scope!(
     CanvasAction,
     matches_canvas,
     canvas_keys_display,
-    bindings_for_canvas,
     display_canvas
 );
 keybind_scope!(
@@ -301,7 +288,6 @@ keybind_scope!(
     BackupAction,
     matches_backup,
     backup_keys_display,
-    bindings_for_backup,
     display_backup
 );
 keybind_scope!(
@@ -309,7 +295,6 @@ keybind_scope!(
     OutlineAction,
     matches_outline,
     outline_keys_display,
-    bindings_for_outline,
     display_outline
 );
 keybind_scope!(
@@ -317,7 +302,6 @@ keybind_scope!(
     SetupAction,
     matches_setup,
     setup_keys_display,
-    bindings_for_setup,
     display_setup
 );
 
@@ -485,7 +469,8 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("keybinds.toml");
         keybinds.save(&path).unwrap();
-        let loaded_keybinds = Keybinds::load(&path).unwrap();
+        let loaded_keybinds =
+            Keybinds::load_layered(&path, Keybinds::default(), &mut Vec::new()).unwrap();
         assert_eq!(loaded_keybinds.draw, keybinds.draw);
         assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
         assert_eq!(loaded_keybinds.backup, keybinds.backup);
@@ -529,7 +514,7 @@ mod tests {
         assert!(toml_text.contains("preview_page_up"));
         assert!(toml_text.contains("preview_page_down"));
 
-        let loaded = Keybinds::load(&path).unwrap();
+        let loaded = Keybinds::load_layered(&path, Keybinds::default(), &mut Vec::new()).unwrap();
         assert_eq!(loaded.list, keybinds.list);
         assert_eq!(loaded.edit, keybinds.edit);
     }

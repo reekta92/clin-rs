@@ -1,9 +1,7 @@
 use ratatui::style::Color;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::path::PathBuf;
 
-use super::de::{deserialize_background, deserialize_optional_color, serialize_background};
-use super::defaults::*;
 use super::types::*;
 
 // ── Color Overrides (custom SerDe) ─────────────────────────────────────────
@@ -15,9 +13,6 @@ pub struct ColorOverrides {
     pub label_color: Option<Color>,
     pub selection_ring_color: Option<Color>,
     pub border_color: Option<Color>,
-    pub title_color: Option<Color>,
-    pub legend_text_color: Option<Color>,
-    pub status_bar_color: Option<Color>,
     pub background_color: Option<Color>,
 }
 
@@ -27,7 +22,7 @@ impl serde::Serialize for ColorOverrides {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut s = serializer.serialize_struct("ColorOverrides", 9)?;
+        let mut s = serializer.serialize_struct("ColorOverrides", 6)?;
         fn fmt_color(c: &Color) -> String {
             if let Color::Rgb(r, g, b) = c {
                 format!("#{r:02x}{g:02x}{b:02x}")
@@ -49,15 +44,6 @@ impl serde::Serialize for ColorOverrides {
         }
         if let Some(v) = &self.border_color {
             s.serialize_field("border_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.title_color {
-            s.serialize_field("title_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.legend_text_color {
-            s.serialize_field("legend_text_color", &fmt_color(v))?;
-        }
-        if let Some(v) = &self.status_bar_color {
-            s.serialize_field("status_bar_color", &fmt_color(v))?;
         }
         if let Some(v) = &self.background_color {
             s.serialize_field("background_color", &fmt_color(v))?;
@@ -84,12 +70,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
             #[serde(default, deserialize_with = "deserialize_optional_color")]
             border_color: Option<Color>,
             #[serde(default, deserialize_with = "deserialize_optional_color")]
-            title_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
-            legend_text_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
-            status_bar_color: Option<Color>,
-            #[serde(default, deserialize_with = "deserialize_optional_color")]
             background_color: Option<Color>,
         }
         let raw = ColorOverridesRaw::deserialize(deserializer)?;
@@ -99,9 +79,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
             label_color: raw.label_color,
             selection_ring_color: raw.selection_ring_color,
             border_color: raw.border_color,
-            title_color: raw.title_color,
-            legend_text_color: raw.legend_text_color,
-            status_bar_color: raw.status_bar_color,
             background_color: raw.background_color,
         })
     }
@@ -112,7 +89,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct VisualConfig {
-    #[serde(default = "default_graph_background")]
     pub graph_background: Background,
     #[serde(default)]
     pub node_color_mode: NodeColorMode,
@@ -120,35 +96,25 @@ pub struct VisualConfig {
     pub edge_color_mode: EdgeColorMode,
     #[serde(default)]
     pub label_mode: LabelMode,
-    #[serde(default = "default_label_max")]
     pub label_max_length: usize,
-    #[serde(default = "default_node_size")]
     pub node_size: f64,
     #[serde(default)]
     pub node_size_mode: NodeSizeMode,
-    #[serde(default = "default_edge_thickness")]
     pub edge_thickness: u16,
-    #[serde(default = "default_true")]
     pub show_legend: bool,
     #[serde(default)]
     pub show_minimap: bool,
     #[serde(default)]
     pub minimap_position: LegendPosition,
-    #[serde(default = "default_minimap_width")]
     pub minimap_width: u16,
-    #[serde(default = "default_minimap_height")]
     pub minimap_height: u16,
     #[serde(default)]
     pub canvas_marker: CanvasMarker,
     #[serde(default)]
     pub node_shape: NodeShape,
-    #[serde(default = "default_label_offset")]
     pub label_offset: f64,
-    #[serde(default = "default_true")]
     pub show_looking_glass: bool,
-    #[serde(default = "default_looking_glass_width")]
     pub looking_glass_width: u16,
-    #[serde(default = "default_looking_glass_height")]
     pub looking_glass_height: u16,
     #[serde(default)]
     pub colors: ColorOverrides,
@@ -161,21 +127,21 @@ impl Default for VisualConfig {
             node_color_mode: NodeColorMode::Folder,
             edge_color_mode: EdgeColorMode::Uniform,
             label_mode: LabelMode::default(),
-            label_max_length: default_label_max(),
-            node_size: default_node_size(),
+            label_max_length: 20,
+            node_size: 2.0,
             node_size_mode: NodeSizeMode::default(),
-            edge_thickness: default_edge_thickness(),
-            show_legend: default_true(),
+            edge_thickness: 1,
+            show_legend: true,
             show_minimap: false,
             minimap_position: LegendPosition::TopRight,
-            minimap_width: default_minimap_width(),
-            minimap_height: default_minimap_height(),
+            minimap_width: 24,
+            minimap_height: 12,
             canvas_marker: CanvasMarker::Braille,
             node_shape: NodeShape::default(),
-            label_offset: default_label_offset(),
+            label_offset: 4.0,
             show_looking_glass: true,
-            looking_glass_width: default_looking_glass_width(),
-            looking_glass_height: default_looking_glass_height(),
+            looking_glass_width: 24,
+            looking_glass_height: 12,
             colors: ColorOverrides::default(),
         }
     }
@@ -184,7 +150,6 @@ impl Default for VisualConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PhysicsConfig {
-    #[serde(default = "default_ideal_distance")]
     pub ideal_distance: f64,
     #[serde(default)]
     pub tick_rate: PhysicsTickRate,
@@ -193,7 +158,7 @@ pub struct PhysicsConfig {
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
-            ideal_distance: default_ideal_distance(),
+            ideal_distance: 80.0,
             tick_rate: PhysicsTickRate::default(),
         }
     }
@@ -202,17 +167,15 @@ impl Default for PhysicsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct InteractionConfig {
-    #[serde(default = "default_zoom_factor")]
     pub zoom_factor: f64,
-    #[serde(default = "default_drag_sensitivity")]
     pub drag_sensitivity: f64,
 }
 
 impl Default for InteractionConfig {
     fn default() -> Self {
         Self {
-            zoom_factor: default_zoom_factor(),
-            drag_sensitivity: default_drag_sensitivity(),
+            zoom_factor: 1.15,
+            drag_sensitivity: 1.0,
         }
     }
 }
@@ -220,7 +183,6 @@ impl Default for InteractionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UiConfig {
-    #[serde(default = "default_theme")]
     pub theme: String,
     #[serde(
         default,
@@ -249,7 +211,6 @@ pub struct UiConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_color: Option<String>,
 
-    #[serde(default = "default_true")]
     pub show_status_bar: bool,
 
     /// Show only Nerd Font icons (no text label) on tab bars.
@@ -260,7 +221,6 @@ pub struct UiConfig {
     #[serde(default)]
     pub icon_mode: IconMode,
     /// Show mouse-draggable scrollbars on scrollable regions.
-    #[serde(default = "default_true")]
     pub scrollbars: bool,
     /// When true, dragging/clicking the notes-list scrollbar pans the viewport
     /// without moving the selection; any key snaps the viewport back to the
@@ -274,7 +234,7 @@ pub struct UiConfig {
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
-            theme: default_theme(),
+            theme: "default".to_string(),
             background: Background::default(),
             accent: None,
             heading: None,
@@ -286,10 +246,10 @@ impl Default for UiConfig {
             tag: None,
             folder: None,
             background_color: None,
-            show_status_bar: default_true(),
+            show_status_bar: true,
             tab_icons_only: false,
             icon_mode: IconMode::default(),
-            scrollbars: default_true(),
+            scrollbars: true,
             scrollbar_pan_mode: false,
             hint_bar_style: HintBarStyle::default(),
         }
@@ -308,17 +268,15 @@ pub struct FilterConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct SearchConfig {
-    #[serde(default = "default_search_max_results")]
     pub max_results: usize,
-    #[serde(default = "default_search_max_visible")]
     pub max_visible: usize,
 }
 
 impl Default for SearchConfig {
     fn default() -> Self {
         Self {
-            max_results: default_search_max_results(),
-            max_visible: default_search_max_visible(),
+            max_results: 20,
+            max_visible: 10,
         }
     }
 }
@@ -346,7 +304,6 @@ pub struct BackupConfig {
 #[serde(default)]
 pub struct ImageConfig {
     pub enabled: bool,
-    pub max_dimension: u32,
     pub cache_size: usize,
     pub preview_rows: u8,
     pub attachments_subdir: String,
@@ -356,7 +313,6 @@ impl Default for ImageConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            max_dimension: 2048,
             cache_size: 32,
             preview_rows: 8,
             attachments_subdir: "attachments".into(),
@@ -380,7 +336,6 @@ pub struct CustomSmartFolder {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ListConfig {
-    #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
     #[serde(default)]
     pub preview_position: PreviewPosition,
@@ -388,7 +343,6 @@ pub struct ListConfig {
     pub preview_encryption: bool,
     #[serde(default)]
     pub show_file_size: bool,
-    #[serde(default = "default_list_date_format")]
     pub date_format: String,
     #[serde(default)]
     pub density: ListDensity,
@@ -398,7 +352,6 @@ pub struct ListConfig {
     pub default_sort_field: Option<crate::app::SortField>,
     #[serde(default)]
     pub default_sort_order: Option<crate::app::SortOrder>,
-    #[serde(default = "default_true")]
     pub inline_info: bool,
     #[serde(default)]
     pub pinned_on_top: bool,
@@ -408,9 +361,7 @@ pub struct ListConfig {
     pub show_all_files: bool,
     #[serde(default)]
     pub skip_dirs: Vec<String>,
-    #[serde(default = "default_true")]
     pub folders_first: bool,
-    #[serde(default = "default_true")]
     pub calendar_enabled: bool,
     #[serde(default)]
     pub smart_folders_enabled: bool,
@@ -418,15 +369,12 @@ pub struct ListConfig {
     pub folder_graph_preview: bool,
     #[serde(default)]
     pub pinned_folders: Vec<String>,
-    #[serde(default = "default_preview_width_ratio")]
     pub preview_width_ratio: f32,
-    #[serde(default = "default_calendar_height")]
     pub calendar_height: u16,
     #[serde(default)]
     pub calendar_position: CalendarPosition,
     #[serde(default)]
     pub week_start: WeekStart,
-    #[serde(default = "default_sections")]
     pub sections: Vec<NotesSection>,
     #[serde(default)]
     pub default_expand_depth: Option<usize>,
@@ -436,30 +384,30 @@ pub struct ListConfig {
 impl Default for ListConfig {
     fn default() -> Self {
         Self {
-            preview_enabled: default_preview_enabled(),
+            preview_enabled: true,
             preview_position: PreviewPosition::default(),
             preview_encryption: false,
             show_file_size: false,
-            date_format: default_list_date_format(),
+            date_format: "%Y-%m-%d".to_string(),
             density: ListDensity::default(),
             default_view: NotesLayout::default(),
             default_sort_field: None,
             default_sort_order: None,
-            inline_info: default_true(),
+            inline_info: true,
             pinned_on_top: false,
             show_hidden_files: false,
             show_all_files: false,
             skip_dirs: Vec::new(),
-            folders_first: default_true(),
-            calendar_enabled: default_true(),
+            folders_first: true,
+            calendar_enabled: true,
             calendar_position: CalendarPosition::default(),
             week_start: WeekStart::default(),
             smart_folders_enabled: false,
             folder_graph_preview: false,
             pinned_folders: Vec::new(),
-            preview_width_ratio: default_preview_width_ratio(),
-            calendar_height: default_calendar_height(),
-            sections: default_sections(),
+            preview_width_ratio: 0.43,
+            calendar_height: 9,
+            sections: vec![NotesSection::Calendar, NotesSection::Goals],
             default_expand_depth: None,
             custom_smart_folders: Vec::new(),
         }
@@ -475,15 +423,10 @@ pub struct EditorConfig {
     pub external_enabled: bool,
     #[serde(default)]
     pub preview_enabled: bool,
-    #[serde(default = "default_true")]
     pub show_line_numbers: bool,
-    #[serde(default = "default_editor_date_format")]
     pub date_format: String,
-    #[serde(default = "default_true")]
     pub edit_mode_highlight: bool,
-    #[serde(default = "default_true")]
     pub ghost_syntax: bool,
-    #[serde(default = "default_true")]
     pub extended_markdown_features: bool,
     pub soft_wrap: bool,
 }
@@ -495,7 +438,7 @@ impl Default for EditorConfig {
             external_enabled: false,
             preview_enabled: false,
             show_line_numbers: true,
-            date_format: default_editor_date_format(),
+            date_format: "%Y-%m-%d %H:%M".to_string(),
             edit_mode_highlight: true,
             ghost_syntax: true,
             extended_markdown_features: true,
@@ -519,7 +462,6 @@ pub struct GrafConfig {
     pub search: SearchConfig,
     #[serde(default)]
     pub preview_enabled: bool,
-    #[serde(default = "crate::config::defaults::default_max_node")]
     pub max_node: usize,
 }
 
@@ -532,7 +474,7 @@ impl Default for GrafConfig {
             filter: FilterConfig::default(),
             search: SearchConfig::default(),
             preview_enabled: false,
-            max_node: crate::config::defaults::default_max_node(),
+            max_node: 500,
         }
     }
 }
@@ -541,15 +483,12 @@ impl Default for GrafConfig {
 #[serde(default)]
 pub struct CoreConfig {
     pub storage_path: Option<PathBuf>,
-    #[serde(default = "default_true")]
     pub mouse_enabled: bool,
     #[serde(default)]
     pub default_folder: Option<String>,
-    #[serde(default = "default_true")]
     pub confirm_on_delete: bool,
     #[serde(default)]
     pub confirm_on_quit: bool,
-    #[serde(default = "default_true")]
     pub preview_wrap: bool,
     #[serde(default)]
     pub keybind_preset: KeybindPreset,
@@ -559,17 +498,12 @@ pub struct CoreConfig {
     pub preview_expand_mode: crate::config::PreviewExpandMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_command: Option<String>,
-    #[serde(default = "default_true")]
     pub syntax_highlighting: bool,
-    #[serde(default = "default_code_theme")]
     pub code_theme: String,
-    #[serde(default = "default_true")]
     pub code_line_numbers: bool,
-    #[serde(default = "default_true")]
     pub auto_refresh: bool,
     #[serde(default)]
     pub preview_wrap_indicator: bool,
-    #[serde(default = "default_link_url_max")]
     pub link_url_max_length: usize,
 }
 
@@ -577,21 +511,21 @@ impl Default for CoreConfig {
     fn default() -> Self {
         Self {
             storage_path: None,
-            mouse_enabled: default_true(),
+            mouse_enabled: true,
             default_folder: None,
-            confirm_on_delete: default_true(),
+            confirm_on_delete: true,
             confirm_on_quit: false,
-            preview_wrap: default_true(),
+            preview_wrap: true,
             keybind_preset: KeybindPreset::Default,
             enable_key_sequences: false,
             preview_expand_mode: crate::config::PreviewExpandMode::default(),
             preview_command: None,
-            syntax_highlighting: default_true(),
-            code_theme: default_code_theme(),
-            code_line_numbers: default_true(),
-            auto_refresh: default_true(),
+            syntax_highlighting: true,
+            code_theme: "base16-ocean.dark".to_string(),
+            code_line_numbers: true,
+            auto_refresh: true,
             preview_wrap_indicator: false,
-            link_url_max_length: default_link_url_max(),
+            link_url_max_length: 80,
         }
     }
 }
@@ -599,11 +533,8 @@ impl Default for CoreConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GoalsConfig {
-    #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_word_goal")]
     pub word_goal: usize,
-    #[serde(default = "default_note_goal")]
     pub note_goal: usize,
 }
 
@@ -674,14 +605,50 @@ pub struct ThemeColors {
     pub node_colors: Vec<Color>,
     pub edge_color: Color,
     pub border_color: Color,
-    pub title_color: Color,
     pub label_color: Color,
-    pub legend_text_color: Color,
-    pub legend_border_color: Color,
     pub selected_indicator_color: Color,
     pub background_color: Option<Color>,
-    pub status_bar_color: Color,
     pub minimap_border_color: Color,
     pub minimap_viewport_color: Color,
     pub minimap_bg_color: Option<Color>,
+}
+
+pub fn parse_hex_color(s: &str) -> Option<Color> {
+    let s = s.strip_prefix('#')?;
+    if s.len() == 6 {
+        let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+        Some(Color::Rgb(r, g, b))
+    } else {
+        None
+    }
+}
+
+pub fn deserialize_optional_color<'de, D>(deserializer: D) -> Result<Option<Color>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(s) => parse_hex_color(&s)
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {s}"))),
+    }
+}
+
+pub fn serialize_background<S>(bg: &Background, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&bg.to_string())
+}
+
+pub fn deserialize_background<'de, D>(deserializer: D) -> Result<Background, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    s.parse::<Background>().map_err(serde::de::Error::custom)
 }

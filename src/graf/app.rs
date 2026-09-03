@@ -64,7 +64,7 @@ pub struct GrafAppState {
     pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
     pub show_legend: bool,
-    pub grid: crate::ui::CanvasGridState,
+    pub grid: bool,
     pub show_status_bar: bool,
     pub show_looking_glass: bool,
     pub config_reload_msg: Option<String>,
@@ -118,7 +118,7 @@ impl GrafAppState {
             search_popup: None,
             show_minimap: config.graf.visual.show_minimap,
             show_legend: config.graf.visual.show_legend,
-            grid: crate::ui::CanvasGridState::default(),
+            grid: true,
             show_status_bar: config.ui.show_status_bar,
             show_looking_glass: config.graf.visual.show_looking_glass,
             config_reload_msg: None,
@@ -900,7 +900,7 @@ fn handle_event(
                         return Ok(None);
                     }
                     GraphInputAction::ToggleGrid => {
-                        app_state.grid.toggle();
+                        app_state.grid = !app_state.grid;
                         return Ok(None);
                     }
                     GraphInputAction::ToggleStatus => {
@@ -916,9 +916,6 @@ fn handle_event(
                     }
                     GraphInputAction::Refresh => {
                         app_state.refresh_simulation(config);
-                        return Ok(None);
-                    }
-                    GraphInputAction::ReloadConfig => {
                         return Ok(None);
                     }
                     GraphInputAction::TogglePreview => {

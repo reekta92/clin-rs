@@ -221,8 +221,9 @@ src/
 ├── calendar.rs           — GitHub-style activity heatmap
 ├── cli.rs                — CLI argument definitions (clap-derive)
 ├── console.rs            — Colored CLI output and clap theme
-├── constants.rs          — Binary constants (FILE_MAGIC, NONCE_LEN)
-├── editor.rs             — NoteEditor (title + body TextArea), edit/read modes
+├── editor_document.rs    — NoteEditor line/buffer state and logic
+├── editor_session.rs     — Dedicated event loop for edit mode
+├── event_source.rs       — Crossterm/channel event stream abstraction
 ├── frontmatter.rs        — YAML frontmatter parse/serialize
 ├── fsutil.rs             — Atomic file I/O and secure temp files
 ├── goals.rs              — Writing goals progress tracking and rendering
@@ -236,25 +237,22 @@ src/
 ├── perf_tests.rs         — Performance benchmarks (ignored by default)
 ├── popups.rs             — Modal popup types and PopupManager
 ├── preview.rs            — Preview pane dispatcher
-├── sanitize.rs           — Terminal control-character sanitization
 ├── setup.rs              — First-run setup wizard constants and state
-├── snapshot.rs           — Canvas/draw/image snapshot rendering
+├── session.rs            — Terminal bootstrap and teardown orchestration
 ├── statusline.rs         — Statusline/header/footer template rendering
 ├── storage.rs            — Note persistence, encryption, vault management
-├── text_edit.rs          — Text-editing shortcuts and clipboard I/O
+├── todo.rs               — todo.txt parsing and rendering
 ├── app/                  — App logic: catalog, edit panes, folder preview, etc.
 │   ├── catalog.rs        — Background note catalog worker
 │   ├── edit_panes.rs     — Editor sidebar management
-│   ├── folder_preview.rs — Background folder preview for FolderGraph
 │   ├── folders.rs        — Folder tree, move, duplicate, pin
 │   ├── import_ops.rs     — File/URL import orchestration
-│   ├── loading.rs        — Visual list construction, preview rendering
+│   ├── messages.rs       — Status/message overlay and queue
 │   ├── notes.rs          — Core note lifecycle
 │   ├── popups.rs         — Non-editor popup dialogs
 │   ├── search.rs         — Search popup UI
 │   ├── search_worker.rs  — Background search worker (rayon)
 │   ├── settings_ops.rs   — Toggleable settings, layout persistence
-│   ├── status.rs         — Status bar messages
 │   ├── tags.rs           — Tag CRUD operations
 │   ├── trash.rs          — Trash lifecycle
 │   └── views.rs          — View-mode switching
@@ -263,10 +261,9 @@ src/
 │   ├── structs.rs        — All config data structures
 │   ├── types.rs          — Enum types and parsing
 │   ├── merge.rs          — Comment-preserving TOML merge
-│   ├── defaults.rs       — Default field values
+│   ├── themes.rs         — Built-in theme palette definitions
 │   ├── custom_themes.rs  — Drop-in TOML theme loading
 │   ├── path.rs           — Path expansion (~, $VAR)
-│   └── de.rs             — Custom serde helpers
 ├── events/               — Keyboard/mouse event handlers per view
 │   ├── mod.rs            — Shared utilities, popup dispatch
 │   ├── list.rs           — List view key/mouse handlers
@@ -284,11 +281,14 @@ src/
 │   └── help_meta.rs      — Action metadata for help UI
 ├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
 │   ├── mod.rs            — Central UI dispatcher, shared helpers
-│   ├── canvas_grid.rs    — Shared square visual-grid projection/rendering
+│   ├── camera.rs         — Canvas camera viewport pan/zoom handling
+│   ├── canvas_menu.rs    — Context menu for canvas/draw
+│   ├── canvas_overlay.rs — Shared canvas drawing overlays (marquee, grid)
+│   ├── canvas_selection.rs — Multi-select node/edge state
 │   ├── list_view.rs      — Main list/grid view rendering
 │   ├── edit_view.rs      — Editor body rendering
 │   ├── help.rs           — Full help view
-│   ├── help_content.rs   — Static help/suggestion data
+│   ├── message_overlay.rs— Toast/message popup overlay
 │   ├── popups.rs         — Popup and status-bar rendering
 │   ├── title_bar.rs      — Title bar / tab bar rendering
 │   ├── setup.rs          — Setup wizard rendering
@@ -313,17 +313,15 @@ src/
 │   ├── source_highlight.rs — Per-line source highlighter for EDIT mode
 │   ├── style.rs          — RenderLine type, MarkdownTheme palette
 │   ├── cache.rs          — Cached markdown output with revalidation
-│   ├── perf_tests.rs     — Rendering performance benchmarks
+│   ├── todotxt.rs        — Render plugin for todo.txt items
 │   ├── widget.rs         — Ratatui Widget impl for RenderLine slices
 │   └── worker.rs         — Cancelable background render thread
 ├── templates/            — Template system: data model, substitution, persistence
 │   ├── mod.rs            — Module root, re-exports
 │   ├── model.rs          — Template, TitleConfig, ContentConfig
 │   ├── variables.rs      — Template date/time variable substitution
-│   ├── store.rs          — Filename sanitization
 │   └── manager.rs        — TemplateManager CRUD orchestration
 ├── image_render/         — Native image rendering
-│   ├── mod.rs            — Module root and cache types
 │   ├── cache.rs          — LRU image cache
 │   └── worker.rs         — Background decode worker
 ├── backup/               — Git backup dashboard
@@ -334,19 +332,15 @@ src/
 │   ├── state.rs          — BackupState, BackupSection, BackupInputMode
 │   └── worker.rs         — Background auto-backup worker
 ├── graf/                 — Force-directed graph view
-│   ├── mod.rs            — Module declarations and re-exports
 │   ├── app.rs            — GrafAppState, OverlayView implementation
 │   ├── graph.rs          — build_graph(), GraphNodeData
 │   ├── input.rs          — Keyboard/mouse handlers
 │   ├── physics.rs        — Force simulation thread
 │   ├── render.rs         — draw_graph_view(), minimap, legend
-│   ├── spatial.rs        — Uniform-grid spatial index
-│   ├── themes.rs         — Color palette definitions
 │   ├── ui.rs             — Search popup, layout orchestration
-│   ├── util.rs           — String truncation helper
 │   └── viewport.rs       — Camera viewport (zoom, pan, hit-test)
 ├── draw/                 — Freehand drawing overlay
-│   ├── app.rs            — DrawAppState, OverlayView implementation
+│   ├── geometry.rs       — Affine transform and bounding box math
 │   ├── input.rs          — Mouse/keyboard handlers
 │   ├── render.rs         — Canvas + element rendering
 │   └── state.rs          — DrawData, DrawElement, DrawTool
@@ -356,7 +350,6 @@ src/
 │   ├── render.rs         — Tree + detail rendering
 │   ├── state.rs          — OutlineState, tree model
 │   └── parse.rs          — Header outline parser
-└── pinstar/              — Obsidian-compatible canvas (node/edge)
     ├── mod.rs            — Module root, color picker palette
     ├── app.rs            — PinstarState, OverlayView implementation
     ├── data.rs           — CanvasData, CanvasNode, CanvasEdge (JSON schema)

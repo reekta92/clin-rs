@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
 };
@@ -164,7 +164,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         margin + (num_cols_actual as u16 * popup_width) + ((num_cols_actual as u16 - 1) * COL_GAP),
     );
 
-    let alt_bg = darken(theme.accent, 18);
+    let alt_bg = crate::app_theme::darken(theme.accent, 18);
 
     for (ci, col_lines) in columns.iter().enumerate() {
         let col_x = dropdown_x + ci as u16 * (popup_width + COL_GAP);
@@ -199,17 +199,5 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
             ]);
             frame.render_widget(Paragraph::new(row), content_area);
         }
-    }
-}
-
-/// Darken an RGB color by subtracting `delta` from each channel.
-fn darken(c: Color, delta: u8) -> Color {
-    match c {
-        Color::Rgb(r, g, b) => Color::Rgb(
-            r.saturating_sub(delta),
-            g.saturating_sub(delta),
-            b.saturating_sub(delta),
-        ),
-        other => other,
     }
 }

@@ -51,7 +51,7 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
         |para: &mut Option<(usize, String)>, nodes: &mut Vec<TreeNode>, current_depth: usize| {
             if let Some((line, full_text)) = para.take() {
                 let first_line = full_text.lines().next().unwrap_or("").to_string();
-                let preview = truncate(&first_line);
+                let preview = crate::fsutil::truncate_ellipsis(&first_line, 60);
                 nodes.push(TreeNode {
                     kind: NodeKind::Paragraph { preview, full_text },
                     depth: current_depth + 1,
@@ -208,10 +208,6 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
     }
 
     nodes
-}
-
-fn truncate(s: &str) -> String {
-    crate::ui::truncate_with_ellipsis(s, 60)
 }
 
 #[cfg(test)]

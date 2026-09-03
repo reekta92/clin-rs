@@ -98,6 +98,7 @@
 - [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
 - [ ] **New node types** — more node types like link nodes, etc. (image nodes implemented as placeholders)
 - [ ] **Keyboard mode** — keyboard focused mode that allows for doing mouse actions like moving nodes, panning etc. with keyboard commands only, similar to `vim` commands
+- [ ] **Jump to** — kinda like find in file/quick search, searches a string through entire node titles, content etc. allows for jumping to that node
 
 #### Draw View
 - [ ] **Text size** — changable text size

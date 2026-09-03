@@ -726,22 +726,6 @@ impl Storage {
             .unwrap_or_else(|| self.notes_dir.join("invalid"))
     }
 
-    pub fn note_mtime_millis(&self, id: &str) -> u64 {
-        fs::metadata(self.note_path(id))
-            .and_then(|m| m.modified())
-            .and_then(|t| {
-                t.duration_since(std::time::UNIX_EPOCH)
-                    .map_err(std::io::Error::other)
-            })
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
-    }
-
-    pub fn attachments_dir(&self, attachments_subdir: &str) -> Result<PathBuf> {
-        let relative = Self::validated_attachment_subdir(attachments_subdir)?;
-        Ok(self.notes_dir.join(relative))
-    }
-
     pub fn import_attachment(&self, src: &Path, attachments_subdir: &str) -> Result<String> {
         let relative = Self::validated_attachment_subdir(attachments_subdir)?;
         let dir = self.notes_dir.join(&relative);
@@ -2266,48 +2250,6 @@ mod tests {
         let truncated = b"CLIN1";
         let result = storage.decrypt(truncated);
         assert!(result.is_err(), "truncated payload must error, not panic");
-    }
-
-    #[test]
-    fn test_mtime_updates_on_save() -> Result<()> {
-        let temp = tempfile::tempdir()?;
-        let notes_dir = temp.path().to_path_buf();
-        let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
-            notes_dir: notes_dir.clone(),
-            templates_dir: PathBuf::new(),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-
-        let id = storage.save_note(
-            "test_note.clin",
-            &Note {
-                title: "T1".to_string(),
-                content: "Content 1".to_string(),
-                updated_at: 1,
-                tags: vec![],
-            },
-        )?;
-        let mt1 = storage.note_mtime_millis(&id);
-        assert!(mt1 > 0);
-
-        std::thread::sleep(std::time::Duration::from_millis(20));
-
-        let id = storage.save_note(
-            &id,
-            &Note {
-                title: "T1".to_string(),
-                content: "Content 2".to_string(),
-                updated_at: 2,
-                tags: vec![],
-            },
-        )?;
-        let mt2 = storage.note_mtime_millis(&id);
-        assert!(mt2 > mt1);
-
-        Ok(())
     }
 
     #[test]

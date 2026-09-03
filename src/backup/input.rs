@@ -240,9 +240,7 @@ fn handle_commit_input(
             }
         }
         _ => {
-            if !apply_text_shortcuts(keybinds, &mut state.commit_textarea, event) {
-                state.commit_textarea.input(event);
-            }
+            crate::text_edit::feed_key(keybinds, &mut state.commit_textarea, event);
         }
     }
     InputResult::None
@@ -307,9 +305,7 @@ fn handle_settings_field_input(
         }
         _ => match state.settings.focused_field {
             SettingsField::RemoteUrl => {
-                if !apply_text_shortcuts(keybinds, &mut state.settings.remote_url, event) {
-                    state.settings.remote_url.input(event);
-                }
+                crate::text_edit::feed_key(keybinds, &mut state.settings.remote_url, event);
             }
             SettingsField::RemoteName
                 if !apply_text_shortcuts(keybinds, &mut state.settings.remote_name, event) =>

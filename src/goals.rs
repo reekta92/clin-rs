@@ -25,7 +25,7 @@ pub struct DailyProgress {
 }
 
 pub fn count_words(text: &str) -> usize {
-    text.split_whitespace().filter(|w| !w.is_empty()).count()
+    text.split_whitespace().count()
 }
 
 fn make_progress_bar(

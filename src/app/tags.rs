@@ -2,6 +2,10 @@ use super::*;
 use crate::popups::*;
 use std::collections::HashSet;
 
+fn is_tag_supported(ext: &str) -> bool {
+    matches!(ext, "md" | "txt" | "clin")
+}
+
 impl App {
     pub fn collect_live_tags(&self) -> Vec<String> {
         let mut tags: HashSet<String> = HashSet::new();
@@ -79,7 +83,7 @@ impl App {
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
 
-            if ext != "md" && ext != "txt" && ext != "clin" {
+            if !is_tag_supported(ext) {
                 self.set_temporary_status_static(
                     "Tagging is only supported for .md, .txt, and .clin files",
                 );
@@ -156,7 +160,7 @@ impl App {
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
 
-            if ext != "md" && ext != "txt" && ext != "clin" {
+            if !is_tag_supported(ext) {
                 self.set_temporary_status_static(
                     "Tagging is only supported for .md, .txt, and .clin files",
                 );
@@ -305,7 +309,7 @@ impl App {
                     .and_then(|e| e.to_str())
                     .unwrap_or("");
 
-                if ext != "md" && ext != "txt" && ext != "clin" {
+                if !is_tag_supported(ext) {
                     continue;
                 }
 

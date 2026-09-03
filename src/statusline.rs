@@ -2,7 +2,7 @@ use crate::app::{App, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::config::{IconMode, StatuslineConfig};
 use crate::storage::NoteSummary;
-use crate::ui::{PreviewHeaderInfo, format_date, format_relative_time, format_size};
+use crate::ui::{PreviewHeaderInfo, format_date, format_size};
 use ratatui::prelude::*;
 use std::borrow::Cow;
 use std::path::Path;
@@ -742,13 +742,7 @@ impl StatuslineContext<'_> {
             "note_updated_rel" => {
                 let relative = self
                     .note
-                    .map(|note| {
-                        if self.view == ViewMode::List {
-                            list_relative_age(note.updated_at)
-                        } else {
-                            crate::ui::format_relative_time(note.updated_at).into_owned()
-                        }
-                    })
+                    .map(|note| list_relative_age(note.updated_at))
                     .unwrap_or_default();
                 Some(relative.into())
             }
@@ -1050,7 +1044,7 @@ impl StatuslineContext<'_> {
                     "element_count" => draw.data.elements.len().to_string(),
                     "draw_width" => draw.data.width.to_string(),
                     "draw_height" => draw.data.height.to_string(),
-                    "draw_grid" => (if draw.grid.visible { "on" } else { "off" }).to_string(),
+                    "draw_grid" => (if draw.grid { "on" } else { "off" }).to_string(),
                     "draw_zoom" => format!("{:.1}", draw.viewport.zoom),
                     "text_editing" => (if draw.text_editor.is_some() {
                         "on"
@@ -1078,7 +1072,7 @@ impl StatuslineContext<'_> {
                     "canvas_pan_x" => canvas.viewport_x.to_string(),
                     "canvas_pan_y" => canvas.viewport_y.to_string(),
                     "canvas_selected" => canvas.selection.primary.clone().unwrap_or_default(),
-                    "canvas_grid" => (if canvas.grid.visible { "on" } else { "off" }).to_string(),
+                    "canvas_grid" => (if canvas.grid { "on" } else { "off" }).to_string(),
                     "canvas_editor" => {
                         (if canvas.show_editor_pane { "on" } else { "off" }).to_string()
                     }
@@ -1200,7 +1194,7 @@ impl StatuslineContext<'_> {
                     "last_commit_time" => backup
                         .commits
                         .first()
-                        .map(|c| format_relative_time(c.time).into_owned())
+                        .map(|c| list_relative_age(c.time))
                         .unwrap_or_default(),
                     "remote" => backup.settings.remote_name.lines().join(""),
                     "remote_url" => backup.settings.remote_url.lines().join(""),
@@ -2155,7 +2149,6 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,

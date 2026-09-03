@@ -104,33 +104,33 @@ fuzzy-matcher = "0.3.7"
 lru = "0.18.1"
 image = "0.25.10"
 ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm", "image-defaults"] }
- rand = "0.10"
+rand = "0.10"
 ratatui = "0.30"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml_ng = "0.10"
 signal-hook = "0.4"
 parking_lot = "0.12"
-tempfile = "3.27.0"
 toml = "1.1"
-toml_edit = "0.25"
+toml_edit = { version = "0.25", features = ["serde"] }
 trash = "5"
 ratatui-textarea = { version = "0.9", features = ["search"] }
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
-which = "8.0.2"
 comrak = { version = "0.36", default-features = false }
 syntect = { version = "5.2", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 unicode-width = "0.2"
 unicode-segmentation = "1.13"
 git2 = { version = "0.21", features = ["ssh", "https"] }
-mimalloc = "0.1"
 notify = "8.2.0"
 rayon = "1.12"
 regex = "1"
-sha2 = "0.11"
 strum = { version = "0.28", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

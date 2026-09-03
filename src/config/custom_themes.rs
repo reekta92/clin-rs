@@ -25,7 +25,6 @@
 //! [graph]
 //! nodes = ["#7aa2f7", "#bb9af7", "#7dcfff", "#e0af68", ...]
 //! chrome = "#565f89"
-//! title  = "#bb9af7"
 //! text   = "#cbccd5"
 //! fg     = "#ffffff"
 //! bg     = "#1a1b26"       # optional
@@ -76,8 +75,6 @@ pub struct CustomGraph {
     pub nodes: Vec<String>,
     #[serde(default)]
     pub chrome: String,
-    #[serde(default)]
-    pub title: String,
     #[serde(default)]
     pub text: String,
     #[serde(default)]
@@ -324,7 +321,6 @@ background = "#000000"
 [graph]
 nodes = ["#ff0000","#00ff00","#0000ff","#ffff00","#ff00ff","#00ffff","#ffffff","#888888"]
 chrome = "#444444"
-title = "#ffa500"
 text = "#cccccc"
 fg = "#ffffff"
 bg = "#000000"
@@ -350,11 +346,6 @@ theme = "redtest"
             tc.edge_color,
             ratatui::style::Color::Rgb(0x44, 0x44, 0x44),
             "chrome color"
-        );
-        assert_eq!(
-            tc.title_color,
-            ratatui::style::Color::Rgb(0xff, 0xa5, 0x00),
-            "title color"
         );
         assert_eq!(
             tc.background_color,

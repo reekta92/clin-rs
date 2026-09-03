@@ -26,7 +26,7 @@ pub fn draw_view_title_bar(
         && !st.trim().is_empty()
         && st != "Ready"
     {
-        let st = crate::sanitize::sanitize_for_terminal(st);
+        let st = crate::fsutil::sanitize_for_terminal(st);
         let display = if st.starts_with("First time caching") {
             format!("  {} {}  ", spinner_char(tick), st)
         } else {
@@ -91,7 +91,7 @@ pub fn draw_view_title_bar_with_tabs(
         && !st.trim().is_empty()
         && st != "Ready"
     {
-        let st = crate::sanitize::sanitize_for_terminal(st);
+        let st = crate::fsutil::sanitize_for_terminal(st);
         let display = if st.starts_with("First time caching") {
             format!("  {} {}  ", spinner_char(tick), st)
         } else {

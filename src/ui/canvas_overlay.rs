@@ -35,8 +35,8 @@ impl MarqueeDragState {
     pub fn commit_rect(&self) -> Option<(f64, f64, f64, f64)> {
         let s = self.start?;
         let e = self.end?;
-        let (min_x, max_x) = if s.0 < e.0 { (s.0, e.0) } else { (e.0, s.0) };
-        let (min_y, max_y) = if s.1 < e.1 { (s.1, e.1) } else { (e.1, s.1) };
+        let (min_x, max_x) = (s.0.min(e.0), s.0.max(e.0));
+        let (min_y, max_y) = (s.1.min(e.1), s.1.max(e.1));
         Some((min_x, min_y, max_x, max_y))
     }
     pub fn clear(&mut self) {

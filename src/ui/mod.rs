@@ -1,8 +1,9 @@
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::{TextArea, WrapMode};
+use std::ffi::OsStr;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 
@@ -28,23 +29,14 @@ pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
 
-#[allow(unused_imports)]
-pub(crate) use camera::{
-    ZoomDir, clamp_world, nearest_in_dir, nearest_to_point, pan_centered, zoom_step,
-};
-pub(crate) use canvas_grid::{CanvasGridProjection, CanvasGridState, draw_canvas_grid};
-#[allow(unused_imports)]
+pub(crate) use canvas_grid::{CanvasGridProjection, draw_canvas_grid};
 pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
-#[allow(unused_imports)]
-pub(crate) use canvas_overlay::{MarqueeDragState, draw_canvas_rect_filled};
+pub(crate) use canvas_overlay::MarqueeDragState;
 pub(crate) use canvas_selection::CanvasSelection;
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
-#[allow(unused_imports)]
-pub(crate) use list_view::{
-    draw_list_view, get_preview_info, list_detail_line, list_view_layout, section_rects,
-};
+pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout, section_rects};
 pub use popups::*;
 pub use setup::draw_setup_view;
 pub use title_bar::*;
@@ -164,7 +156,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     ctx.vault_path = Some(&app.storage.data_dir);
                     ctx.date_format = Some(&app.date_format);
                     ctx.graph_fps = graf.canvas_fps();
-                    ctx.graph_grid_visible = graf.grid.visible;
+                    ctx.graph_grid_visible = graf.grid;
                     if let Some(graph_state) = &graf.graph_state {
                         guard = graph_state.read();
                         ctx.graph = Some(&guard);
@@ -362,21 +354,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("confirm")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Tag popup
@@ -923,22 +909,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Note rename popup
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             "RENAME",
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("rename")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Goals popup
@@ -959,21 +938,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ],
             ),
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Prompt,
             PopupHints::Keybinds(&keybinds),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Create note popup
@@ -984,16 +957,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("create")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
-        popup.input.set_block(popup_block("", &app.app_theme));
-        frame.render_widget(&popup.input, content);
     }
 
     // Import popup
@@ -1005,21 +977,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let content = draw_popup_frame(
+        draw_text_prompt_popup(
             frame,
-            frame.area(),
             title,
             PopupSize::Large,
             PopupHints::Keybinds(&text_input_hints("import")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.muted),
             &app.app_theme,
         );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.muted)),
-        );
-        frame.render_widget(&popup.input, content);
     }
 
     // Search popup
@@ -1378,7 +1344,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .iter()
             .map(|item| {
                 let name = item.name.to_string_lossy();
-                let when = crate::ui::format_relative_time(item.time_deleted as u64);
+                let when = crate::statusline::list_relative_age(item.time_deleted as u64);
                 ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
                     Span::styled(
@@ -1461,20 +1427,28 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
-pub fn open_in_file_manager(path: &Path) -> Result<()> {
-    use std::process::Stdio;
+fn draw_text_prompt_popup(
+    frame: &mut Frame,
+    title: &str,
+    size: PopupSize,
+    hints: PopupHints<'_>,
+    input: &mut TextArea,
+    border_style: Style,
+    theme: &AppThemeColors,
+) {
+    let content = draw_popup_frame(frame, frame.area(), title, size, hints, theme);
+    input.set_block(
+        Block::default()
+            .style(theme.bg_style())
+            .borders(Borders::ALL)
+            .border_style(border_style),
+    );
+    frame.render_widget(&*input, content);
+}
 
-    let command = if cfg!(target_os = "linux") {
-        "xdg-open"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(target_os = "windows") {
-        "explorer"
-    } else {
-        anyhow::bail!("opening file manager is not supported on this platform")
-    };
-
-    Command::new(command)
+fn spawn_opener(command: &str, args: &[&OsStr], path: &Path) -> Result<()> {
+    let mut cmd = Command::new(command);
+    cmd.args(args)
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -1484,9 +1458,20 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn open_with_default_application(path: &Path) -> Result<()> {
-    use std::process::Stdio;
+pub fn open_in_file_manager(path: &Path) -> Result<()> {
+    let command = if cfg!(target_os = "linux") {
+        "xdg-open"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        anyhow::bail!("opening file manager is not supported on this platform")
+    };
+    spawn_opener(command, &[], path)
+}
 
+pub fn open_with_default_application(path: &Path) -> Result<()> {
     let command = if cfg!(target_os = "linux") {
         "xdg-open"
     } else if cfg!(target_os = "macos") {
@@ -1496,19 +1481,16 @@ pub fn open_with_default_application(path: &Path) -> Result<()> {
     } else {
         anyhow::bail!("opening files is not supported on this platform")
     };
-
-    let mut cmd = Command::new(command);
     if cfg!(target_os = "windows") {
         // `cmd /C start "" <path>` invokes the associated application.
-        cmd.arg("/C").arg("start").arg("");
+        spawn_opener(
+            command,
+            &[OsStr::new("/C"), OsStr::new("start"), OsStr::new("")],
+            path,
+        )
+    } else {
+        spawn_opener(command, &[], path)
     }
-    cmd.arg(path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| format!("failed to launch {command}"))?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1536,7 +1518,7 @@ pub fn pick_directory(prompt: &str) -> Result<DirectoryPickerOutcome> {
     }
 
     if cfg!(target_os = "linux") {
-        if which::which("zenity").is_ok() {
+        if crate::fsutil::can_run("zenity") {
             return selected(
                 Command::new("zenity")
                     .args([
@@ -1548,7 +1530,7 @@ pub fn pick_directory(prompt: &str) -> Result<DirectoryPickerOutcome> {
                     .context("failed to launch zenity")?,
             );
         }
-        if which::which("kdialog").is_ok() {
+        if crate::fsutil::can_run("kdialog") {
             return selected(
                 Command::new("kdialog")
                     .args(["--getexistingdirectory", "."])
@@ -1602,7 +1584,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
     };
 
     if cfg!(target_os = "linux") {
-        if which::which("zenity").is_ok() {
+        if crate::fsutil::can_run("zenity") {
             let output = Command::new("zenity")
                 .arg("--file-selection")
                 .arg(format!("--file-filter={filter_name} | {zenity_glob}"))
@@ -1612,7 +1594,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
                     String::from_utf8_lossy(&output.stdout).trim().to_string(),
                 ));
             }
-        } else if which::which("kdialog").is_ok() {
+        } else if crate::fsutil::can_run("kdialog") {
             let output = Command::new("kdialog")
                 .arg("--getopenfilename")
                 .arg(".")
@@ -1749,43 +1731,6 @@ pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
         }
     }
     (scroll_row, scroll_col)
-}
-pub fn line_number_gutter(
-    line_count: usize,
-    cursor_row: usize,
-    scroll_row: usize,
-    height: u16,
-    theme: &AppThemeColors,
-    top_padding: u16,
-) -> Paragraph<'static> {
-    let digits = line_count.max(1).to_string().len();
-    let display_lines = height as usize;
-    let mut gutter_lines: Vec<Line<'static>> = Vec::with_capacity(display_lines);
-    for i in 0..display_lines.min(line_count.saturating_sub(scroll_row)) {
-        let current_line_idx = i + scroll_row;
-        let is_current = current_line_idx == cursor_row;
-        let style = if is_current {
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(theme.muted)
-        };
-        gutter_lines.push(Line::from(vec![Span::styled(
-            format!("{:>width$} ", current_line_idx + 1, width = digits),
-            style,
-        )]));
-    }
-    for _ in gutter_lines.len()..display_lines {
-        gutter_lines.push(Line::from(Span::raw(" ")));
-    }
-    Paragraph::new(gutter_lines)
-        .style(theme.preview_bg_style())
-        .block(
-            Block::default()
-                .padding(Padding::new(0, 0, top_padding, 0))
-                .style(theme.preview_bg_style()),
-        )
 }
 
 pub fn render_textarea_with_theme(

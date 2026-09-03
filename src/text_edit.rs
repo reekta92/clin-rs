@@ -215,6 +215,13 @@ impl MouseTextSelection {
     }
 }
 
+/// Apply keybind shortcuts; if none matched, feed the key to the textarea.
+pub(crate) fn feed_key(keybinds: &Keybinds, input: &mut TextArea<'static>, key: KeyEvent) {
+    if !apply_text_shortcuts(keybinds, input, key) {
+        input.input(ratatui_textarea::Input::from(key));
+    }
+}
+
 pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
     keybinds: &Keybinds,
     target: &mut T,

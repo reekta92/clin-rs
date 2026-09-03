@@ -177,7 +177,7 @@ pub struct DrawAppState {
     pub viewport: Viewport,
     pub storage: crate::storage::Storage,
     pub current_file: Option<String>,
-    pub running: bool,
+
     pub active_tool: crate::draw::state::DrawTool,
     pub selection: crate::ui::CanvasSelection<DrawItemId>,
     pub hovered: Option<DrawItemId>,
@@ -205,7 +205,7 @@ pub struct DrawAppState {
     pub preview_element: Option<crate::draw::state::DrawElement>,
     pub(crate) erase_start_data: Option<DrawData>,
     pub keybinds: Keybinds,
-    pub grid: crate::ui::CanvasGridState,
+    pub grid: bool,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub is_panning: bool,
     status_notice: Option<&'static str>,
@@ -237,7 +237,7 @@ impl DrawAppState {
             viewport: Viewport::default(),
             storage,
             current_file: file_id,
-            running: true,
+
             active_tool: crate::draw::state::DrawTool::Cursor,
             selection: crate::ui::CanvasSelection::new(),
             hovered: None,
@@ -265,7 +265,7 @@ impl DrawAppState {
             preview_element: None,
             erase_start_data: None,
             keybinds,
-            grid: crate::ui::CanvasGridState::default(),
+            grid: true,
             seq_matcher,
             is_panning: false,
             undo_stack: Vec::new(),
@@ -468,7 +468,6 @@ impl crate::overlay::OverlayView for DrawAppState {
         if let Some(action) = action {
             match action {
                 DrawEventAction::Quit => {
-                    self.running = false;
                     self.save_draw()?;
                     return Ok(crate::overlay::OverlayResult::Exit);
                 }

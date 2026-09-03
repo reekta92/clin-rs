@@ -135,30 +135,8 @@ pub fn draw_preview_pane(
                 frame.render_widget(loading, rect);
             }
 
-            Some(PreviewContent::SubnoteGraph { .. }) => {
-                // Handled directly in draw_list_view; this arm is never reached.
-                let placeholder = Paragraph::new("Graph preview...")
-                    .style(theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(placeholder, rect);
-            }
-            Some(PreviewContent::FolderGraph { .. }) => {
-                // Handled directly in draw_list_view; this arm is never reached.
-                let placeholder = Paragraph::new("Graph preview...")
-                    .style(theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(placeholder, rect);
-            }
+            // Handled directly in draw_list_view; never reached here.
+            Some(PreviewContent::SubnoteGraph { .. } | PreviewContent::FolderGraph { .. }) => {}
             Some(PreviewContent::SmartFolderInfo {
                 kind: _,
                 label,

@@ -1,16 +1,15 @@
-use std::sync::mpsc::{self, Receiver, Sender};
-
 use anyhow::Result;
 use image::DynamicImage;
+use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, Sender};
 
-use crate::image_render::ImageKey;
-
-pub enum ImageJob {
-    Decode { key: ImageKey, max_dim: u32 },
+pub struct ImageJob {
+    pub key: PathBuf,
+    pub max_dim: u32,
 }
 
 pub struct DecodedImage {
-    pub key: ImageKey,
+    pub key: PathBuf,
     pub image: DynamicImage,
 }
 
@@ -51,20 +50,18 @@ pub fn spawn() -> (Sender<ImageJob>, Receiver<Result<DecodedImage>>) {
 
     (tx, result_rx)
 }
-
 fn process_job(job: ImageJob, result_tx: &Sender<Result<DecodedImage>>) {
-    match job {
-        ImageJob::Decode { key, max_dim } => {
-            let result = decode_image(&key, max_dim);
-            let _ = result_tx.send(result.map(|img| DecodedImage { key, image: img }));
-        }
-    }
+    let result = decode_image(&job.key, job.max_dim);
+    let _ = result_tx.send(result.map(|img| DecodedImage {
+        key: job.key,
+        image: img,
+    }));
 }
 
-fn decode_image(key: &ImageKey, max_dim: u32) -> Result<DynamicImage> {
-    let img = image::ImageReader::open(&key.path)?
+fn decode_image(key: &PathBuf, max_dim: u32) -> Result<DynamicImage> {
+    let img = image::ImageReader::open(key)?
         .decode()
-        .map_err(|e| anyhow::anyhow!("Failed to decode image {}: {e}", key.path.display()))?;
+        .map_err(|e| anyhow::anyhow!("Failed to decode image {}: {e}", key.display()))?;
 
     if max_dim > 0 {
         let w = img.width();

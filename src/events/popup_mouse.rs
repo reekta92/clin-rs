@@ -318,7 +318,7 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
 
 fn handle_popup_scrollbar(
     last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    scroll_drag: &mut Option<crate::ui::scrollbar::ScrollDrag>,
+    scroll_drag: &mut Option<i32>,
     selected: &mut usize,
     content_len: usize,
     mouse: &MouseEvent,
@@ -343,7 +343,7 @@ fn handle_popup_scrollbar(
 
 fn handle_search_popup_scrollbar(
     popup: &mut crate::popups::SearchPopup,
-    scroll_drag: &mut Option<crate::ui::scrollbar::ScrollDrag>,
+    scroll_drag: &mut Option<i32>,
     mouse: &MouseEvent,
 ) -> bool {
     if let Some(meta) = popup.last_scroll {

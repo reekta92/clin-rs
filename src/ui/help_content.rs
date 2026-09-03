@@ -238,10 +238,6 @@ const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
         "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view.",
     ),
     tip(
-        "Reload configuration",
-        "Press {graph:ReloadConfig} to reload graph visualization configurations from the configuration file.",
-    ),
-    tip(
         "Toggle status bar",
         "Press {graph:ToggleStatus} to show or hide the **status bar** at the bottom of the graph view.",
     ),
@@ -352,10 +348,6 @@ const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Editor unfocus",
         "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane.",
-    ),
-    tip(
-        "Sync raw editor",
-        "Use {canvas:EditorSyncRaw} to save and sync any pending editor changes to the canvas.",
     ),
 ];
 const BACKUP_SUGGESTIONS: &[HelpSuggestion] = &[
@@ -681,11 +673,11 @@ mod tests {
                 tab
             );
 
-            // 2. Verify we have at least 12 suggestions per tab
+            // 2. Verify we have at least 11 suggestions per tab
             let suggestions = tab_suggestions(tab);
             assert!(
-                suggestions.len() >= 12,
-                "Tab {:?} has only {} suggestions, need at least 12",
+                suggestions.len() >= 11,
+                "Tab {:?} has only {} suggestions, need at least 11",
                 tab,
                 suggestions.len()
             );

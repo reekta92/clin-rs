@@ -12,18 +12,6 @@ use crate::keybinds::{HelpAction, Keybinds, ListAction};
 use crate::storage::Storage;
 use strum::IntoEnumIterator;
 
-pub fn help_tab_names() -> [&'static str; 8] {
-    [
-        "Notes",
-        "Editor",
-        "Graph",
-        "Draw",
-        "Canvas",
-        "Backup",
-        "Templates",
-        "About",
-    ]
-}
 ///
 /// Help-view tab (label, glyph) pairs, in `HelpTab` order.
 /// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
@@ -131,7 +119,7 @@ fn help_item_row(
         Span::styled("\u{2014}".to_string(), Style::default().fg(theme.muted))
     } else {
         Span::styled(
-            format_keybind(key),
+            key.to_string(),
             Style::default()
                 .fg(theme.success)
                 .add_modifier(Modifier::BOLD),
@@ -858,30 +846,6 @@ fn about_help_text(
     rows
 }
 
-pub fn help_heading(title: &'static str, theme: &AppThemeColors) -> Line<'static> {
-    Line::from(Span::styled(
-        format!(" {} ", title.to_uppercase()),
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.highlight_bg)
-            .add_modifier(Modifier::BOLD),
-    ))
-}
-
-fn format_keybind(key: &str) -> String {
-    let parts: Vec<_> = key
-        .split(" / ")
-        .map(|group| {
-            group
-                .split('/')
-                .map(|k| k.to_string())
-                .collect::<Vec<_>>()
-                .join("/")
-        })
-        .collect();
-    parts.join(" / ")
-}
-
 fn help_item_dyn(
     text: &str,
     key: Option<&str>,
@@ -895,7 +859,7 @@ fn help_item_dyn(
     };
     match key {
         Some(key) => {
-            let formatted_key = format_keybind(key);
+            let formatted_key = key.to_string();
             HelpRow {
                 row: Row::new(vec![
                     Cell::from(Line::from(vec![Span::styled(
@@ -1417,7 +1381,6 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "ToggleMinimap" => kb.graph_keys_display(GraphAction::ToggleMinimap),
             "ToggleLegend" => kb.graph_keys_display(GraphAction::ToggleLegend),
             "ToggleGrid" => kb.graph_keys_display(GraphAction::ToggleGrid),
-            "ReloadConfig" => kb.graph_keys_display(GraphAction::ReloadConfig),
             "OpenNote" => kb.graph_keys_display(GraphAction::OpenNote),
             "ZoomIn" => kb.graph_keys_display(GraphAction::ZoomIn),
             "ZoomOut" => kb.graph_keys_display(GraphAction::ZoomOut),
@@ -1472,7 +1435,6 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Save" => kb.canvas_keys_display(CanvasAction::Save),
             "MenuClose" => kb.canvas_keys_display(CanvasAction::MenuClose),
             "EditorUnfocus" => kb.canvas_keys_display(CanvasAction::EditorUnfocus),
-            "EditorSyncRaw" => kb.canvas_keys_display(CanvasAction::EditorSyncRaw),
             _ => format!("[ERR:{}]", token),
         },
         "backup" => match action {

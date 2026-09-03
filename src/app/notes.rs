@@ -659,51 +659,12 @@ impl App {
 
     pub fn start_note_from_template(&mut self, template: &Template, folder: String) {
         let rendered = template.render();
-
-        let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
-            new_id = format!("{folder}/{new_id}");
-        }
-
-        if self.editor.external_editor_enabled {
-            let new_note = Note {
-                title: rendered
-                    .title
-                    .clone()
-                    .unwrap_or_else(|| String::from("Untitled note")),
-                content: rendered.content.clone(),
-                updated_at: now_unix_secs(),
-                tags: Vec::new(),
-            };
-            match self.storage.save_note(&new_id, &new_note) {
-                Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", new_note.title));
-                    self.refresh_note_single(None, &saved_id);
-                    self.open_note_in_external_editor(&saved_id, None);
-                }
-                Err(e) => {
-                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
-                    self.set_temporary_status(&text);
-                    self.messages
-                        .push(text, crate::app::messages::MessageSeverity::Warning);
-                }
-            }
-            return;
-        }
-
-        self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
-        self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
-
-        self.editor.title_editor = make_title_editor(
-            rendered.title.as_deref().unwrap_or(""),
-            self.app_theme.highlight_fg,
-            self.app_theme.highlight_bg,
-        );
-        self.editor.body = EditorDocument::from_text(&rendered.content);
-        self.apply_editor_prefs();
-
-        self.set_default_status();
+        let note_title = rendered
+            .title
+            .clone()
+            .unwrap_or_else(|| String::from("Untitled note"));
+        let editor_title = rendered.title.unwrap_or_default();
+        self.open_new_note_from_rendered(&folder, note_title, editor_title, rendered.content);
     }
 
     pub fn start_note_from_template_with_title(
@@ -713,16 +674,25 @@ impl App {
         title: String,
     ) {
         let rendered = template.render();
+        self.open_new_note_from_rendered(&folder, title.clone(), title, rendered.content);
+    }
 
+    fn open_new_note_from_rendered(
+        &mut self,
+        folder: &str,
+        note_title: String,
+        editor_title: String,
+        content: String,
+    ) {
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
         if self.editor.external_editor_enabled {
             let new_note = Note {
-                title,
-                content: rendered.content.clone(),
+                title: note_title,
+                content,
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
@@ -744,14 +714,13 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
-        self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
-
+        self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
-            &title,
+            &editor_title,
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.body = EditorDocument::from_text(&rendered.content);
+        self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
 
         self.set_default_status();

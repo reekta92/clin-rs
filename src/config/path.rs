@@ -44,30 +44,12 @@ pub fn expand_path(input: &str) -> PathBuf {
                 }
             }
         }
-        // Copy one UTF-8 char (1–4 bytes) verbatim.
-        let ch_len = utf8_len_leading_byte(bytes[i]);
-        let end = (i + ch_len).min(bytes.len());
-        if let Ok(slice) = std::str::from_utf8(&bytes[i..end]) {
-            out.push_str(slice);
-        }
-        i = end;
+        // Copy one UTF-8 char verbatim.
+        let ch = s[i..].chars().next().expect("i is a char boundary");
+        out.push(ch);
+        i += ch.len_utf8();
     }
     PathBuf::from(out)
-}
-
-/// Length of the UTF-8 sequence whose lead byte is `b`. Falls back to 1 for invalid lead bytes.
-fn utf8_len_leading_byte(b: u8) -> usize {
-    if b < 0x80 {
-        1
-    } else if b >> 5 == 0b110 {
-        2
-    } else if b >> 4 == 0b1110 {
-        3
-    } else if b >> 3 == 0b11110 {
-        4
-    } else {
-        1
-    }
 }
 
 /// Parse `$VAR` or `${VAR}` at the start of `s`. Returns (name, bytes_consumed, was_braced).

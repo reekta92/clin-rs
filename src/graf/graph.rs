@@ -56,6 +56,21 @@ pub fn graf_menu_item_from_label(label: &str) -> Option<GrafMenuItem> {
         _ => None,
     }
 }
+pub(crate) fn nodes_in_rect(
+    graph: &ForceGraph<GraphNodeData, ()>,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+) -> impl Iterator<Item = NodeIndex> + '_ {
+    graph.node_indices().filter(move |idx| {
+        let l = graph[*idx].location;
+        (l.x as f64) >= min_x
+            && (l.x as f64) <= max_x
+            && (l.y as f64) >= min_y
+            && (l.y as f64) <= max_y
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeBanner {
@@ -77,7 +92,6 @@ pub struct GraphState {
     pub graph_bounds: (f64, f64, f64, f64),
     pub render_cache: Mutex<super::render::RenderCache>,
     pub mouse_pos: Option<(u16, u16)>,
-    pub spatial_grid: super::spatial::SpatialGrid,
     pub physics_worker_active: bool,
     pub physics_ideal_distance: f64,
     pub context_menu: Option<crate::ui::CanvasContextMenu>,
@@ -380,7 +394,7 @@ fn layout_static_components(
     let spacing = if spacing.is_finite() && spacing > 0.0 {
         spacing
     } else {
-        crate::config::defaults::default_ideal_distance()
+        80.0
     };
 
     for c in components.iter_mut() {
@@ -549,7 +563,6 @@ impl GraphState {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: super::spatial::SpatialGrid::new(config.graf.physics.ideal_distance),
             physics_worker_active: false,
             physics_ideal_distance: config.graf.physics.ideal_distance,
             context_menu: None,
@@ -563,8 +576,6 @@ impl GraphState {
             .viewport
             .auto_fit_from_graph(state.simulation.get_graph(), 1.4);
         state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
-        // Rebuild spatial index after initial graph is placed
-        state.spatial_grid.rebuild(state.simulation.get_graph());
         Ok(state)
     }
     pub fn reheat(&mut self, target: f32) {
@@ -660,7 +671,6 @@ impl GraphState {
         // Recompute derived state
         self.viewport = self.viewport.auto_fit_from_graph(graph_mut, 1.4);
         self.graph_bounds = super::render::compute_graph_bounds(graph_mut);
-        self.spatial_grid.rebuild(graph_mut);
 
         self.is_settled = true;
         self.alpha = 0.0;

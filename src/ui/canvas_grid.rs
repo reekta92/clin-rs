@@ -1,23 +1,5 @@
 use ratatui::{Frame, layout::Rect, style::Color};
 
-/// Transient visibility state for canvas-like live views.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CanvasGridState {
-    pub visible: bool,
-}
-
-impl Default for CanvasGridState {
-    fn default() -> Self {
-        Self { visible: true }
-    }
-}
-
-impl CanvasGridState {
-    pub(crate) fn toggle(&mut self) {
-        self.visible = !self.visible;
-    }
-}
-
 /// Affine world-to-terminal projection used by [`draw_canvas_grid`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanvasGridProjection {
@@ -54,17 +36,12 @@ impl CanvasGridProjection {
 pub(crate) fn draw_canvas_grid(
     frame: &mut Frame,
     area: Rect,
-    state: CanvasGridState,
+    visible: bool,
     projection: CanvasGridProjection,
     muted: Color,
     zoom: f64,
 ) {
-    if !state.visible
-        || area.is_empty()
-        || !projection.is_valid()
-        || !zoom.is_finite()
-        || zoom <= 0.0
-    {
+    if !visible || area.is_empty() || !projection.is_valid() || !zoom.is_finite() || zoom <= 0.0 {
         return;
     }
 
@@ -177,13 +154,13 @@ mod tests {
 
     fn render_grid(
         area: Rect,
-        state: CanvasGridState,
+        visible: bool,
         projection: CanvasGridProjection,
         zoom: f64,
     ) -> ratatui::buffer::Buffer {
         let mut terminal = Terminal::new(TestBackend::new(24, 16)).unwrap();
         terminal
-            .draw(|frame| draw_canvas_grid(frame, area, state, projection, Color::DarkGray, zoom))
+            .draw(|frame| draw_canvas_grid(frame, area, visible, projection, Color::DarkGray, zoom))
             .unwrap();
         terminal.backend().buffer().clone()
     }
@@ -203,7 +180,7 @@ mod tests {
             projection(0.2, 0.1, 100.0, 100.0),
             projection(0.2, -0.1, 100.0, 100.0),
         ] {
-            let buffer = render_grid(area, CanvasGridState::default(), proj, zoom);
+            let buffer = render_grid(area, true, proj, zoom);
             assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
             assert_eq!(buffer.cell((20, 10)).unwrap().symbol(), "·");
             assert_eq!(buffer.cell((10, 5)).unwrap().symbol(), " ");
@@ -216,7 +193,7 @@ mod tests {
         let mut p = projection(0.2, 0.1, 100.0, 100.0);
         p.origin_col = 2.0;
         p.origin_row = 3.0;
-        let buffer = render_grid(area, CanvasGridState::default(), p, 1.0);
+        let buffer = render_grid(area, true, p, 1.0);
 
         let dot = buffer.cell((2, 3)).unwrap();
         assert_eq!(dot.symbol(), "·");
@@ -228,8 +205,7 @@ mod tests {
     #[test]
     fn hidden_or_invalid_grid_leaves_buffer_unchanged() {
         let area = Rect::new(0, 0, 21, 11);
-        let mut hidden = CanvasGridState::default();
-        hidden.toggle();
+        let hidden = false;
         assert_eq!(
             render_grid(area, hidden, projection(0.1, 0.1, 100.0, 50.0), 1.0)
                 .cell((0, 0))
@@ -241,7 +217,7 @@ mod tests {
         let mut invalid = projection(0.1, 0.1, 100.0, 50.0);
         invalid.origin_col = f64::NAN;
         assert_eq!(
-            render_grid(area, CanvasGridState::default(), invalid, 1.0)
+            render_grid(area, true, invalid, 1.0)
                 .cell((0, 0))
                 .unwrap()
                 .symbol(),
@@ -257,7 +233,7 @@ mod tests {
                 draw_canvas_grid(
                     frame,
                     Rect::new(0, 0, 21, 11),
-                    CanvasGridState::default(),
+                    true,
                     projection(0.1, 0.1, 100.0, 50.0),
                     Color::DarkGray,
                     1.0,
@@ -291,12 +267,7 @@ mod tests {
         // Set cols/rows per world to make dots appear at 0, 20
         // cols_per_world_x * 800.0 = 20 => 0.025
         // rows_per_world_y * 800.0 = 10 => 0.0125
-        let buffer = render_grid(
-            area,
-            CanvasGridState::default(),
-            projection(0.025, 0.0125, 800.0, 800.0),
-            zoom,
-        );
+        let buffer = render_grid(area, true, projection(0.025, 0.0125, 800.0, 800.0), zoom);
         assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "·");
         assert_eq!(buffer.cell((20, 10)).unwrap().symbol(), "·");
         assert_eq!(buffer.cell((10, 5)).unwrap().symbol(), " ");

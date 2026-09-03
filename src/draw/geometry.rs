@@ -254,30 +254,6 @@ pub fn inverse_transform_point(transform: &DrawTransform, point: (f64, f64)) -> 
 }
 
 #[must_use]
-pub fn transform_item_point(item: &DrawItem, point: (f64, f64)) -> (f64, f64) {
-    if matches!(item.element, DrawElement::Text(_)) {
-        (
-            point.0 + item.transform.translate_x,
-            point.1 + item.transform.translate_y,
-        )
-    } else {
-        DrawAffine::new(&item.transform).transform_point(point)
-    }
-}
-
-#[must_use]
-pub fn inverse_transform_item_point(item: &DrawItem, point: (f64, f64)) -> (f64, f64) {
-    if matches!(item.element, DrawElement::Text(_)) {
-        (
-            point.0 - item.transform.translate_x,
-            point.1 - item.transform.translate_y,
-        )
-    } else {
-        DrawAffine::new(&item.transform).inverse_transform_point(point)
-    }
-}
-
-#[must_use]
 pub fn translated_text_position(item: &DrawItem) -> Option<(f64, f64)> {
     let DrawElement::Text(text) = &item.element else {
         return None;

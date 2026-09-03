@@ -6,19 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use super::variables::TemplateVariables;
 
-#[derive(Debug, Clone, Deserialize)]
-struct LegacyTemplateFile {
-    template: LegacyTemplateMeta,
-    #[serde(default)]
-    title: TitleConfig,
-    content: ContentConfig,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct LegacyTemplateMeta {
-    name: String,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Template {
     pub name: String,
@@ -50,20 +37,7 @@ pub struct RenderedTemplate {
 impl Template {
     pub fn load(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path).context("failed to read template file")?;
-
-        if let Ok(template) = toml::from_str::<Template>(&content) {
-            return Ok(template);
-        }
-
-        if let Ok(legacy) = toml::from_str::<LegacyTemplateFile>(&content) {
-            return Ok(Template {
-                name: legacy.template.name,
-                title: legacy.title,
-                content: legacy.content,
-            });
-        }
-
-        anyhow::bail!("failed to parse template")
+        toml::from_str::<Template>(&content).context("failed to parse template")
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -111,29 +85,5 @@ mod tests {
         assert_eq!(template.name, parsed.name);
         assert_eq!(template.title.template, parsed.title.template);
         assert_eq!(template.content.template, parsed.content.template);
-    }
-
-    #[test]
-    fn test_legacy_template_format_parse() {
-        let legacy = r#"[template]
-name = "Legacy"
-
-[title]
-template = "Legacy - {date}"
-
-[content]
-template = "Body"
-"#;
-
-        let parsed: LegacyTemplateFile = toml::from_str(legacy).unwrap();
-        let converted = Template {
-            name: parsed.template.name,
-            title: parsed.title,
-            content: parsed.content,
-        };
-
-        assert_eq!(converted.name, "Legacy");
-        assert_eq!(converted.title.template.as_deref(), Some("Legacy - {date}"));
-        assert_eq!(converted.content.template, "Body");
     }
 }

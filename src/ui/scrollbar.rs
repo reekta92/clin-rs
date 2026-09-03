@@ -16,13 +16,6 @@ pub struct ScrollbarMeta {
     pub viewport_len: usize, // visible units
 }
 
-/// Active drag. `grab_offset` = signed row offset within the thumb where the
-/// press landed, so the thumb tracks the cursor 1:1.
-#[derive(Debug, Clone, Copy)]
-pub struct ScrollDrag {
-    pub grab_offset: i32,
-}
-
 /// Rightmost single column of `area` — the scrollbar gutter.
 pub fn track_rect(area: Rect) -> Rect {
     Rect {
@@ -95,6 +88,7 @@ fn clamp01(v: f32) -> f32 {
 
 /// Handle a mouse event over a scrollbar.
 /// `current_fraction` = position/max_position in [0,1].
+/// `drag` holds the row offset within the thumb where the press landed.
 /// Returns `Some(new_fraction)` when the event is consumed and position must
 /// change (Down on the track/thumb, or Drag). Clears `*drag` on Up or when the
 /// press leaves the track. Returns `None` when the event is not a scrollbar
@@ -103,7 +97,7 @@ pub fn handle_scrollbar_mouse(
     mouse: &MouseEvent,
     meta: ScrollbarMeta,
     current_fraction: f32,
-    drag: &mut Option<ScrollDrag>,
+    drag: &mut Option<i32>,
 ) -> Option<f32> {
     if !overflows(meta.content_len, meta.viewport_len) {
         return None;
@@ -123,7 +117,7 @@ pub fn handle_scrollbar_mouse(
         match mouse.kind {
             MouseEventKind::Drag(MouseButton::Left) => {
                 let rel_clamped = rel.clamp(0, track_h - 1);
-                let start = rel_clamped - d.grab_offset;
+                let start = rel_clamped - *d;
                 return Some(clamp01(start as f32 / usable.max(1) as f32));
             }
             MouseEventKind::Up(_) => {
@@ -145,16 +139,12 @@ pub fn handle_scrollbar_mouse(
         MouseEventKind::Down(MouseButton::Left) => {
             if rel >= thumb_start && rel < thumb_start + thumb_len {
                 // Grab the thumb: record offset from thumb top
-                *drag = Some(ScrollDrag {
-                    grab_offset: rel - thumb_start,
-                });
+                *drag = Some(rel - thumb_start);
                 Some(current_fraction)
             } else {
                 // Jump: center thumb on cursor, start drag
                 let target_start = rel - thumb_len / 2;
-                *drag = Some(ScrollDrag {
-                    grab_offset: thumb_len / 2,
-                });
+                *drag = Some(thumb_len / 2);
                 Some(clamp01(target_start as f32 / usable.max(1) as f32))
             }
         }
@@ -236,7 +226,7 @@ mod tests {
         assert!(res.is_some());
         assert!((res.unwrap() - 0.5).abs() < 0.01);
         assert!(drag.is_some());
-        assert_eq!(drag.unwrap().grab_offset, 10 - 9); // offset = 1
+        assert_eq!(drag.unwrap(), 10 - 9); // offset = 1
 
         // Drag down 5 rows
         let drag_ev = MouseEvent {
@@ -266,7 +256,7 @@ mod tests {
     #[test]
     fn test_up_clears_drag() {
         let m = meta(0, 20, 100, 10);
-        let mut drag = Some(ScrollDrag { grab_offset: 2 });
+        let mut drag = Some(2);
         let up = MouseEvent {
             kind: MouseEventKind::Up(MouseButton::Left),
             column: 79,

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 
@@ -263,7 +261,7 @@ impl SearchPopup {
     }
 }
 
-pub struct SortPopup {
+pub struct SelectionPopup {
     pub selected: usize,
 }
 /// A single item in the info popup layout.
@@ -282,17 +280,6 @@ pub enum InfoItem {
 pub struct InfoPopup {
     pub title: String,
     pub items: Vec<InfoItem>,
-}
-
-pub struct IconModePopup {
-    pub selected: usize,
-}
-pub struct HintBarStylePopup {
-    pub selected: usize,
-}
-
-pub struct KeybindPresetPopup {
-    pub selected: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -343,103 +330,6 @@ pub struct SubnotesPopup {
     pub is_dirty: bool,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
-/// 0-based flat index of the `vis_pos`-th visible grep item.
-/// Children of collapsed headers are skipped. None if out of range.
-#[allow(clippy::implicit_hasher)]
-pub fn grep_visible_to_flat(
-    is_header: &[bool],
-    expanded: &HashSet<usize>,
-    vis_pos: usize,
-) -> Option<usize> {
-    let mut count = 0;
-    let mut i = 0;
-    while i < is_header.len() {
-        let is_collapsed = is_header[i] && !expanded.contains(&i);
-        if count == vis_pos {
-            return Some(i);
-        }
-        count += 1;
-        i += 1;
-        if is_collapsed {
-            while i < is_header.len() && !is_header[i] {
-                i += 1;
-            }
-        }
-    }
-    None
-}
-
-/// 0-based visible position of flat index `flat`; None if hidden under a collapsed header.
-#[allow(clippy::implicit_hasher)]
-pub fn grep_flat_to_visible(
-    is_header: &[bool],
-    expanded: &HashSet<usize>,
-    flat: usize,
-) -> Option<usize> {
-    let mut vis_pos = 0;
-    let mut i = 0;
-    while i < is_header.len() && i <= flat {
-        let is_collapsed = is_header[i] && !expanded.contains(&i);
-        if i == flat {
-            return Some(vis_pos);
-        }
-        vis_pos += 1;
-        i += 1;
-        if is_collapsed {
-            while i < is_header.len() && !is_header[i] {
-                if i == flat {
-                    return None;
-                }
-                i += 1;
-            }
-        }
-    }
-    None
-}
-
-#[allow(clippy::implicit_hasher)]
-/// Previous visible flat index from `cur`; returns `cur` if none.
-pub fn grep_prev_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
-    if cur == 0 {
-        return 0;
-    }
-    let mut i = cur - 1;
-    loop {
-        if is_header[i] {
-            return i;
-        }
-        let mut parent = i;
-        while parent > 0 && !is_header[parent] {
-            parent -= 1;
-        }
-        if expanded.contains(&parent) {
-            return i;
-        }
-        if i == 0 {
-            return 0;
-        }
-        i -= 1;
-    }
-}
-#[allow(clippy::implicit_hasher)]
-/// Next visible flat index from `cur`; returns `cur` if none.
-pub fn grep_next_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
-    let mut i = cur + 1;
-    while i < is_header.len() {
-        if is_header[i] {
-            return i;
-        }
-        let mut parent = i;
-        while parent > 0 && !is_header[parent] {
-            parent -= 1;
-        }
-        if expanded.contains(&parent) {
-            return i;
-        }
-        i += 1;
-    }
-    cur
-}
 
 /// The single active (non-confirm) popup. Only one is ever active at a time;
 /// a `ConfirmPopup` layers separately on top via [`PopupManager::confirm`].
@@ -448,11 +338,11 @@ pub enum ActivePopup {
     Theme(ThemePopup),
     Info(InfoPopup),
     Tag(TagPopup),
-    IconMode(IconModePopup),
-    HintBarStyle(HintBarStylePopup),
+    IconMode(SelectionPopup),
+    HintBarStyle(SelectionPopup),
     RemoveTags(RemoveTagsPopup),
-    KeybindPreset(KeybindPresetPopup),
-    Sort(SortPopup),
+    KeybindPreset(SelectionPopup),
+    Sort(SelectionPopup),
     Folder(FolderPopup),
     FolderPicker(FolderPicker),
     NoteRename(NoteRenamePopup),
@@ -478,21 +368,71 @@ impl ActivePopup {
             ActivePopup::Theme(p) => {
                 crate::ui::draw_theme_popup(frame, p, area, theme, keybinds, mouse_pos)
             }
-            ActivePopup::IconMode(p) => {
-                crate::ui::draw_icon_mode_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::HintBarStyle(p) => {
-                crate::ui::draw_hint_bar_style_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::KeybindPreset(p) => {
-                crate::ui::draw_keybind_preset_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::Sort(p) => {
-                crate::ui::draw_sort_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
-            ActivePopup::CreateFormat(p) => {
-                crate::ui::draw_create_format_popup(frame, p, area, theme, keybinds, mouse_pos)
-            }
+            ActivePopup::IconMode(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "ICON MODE",
+                &["Nerd Font", "Unicode", "None"],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::HintBarStyle(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "HINT BAR STYLE",
+                &crate::config::HintBarStyle::ALL.map(|s| s.name()),
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::KeybindPreset(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "KEYBIND PRESET",
+                &[
+                    "default \u{2014} Default CUA",
+                    "helix \u{2014} Space leader",
+                    "vim \u{2014} : commands",
+                    "emacs \u{2014} Ctrl-x prefix",
+                ],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::Sort(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "SORT BY",
+                &[
+                    "Title (A-Z)",
+                    "Title (Z-A)",
+                    "Modified (newest)",
+                    "Modified (oldest)",
+                ],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
+            ActivePopup::CreateFormat(p) => crate::ui::draw_option_list_popup(
+                frame,
+                area,
+                "CREATE NEW",
+                &[
+                    "Markdown Note (.md)",
+                    "Plain Text (.txt)",
+                    "Drawing (.draw)",
+                    "Canvas (.canvas)",
+                ],
+                p.selected,
+                keybinds,
+                theme,
+                mouse_pos,
+            ),
             ActivePopup::Subnotes(p) => crate::ui::draw_subnotes_popup(frame, p, area, theme),
             ActivePopup::Info(p) => crate::ui::draw_info_popup(frame, area, p, theme),
             _ => {}
@@ -523,14 +463,10 @@ pub struct PopupManager {
     pub active: Option<ActivePopup>,
     pub(crate) text_selection: Option<(PopupTextField, crate::text_edit::MouseTextSelection)>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
 }
 
 impl PopupManager {
-    pub fn has_any(&self) -> bool {
-        self.confirm.is_some() || self.active.is_some()
-    }
-
     /// True when a popup with a text input is active (and no confirm overlay
     /// is intercepting keys). Mirrors the prior text-input popup set.
     pub fn has_text_input(&self) -> bool {
@@ -550,11 +486,5 @@ impl PopupManager {
             Some(ActivePopup::Subnotes(popup)) => popup.focus != SubnotesFocus::List,
             _ => false,
         }
-    }
-
-    pub fn clear_all(&mut self) {
-        self.active = None;
-        self.confirm = None;
-        self.text_selection = None;
     }
 }

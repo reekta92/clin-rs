@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -90,6 +91,37 @@ pub fn cleanup_orphaned_temp_files() {
     }
 }
 
+/// Unique temp-file path in the clin temp dir (`<tmp>/clin/`), cleaned by
+/// `cleanup_orphaned_temp_files` after 24h if a session crashes.
+pub fn unique_temp_path(suffix: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("clin");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join(format!(
+        "clin_{}.{}",
+        uuid::Uuid::new_v4(),
+        suffix.trim_start_matches('.')
+    ))
+}
+
+/// RAII guard: removes a non-secret temp file on drop.
+pub struct TempFileGuard(PathBuf);
+
+impl TempFileGuard {
+    pub fn new(path: PathBuf) -> Self {
+        Self(path)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// RAII guard: zero-fills then removes a file containing secret plaintext on drop.
 pub struct SecretTempFile(PathBuf);
 
@@ -116,6 +148,71 @@ pub fn remove_file_if_exists(path: &Path) -> std::io::Result<bool> {
         Err(e) => Err(e),
     }
 }
+
+/// Strip ASCII/Unicode control characters from a string destined for the
+/// terminal. Borrows the input when it is already clean.
+pub fn sanitize_for_terminal(s: &str) -> Cow<'_, str> {
+    let needs_sanitization = s.chars().any(char::is_control);
+    if needs_sanitization {
+        Cow::Owned(s.chars().filter(|c| !c.is_control()).collect())
+    } else {
+        Cow::Borrowed(s)
+    }
+}
+
+/// Truncate `s` to at most `max` bytes (ellipsis included) on a char boundary,
+/// appending `…`. Returns the input unchanged when it already fits.
+pub fn truncate_ellipsis(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == 0 {
+        return String::new();
+    }
+    let mut end = end.saturating_sub(1);
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == 0 {
+        return s
+            .chars()
+            .next()
+            .map(|c| format!("{c}…"))
+            .unwrap_or_default();
+    }
+    format!("{}…", &s[..end])
+}
+/// Return true if `bin` exists and is executable on PATH.
+pub fn can_run(bin: &str) -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|dir| {
+        let candidate = dir.join(bin);
+        candidate.is_file() && is_executable(&candidate)
+    })
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|m| m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(_path: &Path) -> bool {
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +239,19 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sanitize_strips_control_chars() {
+        assert_eq!(sanitize_for_terminal("a\nb\tc\x07d"), "abcd");
+        assert_eq!(sanitize_for_terminal("café 日本語"), "café 日本語");
+    }
+
+    #[test]
+    fn truncate_ellipsis_respects_bytes_and_char_boundaries() {
+        assert_eq!(truncate_ellipsis("hello", 4), "hel…");
+        assert_eq!(truncate_ellipsis("hello", 10), "hello");
+        assert_eq!(truncate_ellipsis("hello", 0), "");
+        assert_eq!(truncate_ellipsis("café", 4), "ca…");
     }
 }

@@ -1,10 +1,9 @@
 use super::{
-    PopupHints, PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans,
-    draw_confirm_popup, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
-    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
-    popup_block, popup_hint_line, preview_spans,
+    PreviewHeaderInfo, build_tab_spans, draw_dim_vline, draw_status_bar, draw_view_title_bar,
+    draw_view_title_bar_with_tabs, format_keybind_hints, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
+#[cfg(test)]
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
@@ -19,10 +18,6 @@ const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
 /// Viewport base span for SubnoteGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
 /// Shared between renderer and mouse handler to prevent drift.
 pub(crate) const SUBNOTE_GRAPH_BASE_SPAN: f64 = 15.0;
-
-/// Viewport base span for FolderGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
-/// Shared between renderer and mouse handler to prevent drift.
-pub(crate) const FOLDER_GRAPH_BASE_SPAN: f64 = 15.0;
 
 /// A hollow (outlined) circle drawn on a ratatui Canvas via Line segments.
 struct HollowCircle {
@@ -320,173 +315,24 @@ pub(crate) fn orbit_positions(n: usize, r: f64) -> Vec<(f64, f64)> {
         })
         .collect()
 }
-/// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
-pub fn render_subnote_graph_static(
-    frame: &mut Frame,
-    rect: Rect,
-    parent_title: &str,
-    subnotes: &[crate::storage::SubNote],
-    theme: &crate::app_theme::AppThemeColors,
-) {
-    use ratatui::symbols::Marker;
-    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
-
-    let zoom = 1.0;
-    let pan_x = 0.0;
-    let pan_y = 0.0;
-
-    // Background
-    let bg = theme.preview_bg_style();
-    frame.render_widget(Block::default().style(bg), rect);
-
-    if subnotes.is_empty() {
-        let line = Line::from(vec![Span::styled(
-            "No subnotes",
-            Style::default().fg(theme.muted),
-        )]);
-        let p = ratatui::widgets::Paragraph::new(line)
-            .style(theme.preview_bg_style())
-            .alignment(ratatui::layout::Alignment::Center);
-        frame.render_widget(p, rect);
-        return;
-    }
-
-    // World-coordinate layout: parent at origin, subnotes on a circle.
-    let layout_r = 10.0_f64;
-    let parent_r = 3.0_f64;
-    let sub_r = 1.5_f64;
-    let positions = orbit_positions(subnotes.len(), layout_r);
-
-    // Viewport bounds from zoom/pan.
-    let aspect = rect.width as f64 / rect.height as f64;
-    let cell_aspect = 2.0; // terminal cells are ~2× taller than wide
-    let span_x = SUBNOTE_GRAPH_BASE_SPAN / zoom;
-    let span_y = span_x * cell_aspect / aspect;
-    let x_bounds = [pan_x - span_x, pan_x + span_x];
-    let y_bounds = [pan_y - span_y, pan_y + span_y];
-
-    // For on-screen sizing of circles and title offsets.
-    let cells_per_world = rect.width as f64 / (2.0 * span_x);
-
-    // Build shapes.
-    let mut edges: Vec<CanvasLine> = Vec::new();
-    for &(sx, sy) in &positions {
-        let (x1, y1, x2, y2) = shorten_segment_to_borders(0.0, 0.0, parent_r, sx, sy, sub_r);
-        edges.push(CanvasLine {
-            x1,
-            y1,
-            x2,
-            y2,
-            color: theme.border,
-        });
-    }
-    // Wikilink edges: subnote -> subnote.
-    let title_to_idx: std::collections::HashMap<String, usize> = subnotes
-        .iter()
-        .enumerate()
-        .map(|(i, s)| (s.title.to_lowercase(), i))
-        .collect();
-    let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    for (i, sub) in subnotes.iter().enumerate() {
-        let (sx, sy) = positions[i];
-        for link in crate::storage::extract_wikilinks(&sub.content) {
-            if let Some(&j) = title_to_idx.get(&link.to_lowercase())
-                && j != i
-            {
-                let key = if i < j { (i, j) } else { (j, i) };
-                if drawn.insert(key) {
-                    let (tx, ty) = positions[j];
-                    let (x1, y1, x2, y2) = shorten_segment_to_borders(sx, sy, sub_r, tx, ty, sub_r);
-                    edges.push(CanvasLine {
-                        x1,
-                        y1,
-                        x2,
-                        y2,
-                        color: theme.success,
-                    });
-                }
-            }
-        }
-    }
-    let parent_circle = HollowCircle {
-        cx: 0.0,
-        cy: 0.0,
-        radius: parent_r,
-        color: theme.accent,
-    };
-    let sub_circles: Vec<HollowCircle> = positions
-        .iter()
-        .map(|&(sx, sy)| HollowCircle {
-            cx: sx,
-            cy: sy,
-            radius: sub_r,
-            color: theme.tag,
-        })
-        .collect();
-
-    // Render Canvas with Braille marker.
-    let canvas = Canvas::default()
-        .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
-        .block(Block::default().style(bg))
-        .marker(Marker::Braille)
-        .x_bounds(x_bounds)
-        .y_bounds(y_bounds)
-        .paint(|ctx| {
-            for edge in &edges {
-                ctx.draw(edge);
-            }
-            ctx.draw(&parent_circle);
-            for sc in &sub_circles {
-                ctx.draw(sc);
-            }
-        });
-    frame.render_widget(canvas, rect);
-
-    // Post-canvas: world -> screen transform for text overlay.
-    let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
-        let col =
-            rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
-        let row = rect.y as f64 + rect.height as f64
-            - (wy - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * rect.height as f64;
-        (col, row)
-    };
-    let buf = frame.buffer_mut();
-    let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
-
-    // Parent title.
-    let (px, py) = world_to_screen(0.0, parent_r);
-    draw_title_above(
-        buf,
-        px,
-        py,
-        parent_title,
-        max_title_len,
-        rect,
-        Style::default().fg(theme.fg),
-    );
-
-    // Subnote titles.
-    for (&(sx, sy), sub) in positions.iter().zip(subnotes.iter()) {
-        let (scx, scy) = world_to_screen(sx, sy);
-        draw_title_above(
-            buf,
-            scx,
-            scy - sub_r * cells_per_world,
-            &sub.title,
-            max_title_len,
-            rect,
-            Style::default().fg(theme.fg),
-        );
-    }
+/// A pre-positioned node in the shared orbit graph renderer.
+struct OrbitNode {
+    x: f64,
+    y: f64,
+    label: String,
+    color: ratatui::style::Color,
+    links: Vec<String>,
+    is_note: bool,
 }
 
-/// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
-/// and focus transitions into subfolders (re-focus) or notes (content card).
-pub fn render_folder_graph_static(
+/// Render a radial orbit graph: parent at origin, children on a circle,
+/// wikilink edges among note children, zoom/pan viewport, text overlay.
+fn render_orbit_graph_static(
     frame: &mut Frame,
     rect: Rect,
-    focused_label: &str,
-    children: &[crate::list_view::FolderGraphNode],
+    parent_label: &str,
+    children: &[OrbitNode],
+    empty_text: &str,
     theme: &crate::app_theme::AppThemeColors,
 ) {
     use ratatui::symbols::Marker;
@@ -496,13 +342,12 @@ pub fn render_folder_graph_static(
     let pan_x = 0.0;
     let pan_y = 0.0;
 
-    // Background
     let bg = theme.preview_bg_style();
     frame.render_widget(Block::default().style(bg), rect);
 
     if children.is_empty() {
         let line = Line::from(vec![Span::styled(
-            "Empty folder",
+            empty_text,
             Style::default().fg(theme.muted),
         )]);
         let p = ratatui::widgets::Paragraph::new(line)
@@ -512,19 +357,17 @@ pub fn render_folder_graph_static(
         return;
     }
 
-    // World-coordinate layout: parent at origin, children on a circle.
     let parent_r = 3.0_f64;
     let child_r = 1.5_f64;
 
-    // Viewport bounds from zoom/pan.
     let aspect = rect.width as f64 / rect.height as f64;
     let cell_aspect = 2.0;
-    let span_x = FOLDER_GRAPH_BASE_SPAN / zoom;
+    let span_x = SUBNOTE_GRAPH_BASE_SPAN / zoom;
     let span_y = span_x * cell_aspect / aspect;
     let x_bounds = [pan_x - span_x, pan_x + span_x];
     let y_bounds = [pan_y - span_y, pan_y + span_y];
     let cells_per_world = rect.width as f64 / (2.0 * span_x);
-    // Build shapes: parent->child edges.
+
     let mut edges: Vec<CanvasLine> = Vec::new();
     for child in children {
         let (x1, y1, x2, y2) =
@@ -537,9 +380,8 @@ pub fn render_folder_graph_static(
             color: theme.border,
         });
     }
-    // Wikilink edges between note children within the focused folder.
-    let notes_only: Vec<&crate::list_view::FolderGraphNode> =
-        children.iter().filter(|c| c.is_note).collect();
+    // Wikilink edges between note children.
+    let notes_only: Vec<&OrbitNode> = children.iter().filter(|c| c.is_note).collect();
     if notes_only.len() > 1 {
         let title_to_idx: std::collections::HashMap<String, usize> = notes_only
             .iter()
@@ -583,11 +425,10 @@ pub fn render_folder_graph_static(
             cx: c.x,
             cy: c.y,
             radius: child_r,
-            color: if c.is_note { theme.tag } else { theme.folder },
+            color: c.color,
         })
         .collect();
 
-    // Render Canvas
     let canvas = Canvas::default()
         .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
         .block(Block::default().style(bg))
@@ -605,7 +446,6 @@ pub fn render_folder_graph_static(
         });
     frame.render_widget(canvas, rect);
 
-    // Post-canvas: world -> screen transform for text overlay.
     let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
         let col =
             rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
@@ -616,19 +456,17 @@ pub fn render_folder_graph_static(
     let buf = frame.buffer_mut();
     let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
 
-    // Parent title.
     let (px, py) = world_to_screen(0.0, parent_r);
     draw_title_above(
         buf,
         px,
         py,
-        focused_label,
+        parent_label,
         max_title_len,
         rect,
         Style::default().fg(theme.fg),
     );
 
-    // Child labels.
     for child in children {
         let (scx, scy) = world_to_screen(child.x, child.y);
         draw_title_above(
@@ -642,6 +480,53 @@ pub fn render_folder_graph_static(
         );
     }
 }
+
+/// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
+pub fn render_subnote_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    parent_title: &str,
+    subnotes: &[crate::storage::SubNote],
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let positions = orbit_positions(subnotes.len(), 10.0);
+    let children: Vec<OrbitNode> = subnotes
+        .iter()
+        .zip(positions.iter())
+        .map(|(s, &(x, y))| OrbitNode {
+            x,
+            y,
+            label: s.title.clone(),
+            color: theme.tag,
+            links: crate::storage::extract_wikilinks(&s.content),
+            is_note: true,
+        })
+        .collect();
+    render_orbit_graph_static(frame, rect, parent_title, &children, "No subnotes", theme);
+}
+
+/// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
+/// and focus transitions into subfolders (re-focus) or notes (content card).
+pub fn render_folder_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    focused_label: &str,
+    children: &[crate::list_view::FolderGraphNode],
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let nodes: Vec<OrbitNode> = children
+        .iter()
+        .map(|c| OrbitNode {
+            x: c.x,
+            y: c.y,
+            label: c.label.clone(),
+            color: if c.is_note { theme.tag } else { theme.folder },
+            links: c.links.clone(),
+            is_note: c.is_note,
+        })
+        .collect();
+    render_orbit_graph_static(frame, rect, focused_label, &nodes, "Empty folder", theme);
+}
 /// Draw `text` centered above position (x, y_top) in the buffer, clamped to rect.
 fn draw_title_above(
     buf: &mut ratatui::buffer::Buffer,
@@ -652,7 +537,7 @@ fn draw_title_above(
     rect: Rect,
     style: Style,
 ) {
-    let truncated = crate::graf::util::truncate(text, max_len);
+    let truncated = crate::fsutil::truncate_ellipsis(text, max_len);
     if truncated.is_empty() {
         return;
     }
@@ -906,7 +791,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.preview_fullscreen,
         app.list.preview_width_ratio,
         app.list.calendar_height,
-        app.calendar_position,
+        app.config.list.calendar_position,
     );
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
@@ -1445,7 +1330,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
 
                 // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
-                let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
+                let sanitized = crate::fsutil::sanitize_for_terminal(&raw_name);
                 let mut chars: Vec<char> = sanitized.chars().collect();
                 if chars.len() > inner_w {
                     chars.truncate(inner_w - 1);
@@ -1714,7 +1599,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
             &app.list.preview_content
             && let Some(doc) = renderer.document()
-            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+            && let (Some(_), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
         {
             let page = renderer.current_page_range();
             let scroll = app.list.snapshot_scroll_offset as usize;
@@ -1734,11 +1619,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if !path.exists() {
                     continue;
                 }
-                let key = crate::image_render::ImageKey { path, mtime: 0 };
+                let key = path;
                 if app.list.image_cache.get_proto(&key).is_none() {
-                    app.list
-                        .image_cache
-                        .request(key.clone(), 512, decode_tx, picker);
+                    app.list.image_cache.request(key.clone(), 512, decode_tx);
                 }
                 if let Some(proto) = app.list.image_cache.get_proto(&key) {
                     let row = inner.y + local_line_idx as u16;
@@ -1769,18 +1652,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         // Overlay standalone image file on the preview pane
         if (content_is_current || app.list.pending_preview_update)
             && let Some(crate::list_view::PreviewContent::Image(path)) = &app.list.preview_content
-            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+            && let (Some(_), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
         {
             let inner_pad = 2_u16;
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
-            let key = crate::image_render::ImageKey {
-                path: path.clone(),
-                mtime: 0,
-            };
+            let key = path.clone();
             if app.list.image_cache.get_proto(&key).is_none() {
-                app.list
-                    .image_cache
-                    .request(key.clone(), 512, decode_tx, picker);
+                app.list.image_cache.request(key.clone(), 512, decode_tx);
             }
             if let Some(proto) = app.list.image_cache.get_proto(&key) {
                 // available area (full preview minus padding) — the bounding box
@@ -1822,7 +1700,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
     if let Some(cal_rect) = calendar_area {
-        let bottom_border = app.calendar_position == crate::config::CalendarPosition::Top;
+        let bottom_border =
+            app.config.list.calendar_position == crate::config::CalendarPosition::Top;
         let active = app.active_strip_sections_for(cal_rect.width);
         let rects = section_rects(cal_rect, &active);
         for (sec, r) in active.iter().zip(rects.iter().copied()) {
@@ -2013,7 +1892,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
     if app.layout_edit && app.list.calendar_enabled {
-        let hdiv_y = match app.calendar_position {
+        let hdiv_y = match app.config.list.calendar_position {
             crate::config::CalendarPosition::Bottom => list_area.y + list_area.height,
             crate::config::CalendarPosition::Top => list_area.y.saturating_sub(1),
         };
@@ -2033,1000 +1912,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     app.mouse_pos = saved_mouse_pos;
-
-    if let Some(crate::popups::ActivePopup::Template(popup)) = &mut app.popups.active {
-        draw_template_popup(frame, popup, frame.area(), &app.app_theme, app.mouse_pos);
-    }
-
-    if let Some(crate::popups::ActivePopup::Folder(popup)) = &mut app.popups.active {
-        let title = match popup.mode {
-            crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
-            crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
-        };
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            title,
-            PopupSize::Prompt,
-            PopupHints::Keybinds(&crate::ui::text_input_hints("confirm")),
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut app.popups.active {
-        let suggestion_height = if popup.suggestions.is_empty() {
-            0u16
-        } else {
-            (popup.suggestions.len() as u16).clamp(1, 5)
-        };
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            "TAGS",
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
-                ("Tab".to_string(), "accept"),
-                ("Enter".to_string(), "save"),
-                ("d".to_string(), "delete from all"),
-                ("Esc".to_string(), "cancel"),
-            ]),
-            &app.app_theme,
-        );
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3u16 + suggestion_height),
-                Constraint::Min(3),
-            ])
-            .split(content);
-
-        let input_border = if popup.focus == crate::popups::TagPopupFocus::Input {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        let input_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(chunks[0]);
-
-        let input_block = Block::default()
-            .style(app.app_theme.bg_style())
-            .borders(Borders::ALL)
-            .border_style(input_border)
-            .title("");
-        let input_inner = input_block.inner(input_chunks[0]);
-        frame.render_widget(input_block, input_chunks[0]);
-        frame.render_widget(&popup.input, input_inner);
-
-        if !popup.suggestions.is_empty() {
-            let suggestion_items: Vec<ListItem> = popup
-                .suggestions
-                .iter()
-                .enumerate()
-                .map(|(i, tag)| {
-                    let style = if i == popup.suggestion_index {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.heading)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(format!("  {tag}")).style(style)
-                })
-                .collect();
-
-            let suggestions_list = List::new(suggestion_items)
-                .block(
-                    Block::default()
-                        .borders(Borders::NONE)
-                        .style(app.app_theme.bg_style()),
-                )
-                .highlight_style(Style::default());
-
-            frame.render_widget(suggestions_list, input_chunks[1]);
-        }
-
-        let all_tags_border = if popup.focus == crate::popups::TagPopupFocus::AllTagsList {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        let tag_empty = popup.all_tags.is_empty();
-        let tag_items: Vec<ListItem> = if tag_empty {
-            crate::ui::empty_list_item(&app.app_theme, "No tags found")
-        } else {
-            popup
-                .all_tags
-                .iter()
-                .map(|tag| ListItem::new(tag.to_string()))
-                .collect()
-        };
-
-        let tags_list = build_list_widget(tag_items, &app.app_theme)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(all_tags_border),
-            )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  ");
-
-        let state = crate::ui::render_list_with_selection(
-            frame,
-            tags_list,
-            chunks[1],
-            (popup.focus == crate::popups::TagPopupFocus::AllTagsList
-                && !popup.all_tags.is_empty())
-            .then_some(popup.all_tags_selected),
-            popup.scroll_offset,
-        );
-        popup.scroll_offset = state.offset();
-        let inner_tags = Rect {
-            x: chunks[1].x + 1,
-            y: chunks[1].y + 1,
-            width: chunks[1].width.saturating_sub(2),
-            height: chunks[1].height.saturating_sub(2),
-        };
-        crate::ui::paint_list_hover(
-            frame,
-            inner_tags,
-            &state,
-            popup.all_tags.len(),
-            app.mouse_pos,
-            app.app_theme.hover_style(),
-        );
-    }
-
-    // RemoveTags popup
-    if let Some(crate::popups::ActivePopup::RemoveTags(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            "REMOVE TAGS",
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
-                ("j/k".to_string(), "move"),
-                ("Space".to_string(), "toggle"),
-                ("a".to_string(), "all"),
-                ("Enter".to_string(), "remove"),
-                ("d".to_string(), "remove all"),
-                ("Esc".to_string(), "cancel"),
-            ]),
-            &app.app_theme,
-        );
-        let total = popup.total_selected;
-        let tag_count = popup.tags.len();
-        let items: Vec<ListItem> = if tag_count == 0 {
-            crate::ui::empty_list_item(&app.app_theme, "No tags to remove")
-        } else {
-            popup
-                .tags
-                .iter()
-                .enumerate()
-                .map(|(i, tag)| {
-                    let count = popup.tag_counts.get(i).copied().unwrap_or(0);
-                    let count_label = if count >= total {
-                        "(all)"
-                    } else {
-                        &format!("({count})")
-                    };
-                    let label = format!("  {} {}", tag, count_label);
-                    let is_selected = popup.selected.contains(&i);
-                    let is_cursor = i == popup.cursor;
-                    let style = if is_cursor && is_selected {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.accent)
-                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
-                    } else if is_cursor {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.heading)
-                    } else if is_selected {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.accent)
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default()
-                    };
-                    ListItem::new(Line::from(label)).style(style)
-                })
-                .collect()
-        };
-
-        let tags_list = build_list_widget(items, &app.app_theme)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.app_theme.heading)),
-            )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  ");
-
-        let state = crate::ui::render_list_with_selection(
-            frame,
-            tags_list,
-            content,
-            (!popup.tags.is_empty()).then_some(popup.cursor),
-            popup.scroll_offset,
-        );
-        popup.scroll_offset = state.offset();
-        let inner_tags = Rect {
-            x: content.x + 1,
-            y: content.y + 1,
-            width: content.width.saturating_sub(2),
-            height: content.height.saturating_sub(2),
-        };
-        crate::ui::paint_list_hover(
-            frame,
-            inner_tags,
-            &state,
-            popup.tags.len(),
-            app.mouse_pos,
-            app.app_theme.hover_style(),
-        );
-        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-            track: crate::ui::scrollbar::track_rect(inner_tags),
-            content_len: popup.tags.len(),
-            viewport_len: inner_tags.height as usize,
-        });
-        crate::ui::scrollbar::draw_scrollbar(
-            frame,
-            inner_tags,
-            popup.tags.len(),
-            inner_tags.height as usize,
-            popup.cursor,
-            popup.tags.len().saturating_sub(1),
-            &app.app_theme,
-        );
-
-        if let Some(confirm) = &popup.confirm {
-            draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme, true);
-        }
-    }
-
-    if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut app.popups.active {
-        let title = match picker.mode {
-            crate::popups::FolderPickerMode::CopyNote { .. }
-            | crate::popups::FolderPickerMode::BulkCopyNotes { .. }
-            | crate::popups::FolderPickerMode::BulkCopyFolders { .. }
-            | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
-            _ => "MOVE",
-        };
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            title,
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
-                (kb.display_list(ListAction::CycleFocus), "switch"),
-                (kb.display_list(ListAction::Confirm), "confirm"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ]),
-            &app.app_theme,
-        );
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(1)])
-            .split(content);
-        let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
-            crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
-        } else {
-            picker
-                .filtered_folders
-                .iter()
-                .map(|f| {
-                    let label = if f.is_empty() { "Vault (Root)" } else { f };
-                    ListItem::new(label)
-                })
-                .collect()
-        };
-
-        let results_border = if picker.focus == crate::app::FolderPickerFocus::Results {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(results_border)
-                    .title(""),
-            )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  ");
-
-        let state = crate::ui::render_list_with_selection(
-            frame,
-            list,
-            chunks[1],
-            (picker.focus == crate::app::FolderPickerFocus::Results
-                && !picker.filtered_folders.is_empty())
-            .then_some(picker.selected),
-            picker.scroll_offset,
-        );
-        picker.scroll_offset = state.offset();
-        let inner_fp = Rect {
-            x: chunks[1].x + 1,
-            y: chunks[1].y + 1,
-            width: chunks[1].width.saturating_sub(2),
-            height: chunks[1].height.saturating_sub(2),
-        };
-        crate::ui::paint_list_hover(
-            frame,
-            inner_fp,
-            &state,
-            picker.filtered_folders.len(),
-            app.mouse_pos,
-            app.app_theme.hover_style(),
-        );
-    }
-
-    if let Some(palette) = &mut app.command_palette {
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            "COMMANDS",
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
-                ("Tab".to_string(), "category"),
-                ("Enter".to_string(), "run"),
-                ("↑/↓".to_string(), "select"),
-                ("Esc".to_string(), "close"),
-            ]),
-            &app.app_theme,
-        );
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3), // search input
-                Constraint::Length(1), // tab bar
-                Constraint::Min(0),    // results list
-            ])
-            .split(content);
-
-        palette.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.muted))
-                .title(""),
-        );
-        frame.render_widget(&palette.input, chunks[0]);
-
-        let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app.config.ui.icon_mode)
-            .iter()
-            .map(|(l, g, _)| (*l, Some(*g)))
-            .collect();
-        let hovered = app.mouse_pos.and_then(|(col, row)| {
-            if row == chunks[1].y {
-                crate::ui::hit_test_tabs(
-                    &tabs,
-                    chunks[1].x,
-                    chunks[1].width,
-                    chunks[1].x,
-                    col,
-                    app.config.ui.tab_icons_only,
-                    app.config.ui.icon_mode,
-                )
-            } else {
-                None
-            }
-        });
-        let tab_spans = build_tab_spans(
-            &tabs,
-            palette.active_tab,
-            hovered,
-            &app.app_theme,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
-        );
-        let tabs_w = Paragraph::new(Line::from(tab_spans))
-            .alignment(Alignment::Center)
-            .style(app.app_theme.hint_line_bg_style());
-        frame.render_widget(tabs_w, chunks[1]);
-
-        let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
-            let inner_y = chunks[2].y + 1;
-            if !palette.items.is_empty()
-                && row >= inner_y
-                && col > chunks[2].x
-                && col < chunks[2].x + chunks[2].width - 1
-            {
-                crate::ui::list_index_at(
-                    row,
-                    inner_y,
-                    2,
-                    palette.state.offset(),
-                    palette.items.len(),
-                )
-            } else {
-                None
-            }
-        });
-        let items: Vec<ListItem> = palette
-            .items
-            .iter()
-            .enumerate()
-            .map(|(i, item)| {
-                let mut spans = vec![Span::styled(
-                    format!("{} ", item.glyph),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                )];
-                spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
-                let mut list_item = ListItem::new(vec![
-                    Line::from(spans),
-                    Line::from(Span::styled(
-                        &item.description,
-                        Style::default().fg(app.app_theme.muted),
-                    )),
-                ]);
-                if Some(i) == hovered_cmd_idx {
-                    list_item = list_item.style(app.app_theme.hover_style());
-                }
-                list_item
-            })
-            .collect();
-
-        let list = ratatui::widgets::List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.app_theme.muted))
-                    .title(""),
-            )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  ");
-
-        frame.render_stateful_widget(list, chunks[2], &mut palette.state);
-    }
-
-    if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            "RENAME",
-            PopupSize::Prompt,
-            PopupHints::Keybinds(&crate::ui::text_input_hints("rename")),
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(crate::popups::ActivePopup::Goals(popup)) = &mut app.popups.active {
-        let items: Vec<(String, &str)> = match popup.mode {
-            crate::popups::GoalsPopupMode::WordGoal => vec![
-                ("Enter".to_string(), "word count"),
-                ("Esc".to_string(), "cancel"),
-            ],
-            crate::popups::GoalsPopupMode::NoteGoal => vec![
-                ("Enter".to_string(), "note count"),
-                ("Esc".to_string(), "cancel"),
-            ],
-        };
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            title,
-            PopupSize::Prompt,
-            PopupHints::Keybinds(&items),
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(crate::popups::ActivePopup::CreateNote(popup, format)) = &mut app.popups.active {
-        let title = match format {
-            crate::popups::NoteFormat::Markdown => "NEW NOTE",
-            crate::popups::NoteFormat::Draw => "NEW DRAWING",
-            crate::popups::NoteFormat::Canvas => "NEW CANVAS",
-            crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
-        };
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            title,
-            PopupSize::Prompt,
-            PopupHints::Keybinds(&crate::ui::text_input_hints("create")),
-            &app.app_theme,
-        );
-        popup.input.set_block(popup_block("", &app.app_theme));
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(crate::popups::ActivePopup::Import(popup)) = &mut app.popups.active {
-        let title = match popup.source {
-            crate::popups::ImportSource::File => "IMPORT FILE",
-            crate::popups::ImportSource::Csv => "IMPORT CSV/TSV",
-            crate::popups::ImportSource::Json => "IMPORT JSON",
-            crate::popups::ImportSource::Url => "IMPORT URL",
-            crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
-        };
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            title,
-            PopupSize::Large,
-            PopupHints::Keybinds(&crate::ui::text_input_hints("import")),
-            &app.app_theme,
-        );
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.muted)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            "SEARCH",
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
-                ("f:".to_string(), "folder"),
-                ("p:".to_string(), "pinned"),
-                ("t:".to_string(), "tag"),
-                ("g:".to_string(), "text"),
-                ("\\e\\".to_string(), "escapes filters"),
-            ]),
-            &app.app_theme,
-        );
-
-        let query_text = popup.input.lines().join("");
-        let parsed = crate::app::parse_search_query(&query_text);
-        let has_filter = parsed.folder_filter.is_some()
-            || parsed.pinned_only
-            || parsed.tag_filter.is_some()
-            || parsed.grep_mode;
-
-        let constraints = if has_filter {
-            vec![
-                Constraint::Length(3),
-                Constraint::Length(1),
-                Constraint::Min(3),
-            ]
-        } else {
-            vec![Constraint::Length(3), Constraint::Min(3)]
-        };
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(content);
-
-        if has_filter {
-            let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
-            let mut first = true;
-
-            let add_sep =
-                |spans: &mut Vec<Span<'static>>, first: &mut bool, theme: &AppThemeColors| {
-                    if !*first {
-                        spans.push(Span::styled(
-                            " · ",
-                            Style::default()
-                                .fg(theme.accent)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-                    }
-                    *first = false;
-                };
-
-            if let Some(f) = &parsed.folder_filter {
-                let text = if f.is_empty() { "Vault" } else { f.as_str() };
-                add_sep(&mut spans, &mut first, &app.app_theme);
-                spans.push(Span::styled(
-                    format!(
-                        "{} ",
-                        crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    text.to_string(),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-            if parsed.pinned_only {
-                add_sep(&mut spans, &mut first, &app.app_theme);
-                spans.push(Span::styled(
-                    format!(
-                        "{} Pinned",
-                        crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-            if parsed.grep_mode {
-                add_sep(&mut spans, &mut first, &app.app_theme);
-                let grep_display = if parsed.grep_text.is_empty() {
-                    "Grep".to_string()
-                } else {
-                    parsed.grep_text.clone()
-                };
-                spans.push(Span::styled(
-                    format!(
-                        "{} {grep_display}",
-                        crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-            if let Some(tags) = &parsed.tag_filter {
-                add_sep(&mut spans, &mut first, &app.app_theme);
-                let tag_text = if tags.is_empty() {
-                    String::new()
-                } else {
-                    tags.join(", ")
-                };
-                spans.push(Span::styled(
-                    format!(
-                        "{} ",
-                        crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    tag_text,
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-
-            let filter_line = Line::from(spans);
-            let filter_para = Paragraph::new(filter_line).style(app.app_theme.bg_style());
-            frame.render_widget(filter_para, chunks[1]);
-        }
-
-        let input_chunk = chunks[0];
-        let results_chunk = if has_filter { chunks[2] } else { chunks[1] };
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(if popup.focus == crate::popups::SearchFocus::Input {
-                    Style::default().fg(app.app_theme.heading)
-                } else {
-                    Style::default().fg(app.app_theme.muted)
-                })
-                .title(""),
-        );
-        frame.render_widget(&popup.input, input_chunk);
-
-        let has_title = !popup.title_result_ids.is_empty();
-        let has_grep = !popup.grep_results.is_empty();
-
-        let results_focused = popup.focus == crate::popups::SearchFocus::Results;
-        let results_border = if results_focused {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-
-        let inner_results = Rect {
-            x: results_chunk.x + 1,
-            y: results_chunk.y + 1,
-            width: results_chunk.width.saturating_sub(2),
-            height: results_chunk.height.saturating_sub(2),
-        };
-        let viewport_len = inner_results.height as usize;
-
-        let total_items = if has_grep {
-            popup.total_grep_rows()
-        } else if has_title {
-            popup.title_result_ids.len()
-        } else {
-            0
-        };
-
-        let selected_idx = if has_grep {
-            popup.grep_selected
-        } else if has_title {
-            popup.title_selected
-        } else {
-            0
-        };
-
-        let mut offset = popup.results_scroll_offset;
-        if offset > total_items.saturating_sub(viewport_len) {
-            offset = total_items.saturating_sub(viewport_len);
-        }
-        if selected_idx < offset {
-            offset = selected_idx;
-        } else if selected_idx >= offset + viewport_len {
-            offset = selected_idx.saturating_add(1).saturating_sub(viewport_len);
-        }
-        popup.results_scroll_offset = offset;
-
-        let end = (offset + viewport_len).min(total_items);
-
-        let items: Vec<ListItem> = if has_grep {
-            (offset..end)
-                .map(|r| {
-                    if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
-                        ListItem::new(Span::styled(
-                            "  Results truncated; refine grep query",
-                            Style::default()
-                                .fg(app.app_theme.muted)
-                                .add_modifier(Modifier::ITALIC),
-                        ))
-                    } else {
-                        let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
-                            Ok(i) => i,
-                            Err(i) => i.saturating_sub(1),
-                        };
-                        let base = popup.grep_row_offsets[hit_idx];
-                        let hit = &popup.grep_results[hit_idx];
-                        if r == base {
-                            let arrow = if popup.grep_expanded.contains(&hit.note_id) {
-                                "▼ "
-                            } else {
-                                "▶ "
-                            };
-                            let note_summary =
-                                app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
-                            let title = note_summary
-                                .map(|n| n.title.as_str())
-                                .unwrap_or(&*hit.note_id);
-                            let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
-                            let label = if folder.is_empty() {
-                                title.to_string()
-                            } else {
-                                format!("{folder}/{title}")
-                            };
-                            let trunc_suffix = if hit.truncated {
-                                "; first 200 lines shown"
-                            } else {
-                                ""
-                            };
-                            let header_text =
-                                format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
-                            ListItem::new(crate::ui::styled_result_line(
-                                &header_text,
-                                &app.app_theme,
-                                app.config.ui.icon_mode,
-                            ))
-                        } else {
-                            let line_idx = r - base - 1;
-                            let line_hit = &hit.lines[line_idx];
-                            let line_text =
-                                format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
-                            ListItem::new(Span::styled(
-                                line_text,
-                                Style::default().fg(app.app_theme.text),
-                            ))
-                        }
-                    }
-                })
-                .collect()
-        } else if has_title {
-            (offset..end)
-                .map(|idx| {
-                    let id_arc = &popup.title_result_ids[idx];
-                    let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
-                    let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
-                    let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
-                    let label = if folder.is_empty() {
-                        title.to_string()
-                    } else {
-                        format!("{folder}/{title}")
-                    };
-                    ListItem::new(crate::ui::styled_result_line(
-                        &label,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                    ))
-                })
-                .collect()
-        } else {
-            let msg = if query_text.trim().is_empty() && !has_filter {
-                "Type to search notes"
-            } else {
-                "No results"
-            };
-            vec![ListItem::new(Span::styled(
-                msg,
-                Style::default().fg(app.app_theme.muted),
-            ))]
-        };
-
-        let rel_selected = selected_idx.saturating_sub(offset);
-        let mut rel_state = ListState::default();
-        if results_focused && total_items > 0 {
-            rel_state.select(Some(rel_selected));
-        }
-
-        let results_list = List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(results_border),
-            )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  ");
-
-        frame.render_stateful_widget(results_list, results_chunk, &mut rel_state);
-        crate::ui::paint_list_hover(
-            frame,
-            inner_results,
-            &rel_state,
-            end.saturating_sub(offset),
-            app.mouse_pos,
-            app.app_theme.hover_style(),
-        );
-        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-            track: crate::ui::scrollbar::track_rect(inner_results),
-            content_len: total_items,
-            viewport_len,
-        });
-        if app.config.ui.scrollbars {
-            crate::ui::scrollbar::draw_scrollbar(
-                frame,
-                inner_results,
-                total_items,
-                viewport_len,
-                selected_idx,
-                total_items.saturating_sub(1),
-                &app.app_theme,
-            );
-        }
-    }
-
-    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut app.popups.active {
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            "TRASH",
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
-                ("r".to_string(), "restore"),
-                ("d".to_string(), "delete"),
-                ("E".to_string(), "empty"),
-                ("q".to_string(), "close"),
-            ]),
-            &app.app_theme,
-        );
-
-        let border_color = if trash.items.is_empty() {
-            app.app_theme.muted
-        } else {
-            app.app_theme.heading
-        };
-
-        let items: Vec<ListItem> = trash
-            .items
-            .iter()
-            .map(|item| {
-                let name = item.name.to_string_lossy();
-                let when = format_relative_time(item.time_deleted as u64);
-                ListItem::new(Line::from(vec![
-                    Span::raw(name.to_string()),
-                    Span::styled(
-                        format!("  ({when})"),
-                        Style::default().fg(app.app_theme.muted),
-                    ),
-                ]))
-            })
-            .collect();
-
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(border_color))
-                    .title(""),
-            )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  ");
-
-        let state = crate::ui::render_list_with_selection(
-            frame,
-            list,
-            content,
-            Some(trash.selected),
-            trash.scroll_offset,
-        );
-        trash.scroll_offset = state.offset();
-        let inner_content = Rect {
-            x: content.x + 1,
-            y: content.y + 1,
-            width: content.width.saturating_sub(2),
-            height: content.height.saturating_sub(2),
-        };
-        crate::ui::paint_list_hover(
-            frame,
-            inner_content,
-            &state,
-            trash.items.len(),
-            app.mouse_pos,
-            app.app_theme.hover_style(),
-        );
-    }
-
-    if let Some(popup) = &app.popups.confirm {
-        let literal_yes_no =
-            !matches!(&app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
-        draw_confirm_popup(frame, popup, frame.area(), &app.app_theme, literal_yes_no);
-    }
 }
 
 pub(crate) fn list_view_layout(
@@ -3388,11 +2273,6 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
         }
         _ => None,
     }
-}
-
-#[allow(dead_code)]
-pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
-    list_detail_value(app).map(|detail| Line::from(detail.spans_without(&[])))
 }
 
 #[cfg(test)]
@@ -3758,60 +2638,6 @@ mod tests {
     }
 
     #[test]
-    fn list_detail_line_includes_file_size_when_enabled() {
-        let _lock = crate::config::ConfigTestGuard::lock();
-        let temp_dir = tempfile::tempdir().unwrap();
-        let storage = crate::storage::Storage {
-            data_dir: temp_dir.path().join("data"),
-            config_dir: temp_dir.path().join("config"),
-            notes_dir: temp_dir.path().join("notes"),
-            templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
-            skip_dir_patterns: Vec::new(),
-        };
-        for path in [
-            &storage.data_dir,
-            &storage.config_dir,
-            &storage.notes_dir,
-            &storage.templates_dir,
-        ] {
-            std::fs::create_dir_all(path).unwrap();
-        }
-        let mut app = App::new(storage).unwrap();
-        let size_bytes = 1_536;
-        app.notes = vec![crate::storage::NoteSummary {
-            id: "note.md".into(),
-            title: "Note".into(),
-            updated_at: 0,
-            folder: String::new(),
-            tags: vec![],
-            pinned: false,
-            links: vec![],
-            size_bytes,
-        }];
-        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
-            summary_idx: 0,
-            depth: 0,
-            is_clin: false,
-            is_draw: false,
-            is_canvas: false,
-            in_virtual_pinned_folder: false,
-        }];
-        app.list.visual_index = 0;
-        app.list.notes_layout = crate::config::NotesLayout::Grid;
-        app.list.show_file_size = true;
-
-        let detail = list_detail_line(&app).unwrap().to_string();
-        assert!(detail.contains(&crate::ui::format_size(size_bytes)));
-        assert!(detail.contains("ago"));
-
-        app.list.show_file_size = false;
-        let detail = list_detail_line(&app).unwrap().to_string();
-        assert!(!detail.contains(&crate::ui::format_size(size_bytes)));
-        assert!(detail.contains("ago"));
-    }
-
-    #[test]
     fn preview_width_ratio_controls_preview_width() {
         let area = Rect::new(0, 0, 80, 24);
         let (_, preview_43, _) = list_view_layout(
@@ -4025,7 +2851,12 @@ mod tests {
             crate::statusline::compact_list_tags(&app.notes[0].tags),
             "123456789012, 界界界界界… +3"
         );
-        let note_detail = list_detail_line(&app).expect("note detail").to_string();
+        let note_detail = Line::from(
+            list_detail_value(&app)
+                .expect("note detail")
+                .spans_without(&[]),
+        )
+        .to_string();
         assert!(note_detail.contains("123456789012, 界界界界界… +3"));
         assert!(note_detail.contains(&crate::ui::format_size(1_536)));
 
@@ -4040,10 +2871,13 @@ mod tests {
             is_pinned: false,
         }];
         assert!(
-            list_detail_line(&app)
-                .expect("folder detail")
-                .to_string()
-                .contains("2+3")
+            Line::from(
+                list_detail_value(&app)
+                    .expect("folder detail")
+                    .spans_without(&[])
+            )
+            .to_string()
+            .contains("2+3")
         );
         app.list.visual_list = vec![crate::list_view::VisualItem::SmartFolder {
             kind: crate::list_view::SmartFolderKind::Today,
@@ -4053,10 +2887,13 @@ mod tests {
             note_count: 5,
         }];
         assert_eq!(
-            list_detail_line(&app)
-                .expect("smart detail")
-                .to_string()
-                .trim(),
+            Line::from(
+                list_detail_value(&app)
+                    .expect("smart detail")
+                    .spans_without(&[])
+            )
+            .to_string()
+            .trim(),
             "5"
         );
     }

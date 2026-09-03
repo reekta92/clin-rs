@@ -1,12 +1,25 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 pub mod actions;
 pub mod app_theme;
-pub mod backup;
+pub mod backup {
+    pub mod app;
+    pub mod git_ops;
+    pub mod input;
+    pub mod render;
+    pub mod state;
+    pub mod worker;
+}
 pub mod calendar;
 pub mod cli;
 pub mod config;
 pub mod console;
-pub mod draw;
+pub mod draw {
+    pub mod app;
+    pub mod geometry;
+    pub mod input;
+    pub mod render;
+    pub mod state;
+}
 pub mod editor;
 pub(crate) mod editor_document;
 pub(crate) mod editor_session;
@@ -14,16 +27,37 @@ pub mod event_source;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
-pub mod graf;
-pub mod host;
-pub mod image_render;
+pub mod graf {
+    pub mod app;
+    pub mod ui;
+
+    pub mod graph;
+    pub mod input;
+    pub mod physics;
+    pub mod render;
+    pub mod viewport;
+}
+pub mod image_render {
+    pub mod cache;
+    pub mod worker;
+
+    /// Settle duration (150 ms) after the last zoom/scroll event before the
+    /// view is considered settled and real pixel images resume rendering.
+    pub const TRANSFORM_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
+}
 pub mod keybinds;
 pub mod list_view;
 pub mod local_state;
 pub mod markdown;
 pub mod migration;
 pub mod note_index;
-pub mod outline;
+pub mod outline {
+    pub mod app;
+    pub mod input;
+    pub mod parse;
+    pub mod render;
+    pub mod state;
+}
 pub mod overlay;
 pub mod palette;
 pub mod paths;
@@ -32,7 +66,6 @@ pub mod perf_tests;
 pub mod pinstar;
 pub mod popups;
 pub mod preview;
-pub mod sanitize;
 pub mod session;
 pub mod setup;
 pub mod snapshot;
@@ -59,10 +92,6 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use uuid::Uuid;
 
-use mimalloc::MiMalloc;
-
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
 pub(crate) static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> =
     LazyLock::new(|| Arc::new(AtomicBool::new(false)));
 pub(crate) static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
@@ -320,6 +349,32 @@ fn run_notes(action: NotesCmd) -> Result<()> {
     }
 }
 
+fn prompt_migrate_default(
+    to: &std::path::Path,
+    info_msg: &str,
+) -> Result<Option<std::path::PathBuf>> {
+    let default = ClinConfig::default_storage_path()?;
+    if default.exists() && default.is_dir() && default.as_path() != to {
+        println!("{}", console::info(info_msg));
+        println!(
+            "Found data at default location: {}",
+            console::path(&default)
+        );
+        print!("{}", console::warning("Migrate from there? [y/N]: "));
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.trim().eq_ignore_ascii_case("y") {
+            Ok(Some(default))
+        } else {
+            println!("{}", console::warning("Migration cancelled."));
+            Ok(None)
+        }
+    } else {
+        anyhow::bail!("No previous storage location found. Nothing to migrate.");
+    }
+}
+
 fn run_storage(action: StorageCmd) -> Result<()> {
     match action {
         StorageCmd::Show => {
@@ -424,98 +479,30 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                         if prev.exists() && prev.is_dir() {
                             prev
                         } else {
-                            let default = ClinConfig::default_storage_path()?;
-                            if default.exists() && default.is_dir() && default != to {
-                                println!(
-                                    "{}",
-                                    console::info("Recorded previous path does not exist.")
-                                );
-                                println!(
-                                    "Found data at default location: {}",
-                                    console::path(&default)
-                                );
-                                print!("{}", console::warning("Migrate from there? [y/N]: "));
-                                io::stdout().flush()?;
-
-                                let mut input = String::new();
-                                io::stdin().read_line(&mut input)?;
-                                if !input.trim().eq_ignore_ascii_case("y") {
-                                    println!("{}", console::warning("Migration cancelled."));
-                                    return Ok(());
-                                }
-                                default
-                            } else {
-                                anyhow::bail!(
-                                    "No previous storage location found. Nothing to migrate."
-                                );
+                            match prompt_migrate_default(
+                                &to,
+                                "Recorded previous path does not exist.",
+                            )? {
+                                Some(p) => p,
+                                None => return Ok(()),
                             }
                         }
                     } else {
-                        let default = ClinConfig::default_storage_path()?;
-                        if default.exists() && default.is_dir() && default != to {
-                            println!("{}", console::info("No previous storage path recorded."));
-                            println!(
-                                "Found data at default location: {}",
-                                console::path(&default)
-                            );
-                            print!("{}", console::warning("Migrate from there? [y/N]: "));
-                            io::stdout().flush()?;
-
-                            let mut input = String::new();
-                            io::stdin().read_line(&mut input)?;
-                            if !input.trim().eq_ignore_ascii_case("y") {
-                                println!("{}", console::warning("Migration cancelled."));
-                                return Ok(());
-                            }
-                            default
-                        } else {
-                            anyhow::bail!(
-                                "No previous storage location found. Nothing to migrate."
-                            );
+                        match prompt_migrate_default(&to, "No previous storage path recorded.")? {
+                            Some(p) => p,
+                            None => return Ok(()),
                         }
                     }
                 } else {
-                    let default = ClinConfig::default_storage_path()?;
-                    if default.exists() && default.is_dir() && default != to {
-                        println!("{}", console::info("No previous storage path recorded."));
-                        println!(
-                            "Found data at default location: {}",
-                            console::path(&default)
-                        );
-                        print!("{}", console::warning("Migrate from there? [y/N]: "));
-                        io::stdout().flush()?;
-
-                        let mut input = String::new();
-                        io::stdin().read_line(&mut input)?;
-                        if !input.trim().eq_ignore_ascii_case("y") {
-                            println!("{}", console::warning("Migration cancelled."));
-                            return Ok(());
-                        }
-                        default
-                    } else {
-                        anyhow::bail!("No previous storage location found. Nothing to migrate.");
+                    match prompt_migrate_default(&to, "No previous storage path recorded.")? {
+                        Some(p) => p,
+                        None => return Ok(()),
                     }
                 }
             } else {
-                let default = ClinConfig::default_storage_path()?;
-                if default.exists() && default.is_dir() && default != to {
-                    println!("{}", console::info("No previous storage path recorded."));
-                    println!(
-                        "Found data at default location: {}",
-                        console::path(&default)
-                    );
-                    print!("{}", console::warning("Migrate from there? [y/N]: "));
-                    io::stdout().flush()?;
-
-                    let mut input = String::new();
-                    io::stdin().read_line(&mut input)?;
-                    if !input.trim().eq_ignore_ascii_case("y") {
-                        println!("{}", console::warning("Migration cancelled."));
-                        return Ok(());
-                    }
-                    default
-                } else {
-                    anyhow::bail!("No previous storage location found. Nothing to migrate.");
+                match prompt_migrate_default(&to, "No previous storage path recorded.")? {
+                    Some(p) => p,
+                    None => return Ok(()),
                 }
             };
 
@@ -769,7 +756,7 @@ fn run_cache(action: CacheCmd) -> Result<()> {
             let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
             let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
             let digest = crate::paths::vault_cache_digest(&vault_id);
-            let scoped_cache = app_paths.scoped_summary_cache_path(&digest);
+            let scoped_cache = app_paths.scoped_summary_cache_path(digest);
 
             let mut cache_locations = vec![scoped_cache, app_paths.summary_cache_path()];
             cache_locations.push(app_paths.config_root_cache_path());
@@ -1079,7 +1066,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
                 run_app(
                     *terminal_safe,
                     *app_safe,
-                    &mut crate::event_source::CrosstermEventSource,
+                    &mut crate::event_source::EventSource::Crossterm,
                 )
             });
             if app.mode == ViewMode::Edit {
@@ -1165,11 +1152,11 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 /// Non-mouse events break the loop (vanishingly rare during an active drag; the
 /// single read event is dropped rather than re-queued because crossterm cannot
 /// push back). Results from drained events are discarded — a mouse Drag/Up never
-fn drain_queued_mouse_events<V: OverlayView, S: crate::event_source::EventSource>(
+fn drain_queued_mouse_events<V: OverlayView>(
     view: &mut V,
     app: &mut App,
     term_area: Rect,
-    events: &mut S,
+    events: &mut crate::event_source::EventSource,
 ) -> Result<()> {
     while events.poll(Duration::ZERO)? {
         match events.read()? {
@@ -1182,10 +1169,10 @@ fn drain_queued_mouse_events<V: OverlayView, S: crate::event_source::EventSource
     Ok(())
 }
 
-pub fn run_app<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+pub fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut ratatui::Terminal<B>,
     app: &mut crate::app::App,
-    events: &mut S,
+    events: &mut crate::event_source::EventSource,
 ) -> Result<()>
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
@@ -1195,10 +1182,10 @@ where
 
 /// `pre_draw_hook` runs every loop iteration before the draw phase.
 /// record_frame/fps/dirty-flag bookkeeping still runs.
-pub fn run_app_with_hook<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+pub fn run_app_with_hook<B: ratatui::backend::Backend>(
     terminal: &mut ratatui::Terminal<B>,
     app: &mut crate::app::App,
-    events: &mut S,
+    events: &mut crate::event_source::EventSource,
     pre_draw_hook: &mut dyn FnMut(&mut crate::app::App) -> bool,
 ) -> Result<()>
 where
@@ -1366,16 +1353,14 @@ where
             Duration::from_millis(100)
         } else if active_catalog || active_search {
             Duration::from_millis(32)
-        } else if app.is_first_cache_build
-            || matches!(
-                app.list.preview_content,
-                Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
-            )
-            || app
-                .editor
-                .md_preview_renderer
-                .as_ref()
-                .is_some_and(|r| r.is_pending())
+        } else if matches!(
+            app.list.preview_content,
+            Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
+        ) || app
+            .editor
+            .md_preview_renderer
+            .as_ref()
+            .is_some_and(|r| r.is_pending())
         {
             Duration::from_millis(50)
         } else {
@@ -1471,8 +1456,8 @@ where
     Ok(())
 }
 
-fn dispatch_event<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
-    events: &mut S,
+fn dispatch_event<B: ratatui::backend::Backend>(
+    events: &mut crate::event_source::EventSource,
     app: &mut crate::app::App,
     ev: crossterm::event::Event,
     focus: &mut EditFocus,
@@ -1484,8 +1469,7 @@ where
     match ev {
         // Global Ctrl+C — immediately signal exit
         Event::Key(key)
-            if app.host.ctrl_c_quits()
-                && key.kind == KeyEventKind::Press
+            if key.kind == KeyEventKind::Press
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
@@ -1864,8 +1848,7 @@ where
     Ok(())
 }
 
-pub use event_source::{ChannelEventSource, CrosstermEventSource, EventSource};
-pub use host::{GuiHost, HostHooks, TuiHost};
+pub use event_source::EventSource;
 pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 #[cfg(test)]
 mod tests {

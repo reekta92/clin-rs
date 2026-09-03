@@ -166,6 +166,27 @@ pub fn start_session(app: &mut App) -> SessionGuard {
 
 /// = the post-loop backup flush block verbatim (signal_exit / backup_on_quit /
 /// done_rx deadline logic, incl. println!/eprintln! messages).
+fn wait_backup_flush(guard: &SessionGuard) -> bool {
+    let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
+    loop {
+        if crate::FORCE_QUIT.load(Ordering::Acquire) {
+            return false;
+        }
+        match guard
+            .backup_done_rx
+            .recv_timeout(std::time::Duration::from_millis(200))
+        {
+            Ok(()) => return true,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return false,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if std::time::Instant::now() >= deadline {
+                    return false;
+                }
+            }
+        }
+    }
+}
+
 pub fn finish_session(app: &mut App, guard: SessionGuard) -> Result<()> {
     let signal_exit = crate::SHOULD_EXIT.load(Ordering::Acquire);
 
@@ -179,51 +200,17 @@ pub fn finish_session(app: &mut App, guard: SessionGuard) -> Result<()> {
             ))
         });
         drop(app.backup_tx.take());
-        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-        let timed_out = loop {
-            if crate::FORCE_QUIT.load(Ordering::Acquire) {
-                break true;
-            }
-            match guard
-                .backup_done_rx
-                .recv_timeout(std::time::Duration::from_millis(200))
-            {
-                Ok(()) => break false,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break true,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if std::time::Instant::now() >= deadline {
-                        break true;
-                    }
-                }
-            }
-        };
-        if timed_out {
-            eprintln!("Backup still running in background; exiting.");
-        } else {
+        if wait_backup_flush(&guard) {
             println!("Done.");
+        } else {
+            eprintln!("Backup still running in background; exiting.");
         }
         if let Some(msg) = app.backup_status.lock().take() {
             eprintln!("Backup warning: {msg}");
         }
     } else {
         drop(app.backup_tx.take());
-        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-        loop {
-            if crate::FORCE_QUIT.load(Ordering::Acquire) {
-                break;
-            }
-            match guard
-                .backup_done_rx
-                .recv_timeout(std::time::Duration::from_millis(200))
-            {
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if std::time::Instant::now() >= deadline {
-                        break;
-                    }
-                }
-            }
-        }
+        let _ = wait_backup_flush(&guard);
     }
     Ok(())
 }

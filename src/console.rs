@@ -22,19 +22,19 @@ fn paint(text: &str, color: Color) -> String {
     }
 }
 
-pub fn green(s: &str) -> String {
+fn green(s: &str) -> String {
     paint(s, Color::Green)
 }
-pub fn red(s: &str) -> String {
+fn red(s: &str) -> String {
     paint(s, Color::Red)
 }
 pub fn yellow(s: &str) -> String {
     paint(s, Color::Yellow)
 }
-pub fn cyan(s: &str) -> String {
+fn cyan(s: &str) -> String {
     paint(s, Color::Cyan)
 }
-pub fn blue(s: &str) -> String {
+fn blue(s: &str) -> String {
     paint(s, Color::Blue)
 }
 
@@ -78,17 +78,6 @@ pub fn info(msg: &str) -> String {
 ///   → <msg> — dim indented hint (e.g. "Run 'clin storage migrate'").
 pub fn hint(msg: &str) -> String {
     format!("  {} {}", dim("→"), msg)
-}
-
-/// ─ Title ──────── — section divider with bold title.
-pub fn section(title: &str) -> String {
-    let padding = 50usize.saturating_sub(title.len() + 3);
-    let bar = "─".repeat(padding);
-    if enabled() {
-        format!("{} {} {}", dim("─"), bold(title), dim(&bar))
-    } else {
-        format!("─ {title} {bar}")
-    }
 }
 
 /// Color a filesystem path in cyan.

@@ -60,7 +60,7 @@ pub struct CommandPalette {
     pub context_note_id: Option<String>,
     pub active_tab: usize,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
     pub last_results_area: Option<ratatui::layout::Rect>,
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
 }
@@ -191,9 +191,7 @@ impl CommandPalette {
                 return true;
             }
             _ => {
-                if !crate::text_edit::apply_text_shortcuts(&app.keybinds, &mut self.input, key) {
-                    self.input.input(key);
-                }
+                crate::text_edit::feed_key(&app.keybinds, &mut self.input, key);
                 self.refresh_items(app);
             }
         }

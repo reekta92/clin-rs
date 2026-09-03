@@ -117,24 +117,12 @@ impl DrawItem {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DrawClipboard {
-    pub item: DrawItem,
-}
-
-impl DrawClipboard {
-    #[must_use]
-    pub fn from_item(item: &DrawItem) -> Self {
-        Self { item: item.clone() }
-    }
-
-    #[must_use]
-    pub fn pasted_item(&self) -> DrawItem {
-        DrawItem {
-            id: DrawItemId::new(),
-            element: self.item.element.clone(),
-            transform: self.item.transform,
-        }
+#[must_use]
+pub fn pasted_item(item: &DrawItem) -> DrawItem {
+    DrawItem {
+        id: DrawItemId::new(),
+        element: item.element.clone(),
+        transform: item.transform,
     }
 }
 
@@ -566,7 +554,7 @@ mod tests {
         source.transform.rotation_degrees = 45.0;
         source.transform.scale = 2.0;
 
-        let pasted = DrawClipboard::from_item(&source).pasted_item();
+        let pasted = pasted_item(&source);
         assert_ne!(pasted.id, source.id);
         assert_eq!(pasted.element, source.element);
         assert_eq!(pasted.transform, source.transform);

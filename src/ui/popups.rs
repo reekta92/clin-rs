@@ -1,6 +1,5 @@
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
-use std::borrow::Cow;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::PopupSize;
@@ -457,18 +456,21 @@ pub fn draw_theme_popup(
     frame.render_widget(graph_block, chunks[2]);
     frame.render_widget(graph_para, graph_inner);
 }
-pub fn draw_sort_popup(
+
+pub fn draw_option_list_popup(
     frame: &mut Frame,
-    popup: &crate::popups::SortPopup,
     area: Rect,
-    theme: &AppThemeColors,
+    title: &str,
+    options: &[&str],
+    selected: usize,
     keybinds: &crate::keybinds::Keybinds,
+    theme: &AppThemeColors,
     mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
         area,
-        "SORT BY",
+        title,
         PopupSize::Medium,
         PopupHints::Keybinds(&[
             (
@@ -491,227 +493,6 @@ pub fn draw_sort_popup(
         theme,
     );
 
-    let options = [
-        "Title (A-Z)",
-        "Title (Z-A)",
-        "Modified (newest)",
-        "Modified (oldest)",
-    ];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_icon_mode_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::IconModePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "ICON MODE",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options = ["Nerd Font", "Unicode", "None"];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_create_format_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::CreateFormatPopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "CREATE NEW",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options = [
-        "Markdown Note (.md)",
-        "Plain Text (.txt)",
-        "Drawing (.draw)",
-        "Canvas (.canvas)",
-    ];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_hint_bar_style_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::HintBarStylePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "HINT BAR STYLE",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options: Vec<&str> = crate::config::HintBarStyle::ALL
-        .iter()
-        .map(|s| s.name())
-        .collect();
     let items: Vec<ListItem> = options
         .iter()
         .map(|opt| ListItem::new(Line::from(Span::raw(*opt))))
@@ -731,81 +512,7 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
-    paint_list_hover(
-        frame,
-        Rect {
-            x: content_area.x + 1,
-            y: content_area.y + 1,
-            width: content_area.width.saturating_sub(2),
-            height: content_area.height.saturating_sub(2),
-        },
-        &state,
-        options.len(),
-        mouse_pos,
-        theme.hover_style(),
-    );
-}
-pub fn draw_keybind_preset_popup(
-    frame: &mut Frame,
-    popup: &crate::popups::KeybindPresetPopup,
-    area: Rect,
-    theme: &AppThemeColors,
-    keybinds: &crate::keybinds::Keybinds,
-    mouse_pos: Option<(u16, u16)>,
-) {
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "KEYBIND PRESET",
-        PopupSize::Medium,
-        PopupHints::Keybinds(&[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ]),
-        theme,
-    );
-
-    let options = [
-        "default \u{2014} Default CUA",
-        "helix \u{2014} Space leader",
-        "vim \u{2014} : commands",
-        "emacs \u{2014} Ctrl-x prefix",
-    ];
-    let items: Vec<ListItem> = options
-        .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.heading)),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
+    let state = render_list_with_selection(frame, list, content_area, Some(selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -869,17 +576,6 @@ pub fn centered_rect(size: PopupSize, area: Rect) -> Rect {
     }
 }
 
-pub fn popup_block<'a>(title: &'a str, theme: &AppThemeColors) -> ratatui::widgets::Block<'a> {
-    let mut block = ratatui::widgets::Block::default()
-        .style(theme.bg_style())
-        .borders(ratatui::widgets::Borders::ALL)
-        .border_style(Style::default().fg(theme.heading));
-    if !title.is_empty() {
-        block = block.title(title);
-    }
-    block
-}
-
 pub fn build_list_widget<'a>(
     items: impl IntoIterator<Item = ListItem<'a>>,
     theme: &AppThemeColors,
@@ -933,14 +629,9 @@ pub fn clamp_selected_to_view(
     if item_count == 0 {
         return 0;
     }
+    let offset = offset.min(item_count - 1);
     let bottom = (offset + viewport).saturating_sub(1).min(item_count - 1);
-    if selected < offset {
-        offset
-    } else if selected > bottom {
-        bottom
-    } else {
-        selected
-    }
+    selected.clamp(offset, bottom)
 }
 /// Initialize a [`ListState`] with an optional selection.
 pub fn list_state_selected(selected: Option<usize>, offset: usize) -> ListState {
@@ -1025,48 +716,11 @@ pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
     secs.into()
 }
 
-pub fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
-    if s.chars().count() > max_chars {
-        let mut t: String = s.chars().take(max_chars).collect();
-        t.push('…');
-        t
-    } else {
-        s.to_string()
-    }
-}
-
-pub fn text_area_from_content(content: &str) -> TextArea<'static> {
-    if content.is_empty() {
-        TextArea::default()
-    } else {
-        let lines: Vec<String> = content.lines().map(ToString::to_string).collect();
-        TextArea::from(lines)
-    }
-}
-
 pub fn now_unix_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_secs()
-}
-
-pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
-    let now = now_unix_secs();
-    let diff = now.saturating_sub(unix_ts);
-
-    if diff < 60 {
-        return Cow::Borrowed("just now");
-    }
-    if diff < 3600 {
-        return Cow::Owned(format!("{}m ago", diff / 60));
-    }
-    if diff < 86_400 {
-        return Cow::Owned(format!("{}h ago", diff / 3600));
-    }
-
-    let dt = unix_ts_to_local(unix_ts);
-    Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
 pub fn format_date(unix_ts: u64, date_format: &str) -> String {
@@ -1090,34 +744,19 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
-pub struct StatusBarBadge {
-    pub label: Cow<'static, str>,
-    pub style: Style,
-}
-
-pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
-    let label = if enabled { "ext:on" } else { "ext:off" };
-    let style = if enabled {
-        Style::default()
-            .fg(theme.success)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.muted)
-    };
-    StatusBarBadge {
-        label: format!(" {label} ").into(),
-        style,
-    }
-}
-
 pub fn ext_badge_spans<'a>(
     enabled: bool,
     theme: &AppThemeColors,
     next_bg: Option<Color>,
 ) -> Vec<Span<'a>> {
-    let b = ext_badge(enabled, theme);
+    let label = if enabled { " ext:on " } else { " ext:off " };
+    let (fg, bold) = if enabled {
+        (theme.success, Modifier::BOLD)
+    } else {
+        (theme.muted, Modifier::empty())
+    };
     let mut spans = Vec::new();
-    let pwr_bg = b.style.fg.unwrap_or(theme.accent);
+    let pwr_bg = fg;
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Sharp
         | crate::config::HintBarStyle::Rounded
@@ -1138,8 +777,8 @@ pub fn ext_badge_spans<'a>(
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
-                .add_modifier(b.style.add_modifier);
-            spans.push(Span::styled(b.label, pwr_style));
+                .add_modifier(bold);
+            spans.push(Span::styled(label, pwr_style));
 
             if theme.hint_bar_style.is_gradient() {
                 let resolved_next_bg = next_bg.unwrap_or(theme.bg.unwrap_or(Color::Black));
@@ -1172,10 +811,10 @@ pub fn ext_badge_spans<'a>(
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
-                .add_modifier(b.style.add_modifier);
+                .add_modifier(bold);
 
             spans.push(Span::styled(cap_l, Style::default().fg(pwr_bg)));
-            spans.push(Span::styled(b.label, pwr_style));
+            spans.push(Span::styled(label, pwr_style));
 
             spans.push(Span::styled(cap_r, Style::default().fg(pwr_bg)));
             spans.push(Span::raw(" "));
@@ -1183,14 +822,17 @@ pub fn ext_badge_spans<'a>(
         crate::config::HintBarStyle::Brackets => {
             spans.push(Span::styled("[", Style::default().fg(theme.fg)));
             spans.push(Span::styled(
-                b.label.trim().to_string(),
+                label.trim().to_string(),
                 Style::default().fg(pwr_bg).add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled("]", Style::default().fg(theme.fg)));
             spans.push(Span::raw(" "));
         }
         crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact => {
-            spans.push(Span::styled(b.label, b.style));
+            spans.push(Span::styled(
+                label,
+                Style::default().fg(fg).add_modifier(bold),
+            ));
             spans.push(Span::raw(" "));
         }
     }

@@ -10,7 +10,6 @@ mod popups;
 mod search;
 pub(crate) mod search_worker;
 mod settings_ops;
-mod status;
 mod tags;
 mod trash;
 mod views;
@@ -25,7 +24,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::ListItem;
 use std::borrow::Cow;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
@@ -35,6 +34,35 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+fn suspend_for_external() {
+    if let Err(e) = crossterm::terminal::disable_raw_mode() {
+        eprintln!("Failed to disable raw mode: {e}");
+    }
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::LeaveAlternateScreen,
+        crossterm::event::DisableMouseCapture,
+        crossterm::event::DisableBracketedPaste
+    ) {
+        eprintln!("Failed to reset terminal: {e}");
+    }
+}
+
+fn resume_from_external() {
+    if let Err(e) = crossterm::terminal::enable_raw_mode() {
+        eprintln!("Failed to enable raw mode: {e}");
+    }
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::terminal::EnterAlternateScreen,
+        crossterm::event::EnableMouseCapture,
+        crossterm::event::EnableBracketedPaste,
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+    ) {
+        eprintln!("Failed to restore terminal: {e}");
+    }
+}
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
@@ -348,18 +376,16 @@ pub struct App {
     pub preview_encryption: bool,
     pub mouse_pos: Option<(u16, u16)>,
     pub preview_position: crate::config::PreviewPosition,
-    pub calendar_position: crate::config::CalendarPosition,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
     pub mouse_enabled: bool,
     pub date_format: String,
     pub last_auto_backup: Option<std::time::Instant>,
     pub return_mode: Option<ViewMode>,
-    pub host: Box<dyn crate::host::HostHooks>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_state: Option<crate::graf::app::GrafAppState>,
     pub draw_state: Option<crate::draw::app::DrawAppState>,
-    pub draw_clipboard: Option<crate::draw::state::DrawClipboard>,
+    pub draw_clipboard: Option<crate::draw::state::DrawItem>,
     pub backup_state: Option<crate::backup::state::BackupState>,
     pub outline_state: Option<crate::outline::state::OutlineState>,
     pub setup_state: Option<crate::setup::SetupState>,
@@ -387,7 +413,6 @@ pub struct App {
     pub fs_overflow: Arc<AtomicBool>,
     pub watcher_window_start: Option<Instant>,
     pub initial_load_done: bool,
-    pub is_first_cache_build: bool,
     pub load_spinner_tick: usize,
     pub backup_tx: Option<std::sync::mpsc::Sender<crate::backup::worker::BackupJob>>,
     pub git_lock: Arc<Mutex<()>>,
@@ -508,7 +533,6 @@ impl App {
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
-        list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
         list.pinned_folders = bootstrap_config
             .list
@@ -537,7 +561,7 @@ impl App {
         let app_paths = crate::paths::AppPaths::discover(
             crate::config::ClinConfig::config_path().unwrap_or_default(),
         )?;
-        let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
+        let scoped_cache_path = app_paths.scoped_summary_cache_path(digest);
         let legacy_cache_path = app_paths.summary_cache_path();
 
         let notes = load.summaries;
@@ -603,7 +627,6 @@ impl App {
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
-            calendar_position: bootstrap_config.list.calendar_position,
             config_errors,
             graph_state: None,
             draw_state: None,
@@ -615,7 +638,6 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
-            host: Box::new(crate::host::TuiHost),
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
@@ -639,7 +661,6 @@ impl App {
             subnotes_view_cache: Vec::new(),
             subnotes_view_cache_sig: 0,
             initial_load_done: initial_complete,
-            is_first_cache_build: false,
             load_spinner_tick: 0,
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
@@ -766,7 +787,6 @@ impl App {
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
-        list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
         list.pinned_folders = bootstrap_config
             .list
@@ -791,7 +811,7 @@ impl App {
         );
         let scoped_cache_path = app_paths
             .as_ref()
-            .map(|p| p.scoped_summary_cache_path(&digest))
+            .map(|p| p.scoped_summary_cache_path(digest))
             .unwrap_or_default();
         let legacy_cache_path = app_paths
             .as_ref()
@@ -802,7 +822,7 @@ impl App {
             crate::app::catalog::load_persisted_note_cache(
                 &storage,
                 &scoped_cache_path,
-                &digest,
+                digest,
                 bootstrap_config.list.show_hidden_files,
                 bootstrap_config.list.show_all_files,
             );
@@ -869,7 +889,6 @@ impl App {
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
-            calendar_position: bootstrap_config.list.calendar_position,
             config_errors,
             graph_state: None,
             draw_state: None,
@@ -881,7 +900,6 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
-            host: Box::new(crate::host::TuiHost),
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
@@ -905,7 +923,6 @@ impl App {
             subnotes_view_cache: Vec::new(),
             subnotes_view_cache_sig: 0,
             initial_load_done: false,
-            is_first_cache_build: false,
             load_spinner_tick: 0,
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
@@ -1126,7 +1143,7 @@ impl App {
                 } else {
                     String::new()
                 };
-                let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                let sanitized_name = crate::fsutil::sanitize_for_terminal(name);
                 let mut display_name = sanitized_name.into_owned();
                 if *is_pinned {
                     let pin_icon =
@@ -1247,7 +1264,7 @@ impl App {
                 }
 
                 let sanitized_title =
-                    crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
+                    crate::fsutil::sanitize_for_terminal(summary.title.as_str()).into_owned();
                 spans.push(Span::styled(sanitized_title, text_style));
                 if self.list.inline_info {
                     if self.notes_with_subnotes.contains(&summary.id) {
@@ -1264,7 +1281,7 @@ impl App {
 
                     for tag in &summary.tags {
                         spans.push(Span::raw(" "));
-                        let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
+                        let sanitized_tag = crate::fsutil::sanitize_for_terminal(tag);
                         spans.push(Span::styled(
                             format!("[{sanitized_tag}]"),
                             Style::default().fg(self.app_theme.tag),
@@ -1278,10 +1295,7 @@ impl App {
                             summary.folder.clone()
                         };
                         spans.push(Span::styled(
-                            format!(
-                                "  (from {})",
-                                crate::sanitize::sanitize_for_terminal(&source)
-                            ),
+                            format!("  (from {})", crate::fsutil::sanitize_for_terminal(&source)),
                             Style::default().fg(self.app_theme.muted),
                         ));
                     }
@@ -1361,7 +1375,7 @@ impl App {
                 } else {
                     String::new()
                 };
-                let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
+                let sanitized_name = crate::fsutil::sanitize_for_terminal(label);
 
                 let text = if icon.is_empty() {
                     format!("{indent}{sanitized_name}{count_suffix}")
@@ -1394,7 +1408,7 @@ impl App {
                         }
                     })
                     .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
-                let sanitized = crate::sanitize::sanitize_for_terminal(&title);
+                let sanitized = crate::fsutil::sanitize_for_terminal(&title);
                 let text = if icon.is_empty() {
                     format!("{indent}{}", sanitized.into_owned())
                 } else {
@@ -1418,7 +1432,7 @@ impl App {
         command: &str,
         extra_args: &[String],
     ) -> (std::io::Result<std::process::ExitStatus>, String) {
-        self.host.suspend_for_external();
+        suspend_for_external();
 
         let parts: Vec<&str> = command.split_whitespace().collect();
         let (program, cmd_args) = parts
@@ -1434,7 +1448,7 @@ impl App {
         }
         let result = command.status();
 
-        self.host.resume_from_external();
+        resume_from_external();
         self.needs_full_redraw = true;
         (result, program.to_string())
     }
@@ -1791,6 +1805,36 @@ impl App {
         self.editor.source_highlighter = None;
         self.editor.md_highlight_memo.clear();
         self.editor.md_highlight_lines = 0;
+    }
+
+    pub fn default_status_text(&self) -> Cow<'static, str> {
+        Cow::Borrowed("")
+    }
+
+    pub fn set_default_status(&mut self) {
+        self.status = self.default_status_text();
+        self.status_until = None;
+    }
+
+    pub fn set_temporary_status(&mut self, message: &str) {
+        self.status = Cow::Owned(message.to_string());
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    pub fn set_temporary_status_static(&mut self, message: &'static str) {
+        self.status = Cow::Borrowed(message);
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    pub fn tick_status(&mut self) -> bool {
+        if let Some(until) = self.status_until
+            && Instant::now() >= until
+        {
+            self.set_default_status();
+            true
+        } else {
+            false
+        }
     }
 }
 

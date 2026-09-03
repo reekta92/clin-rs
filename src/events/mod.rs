@@ -44,15 +44,6 @@ pub fn dismiss_popup_on_outside_click(
     false
 }
 
-pub fn hit_test_list_row(mouse_row: u16, list_top_y: u16, len: usize) -> Option<usize> {
-    if len > 0 {
-        let row = mouse_row.saturating_sub(list_top_y) as usize;
-        Some(row.min(len.saturating_sub(1)))
-    } else {
-        None
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SelListAction {
     Up,
@@ -105,6 +96,95 @@ pub(crate) fn route_text_input_popup(
         handle_popup_text_input(*key, input, kb);
         TextInputPopupAction::Edited
     }
+}
+
+/// Route a key through a text-input popup, re-inserting it on Submit/Edited.
+/// `on_submit` runs with the popup already re-inserted. Returns `true` if consumed.
+fn route_text(
+    mut popup: crate::popups::ActivePopup,
+    key: KeyEvent,
+    app: &mut App,
+    on_submit: impl FnOnce(&mut App),
+) -> bool {
+    let action = match &mut popup {
+        crate::popups::ActivePopup::CreateNote(p, _) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::Import(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::Folder(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::Goals(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        crate::popups::ActivePopup::NoteRename(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
+        _ => return false,
+    };
+    match action {
+        TextInputPopupAction::Cancel => {}
+        TextInputPopupAction::Submit => {
+            app.popups.active = Some(popup);
+            on_submit(app);
+        }
+        TextInputPopupAction::Edited => {
+            app.popups.active = Some(popup);
+        }
+    }
+    true
+}
+
+/// Route a key through a selection-list popup, re-inserting it on nav/confirm.
+/// `on_nav`/`on_confirm` run with the popup already re-inserted; `on_cancel`
+/// runs without re-inserting. Returns `true` if consumed.
+fn route_selection_popup(
+    mut popup: crate::popups::ActivePopup,
+    key: KeyEvent,
+    app: &mut App,
+    on_nav: impl FnOnce(&mut App),
+    on_confirm: impl FnOnce(&mut App),
+    on_cancel: impl FnOnce(&mut App),
+) -> bool {
+    app.seq_matcher.clear();
+    let action = match &mut popup {
+        crate::popups::ActivePopup::IconMode(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 2)
+        }
+        crate::popups::ActivePopup::HintBarStyle(p) => route_selection_list(
+            &key,
+            &app.keybinds,
+            &mut p.selected,
+            crate::config::HintBarStyle::ALL.len() - 1,
+        ),
+        crate::popups::ActivePopup::KeybindPreset(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
+        }
+        crate::popups::ActivePopup::Sort(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
+        }
+        crate::popups::ActivePopup::CreateFormat(p) => {
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
+        }
+        _ => return false,
+    };
+    match action {
+        SelListAction::Up | SelListAction::Down => {
+            app.popups.active = Some(popup);
+            on_nav(app);
+        }
+        SelListAction::Confirm => {
+            app.popups.active = Some(popup);
+            on_confirm(app);
+        }
+        SelListAction::Cancel => on_cancel(app),
+        SelListAction::Other => {
+            app.popups.active = Some(popup);
+        }
+    }
+    true
 }
 
 /// Route a terminal bracketed-paste (`Event::Paste`) into the currently focused
@@ -864,45 +944,17 @@ impl crate::popups::ActivePopup {
     fn handle_key(self, key: KeyEvent, app: &mut App) -> bool {
         use crate::popups::ActivePopup;
         match self {
-            ActivePopup::CreateNote(mut popup, format) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::CreateNote(popup, format));
-                        app.confirm_create_note();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::CreateNote(popup, format));
-                    }
-                }
-                true
+            ActivePopup::CreateNote(popup, format) => {
+                route_text(ActivePopup::CreateNote(popup, format), key, app, |app| {
+                    app.confirm_create_note();
+                })
             }
-            ActivePopup::Import(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::Import(popup));
-                        app.confirm_import();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::Import(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::Folder(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::Folder(popup));
-                        app.confirm_folder_popup();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::Folder(popup));
-                    }
-                }
-                true
-            }
+            ActivePopup::Import(popup) => route_text(ActivePopup::Import(popup), key, app, |app| {
+                app.confirm_import();
+            }),
+            ActivePopup::Folder(popup) => route_text(ActivePopup::Folder(popup), key, app, |app| {
+                app.confirm_folder_popup();
+            }),
             ActivePopup::Tag(mut popup) => {
                 if app.popups.confirm.is_some() {
                     app.popups.active = Some(ActivePopup::Tag(popup));
@@ -962,13 +1014,7 @@ impl crate::popups::ActivePopup {
                                     app.begin_delete_tag_with_name(tag);
                                 }
                             } else {
-                                if !crate::text_edit::apply_text_shortcuts(
-                                    &app.keybinds,
-                                    &mut popup.input,
-                                    key,
-                                ) {
-                                    popup.input.input(ratatui_textarea::Input::from(key));
-                                }
+                                crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                                 app.popups.active = Some(ActivePopup::Tag(popup));
                                 app.update_tag_suggestions();
                             }
@@ -1004,25 +1050,24 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::Goals(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::Goals(popup));
-                        app.confirm_goals_popup();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::Goals(popup));
-                    }
-                }
-                true
-            }
+            ActivePopup::Goals(popup) => route_text(ActivePopup::Goals(popup), key, app, |app| {
+                app.confirm_goals_popup();
+            }),
             ActivePopup::Subnotes(mut popup) => {
-                let now_unix_secs = || {
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs()
+                let commit_edits = |popup: &mut crate::popups::SubnotesPopup| {
+                    let cur_idx = popup.selected;
+                    if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
+                        let new_title = popup.title_input.lines().join("");
+                        let new_content = popup.content_input.lines().join("\n");
+                        if popup.subnotes[cur_idx].title != new_title
+                            || popup.subnotes[cur_idx].content != new_content
+                        {
+                            popup.subnotes[cur_idx].title = new_title;
+                            popup.subnotes[cur_idx].content = new_content;
+                            popup.subnotes[cur_idx].updated_at = crate::ui::now_unix_secs();
+                            popup.is_dirty = true;
+                        }
+                    }
                 };
 
                 let is_alt_n = (key.code == KeyCode::Char('n') || key.code == KeyCode::Char('N'))
@@ -1038,25 +1083,13 @@ impl crate::popups::ActivePopup {
                 }
 
                 if is_alt_n {
-                    let cur_idx = popup.selected;
-                    if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
-                        let new_title = popup.title_input.lines().join("");
-                        let new_content = popup.content_input.lines().join("\n");
-                        if popup.subnotes[cur_idx].title != new_title
-                            || popup.subnotes[cur_idx].content != new_content
-                        {
-                            popup.subnotes[cur_idx].title = new_title;
-                            popup.subnotes[cur_idx].content = new_content;
-                            popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                            popup.is_dirty = true;
-                        }
-                    }
+                    commit_edits(&mut popup);
 
                     let new_subnote = crate::storage::SubNote {
                         id: uuid::Uuid::new_v4().to_string(),
                         title: "New Note".to_string(),
                         content: "".to_string(),
-                        updated_at: now_unix_secs(),
+                        updated_at: crate::ui::now_unix_secs(),
                     };
                     popup.subnotes.push(new_subnote);
                     popup.selected = popup.subnotes.len().saturating_sub(1);
@@ -1073,19 +1106,7 @@ impl crate::popups::ActivePopup {
                     crate::popups::SubnotesFocus::List => {
                         if key.code == KeyCode::Char('k') || key.code == KeyCode::Up {
                             if !popup.subnotes.is_empty() {
-                                let cur_idx = popup.selected;
-                                if cur_idx < popup.subnotes.len() {
-                                    let new_title = popup.title_input.lines().join("");
-                                    let new_content = popup.content_input.lines().join("\n");
-                                    if popup.subnotes[cur_idx].title != new_title
-                                        || popup.subnotes[cur_idx].content != new_content
-                                    {
-                                        popup.subnotes[cur_idx].title = new_title;
-                                        popup.subnotes[cur_idx].content = new_content;
-                                        popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                        popup.is_dirty = true;
-                                    }
-                                }
+                                commit_edits(&mut popup);
                                 popup.selected = popup.selected.saturating_sub(1);
                                 popup.title_input =
                                     crate::ui::make_popup_textarea(&app.app_theme, "");
@@ -1101,19 +1122,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Char('j') || key.code == KeyCode::Down {
                             if !popup.subnotes.is_empty() {
-                                let cur_idx = popup.selected;
-                                if cur_idx < popup.subnotes.len() {
-                                    let new_title = popup.title_input.lines().join("");
-                                    let new_content = popup.content_input.lines().join("\n");
-                                    if popup.subnotes[cur_idx].title != new_title
-                                        || popup.subnotes[cur_idx].content != new_content
-                                    {
-                                        popup.subnotes[cur_idx].title = new_title;
-                                        popup.subnotes[cur_idx].content = new_content;
-                                        popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                        popup.is_dirty = true;
-                                    }
-                                }
+                                commit_edits(&mut popup);
                                 popup.selected = popup
                                     .selected
                                     .saturating_add(1)
@@ -1131,25 +1140,13 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Char('n') {
-                            let cur_idx = popup.selected;
-                            if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
-                                let new_title = popup.title_input.lines().join("");
-                                let new_content = popup.content_input.lines().join("\n");
-                                if popup.subnotes[cur_idx].title != new_title
-                                    || popup.subnotes[cur_idx].content != new_content
-                                {
-                                    popup.subnotes[cur_idx].title = new_title;
-                                    popup.subnotes[cur_idx].content = new_content;
-                                    popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                    popup.is_dirty = true;
-                                }
-                            }
+                            commit_edits(&mut popup);
 
                             let new_subnote = crate::storage::SubNote {
                                 id: uuid::Uuid::new_v4().to_string(),
                                 title: "New Note".to_string(),
                                 content: "".to_string(),
-                                updated_at: now_unix_secs(),
+                                updated_at: crate::ui::now_unix_secs(),
                             };
                             popup.subnotes.push(new_subnote);
                             popup.selected = popup.subnotes.len().saturating_sub(1);
@@ -1187,19 +1184,7 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-                            let cur_idx = popup.selected;
-                            if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
-                                let new_title = popup.title_input.lines().join("");
-                                let new_content = popup.content_input.lines().join("\n");
-                                if popup.subnotes[cur_idx].title != new_title
-                                    || popup.subnotes[cur_idx].content != new_content
-                                {
-                                    popup.subnotes[cur_idx].title = new_title;
-                                    popup.subnotes[cur_idx].content = new_content;
-                                    popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                    popup.is_dirty = true;
-                                }
-                            }
+                            commit_edits(&mut popup);
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                             let _ = app.close_subnotes_popup();
                         } else {
@@ -1208,27 +1193,11 @@ impl crate::popups::ActivePopup {
                     }
                     crate::popups::SubnotesFocus::EditTitle => {
                         if key.code == KeyCode::Tab || key.code == KeyCode::Enter {
-                            let cur_idx = popup.selected;
-                            if cur_idx < popup.subnotes.len() {
-                                let new_title = popup.title_input.lines().join("");
-                                if popup.subnotes[cur_idx].title != new_title {
-                                    popup.subnotes[cur_idx].title = new_title;
-                                    popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                    popup.is_dirty = true;
-                                }
-                            }
+                            commit_edits(&mut popup);
                             popup.focus = crate::popups::SubnotesFocus::EditContent;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Esc {
-                            let cur_idx = popup.selected;
-                            if cur_idx < popup.subnotes.len() {
-                                let new_title = popup.title_input.lines().join("");
-                                if popup.subnotes[cur_idx].title != new_title {
-                                    popup.subnotes[cur_idx].title = new_title;
-                                    popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                    popup.is_dirty = true;
-                                }
-                            }
+                            commit_edits(&mut popup);
                             popup.focus = crate::popups::SubnotesFocus::List;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else {
@@ -1242,27 +1211,11 @@ impl crate::popups::ActivePopup {
                     }
                     crate::popups::SubnotesFocus::EditContent => {
                         if key.code == KeyCode::BackTab {
-                            let cur_idx = popup.selected;
-                            if cur_idx < popup.subnotes.len() {
-                                let new_content = popup.content_input.lines().join("\n");
-                                if popup.subnotes[cur_idx].content != new_content {
-                                    popup.subnotes[cur_idx].content = new_content;
-                                    popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                    popup.is_dirty = true;
-                                }
-                            }
+                            commit_edits(&mut popup);
                             popup.focus = crate::popups::SubnotesFocus::EditTitle;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Esc {
-                            let cur_idx = popup.selected;
-                            if cur_idx < popup.subnotes.len() {
-                                let new_content = popup.content_input.lines().join("\n");
-                                if popup.subnotes[cur_idx].content != new_content {
-                                    popup.subnotes[cur_idx].content = new_content;
-                                    popup.subnotes[cur_idx].updated_at = now_unix_secs();
-                                    popup.is_dirty = true;
-                                }
-                            }
+                            commit_edits(&mut popup);
                             popup.focus = crate::popups::SubnotesFocus::List;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else {
@@ -1277,18 +1230,10 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::NoteRename(mut popup) => {
-                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
-                    TextInputPopupAction::Cancel => {}
-                    TextInputPopupAction::Submit => {
-                        app.popups.active = Some(ActivePopup::NoteRename(popup));
-                        app.confirm_rename_note();
-                    }
-                    TextInputPopupAction::Edited => {
-                        app.popups.active = Some(ActivePopup::NoteRename(popup));
-                    }
-                }
-                true
+            ActivePopup::NoteRename(popup) => {
+                route_text(ActivePopup::NoteRename(popup), key, app, |app| {
+                    app.confirm_rename_note();
+                })
             }
             ActivePopup::Search(mut popup) => {
                 let has_title = !popup.title_result_ids.is_empty();
@@ -1323,13 +1268,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Char('l') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1366,13 +1305,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Up | KeyCode::Char('k') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1385,13 +1318,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1407,13 +1334,7 @@ impl crate::popups::ActivePopup {
                     }
                     KeyCode::Right | KeyCode::Char(' ') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1432,26 +1353,14 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
                     KeyCode::Left => {
                         if popup.focus == crate::popups::SearchFocus::Input {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
@@ -1470,26 +1379,14 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
                     _ => {
                         popup.focus = crate::popups::SearchFocus::Input;
-                        if !crate::text_edit::apply_text_shortcuts(
-                            &app.keybinds,
-                            &mut popup.input,
-                            key,
-                        ) {
-                            popup.input.input(ratatui_textarea::Input::from(key));
-                        }
+                        crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                         app.popups.active = Some(reinsert(popup));
                         app.update_search();
                     }
@@ -1571,13 +1468,7 @@ impl crate::popups::ActivePopup {
                         },
                         crate::app::FolderPickerFocus::Search => {
                             let old_query = picker.input.lines().join("");
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut picker.input,
-                                key,
-                            ) {
-                                picker.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut picker.input, key);
                             let new_query = picker.input.lines().join("");
                             if old_query != new_query {
                                 app.popups.active = Some(reinsert(picker));
@@ -1613,13 +1504,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.open_help_page_with_tab(crate::app::HelpTab::Templates);
                         } else {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_template_popup_filter();
                         }
@@ -1629,13 +1514,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.create_template_from_popup();
                         } else {
-                            if !crate::text_edit::apply_text_shortcuts(
-                                &app.keybinds,
-                                &mut popup.input,
-                                key,
-                            ) {
-                                popup.input.input(ratatui_textarea::Input::from(key));
-                            }
+                            crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
                             app.update_template_popup_filter();
                         }
@@ -1692,13 +1571,7 @@ impl crate::popups::ActivePopup {
                                 app.popups.active = Some(reinsert(popup));
                             }
                             _ => {
-                                if !crate::text_edit::apply_text_shortcuts(
-                                    &app.keybinds,
-                                    &mut popup.input,
-                                    key,
-                                ) {
-                                    popup.input.input(ratatui_textarea::Input::from(key));
-                                }
+                                crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                                 app.popups.active = Some(reinsert(popup));
                                 app.update_template_popup_filter();
                             }
@@ -1789,101 +1662,52 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::IconMode(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 2) {
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::IconMode(popup));
-                        app.select_icon_mode();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_icon_mode_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::IconMode(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::HintBarStyle(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(
-                    &key,
-                    &app.keybinds,
-                    &mut popup.selected,
-                    crate::config::HintBarStyle::ALL.len() - 1,
-                ) {
-                    SelListAction::Up | SelListAction::Down => {
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                        app.select_hint_bar_style();
-                    }
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                        app.select_hint_bar_style();
-                        app.close_hint_bar_style_popup();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_hint_bar_style_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::KeybindPreset(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
-                    SelListAction::Up | SelListAction::Down => {
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                        app.select_keybind_preset();
-                    }
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                        app.select_keybind_preset();
-                        app.close_keybind_preset_popup();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_keybind_preset_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::Sort(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::Sort(popup));
-                        app.select_sort();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_sort_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::Sort(popup));
-                    }
-                }
-                true
-            }
-            ActivePopup::CreateFormat(mut popup) => {
-                app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
-                    SelListAction::Confirm => {
-                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
-                        app.confirm_create_format();
-                    }
-                    SelListAction::Cancel => {
-                        app.close_create_format_popup();
-                    }
-                    _ => {
-                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
-                    }
-                }
-                true
-            }
+            ActivePopup::IconMode(popup) => route_selection_popup(
+                ActivePopup::IconMode(popup),
+                key,
+                app,
+                |_| {},
+                |app| app.select_icon_mode(),
+                |app| app.close_icon_mode_popup(),
+            ),
+            ActivePopup::HintBarStyle(popup) => route_selection_popup(
+                ActivePopup::HintBarStyle(popup),
+                key,
+                app,
+                |app| app.select_hint_bar_style(),
+                |app| {
+                    app.select_hint_bar_style();
+                    app.close_hint_bar_style_popup();
+                },
+                |app| app.close_hint_bar_style_popup(),
+            ),
+            ActivePopup::KeybindPreset(popup) => route_selection_popup(
+                ActivePopup::KeybindPreset(popup),
+                key,
+                app,
+                |app| app.select_keybind_preset(),
+                |app| {
+                    app.select_keybind_preset();
+                    app.close_keybind_preset_popup();
+                },
+                |app| app.close_keybind_preset_popup(),
+            ),
+            ActivePopup::Sort(popup) => route_selection_popup(
+                ActivePopup::Sort(popup),
+                key,
+                app,
+                |_| {},
+                |app| app.select_sort(),
+                |app| app.close_sort_popup(),
+            ),
+            ActivePopup::CreateFormat(popup) => route_selection_popup(
+                ActivePopup::CreateFormat(popup),
+                key,
+                app,
+                |_| {},
+                |app| app.confirm_create_format(),
+                |app| app.close_create_format_popup(),
+            ),
 
             ActivePopup::RemoveTags(mut popup) => {
                 // Handle confirm overlay for "remove all tags"

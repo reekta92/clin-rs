@@ -160,14 +160,13 @@ pub struct ListView {
     pub week_start: crate::config::WeekStart,
     pub preview_width_ratio: f32,
     pub calendar_height: u16,
-    pub calendar_position: crate::config::CalendarPosition,
     pub sections: Vec<crate::config::NotesSection>,
     pub pinned_folders: HashSet<String>,
     pub note_drag: Option<usize>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
     pub drag_hover: Option<usize>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub scroll_drag: Option<i32>,
     /// When set, the list viewport is panned independently of `visual_index`
     /// (scrollbar pan mode). Cleared on any keypress / row click / wheel.
     pub list_viewport_offset: Option<usize>,
@@ -219,8 +218,10 @@ impl Default for ListView {
             preview_content_height: None,
             preview_width_ratio: 0.43,
             calendar_height: 9,
-            sections: crate::config::defaults::default_sections(),
-            calendar_position: crate::config::CalendarPosition::default(),
+            sections: vec![
+                crate::config::NotesSection::Calendar,
+                crate::config::NotesSection::Goals,
+            ],
             pinned_folders: HashSet::new(),
             note_drag: None,
             drag_hover: None,

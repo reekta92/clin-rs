@@ -2579,7 +2579,7 @@ mod tests {
         );
     }
 
-    #[allow(dead_code)]
+    #[test]
     fn table_shrinks_to_fit_pane() {
         // 4 columns, each ~20 chars content -> natural width ~90. At cols=22
         // the table must scale down with truncation ellipsis (each col gets ~3-4).

@@ -117,117 +117,47 @@ impl SourceHighlighter {
     }
 
     fn highlight_todotxt_line(&self, line: &str) -> Vec<Style> {
-        let chars: Vec<char> = line.chars().collect();
-        if chars.is_empty() {
-            return Vec::new();
-        }
-
-        let mut styles = vec![self.theme.paragraph; chars.len()];
-        let mut i = 0;
-
-        // Skip leading spaces
-        while i < chars.len() && chars[i].is_whitespace() {
-            i += 1;
-        }
-
-        if i == chars.len() {
+        let char_count = line.chars().count();
+        let mut styles = vec![self.theme.paragraph; char_count];
+        if char_count == 0 {
             return styles;
         }
 
-        let mut is_completed = false;
+        let item = crate::markdown::todotxt::parse_todotxt_line(line);
 
-        // 1. Completed
-        if i + 1 < chars.len() && chars[i] == 'x' && chars[i + 1] == ' ' {
-            is_completed = true;
-            styles[i] = self.theme.todotxt_completed;
-            styles[i + 1] = self.theme.todotxt_completed;
-            i += 2;
+        let start_byte = line.trim_start().as_ptr() as usize - line.as_ptr() as usize;
+        let start_char = line[..start_byte].chars().count();
+
+        if item.completed {
+            styles[start_char..].fill(self.theme.todotxt_completed);
+            return styles;
         }
 
-        let base_style = if is_completed {
-            self.theme.todotxt_completed
-        } else {
-            self.theme.paragraph
+        let char_range = |sub: &str| -> std::ops::Range<usize> {
+            let byte_offset = sub.as_ptr() as usize - line.as_ptr() as usize;
+            let c_start = line[..byte_offset].chars().count();
+            let c_end = c_start + sub.chars().count();
+            c_start..c_end
         };
 
-        // Fill rest with base_style initially
-        styles[i..].fill(base_style);
-
-        // 2. Priority
-        if !is_completed
-            && i + 3 < chars.len()
-            && chars[i] == '('
-            && chars[i + 2] == ')'
-            && chars[i + 3] == ' '
-            && chars[i + 1].is_ascii_uppercase()
-        {
-            styles[i] = self.theme.todotxt_priority;
-            styles[i + 1] = self.theme.todotxt_priority;
-            styles[i + 2] = self.theme.todotxt_priority;
-            styles[i + 3] = self.theme.todotxt_priority;
-            i += 4;
+        if item.priority.is_some() {
+            styles[start_char..start_char + 4].fill(self.theme.todotxt_priority);
         }
 
-        // 3. Dates (up to 2 dates YYYY-MM-DD)
-        for _ in 0..2 {
-            if i + 10 <= chars.len() {
-                let is_date = chars[i..i + 10]
-                    .iter()
-                    .all(|&c| c.is_ascii_digit() || c == '-')
-                    && chars[i + 4] == '-'
-                    && chars[i + 7] == '-';
-                let is_valid_end = i + 10 == chars.len() || chars[i + 10].is_whitespace();
-                if is_date && is_valid_end {
-                    for j in 0..10 {
-                        styles[i + j] = if is_completed {
-                            self.theme.todotxt_completed
-                        } else {
-                            self.theme.paragraph
-                        };
-                    }
-                    i += 10;
-                    if i < chars.len() && chars[i].is_whitespace() {
-                        i += 1;
-                    }
-                } else {
-                    break;
+        for span in &item.spans {
+            match span {
+                crate::markdown::todotxt::TodoTxtSpan::Project(word) => {
+                    styles[char_range(word)].fill(self.theme.todotxt_project);
                 }
-            } else {
-                break;
-            }
-        }
-
-        // 4. Words (Projects, Contexts, Tags)
-        while i < chars.len() {
-            if chars[i].is_whitespace() {
-                i += 1;
-                continue;
-            }
-            let start = i;
-            while i < chars.len() && !chars[i].is_whitespace() {
-                i += 1;
-            }
-            let word_len = i - start;
-            if word_len > 1 {
-                let word_style = if is_completed {
-                    self.theme.todotxt_completed
-                } else if chars[start] == '+' {
-                    self.theme.todotxt_project
-                } else if chars[start] == '@' {
-                    self.theme.todotxt_context
-                } else if let Some(colon_pos) = chars[start..i].iter().position(|&c| c == ':') {
-                    if colon_pos > 0 && colon_pos < word_len - 1 {
-                        self.theme.todotxt_tag
-                    } else {
-                        base_style
-                    }
-                } else {
-                    base_style
-                };
-
-                if word_style != base_style {
-                    styles[start..i].fill(word_style);
+                crate::markdown::todotxt::TodoTxtSpan::Context(word) => {
+                    styles[char_range(word)].fill(self.theme.todotxt_context);
                 }
+                crate::markdown::todotxt::TodoTxtSpan::Tag(k, v) => {
+                    let byte_start = k.as_ptr() as usize - line.as_ptr() as usize;
+                    let byte_end = v.as_ptr() as usize - line.as_ptr() as usize + v.len();
+                    styles[char_range(&line[byte_start..byte_end])].fill(self.theme.todotxt_tag);
+                }
+                crate::markdown::todotxt::TodoTxtSpan::Text(_) => {}
             }
         }
 

@@ -2,9 +2,7 @@ use crate::draw::app::{
     DrawAppState, DrawEventAction, DrawInteraction, DrawMenuItem, DrawMenuKind, DrawMenuTarget,
     draw_menu_items, draw_menu_shortcut_index,
 };
-use crate::draw::state::{
-    DrawClipboard, DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke, Text,
-};
+use crate::draw::state::{DrawElement, DrawItem, DrawShapeType, DrawTool, Shape, Stroke, Text};
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -14,7 +12,7 @@ pub fn handle_event(
     app: &mut DrawAppState,
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     if app.text_editor.is_some()
         && let Event::Mouse(mouse) = ev
@@ -206,7 +204,7 @@ pub fn handle_event(
                     return Ok(Some(DrawEventAction::OpenHelp));
                 }
                 DrawAction::ToggleGrid => {
-                    app.grid.toggle();
+                    app.grid = !app.grid;
                     return Ok(None);
                 }
                 DrawAction::MenuClose
@@ -238,7 +236,7 @@ pub fn handle_event(
 fn handle_selected_menu_shortcut(
     key: crossterm::event::KeyEvent,
     app: &mut DrawAppState,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
 ) -> anyhow::Result<bool> {
     if app.active_tool != DrawTool::Cursor
         || key
@@ -362,7 +360,7 @@ fn handle_mouse(
     ev: MouseEvent,
     app: &mut DrawAppState,
     config: &crate::config::ClinConfig,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     app.mouse_pos = Some((ev.column, ev.row));
     let area = app.last_area;
@@ -638,7 +636,7 @@ fn handle_context_menu_key(
     key: crossterm::event::KeyEvent,
     app: &mut DrawAppState,
     keybinds: &Keybinds,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     let mut menu_action = None;
     let mut close_menu = false;
@@ -683,7 +681,7 @@ fn handle_context_menu_key(
 fn handle_context_menu_mouse(
     ev: MouseEvent,
     app: &mut DrawAppState,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     if ev.kind != MouseEventKind::Down(MouseButton::Left) {
         return Ok(None);
@@ -707,7 +705,7 @@ fn handle_context_menu_mouse(
 
 fn execute_menu_item(
     app: &mut DrawAppState,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
     target: DrawMenuTarget,
     kind: DrawMenuKind,
     index: usize,
@@ -778,7 +776,7 @@ fn execute_menu_item(
     Ok(())
 }
 
-fn copy_selected(app: &mut DrawAppState, clipboard: &mut Option<DrawClipboard>) {
+fn copy_selected(app: &mut DrawAppState, clipboard: &mut Option<DrawItem>) {
     if let Some(id) = app.selection.primary.clone() {
         copy_item(app, clipboard, &id);
     }
@@ -786,27 +784,23 @@ fn copy_selected(app: &mut DrawAppState, clipboard: &mut Option<DrawClipboard>) 
 
 fn copy_item(
     app: &mut DrawAppState,
-    clipboard: &mut Option<DrawClipboard>,
+    clipboard: &mut Option<DrawItem>,
     id: &crate::draw::state::DrawItemId,
 ) {
     if let Some(item) = app.data.item(id) {
-        *clipboard = Some(DrawClipboard::from_item(item));
+        *clipboard = Some(item.clone());
         app.notify("Element copied");
     }
 }
 
-fn begin_paste(
-    app: &mut DrawAppState,
-    clipboard: Option<&DrawClipboard>,
-    anchor: Option<(f64, f64)>,
-) {
+fn begin_paste(app: &mut DrawAppState, clipboard: Option<&DrawItem>, anchor: Option<(f64, f64)>) {
     let Some(clipboard) = clipboard else {
         return;
     };
     let point = anchor
         .or_else(|| app.mouse_pos.map(|(x, y)| screen_to_canvas(x, y, app)))
         .unwrap_or((app.viewport.x, app.viewport.y));
-    let mut item = clipboard.pasted_item();
+    let mut item = crate::draw::state::pasted_item(clipboard);
     place_pasted_item(&mut item, point);
     app.selection.clear();
     app.hovered = None;
@@ -1499,10 +1493,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["Paste"]
         );
-        assert_eq!(
-            clipboard.as_ref().map(|saved| &saved.item.id),
-            Some(&source_id)
-        );
+        assert_eq!(clipboard.as_ref().map(|saved| &saved.id), Some(&source_id));
 
         handle_event(
             key(KeyCode::Char('v')),
@@ -1545,7 +1536,7 @@ mod tests {
         }));
         let keybinds = Keybinds::default();
         let config = crate::config::ClinConfig::default();
-        let mut clipboard = Some(DrawClipboard::from_item(&source));
+        let mut clipboard = Some(source.clone());
 
         handle_event(
             key(KeyCode::Char('v')),
@@ -1715,6 +1706,6 @@ mod tests {
             &mut clipboard,
         )
         .unwrap();
-        assert!(!state.grid.visible);
+        assert!(!state.grid);
     }
 }

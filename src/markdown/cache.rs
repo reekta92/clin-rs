@@ -192,34 +192,3 @@ pub(crate) fn get_highlight(key: &HighlightKey) -> Option<Arc<HighlightedBlock>>
 pub(crate) fn insert_highlight(key: HighlightKey, block: Arc<HighlightedBlock>) {
     HIGHLIGHT_CACHE.lock().insert(key, block);
 }
-
-#[cfg(test)]
-#[allow(dead_code)]
-impl<K: Eq + Hash, V> ByteLru<K, V> {
-    pub fn clear(&mut self) {
-        self.cache.clear();
-        self.current_bytes = 0;
-    }
-
-    pub fn len(&self) -> usize {
-        self.cache.len()
-    }
-
-    pub fn bytes(&self) -> usize {
-        self.current_bytes
-    }
-}
-#[cfg(test)]
-#[allow(dead_code)]
-pub(crate) fn clear_markdown_caches() {
-    DOCUMENT_CACHE.lock().clear();
-    HIGHLIGHT_CACHE.lock().clear();
-}
-
-#[cfg(test)]
-#[allow(dead_code)]
-pub(crate) fn cache_stats() -> (usize, usize, usize, usize) {
-    let doc = DOCUMENT_CACHE.lock();
-    let hl = HIGHLIGHT_CACHE.lock();
-    (doc.len(), doc.bytes(), hl.len(), hl.bytes())
-}

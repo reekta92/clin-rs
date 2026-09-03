@@ -14,7 +14,6 @@ use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape,
 };
 use crate::graf::graph::GraphState;
-use crate::graf::spatial::SpatialGrid;
 use crate::graf::viewport::{Viewport, node_world_radius};
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
@@ -327,7 +326,7 @@ pub struct LabelData {
 
 pub struct FeatureFlags {
     pub show_legend: bool,
-    pub grid: crate::ui::CanvasGridState,
+    pub grid: bool,
     pub show_minimap: bool,
     pub show_status_bar: bool,
     pub show_looking_glass: bool,
@@ -476,8 +475,10 @@ impl RenderCache {
         self.label_texts.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
-            let truncated =
-                crate::graf::util::truncate(&node.data.title, config.graf.visual.label_max_length);
+            let truncated = crate::fsutil::truncate_ellipsis(
+                &node.data.title,
+                config.graf.visual.label_max_length,
+            );
             self.label_texts.insert(idx, truncated);
         }
         self.cached_label_max_length = config.graf.visual.label_max_length;
@@ -540,16 +541,17 @@ impl RenderCache {
         selected_nodes: &HashSet<NodeIndex>,
         selection_ring_color: Color,
         hovered_node: Option<NodeIndex>,
-        spatial_grid: &SpatialGrid,
         x_bounds: [f64; 2],
         y_bounds: [f64; 2],
     ) -> LodTier {
         self.nodes.clear();
         self.visible_nodes.clear();
 
-        spatial_grid.for_each_in_rect(x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1], |idx| {
+        for idx in
+            super::graph::nodes_in_rect(graph, x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1])
+        {
             self.visible_nodes.insert(idx);
-        });
+        }
 
         // Always include selected node(s) even if off-screen
         if let Some(sel) = selected_node {
@@ -650,7 +652,7 @@ impl RenderCache {
             self.label_texts.clear();
             for idx in graph.node_indices() {
                 let node = &graph[idx];
-                let truncated = crate::graf::util::truncate(
+                let truncated = crate::fsutil::truncate_ellipsis(
                     &node.data.title,
                     config.graf.visual.label_max_length,
                 );
@@ -771,7 +773,6 @@ pub fn draw_graph_view(
         &selected_set,
         colors.selected_indicator_color,
         hovered_node,
-        &state.spatial_grid,
         x_bounds,
         y_bounds,
     );
@@ -933,7 +934,7 @@ pub fn draw_graph_view(
         let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
         ctx.area = Some(status_area);
         ctx.graph = Some(state);
-        ctx.graph_grid_visible = flags.grid.visible;
+        ctx.graph_grid_visible = flags.grid;
         ctx.hints = Some(hint_line.spans);
         if let Some(p) = pending {
             ctx.pending = Some(vec![Span::styled(
@@ -1342,8 +1343,10 @@ pub fn draw_looking_glass(
         return;
     };
 
-    let title =
-        crate::graf::util::truncate(&node.data.title, overlay.width.saturating_sub(4) as usize);
+    let title = crate::fsutil::truncate_ellipsis(
+        &node.data.title,
+        overlay.width.saturating_sub(4) as usize,
+    );
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(colors.minimap_border_color))
@@ -1446,7 +1449,7 @@ pub fn draw_looking_glass(
             .take(tag_count)
             .map(|(tag, color)| {
                 let label =
-                    crate::graf::util::truncate(tag, inner.width.saturating_sub(2) as usize);
+                    crate::fsutil::truncate_ellipsis(tag, inner.width.saturating_sub(2) as usize);
                 ratatui::text::Line::from(Span::styled(
                     format!("#{label}"),
                     Style::default().fg(*color),
@@ -1465,14 +1468,7 @@ mod tests {
     use super::*;
     use crate::config::ClinConfig;
     use crate::graf::graph::GraphNodeData;
-    use crate::graf::spatial::SpatialGrid;
     use fdg_sim::{ForceGraph, ForceGraphHelper};
-
-    fn setup_spatial_grid(graph: &ForceGraph<GraphNodeData, ()>) -> SpatialGrid {
-        let mut grid = SpatialGrid::new(100.0);
-        grid.rebuild(graph);
-        grid
-    }
 
     // Generous bounds covering all nodes in test graphs
     const TEST_X_BOUNDS: [f64; 2] = [-1000.0, 1000.0];
@@ -1513,7 +1509,6 @@ mod tests {
 
         let mut cache = RenderCache::new();
         let mut config = ClinConfig::default();
-        let grid = setup_spatial_grid(&graph);
         let selected_nodes = std::collections::HashSet::new();
 
         // 1. LabelMode::None
@@ -1525,7 +1520,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1541,7 +1535,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1557,7 +1550,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1577,7 +1569,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
@@ -1600,7 +1591,6 @@ mod tests {
             &selected_nodes,
             ratatui::style::Color::Red,
             None,
-            &grid,
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );

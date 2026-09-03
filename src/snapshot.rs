@@ -10,10 +10,6 @@ use crate::draw::state::DrawData;
 use crate::pinstar::data::{CanvasData, CanvasNode};
 use unicode_width::UnicodeWidthChar;
 
-const PREVIEW_COLS: u16 = 78;
-
-const PREVIEW_ROWS: u16 = 38;
-
 pub fn render_canvas_snapshot(
     data: &CanvasData,
     theme: &AppThemeColors,
@@ -319,23 +315,6 @@ pub fn render_canvas_snapshot(
     extract_grid(terminal, width, height)
 }
 
-pub fn render_draw_snapshot(
-    data: &DrawData,
-    theme: &AppThemeColors,
-    icon_mode: crate::config::IconMode,
-) -> Vec<Vec<(char, Style)>> {
-    render_draw_snapshot_with_size(
-        data,
-        theme,
-        icon_mode,
-        PREVIEW_COLS,
-        PREVIEW_ROWS,
-        1.0,
-        0.0,
-        0.0,
-    )
-}
-
 pub fn render_draw_snapshot_with_size(
     data: &DrawData,
     theme: &AppThemeColors,
@@ -575,16 +554,7 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
 
 fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     match color {
-        Some(s) if s.starts_with('#') => {
-            if s.len() == 7 {
-                let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-                let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-                let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-                Color::Rgb(r, g, b)
-            } else {
-                theme.accent
-            }
-        }
+        Some(s) if s.starts_with('#') => crate::config::parse_hex_color(s).unwrap_or(theme.accent),
         Some("1") | Some("red") => Color::Rgb(255, 82, 82),
         Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
         Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),
