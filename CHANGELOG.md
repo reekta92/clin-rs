@@ -2,11 +2,46 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.12.0] - 2026-09-03
+
+### CI
+
+- Applied fixes for clippy warnings
+- Fixed clippy warnings
+- Fmt fixes
+- Fixed a false positive
+
+### Changed
+
+- Deduplicate input dispatch and update missing docs
+- Trim over-engineering (drop dead deps and newtype wrappers)
+- Cut dead code and duplicated machinery
+- Remove dead code and consolidate shared helpers
+- Collapse over-engineered code paths (~2400 lines)
+- Cut dead code and collapse duplicated logic
+- Cleaned up general deadcode left from previous releas
+
+### Miscellaneous
+
+- Prune dead code and slim dependencies
+- Wrap binary with runtime dependencies
+- Include desktop files the package
+- Put devshell and package in separate files
+
+### Styling
+
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt
 ## [0.11.3] - 2026-08-22
 
 ### Fixed
 
 - Don't push Kitty keyboard enhancement flags on Windows
+
+### Release
+
+- V0.11.3
 ## [0.11.2] - 2026-08-20
 
 ### CI
