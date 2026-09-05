@@ -122,9 +122,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         }
                         graf::ModeBanner::LocalGraph => " LOCAL GRAPH ONLY ",
                         graf::ModeBanner::GroupedGraph => " GROUPED GRAPH ONLY ",
-                        graf::ModeBanner::BoxSelect => {
-                            " BOX SELECT \u{2014} drag, release "
-                        }
+                        graf::ModeBanner::BoxSelect => " BOX SELECT \u{2014} drag, release ",
                     };
                     let header_rect = outer[0];
                     frame.render_widget(Clear, header_rect);

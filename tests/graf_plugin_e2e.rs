@@ -37,7 +37,9 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
     let mut keybinds = Keybinds::default();
     keybinds.graph.insert(
         GraphAction::ZoomIn,
-        vec![clin::keybinds::KeyCombo::simple(crossterm::event::KeyCode::Char('u'))],
+        vec![clin::keybinds::KeyCombo::simple(
+            crossterm::event::KeyCode::Char('u'),
+        )],
     );
     keybinds.graph.remove(&GraphAction::ZoomOut);
     let notes = vec![
@@ -109,14 +111,18 @@ fn zoom_key_dispatches_to_lib_apply_action() {
     let area = ratatui::layout::Rect::new(0, 0, 160, 40);
     let z0 = zoom(&plugin);
 
-    let res = plugin.overlay_handle_event(key('u'), &mut app, area).unwrap();
+    let res = plugin
+        .overlay_handle_event(key('u'), &mut app, area)
+        .unwrap();
     let z1 = zoom(&plugin);
 
     println!("result={res:?} zoom {z0} -> {z1}");
     assert!(z1 > z0, "u must zoom in: {z0} -> {z1}");
 
     // Unbound '-' must not zoom.
-    let _ = plugin.overlay_handle_event(key('-'), &mut app, area).unwrap();
+    let _ = plugin
+        .overlay_handle_event(key('-'), &mut app, area)
+        .unwrap();
     let z2 = zoom(&plugin);
     assert_eq!(z1, z2, "unbound '-' must not zoom");
 }
@@ -129,14 +135,23 @@ fn connection_mode_writes_wikilink_to_disk() {
     let area = ratatui::layout::Rect::new(0, 0, 160, 40);
 
     // Select nearest node via pan, then arm connection mode via default 'c'.
-    let _ = plugin.overlay_handle_event(key('k'), &mut app, area).unwrap();
-    let _ = plugin.overlay_handle_event(key('c'), &mut app, area).unwrap();
+    let _ = plugin
+        .overlay_handle_event(key('k'), &mut app, area)
+        .unwrap();
+    let _ = plugin
+        .overlay_handle_event(key('c'), &mut app, area)
+        .unwrap();
     {
         let gs = plugin.graph_state.as_ref().unwrap();
-        assert!(gs.read().connection_source.is_some(), "connection mode armed");
+        assert!(
+            gs.read().connection_source.is_some(),
+            "connection mode armed"
+        );
     }
     // Fit both nodes on screen before scanning for the target cell.
-    let _ = plugin.overlay_handle_event(key('a'), &mut app, area).unwrap();
+    let _ = plugin
+        .overlay_handle_event(key('a'), &mut app, area)
+        .unwrap();
 
     // Find a screen cell whose hit_test resolves to the OTHER node (scan the
     // canvas instead of trusting the projection).
@@ -145,10 +160,7 @@ fn connection_mode_writes_wikilink_to_disk() {
         let guard = gs.read();
         let graph = guard.simulation.get_graph();
         let selected = guard.selection.primary.unwrap();
-        let other = graph
-            .node_indices()
-            .find(|i| *i != selected)
-            .unwrap();
+        let other = graph.node_indices().find(|i| *i != selected).unwrap();
         let outer = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([
@@ -163,7 +175,9 @@ fn connection_mode_writes_wikilink_to_disk() {
         'scan: for row in canvas.y..canvas.bottom() {
             for col in canvas.x..canvas.right() {
                 let (wx, wy) = guard.viewport.screen_to_world(col, row, canvas);
-                if guard.viewport.hit_test(wx, wy, &guard, &settings, canvas, max_lc)
+                if guard
+                    .viewport
+                    .hit_test(wx, wy, &guard, &settings, canvas, max_lc)
                     == Some(other)
                 {
                     found = Some((col, row));
@@ -200,10 +214,7 @@ fn list_folder_preview_builds_and_settles() {
     let mut app = test_app();
     app.config.list.folder_graph_preview = true;
     app.ensure_graph_preview();
-    let gs = app
-        .graph_preview
-        .as_mut()
-        .expect("preview graph built");
+    let gs = app.graph_preview.as_mut().expect("preview graph built");
     assert!(!gs.is_settled, "fresh simulation starts unsettled");
     let (min_x, max_x, _, _) = gs.graph_bounds;
     assert!(
@@ -217,5 +228,8 @@ fn list_folder_preview_builds_and_settles() {
             graf::simulation_step(gs, 0.12);
         }
     }
-    assert!(gs.is_settled, "simulation must settle within the UI step cap");
+    assert!(
+        gs.is_settled,
+        "simulation must settle within the UI step cap"
+    );
 }
