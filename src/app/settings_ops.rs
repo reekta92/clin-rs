@@ -578,8 +578,7 @@ impl App {
                 gs.viewport = gs
                     .viewport
                     .auto_fit_from_graph(gs.simulation.get_graph(), 1.4);
-                gs.graph_bounds =
-                    graf::compute_graph_bounds(gs.simulation.get_graph());
+                gs.graph_bounds = graf::compute_graph_bounds(gs.simulation.get_graph());
                 self.graph_preview = Some(gs);
                 self.graph_preview_sig = sig;
                 self.graph_preview_steps = 0;
