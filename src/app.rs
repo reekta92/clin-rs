@@ -391,7 +391,7 @@ pub struct App {
     pub setup_state: Option<crate::setup::SetupState>,
     pub(crate) setup_rebootstrap: Option<crate::setup::SetupRebootstrapRequest>,
     pub config_errors: Vec<String>,
-    pub canvas_state: Option<crate::pinstar::state::PinstarState>,
+    pub canvas_state: Option<crate::pinstar_adapter::PinstarPlugin>,
     pub config: crate::config::ClinConfig,
     pub catalog_cmd_tx: std::sync::mpsc::SyncSender<crate::app::catalog::CatalogCommand>,
     pub catalog_event_rx: std::sync::mpsc::Receiver<crate::app::catalog::CatalogEvent>,

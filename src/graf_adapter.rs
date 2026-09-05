@@ -546,29 +546,27 @@ impl GrafPlugin {
         if is_canvas {
             let path = self.storage.note_path(&key.note_id);
             match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
-                        Ok(data) => {
-                            let grid = crate::snapshot::render_canvas_snapshot(
-                                &data,
-                                &self.app_theme,
-                                config.ui.icon_mode,
-                                key.width,
-                                key.height,
-                                key.scale,
-                                key.offset_x,
-                                key.offset_y,
-                            );
-                            self.preview_content = Some(PreviewContent::CanvasGrid {
-                                data: Box::new(data),
-                                grid,
-                            });
-                        }
-                        Err(_) => {
-                            self.preview_content = None;
-                        }
+                Ok(content) => match serde_json::from_str::<pinstar::data::CanvasData>(&content) {
+                    Ok(data) => {
+                        let grid = crate::snapshot::render_canvas_snapshot(
+                            &data,
+                            &self.app_theme,
+                            config.ui.icon_mode,
+                            key.width,
+                            key.height,
+                            key.scale,
+                            key.offset_x,
+                            key.offset_y,
+                        );
+                        self.preview_content = Some(PreviewContent::CanvasGrid {
+                            data: Box::new(data),
+                            grid,
+                        });
                     }
-                }
+                    Err(_) => {
+                        self.preview_content = None;
+                    }
+                },
                 Err(_) => {
                     self.preview_content = None;
                 }

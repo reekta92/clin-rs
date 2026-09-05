@@ -1,0 +1,2 @@
+[patch."https://github.com/reekta92/pinstar"]
+pinstar = { path = "../pinstar" }

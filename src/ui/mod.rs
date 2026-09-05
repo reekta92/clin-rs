@@ -12,7 +12,6 @@ use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
-pub(crate) mod camera;
 pub(crate) mod canvas_grid;
 pub(crate) mod canvas_menu;
 pub(crate) mod canvas_overlay;
@@ -253,7 +252,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.canvas = Some(&canvas);
+                ctx.canvas = Some(&canvas.state);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,

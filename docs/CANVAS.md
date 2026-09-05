@@ -8,7 +8,7 @@ Technical docs for the pinstar canvas module — an Obsidian-compatible node/edg
 
 The canvas view provides an infinite 2D space for visual note mapping. Users can place text nodes, link to files/URLs, group nodes, and connect them with edges. Canvas files use the `.canvas` extension and follow Obsidian's canvas JSON schema for compatibility.
 
-**Source:** `src/pinstar/` — modules: `app`, `data`, `input`, `render`, `state`
+**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (git tag `v0.6.0`, `images` feature) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, the statusline footer, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate; local dev can `[patch]` it to a sibling checkout via an uncommitted `.cargo/config.toml`.
 
 ---
 
@@ -181,21 +181,21 @@ Canvas is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md
 
 ```
 User enters Canvas view
-  ├─ State created: PinstarState::load(path)
-  ├─ Owned by App as Option<PinstarState>
+  ├─ Plugin created: PinstarPlugin::new(path, config, keybinds, matcher, picker)
+  ├─ Owned by App as Option<PinstarPlugin>
   ├─ overlay_render() called from draw_ui() each frame
   ├─ Events dispatched to overlay_handle_event()
   │     └─ returns OverlayResult::{Continue, Exit}
   └─ On Exit:
-       ├─ PinstarState::save() writes changes to disk
-       └─ state = None; mode = return_mode
+       ├─ state = None; mode = return_mode (no save here — saves are eager,
+       │  PinstarState::save() runs at every mutation and on Ctrl+s)
 ```
 
 ---
 
 ## Rendering
 
-Rendering happens in `src/pinstar/render.rs`. The canvas uses:
+Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's adapter paints the statusline footer over the bottom row. The canvas uses:
 
 - **Braille markers** (`ratatui::symbols::braille`) for node shapes and edge lines
 - **half-block** characters for dense rendering

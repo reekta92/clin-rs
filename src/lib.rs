@@ -54,7 +54,7 @@ pub mod palette;
 pub mod paths;
 #[cfg(test)]
 pub mod perf_tests;
-pub mod pinstar;
+pub mod pinstar_adapter;
 pub mod popups;
 pub mod preview;
 pub mod session;

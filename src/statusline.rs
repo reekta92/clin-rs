@@ -144,7 +144,7 @@ pub struct StatuslineContext<'a> {
     pub draw: Option<&'a crate::draw::app::DrawAppState>,
     pub backup: Option<&'a crate::backup::state::BackupState>,
     pub outline: Option<&'a crate::outline::state::OutlineState>,
-    pub canvas: Option<&'a crate::pinstar::state::PinstarState>,
+    pub canvas: Option<&'a pinstar::PinstarState>,
     pub setup: Option<&'a crate::setup::SetupState>,
 
     // selected/edited note summary:
@@ -1072,7 +1072,7 @@ impl StatuslineContext<'_> {
                     "canvas_pan_x" => canvas.viewport_x.to_string(),
                     "canvas_pan_y" => canvas.viewport_y.to_string(),
                     "canvas_selected" => canvas.selection.primary.clone().unwrap_or_default(),
-                    "canvas_grid" => (if canvas.grid { "on" } else { "off" }).to_string(),
+                    "canvas_grid" => (if canvas.show_grid { "on" } else { "off" }).to_string(),
                     "canvas_editor" => {
                         (if canvas.show_editor_pane { "on" } else { "off" }).to_string()
                     }

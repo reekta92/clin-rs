@@ -44,7 +44,7 @@ impl ViewKind {
 #[allow(clippy::large_enum_variant)] // Graph plugin dominates; moved per event, not stored in bulk
 pub enum OverlayState {
     Graph(crate::graf_adapter::GrafPlugin),
-    Canvas(crate::pinstar::state::PinstarState),
+    Canvas(crate::pinstar_adapter::PinstarPlugin),
     Draw(crate::draw::app::DrawAppState),
     Backup(crate::backup::state::BackupState),
     Outline(crate::outline::state::OutlineState),
