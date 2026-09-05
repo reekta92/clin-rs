@@ -584,7 +584,7 @@ fn is_image_ext(file: &str) -> bool {
 mod tests {
     use super::*;
     use crate::draw::state::{DrawElement, DrawItem, Shape};
-    use pinstar::data::{GroupNode, TextNode};
+    use pinstar::data::{GroupNode, NodeShape, TextNode};
     use ratatui::backend::TestBackend;
 
     /// Regression guard: a grid cell containing a control char must not
@@ -647,7 +647,7 @@ mod tests {
                     height: 700.0,
                     text: "A".to_string(),
                     title: None,
-                    shape: Default::default(),
+                    shape: NodeShape::default(),
                     color: None,
                 }),
                 CanvasNode::Text(TextNode {
@@ -658,7 +658,7 @@ mod tests {
                     height: 700.0,
                     text: "B".to_string(),
                     title: None,
-                    shape: Default::default(),
+                    shape: NodeShape::default(),
                     color: None,
                 }),
             ],
@@ -738,7 +738,7 @@ mod tests {
                     height: 700.0,
                     text: "Left".to_string(),
                     title: None,
-                    shape: Default::default(),
+                    shape: NodeShape::default(),
                     color: None,
                 }),
                 CanvasNode::Text(TextNode {
@@ -749,7 +749,7 @@ mod tests {
                     height: 700.0,
                     text: "Right".to_string(),
                     title: None,
-                    shape: Default::default(),
+                    shape: NodeShape::default(),
                     color: None,
                 }),
             ],
@@ -781,7 +781,7 @@ mod tests {
             orientation: pinstar::data::DiagramOrientation::default(),
             nodes: vec![
                 CanvasNode::Text(TextNode {
-                    shape: Default::default(),
+                    shape: NodeShape::default(),
                     id: "f1".to_string(),
                     x: 100.0,
                     y: 100.0,

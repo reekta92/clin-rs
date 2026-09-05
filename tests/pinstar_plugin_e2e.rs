@@ -17,10 +17,10 @@ fn temp_canvas(content: &str) -> (std::path::PathBuf, clin::storage::Storage) {
     let _ = std::fs::remove_dir_all(&dir);
     let notes_dir = dir.join("notes");
     let config_dir = dir.join(".clin");
-    std::fs::create_dir_all(&notes_dir).unwrap();
-    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::create_dir_all(&notes_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&config_dir).expect("e2e fixture");
     let canvas_path = notes_dir.join("board.canvas");
-    std::fs::write(&canvas_path, content).unwrap();
+    std::fs::write(&canvas_path, content).expect("e2e fixture");
     let storage = clin::storage::Storage {
         data_dir: dir.join("data"),
         config_dir,
@@ -29,8 +29,8 @@ fn temp_canvas(content: &str) -> (std::path::PathBuf, clin::storage::Storage) {
         key: [0u8; 32],
         skip_dir_patterns: Vec::new(),
     };
-    std::fs::create_dir_all(&storage.data_dir).unwrap();
-    std::fs::create_dir_all(&storage.templates_dir).unwrap();
+    std::fs::create_dir_all(&storage.data_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&storage.templates_dir).expect("e2e fixture");
     (canvas_path, storage)
 }
 
@@ -73,7 +73,7 @@ fn make_plugin(canvas_content: &str) -> (PinstarPlugin, std::path::PathBuf) {
         None,
         &storage.data_dir,
     )
-    .unwrap();
+    .expect("e2e fixture");
     (plugin, path)
 }
 
@@ -95,8 +95,8 @@ fn test_app() -> clin::app::App {
     let dir = temp_root();
     let notes_dir = dir.join("notes");
     let config_dir = dir.join(".clin");
-    std::fs::create_dir_all(&notes_dir).unwrap();
-    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::create_dir_all(&notes_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&config_dir).expect("e2e fixture");
     let storage = clin::storage::Storage {
         data_dir: dir.join("data"),
         config_dir,
@@ -105,7 +105,7 @@ fn test_app() -> clin::app::App {
         key: [0u8; 32],
         skip_dir_patterns: Vec::new(),
     };
-    clin::app::App::new(storage).unwrap()
+    clin::app::App::new(storage).expect("e2e fixture")
 }
 
 const AREA: ratatui::layout::Rect = ratatui::layout::Rect {
@@ -123,14 +123,14 @@ fn zoom_key_dispatches_to_lib_apply_action() {
 
     let _ = plugin
         .overlay_handle_event(key('u'), &mut app, AREA)
-        .unwrap();
+        .expect("e2e fixture");
     let z1 = plugin.state.zoom;
     assert!(z1 > z0, "u must zoom in: {z0} -> {z1}");
 
     // Unbound '-' must not zoom.
     let _ = plugin
         .overlay_handle_event(key('-'), &mut app, AREA)
-        .unwrap();
+        .expect("e2e fixture");
     assert_eq!(plugin.state.zoom, z1, "unbound '-' must not zoom");
 }
 
@@ -148,7 +148,9 @@ fn quit_cancels_connection_then_exits() {
     assert!(plugin.state.connection_source_id.is_some());
 
     // First Quit: connection-mode fallback cancels the pending connection.
-    let res = plugin.overlay_handle_event(esc(), &mut app, AREA).unwrap();
+    let res = plugin
+        .overlay_handle_event(esc(), &mut app, AREA)
+        .expect("e2e fixture");
     assert!(matches!(res, clin::overlay::OverlayResult::Continue));
     assert!(
         plugin.state.connection_source_id.is_none(),
@@ -156,7 +158,9 @@ fn quit_cancels_connection_then_exits() {
     );
 
     // Second Quit: actually exits (and never saves-on-exit; eager saves only).
-    let res = plugin.overlay_handle_event(esc(), &mut app, AREA).unwrap();
+    let res = plugin
+        .overlay_handle_event(esc(), &mut app, AREA)
+        .expect("e2e fixture");
     assert!(matches!(res, clin::overlay::OverlayResult::Exit));
 }
 
@@ -167,14 +171,13 @@ fn add_text_node_saves_eagerly() {
 
     let res = plugin
         .overlay_handle_event(key('t'), &mut app, AREA)
-        .unwrap();
+        .expect("e2e fixture");
     assert!(matches!(res, clin::overlay::OverlayResult::Continue));
 
-    let on_disk = std::fs::read_to_string(&path).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&on_disk).unwrap();
+    let on_disk = std::fs::read_to_string(&path).expect("e2e fixture");
+    let parsed: serde_json::Value = serde_json::from_str(&on_disk).expect("e2e fixture");
     let nodes = parsed["nodes"].as_array().expect("nodes array");
     assert_eq!(nodes.len(), 1, "AddTextNode must save eagerly: {on_disk}");
-    assert!(on_disk.contains("pinstar_layout") || true); // format-specific keys may vary
 }
 
 #[test]
@@ -200,7 +203,7 @@ fn ocr_insert_file_node_renders() {
     plugin.state.fit_to_view(AREA);
 
     let backend = ratatui::backend::TestBackend::new(80, 24);
-    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+    let mut terminal = ratatui::Terminal::new(backend).expect("e2e fixture");
     terminal
         .draw(|frame| {
             plugin.overlay_render(frame, frame.area(), &mut app);

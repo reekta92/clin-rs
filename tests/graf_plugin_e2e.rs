@@ -16,10 +16,10 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
     let _ = std::fs::remove_dir_all(&dir);
     let notes_dir = dir.join("notes");
     let config_dir = dir.join(".clin");
-    std::fs::create_dir_all(&notes_dir).unwrap();
-    std::fs::create_dir_all(&config_dir).unwrap();
-    std::fs::write(notes_dir.join("a.md"), "link [[b]]").unwrap();
-    std::fs::write(notes_dir.join("b.md"), "back [[a]]").unwrap();
+    std::fs::create_dir_all(&notes_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&config_dir).expect("e2e fixture");
+    std::fs::write(notes_dir.join("a.md"), "link [[b]]").expect("e2e fixture");
+    std::fs::write(notes_dir.join("b.md"), "back [[a]]").expect("e2e fixture");
 
     let storage = clin::storage::Storage {
         data_dir: dir.join("data"),
@@ -29,8 +29,8 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
         key: [0u8; 32],
         skip_dir_patterns: Vec::new(),
     };
-    std::fs::create_dir_all(&storage.data_dir).unwrap();
-    std::fs::create_dir_all(&storage.templates_dir).unwrap();
+    std::fs::create_dir_all(&storage.data_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&storage.templates_dir).expect("e2e fixture");
 
     let mut config = clin::config::ClinConfig::default();
     config.graf.filter.show_orphan = true;
@@ -72,7 +72,7 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
         keybinds,
         clin::keybinds::KeyMatcher::new(),
     )
-    .unwrap();
+    .expect("e2e fixture");
     (plugin, dir)
 }
 
@@ -87,8 +87,8 @@ fn test_app() -> clin::app::App {
     let dir = temp_root();
     let notes_dir = dir.join("notes");
     let config_dir = dir.join(".clin");
-    std::fs::create_dir_all(&notes_dir).unwrap();
-    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::create_dir_all(&notes_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&config_dir).expect("e2e fixture");
     let storage = clin::storage::Storage {
         data_dir: dir.join("data"),
         config_dir,
@@ -97,11 +97,17 @@ fn test_app() -> clin::app::App {
         key: [0u8; 32],
         skip_dir_patterns: Vec::new(),
     };
-    clin::app::App::new(storage).unwrap()
+    clin::app::App::new(storage).expect("e2e fixture")
 }
 
 fn zoom(plugin: &GrafPlugin) -> f64 {
-    plugin.graph_state.as_ref().unwrap().read().viewport.zoom
+    plugin
+        .graph_state
+        .as_ref()
+        .expect("e2e fixture")
+        .read()
+        .viewport
+        .zoom
 }
 
 #[test]
@@ -113,7 +119,7 @@ fn zoom_key_dispatches_to_lib_apply_action() {
 
     let res = plugin
         .overlay_handle_event(key('u'), &mut app, area)
-        .unwrap();
+        .expect("e2e fixture");
     let z1 = zoom(&plugin);
 
     println!("result={res:?} zoom {z0} -> {z1}");
@@ -122,7 +128,7 @@ fn zoom_key_dispatches_to_lib_apply_action() {
     // Unbound '-' must not zoom.
     let _ = plugin
         .overlay_handle_event(key('-'), &mut app, area)
-        .unwrap();
+        .expect("e2e fixture");
     let z2 = zoom(&plugin);
     assert_eq!(z1, z2, "unbound '-' must not zoom");
 }
@@ -137,12 +143,12 @@ fn connection_mode_writes_wikilink_to_disk() {
     // Select nearest node via pan, then arm connection mode via default 'c'.
     let _ = plugin
         .overlay_handle_event(key('k'), &mut app, area)
-        .unwrap();
+        .expect("e2e fixture");
     let _ = plugin
         .overlay_handle_event(key('c'), &mut app, area)
-        .unwrap();
+        .expect("e2e fixture");
     {
-        let gs = plugin.graph_state.as_ref().unwrap();
+        let gs = plugin.graph_state.as_ref().expect("e2e fixture");
         assert!(
             gs.read().connection_source.is_some(),
             "connection mode armed"
@@ -151,16 +157,19 @@ fn connection_mode_writes_wikilink_to_disk() {
     // Fit both nodes on screen before scanning for the target cell.
     let _ = plugin
         .overlay_handle_event(key('a'), &mut app, area)
-        .unwrap();
+        .expect("e2e fixture");
 
     // Find a screen cell whose hit_test resolves to the OTHER node (scan the
     // canvas instead of trusting the projection).
     let (target_col, target_row) = {
-        let gs = plugin.graph_state.as_ref().unwrap();
+        let gs = plugin.graph_state.as_ref().expect("e2e fixture");
         let guard = gs.read();
         let graph = guard.simulation.get_graph();
-        let selected = guard.selection.primary.unwrap();
-        let other = graph.node_indices().find(|i| *i != selected).unwrap();
+        let selected = guard.selection.primary.expect("e2e fixture");
+        let other = graph
+            .node_indices()
+            .find(|i| *i != selected)
+            .expect("e2e fixture");
         let outer = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([
@@ -195,7 +204,9 @@ fn connection_mode_writes_wikilink_to_disk() {
         row: target_row,
         modifiers: crossterm::event::KeyModifiers::NONE,
     });
-    let res = plugin.overlay_handle_event(click, &mut app, area).unwrap();
+    let res = plugin
+        .overlay_handle_event(click, &mut app, area)
+        .expect("e2e fixture");
 
     assert!(
         matches!(res, clin::overlay::OverlayResult::NoteModified(_)),
