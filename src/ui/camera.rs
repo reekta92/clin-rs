@@ -89,6 +89,7 @@ pub fn nearest_in_dir(
     best.map(|(i, _)| i)
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;

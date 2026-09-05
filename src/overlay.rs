@@ -12,6 +12,7 @@
 //! unused and draw their title bar at the App level. The trait signature is
 //! uniform across all overlays either way.
 
+
 use crate::app::ViewMode;
 
 /// Compile-time registry of sub-view overlays. Adding a view = one enum

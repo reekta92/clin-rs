@@ -13,8 +13,8 @@ use parking_lot::RwLock;
 use crossterm::event::KeyCode;
 
 use graf::{
-    FeatureFlags, GraphAction as LibAction, GraphState, MenuItem as LibMenuItem, ModeBanner,
-    NodeSpec, Settings as GrafSettings, ThemeColors as GrafThemeColors,
+    FeatureFlags, GraphAction as LibAction, GraphState, MenuItem as LibMenuItem,
+    ModeBanner, NodeSpec, Settings as GrafSettings, ThemeColors as GrafThemeColors,
 };
 use graf::{apply_action, draw_graph_view, handle_graph_mouse};
 
@@ -1069,6 +1069,7 @@ fn resolve_graph_key(
                 return None;
             }
         }
+
     }
 
     if crate::events::is_universal_quit_key(&key) {
@@ -1130,14 +1131,18 @@ fn resolve_graph_key(
                     guard.open_context_menu(sx, sy, (0.0, 0.0));
                     None
                 }
-                GraphAction::CreateConnection => {
-                    Some(ResolvedKey::MenuAction(LibMenuItem::CreateConnection))
+                GraphAction::CreateConnection => Some(ResolvedKey::MenuAction(
+                    LibMenuItem::CreateConnection,
+                )),
+                GraphAction::DeleteConnection => Some(ResolvedKey::MenuAction(
+                    LibMenuItem::DeleteConnection,
+                )),
+                GraphAction::ShowGroup => {
+                    Some(ResolvedKey::MenuAction(LibMenuItem::ShowGroup))
                 }
-                GraphAction::DeleteConnection => {
-                    Some(ResolvedKey::MenuAction(LibMenuItem::DeleteConnection))
+                GraphAction::DeleteNode => {
+                    Some(ResolvedKey::MenuAction(LibMenuItem::DeleteNode))
                 }
-                GraphAction::ShowGroup => Some(ResolvedKey::MenuAction(LibMenuItem::ShowGroup)),
-                GraphAction::DeleteNode => Some(ResolvedKey::MenuAction(LibMenuItem::DeleteNode)),
                 GraphAction::MenuClose => Some(ResolvedKey::Quit),
             }
         }
@@ -1415,8 +1420,11 @@ fn run_search(app_state: &mut GrafPlugin, config: &ClinConfig) {
     let query = popup.query();
     if let Some(graph_state) = &app_state.graph_state {
         let guard = graph_state.read();
-        popup.results =
-            graf::search_nodes(&guard.simulation, &query, config.graf.search.max_results);
+        popup.results = graf::search_nodes(
+            &guard.simulation,
+            &query,
+            config.graf.search.max_results,
+        );
     }
     popup.selected = 0;
     popup.scroll_offset = 0;
@@ -1425,13 +1433,18 @@ fn run_search(app_state: &mut GrafPlugin, config: &ClinConfig) {
 // ── Rendering ───────────────────────────────────────────────────────────────
 
 use crate::app::ViewMode;
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Color;
 use ratatui::text::Span;
+use ratatui::Frame;
 
 impl crate::overlay::OverlayView for GrafPlugin {
-    fn overlay_render(&mut self, frame: &mut Frame, area: Rect, app: &mut crate::app::App) {
+    fn overlay_render(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        app: &mut crate::app::App,
+    ) {
         let config = app.config.clone();
         draw_ui(frame, self, &config, &app.app_theme, area);
     }
@@ -1614,7 +1627,10 @@ fn draw_status_bar(
             ),
             "zoom",
         ),
-        (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
+        (
+            keybinds.display_graph(GraphAction::ToggleLegend),
+            "labels",
+        ),
         (keybinds.display_graph(GraphAction::AutoFit), "fit"),
         (keybinds.graph_keys_display(GraphAction::Quit), "quit"),
         (
