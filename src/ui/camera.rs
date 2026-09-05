@@ -89,19 +89,6 @@ pub fn nearest_in_dir(
     best.map(|(i, _)| i)
 }
 
-/// Closest-by-Euclidean to a target point (graf no-selection fallback,
-/// salvaged from Viewport::nearest_to_center src/graf/viewport.rs:188-202).
-pub fn nearest_to_point(cands: &[(f64, f64)], target: (f64, f64)) -> Option<usize> {
-    let mut best: Option<(usize, f64)> = None;
-    for (i, &(cx, cy)) in cands.iter().enumerate() {
-        let d = ((cx - target.0).powi(2) + (cy - target.1).powi(2)).sqrt();
-        match best {
-            Some((_, bd)) if d >= bd => {}
-            _ => best = Some((i, d)),
-        }
-    }
-    best.map(|(i, _)| i)
-}
 
 #[cfg(test)]
 mod tests {
@@ -166,12 +153,5 @@ mod tests {
             nearest_in_dir(&[(1.0, 0.0), (1.0, 0.0)], (0.0, 0.0), (1.0, 0.0), FRAC_PI_3),
             Some(0)
         );
-    }
-
-    #[test]
-    fn nearest_to_point_closest_wins() {
-        let cands = [(10.0, 10.0), (1.0, 1.0), (5.0, 5.0)];
-        assert_eq!(nearest_to_point(&cands, (0.0, 0.0)), Some(1));
-        assert_eq!(nearest_to_point(&[], (0.0, 0.0)), None);
     }
 }

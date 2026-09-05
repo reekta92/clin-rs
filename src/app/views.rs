@@ -53,8 +53,8 @@ impl App {
     }
 
     pub fn open_graph_view(&mut self) {
-        if self.graph_state.is_none() {
-            match crate::graf::app::GrafAppState::new(
+        if self.graph_plugin.is_none() {
+            match crate::graf_adapter::GrafPlugin::new(
                 &self.config,
                 self.storage.clone(),
                 self.notes.clone(),
@@ -63,7 +63,7 @@ impl App {
                 self.seq_matcher.clone(),
             ) {
                 Ok(state) => {
-                    self.graph_state = Some(state);
+                    self.graph_plugin = Some(state);
                 }
                 Err(_) => {
                     self.set_temporary_status_static("Failed to build graph view");

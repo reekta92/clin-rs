@@ -140,7 +140,7 @@ pub struct StatuslineContext<'a> {
     edit_memo: std::cell::RefCell<EditMemo>,
 
     // active overlay states:
-    pub graph: Option<&'a crate::graf::graph::GraphState>,
+    pub graph: Option<&'a graf::GraphState>,
     pub draw: Option<&'a crate::draw::app::DrawAppState>,
     pub backup: Option<&'a crate::backup::state::BackupState>,
     pub outline: Option<&'a crate::outline::state::OutlineState>,
@@ -2135,26 +2135,26 @@ mod tests {
         let mut ctx = StatuslineContext::for_overlay(&config, ViewMode::Graph);
         let theme = AppThemeColors::default();
 
-        let mut graph_state = crate::graf::graph::GraphState {
+        let mut graph_state = graf::GraphState {
             simulation: fdg_sim::Simulation::from_graph(
                 fdg_sim::ForceGraph::default(),
                 fdg_sim::SimulationParameters::default(),
             ),
-            viewport: crate::graf::viewport::Viewport::default(),
-            selection: crate::ui::CanvasSelection::new(),
+            viewport: graf::viewport::Viewport::default(),
+            selection: graf::Selection::new(),
             dragging_node: None,
             drag_target: None,
             is_settled: true,
             alpha: 0.0,
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
-            render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
+            render_cache: parking_lot::Mutex::new(graf::RenderCache::default()),
             mouse_pos: None,
             physics_worker_active: false,
             physics_ideal_distance: 80.0,
             context_menu: None,
             connection_source: None,
             deleting_connection_source: None,
-            marquee: crate::ui::MarqueeDragState::new(3),
+            marquee: graf::MarqueeState::new(3),
             right_down_pos: None,
             mode_banner: None,
         };

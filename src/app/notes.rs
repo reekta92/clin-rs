@@ -739,8 +739,8 @@ impl App {
             self.apply_editor_prefs();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
-            if return_to == ViewMode::Graph && self.graph_state.is_none() {
-                match crate::graf::app::GrafAppState::new(
+            if return_to == ViewMode::Graph && self.graph_plugin.is_none() {
+                match crate::graf_adapter::GrafPlugin::new(
                     &self.config,
                     self.storage.clone(),
                     self.notes.clone(),
@@ -749,7 +749,7 @@ impl App {
                     self.seq_matcher.clone(),
                 ) {
                     Ok(state) => {
-                        self.graph_state = Some(state);
+                        self.graph_plugin = Some(state);
                     }
                     Err(e) => {
                         self.set_temporary_status(&format!("Failed to rebuild graph: {e}"));
@@ -893,8 +893,8 @@ impl App {
             self.open_note_in_external_editor(note_id, None);
             // graph_state was destroyed when note was opened; rebuild it
             self.return_mode.take(); // discard return_mode (was set to Graph above)
-            if self.graph_state.is_none() {
-                match crate::graf::app::GrafAppState::new(
+            if self.graph_plugin.is_none() {
+                match crate::graf_adapter::GrafPlugin::new(
                     &self.config,
                     self.storage.clone(),
                     self.notes.clone(),
@@ -903,7 +903,7 @@ impl App {
                     self.seq_matcher.clone(),
                 ) {
                     Ok(state) => {
-                        self.graph_state = Some(state);
+                        self.graph_plugin = Some(state);
                     }
                     Err(_) => {
                         self.set_temporary_status_static("Failed to rebuild graph view");

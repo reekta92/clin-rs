@@ -571,13 +571,15 @@ impl App {
         if self.graph_preview.is_some() && self.graph_preview_sig == sig {
             return;
         }
-        match crate::graf::graph::GraphState::new(&self.notes, &self.config) {
+        let specs = crate::graf_adapter::note_specs(&self.notes);
+        let settings = crate::graf_adapter::clin_settings(&self.config);
+        match graf::GraphState::from_specs(&specs, &settings) {
             Ok(mut gs) => {
                 gs.viewport = gs
                     .viewport
                     .auto_fit_from_graph(gs.simulation.get_graph(), 1.4);
                 gs.graph_bounds =
-                    crate::graf::render::compute_graph_bounds(gs.simulation.get_graph());
+                    graf::compute_graph_bounds(gs.simulation.get_graph());
                 self.graph_preview = Some(gs);
                 self.graph_preview_sig = sig;
                 self.graph_preview_steps = 0;

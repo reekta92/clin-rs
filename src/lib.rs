@@ -27,16 +27,7 @@ pub mod event_source;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
-pub mod graf {
-    pub mod app;
-    pub mod ui;
-
-    pub mod graph;
-    pub mod input;
-    pub mod physics;
-    pub mod render;
-    pub mod viewport;
-}
+pub mod graf_adapter;
 pub mod image_render {
     pub mod cache;
     pub mod worker;
@@ -81,7 +72,7 @@ use crate::config::ClinConfig;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::overlay::OverlayView;
+use crate::overlay::{OverlayState, OverlayView, ViewKind};
 use clap::{CommandFactory, FromArgMatches};
 
 use std::fs;
@@ -1140,6 +1131,75 @@ fn drain_queued_mouse_events<V: OverlayView>(
     Ok(())
 }
 
+/// Apply an overlay's event outcome to the App, per view kind. Shared by the
+/// key and mouse dispatch paths (single result-handling site).
+fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::OverlayResult) {
+    use crate::overlay::OverlayResult;
+    match res {
+        OverlayResult::OpenHelp(tab) => {
+            app.reload_theme();
+            app.open_help_page_with_tab(tab);
+        }
+        other => match kind {
+            ViewKind::Graph => match other {
+                OverlayResult::NoteOpened(note_id) => {
+                    if let Err(e) = app.config.save() {
+                        app.set_temporary_status(&format!("Failed to save config: {e}"));
+                    }
+                    app.graph_plugin = None;
+                    app.mode = ViewMode::List;
+
+                    app.reload_theme();
+                    app.open_note_from_graph(&note_id);
+                }
+                OverlayResult::NoteModified(note_id) => {
+                    app.refresh_note_single(None, &note_id);
+                }
+                OverlayResult::Exit => {
+                    if let Err(e) = app.config.save() {
+                        app.set_temporary_status(&format!("Failed to save config: {e}"));
+                    }
+
+                    app.graph_plugin = None;
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                    app.reload_theme();
+                }
+                _ => {}
+            },
+            ViewKind::Draw => {
+                if matches!(other, OverlayResult::Exit) {
+                    app.draw_state = None;
+                    app.close_draw_view();
+                }
+            }
+            ViewKind::Canvas => {
+                if let OverlayResult::Exit = other {
+                    app.close_canvas_view();
+                }
+            }
+            ViewKind::Backup => {
+                if matches!(other, OverlayResult::Exit) {
+                    app.reload_config();
+                    app.backup_state = None;
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                    app.reload_theme();
+                }
+            }
+            ViewKind::Outline => match other {
+                OverlayResult::Exit | OverlayResult::JumpToLine { .. } => {
+                    app.outline_state = None;
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                    app.reload_theme();
+                }
+                _ => {}
+            },
+        },
+    }
+}
+
 pub fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut ratatui::Terminal<B>,
     app: &mut crate::app::App,
@@ -1258,13 +1318,13 @@ where
 
         // Apply update ticks for continuous views before rendering
         if app.mode == ViewMode::Graph
-            && let Some(graf) = &mut app.graph_state
+            && let Some(graf) = &mut app.graph_plugin
         {
             graf.overlay_update(&mut app.config);
         }
 
         let graph_active = app
-            .graph_state
+            .graph_plugin
             .as_ref()
             .and_then(|g| g.graph_state.as_ref())
             .is_some_and(|s| {
@@ -1290,7 +1350,7 @@ where
             }
             let now = std::time::Instant::now();
             if app.mode == ViewMode::Graph
-                && let Some(ref mut graph_state) = app.graph_state
+                && let Some(graph_state) = &mut app.graph_plugin
                 && graph_state.config_errors.is_empty()
             {
                 graph_state.record_frame(now);
@@ -1382,7 +1442,7 @@ where
             }
             let now = std::time::Instant::now();
             if app.mode == ViewMode::Graph
-                && let Some(ref mut graph_state) = app.graph_state
+                && let Some(graph_state) = &mut app.graph_plugin
                 && graph_state.config_errors.is_empty()
             {
                 graph_state.record_frame(now);
@@ -1509,142 +1569,20 @@ where
                             crate::events::handle_setup_keys(app, key);
                             false
                         }
-                        ViewMode::Graph => {
-                            if let Some(mut graf) = app.graph_state.take() {
-                                let res = graf.overlay_handle_event(Event::Key(key), app, area);
-                                app.graph_state = Some(graf);
-                                match res? {
-                                    crate::overlay::OverlayResult::NoteOpened(note_id) => {
-                                        if let Err(e) = app.config.save() {
-                                            app.set_temporary_status(&format!(
-                                                "Failed to save config: {e}"
-                                            ));
-                                        }
-                                        app.graph_state = None;
-                                        app.mode = ViewMode::List;
-
-                                        app.reload_theme();
-                                        app.open_note_from_graph(&note_id);
-                                    }
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    crate::overlay::OverlayResult::NoteModified(note_id) => {
-                                        app.refresh_note_single(None, &note_id);
-                                    }
-                                    crate::overlay::OverlayResult::Exit => {
-                                        if let Err(e) = app.config.save() {
-                                            app.set_temporary_status(&format!(
-                                                "Failed to save config: {e}"
-                                            ));
-                                        }
-
-                                        app.graph_state = None;
-                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                                        app.reload_theme();
-                                    }
-                                    _ => {}
-                                }
+                        ViewMode::Graph
+                        | ViewMode::Canvas
+                        | ViewMode::Draw
+                        | ViewMode::Backup
+                        | ViewMode::Outline => match OverlayState::take(app) {
+                            Some(mut view) => {
+                                let kind = view.kind();
+                                let res = view.overlay_handle_event(Event::Key(key), app, area);
+                                view.put_back(app);
+                                finish_overlay_event(app, kind, res?);
                                 true
-                            } else {
-                                false
                             }
-                        }
-                        ViewMode::Draw => {
-                            if let Some(mut draw) = app.draw_state.take() {
-                                let res = draw.overlay_handle_event(Event::Key(key), app, area);
-                                app.draw_state = Some(draw);
-                                match res? {
-                                    crate::overlay::OverlayResult::Exit => {
-                                        app.draw_state = None;
-                                        app.close_draw_view();
-                                    }
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    _ => {}
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        ViewMode::Canvas => {
-                            if let Some(mut canvas) = app.canvas_state.take() {
-                                let res = canvas.overlay_handle_event(Event::Key(key), app, area);
-                                app.canvas_state = Some(canvas);
-                                match res? {
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    crate::overlay::OverlayResult::Exit => {
-                                        app.close_canvas_view();
-                                    }
-                                    _ => {}
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        ViewMode::Backup => {
-                            if let Some(mut backup) = app.backup_state.take() {
-                                let res = backup.overlay_handle_event(Event::Key(key), app, area);
-                                app.backup_state = Some(backup);
-                                match res? {
-                                    crate::overlay::OverlayResult::Exit => {
-                                        app.reload_config();
-                                        app.backup_state = None;
-                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                                        app.reload_theme();
-                                    }
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    _ => {}
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                        ViewMode::Outline => {
-                            if let Some(mut tree) = app.outline_state.take() {
-                                let res = tree.overlay_handle_event(Event::Key(key), app, area);
-                                app.outline_state = Some(tree);
-                                match res? {
-                                    crate::overlay::OverlayResult::Exit => {
-                                        app.outline_state = None;
-                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                                        app.reload_theme();
-                                    }
-                                    crate::overlay::OverlayResult::JumpToLine {
-                                        note_id: _,
-                                        line: _,
-                                    } => {
-                                        app.outline_state = None;
-                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                                        app.reload_theme();
-                                    }
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    _ => {}
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                            None => false,
+                        },
                     };
                     let _ = handled;
                 }
@@ -1677,124 +1615,32 @@ where
                         ViewMode::Help => {
                             handle_help_mouse(app, mouse_event, area);
                         }
-                        ViewMode::Graph => {
-                            let mut is_drag = false;
-                            if let Some(mut graf) = app.graph_state.take() {
-                                is_drag = matches!(
-                                    mouse_event.kind,
-                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                );
-                                let result =
-                                    graf.overlay_handle_event(Event::Mouse(mouse_event), app, area);
-                                app.graph_state = Some(graf);
-                                match result? {
-                                    crate::overlay::OverlayResult::NoteOpened(note_id) => {
-                                        if let Err(e) = app.config.save() {
-                                            app.set_temporary_status(&format!(
-                                                "Failed to save config: {e}"
-                                            ));
-                                        }
-                                        app.graph_state = None;
-                                        app.mode = ViewMode::List;
-
-                                        app.reload_theme();
-                                        app.open_note_from_graph(&note_id);
-                                    }
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    crate::overlay::OverlayResult::NoteModified(note_id) => {
-                                        app.refresh_note_single(None, &note_id);
-                                    }
-                                    crate::overlay::OverlayResult::Exit => {
-                                        if let Err(e) = app.config.save() {
-                                            app.set_temporary_status(&format!(
-                                                "Failed to save config: {e}"
-                                            ));
-                                        }
-
-                                        app.graph_state = None;
-                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                                        app.reload_theme();
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if is_drag && let Some(mut graf) = app.graph_state.take() {
-                                drain_queued_mouse_events(&mut graf, app, area, events)?;
-                                app.graph_state = Some(graf);
-                            }
-                        }
-                        ViewMode::Draw => {
+                        ViewMode::Graph
+                        | ViewMode::Canvas
+                        | ViewMode::Draw
+                        | ViewMode::Backup
+                        | ViewMode::Outline => {
+                            let kind = ViewKind::from_mode(app.mode);
+                            let scrolls = matches!(kind, Some(ViewKind::Draw | ViewKind::Canvas));
                             let mut coalesce = false;
-                            if let Some(mut draw) = app.draw_state.take() {
+                            if let Some(mut view) = OverlayState::take(app) {
                                 coalesce = matches!(
                                     mouse_event.kind,
                                     ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                        | ratatui::crossterm::event::MouseEventKind::ScrollUp
-                                        | ratatui::crossterm::event::MouseEventKind::ScrollDown
-                                );
+                                ) || (scrolls
+                                    && matches!(
+                                        mouse_event.kind,
+                                        ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                            | ratatui::crossterm::event::MouseEventKind::ScrollDown
+                                    ));
                                 let result =
-                                    draw.overlay_handle_event(Event::Mouse(mouse_event), app, area);
-                                app.draw_state = Some(draw);
-                                match result? {
-                                    crate::overlay::OverlayResult::Exit => {
-                                        app.draw_state = None;
-                                        app.close_draw_view();
-                                    }
-                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                        app.reload_theme();
-                                        app.open_help_page_with_tab(tab);
-                                    }
-                                    _ => {}
-                                }
+                                    view.overlay_handle_event(Event::Mouse(mouse_event), app, area);
+                                view.put_back(app);
+                                finish_overlay_event(app, kind.unwrap_or(ViewKind::Graph), result?);
                             }
-                            if coalesce && let Some(mut draw) = app.draw_state.take() {
-                                drain_queued_mouse_events(&mut draw, app, area, events)?;
-                                app.draw_state = Some(draw);
-                            }
-                        }
-                        ViewMode::Canvas => {
-                            let mut coalesce = false;
-                            if let Some(mut canvas) = app.canvas_state.take() {
-                                coalesce = matches!(
-                                    mouse_event.kind,
-                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                        | ratatui::crossterm::event::MouseEventKind::ScrollUp
-                                        | ratatui::crossterm::event::MouseEventKind::ScrollDown
-                                );
-                                let _ = canvas.overlay_handle_event(
-                                    Event::Mouse(mouse_event),
-                                    app,
-                                    area,
-                                )?;
-                                app.canvas_state = Some(canvas);
-                            }
-                            if coalesce && let Some(mut canvas) = app.canvas_state.take() {
-                                drain_queued_mouse_events(&mut canvas, app, area, events)?;
-                                app.canvas_state = Some(canvas);
-                            }
-                        }
-                        ViewMode::Backup => {
-                            if let Some(mut backup) = app.backup_state.take() {
-                                let _ = backup.overlay_handle_event(
-                                    Event::Mouse(mouse_event),
-                                    app,
-                                    area,
-                                )?;
-                                app.backup_state = Some(backup);
-                            }
-                        }
-                        ViewMode::Outline => {
-                            if let Some(mut tree) = app.outline_state.take() {
-                                let _ = tree.overlay_handle_event(
-                                    Event::Mouse(mouse_event),
-                                    app,
-                                    area,
-                                )?;
-                                app.outline_state = Some(tree);
+                            if coalesce && let Some(mut view) = OverlayState::take(app) {
+                                drain_queued_mouse_events(&mut view, app, area, events)?;
+                                view.put_back(app);
                             }
                         }
                         ViewMode::Setup => {
