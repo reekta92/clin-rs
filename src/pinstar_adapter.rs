@@ -564,5 +564,6 @@ pub fn theme_colors(theme: &crate::app_theme::AppThemeColors) -> ThemeColors {
         folder: theme.folder,
         highlight_fg: theme.highlight_fg,
         highlight_bg: theme.highlight_bg,
+        selection_indicator: Some(theme.selection_indicator),
     }
 }
