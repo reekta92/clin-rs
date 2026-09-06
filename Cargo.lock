@@ -2407,6 +2407,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 [[package]]
 name = "pinstar"
 version = "0.6.0"
+source = "git+https://github.com/reekta92/pinstar?tag=v0.6.0#2bab08743f53c0b84c52ac6519a12b19938d90c3"
 dependencies = [
  "anyhow",
  "crossterm",

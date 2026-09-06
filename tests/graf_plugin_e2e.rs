@@ -159,44 +159,77 @@ fn connection_mode_writes_wikilink_to_disk() {
         .overlay_handle_event(key('a'), &mut app, area)
         .expect("e2e fixture");
 
-    // Find a screen cell whose hit_test resolves to the OTHER node (scan the
-    // canvas instead of trusting the projection).
+    // Find a screen cell whose hit_test resolves to the OTHER node. The
+    // physics thread keeps moving nodes and graf's AutoFit fits a fixed
+    // 200-unit square (canvas-agnostic), so under parallel-test CPU
+    // contention the fit can leave a tall bbox offscreen. Retry for a
+    // bounded time; on each miss, re-center on the node bbox and apply an
+    // aspect-correct zoom (f64 cells per world unit on both axes).
     let (target_col, target_row) = {
-        let gs = plugin.graph_state.as_ref().expect("e2e fixture");
-        let guard = gs.read();
-        let graph = guard.simulation.get_graph();
-        let selected = guard.selection.primary.expect("e2e fixture");
-        let other = graph
-            .node_indices()
-            .find(|i| *i != selected)
-            .expect("e2e fixture");
-        let outer = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([
-                ratatui::layout::Constraint::Length(1),
-                ratatui::layout::Constraint::Min(0),
-            ])
-            .split(area);
-        let canvas = graf::canvas_area(outer[1], true);
-        let settings = clin::graf_adapter::clin_settings(&config);
-        let max_lc = guard.render_cache.lock().max_link_count;
         let mut found = None;
-        'scan: for row in canvas.y..canvas.bottom() {
-            for col in canvas.x..canvas.right() {
-                let (wx, wy) = guard.viewport.screen_to_world(col, row, canvas);
-                if guard
-                    .viewport
-                    .hit_test(wx, wy, &guard, &settings, canvas, max_lc)
-                    == Some(other)
-                {
-                    found = Some((col, row));
-                    break 'scan;
+        for _ in 0..100 {
+            let attempt = {
+                let gs = plugin.graph_state.as_ref().expect("e2e fixture");
+                let mut guard = gs.write();
+                let graph = guard.simulation.get_graph();
+                let selected = guard.selection.primary.expect("e2e fixture");
+                let other = graph
+                    .node_indices()
+                    .find(|i| *i != selected)
+                    .expect("e2e fixture");
+                let outer = ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Vertical)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(1),
+                        ratatui::layout::Constraint::Min(0),
+                    ])
+                    .split(area);
+                let canvas = graf::canvas_area(outer[1], true);
+                // Aspect-correct fit: center on bbox, zoom = cells per world
+                // unit bounded by both canvas axes with 25% margin.
+                let (mut min_x, mut max_x, mut min_y, mut max_y) =
+                    (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+                for n in graph.node_weights() {
+                    min_x = min_x.min(n.location.x as f64);
+                    max_x = max_x.max(n.location.x as f64);
+                    min_y = min_y.min(n.location.y as f64);
+                    max_y = max_y.max(n.location.y as f64);
                 }
+                let range_x = (max_x - min_x).max(1.0);
+                let range_y = (max_y - min_y).max(1.0);
+                let fit = 0.75
+                    * (f64::from(canvas.width) / range_x).min(f64::from(canvas.height) / range_y);
+                let vp = &mut guard.viewport;
+                vp.center_x = (min_x + max_x) / 2.0;
+                vp.center_y = (min_y + max_y) / 2.0;
+                vp.zoom = fit;
+                vp.auto_fit_zoom = fit;
+
+                let settings = clin::graf_adapter::clin_settings(&config);
+                let max_lc = guard.render_cache.lock().max_link_count;
+                let mut hit = None;
+                'scan: for row in canvas.y..canvas.bottom() {
+                    for col in canvas.x..canvas.right() {
+                        let (wx, wy) = guard.viewport.screen_to_world(col, row, canvas);
+                        if guard
+                            .viewport
+                            .hit_test(wx, wy, &guard, &settings, canvas, max_lc)
+                            == Some(other)
+                        {
+                            hit = Some((col, row));
+                            break 'scan;
+                        }
+                    }
+                }
+                hit
+            };
+            if let Some(cell) = attempt {
+                found = Some(cell);
+                break;
             }
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        let (col, row) = found.expect("target node must be on screen somewhere");
-        println!("clicking target {other:?} at ({col},{row})");
-        (col, row)
+        found.expect("target node must be on screen somewhere")
     };
     let click = crossterm::event::Event::Mouse(crossterm::event::MouseEvent {
         kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),

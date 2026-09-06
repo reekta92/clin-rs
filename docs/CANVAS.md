@@ -8,7 +8,7 @@ Technical docs for the pinstar canvas module — an Obsidian-compatible node/edg
 
 The canvas view provides an infinite 2D space for visual note mapping. Users can place text nodes, link to files/URLs, group nodes, and connect them with edges. Canvas files use the `.canvas` extension and follow Obsidian's canvas JSON schema for compatibility.
 
-**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (git tag `v0.6.0`, `images` feature) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, the statusline footer, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate; local dev can `[patch]` it to a sibling checkout via an uncommitted `.cargo/config.toml`.
+**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (git tag `v0.6.0`, `images` feature) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, the statusline footer, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate. Local iteration: create `.cargo/config.toml` with `[patch."https://github.com/reekta92/pinstar"] pinstar = { path = "../pinstar" }` (gitignored) while iterating — then REMOVE it before running `--locked` gates or committing: a patched build rewrites Cargo.lock to the path source and breaks CI.
 
 ---
 
