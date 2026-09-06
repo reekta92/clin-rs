@@ -171,10 +171,10 @@ pub fn clin_settings(config: &ClinConfig) -> GrafSettings {
     settings
 }
 
-/// Convert clin's 9-field graph `ThemeColors` into the lib's 14-field one.
-pub fn clin_theme(config: &ClinConfig) -> GrafThemeColors {
+/// Convert clin's `AppThemeColors` into the lib's 14-field one.
+pub fn clin_theme(config: &ClinConfig, app_theme: &crate::app_theme::AppThemeColors) -> GrafThemeColors {
     let c = config.theme_colors();
-    // Base = upstream default palette; the 9 shared fields are overridden
+    // Base = upstream default palette; the shared fields are overridden
     // from clin's own theme resolution below.
     let mut t = GrafThemeColors::resolve(&GrafSettings::default());
     t.node_colors = c.node_colors;
@@ -186,6 +186,10 @@ pub fn clin_theme(config: &ClinConfig) -> GrafThemeColors {
     t.minimap_border_color = c.minimap_border_color;
     t.minimap_viewport_color = c.minimap_viewport_color;
     t.minimap_bg_color = c.minimap_bg_color;
+    t.highlight_fg = Some(app_theme.highlight_fg);
+    t.highlight_bg = Some(app_theme.highlight_bg);
+    t.menu_bg_color = Some(app_theme.preview_bg().unwrap_or(ratatui::style::Color::Reset));
+    t.menu_shortcut_color = Some(app_theme.muted);
     t
 }
 
@@ -1516,7 +1520,7 @@ fn draw_ui(
     if let Some(graph_state) = &state.graph_state {
         let guard = graph_state.read();
         let settings = state.settings_for(config);
-        let graf_theme = clin_theme(config);
+        let graf_theme = clin_theme(config, theme);
         let flags = FeatureFlags {
             show_legend: state.show_legend,
             grid: state.grid,

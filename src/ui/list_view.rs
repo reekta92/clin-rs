@@ -218,7 +218,7 @@ fn draw_strip_graf(
             let mut cache = gs.render_cache.lock();
             if cache.topology_dirty {
                 let settings = crate::graf_adapter::clin_settings(&app.config);
-                let theme = crate::graf_adapter::clin_theme(&app.config);
+                let theme = crate::graf_adapter::clin_theme(&app.config, &app.app_theme);
                 cache.rebuild_topology(graph, &settings, &theme, false);
             }
 

@@ -346,6 +346,15 @@ impl OverlayView for PinstarPlugin {
                 if let Some(notice) = outcome.notice {
                     app.set_temporary_status(notice);
                 }
+                if self.state.trigger_image_picker {
+                    self.state.trigger_image_picker = false;
+                    let (x, y) = (self.state.context_menu_pos.0, self.state.context_menu_pos.1);
+                    if let Ok(Some(path)) = crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp") {
+                        self.state
+                            .add_image_node_with(std::path::PathBuf::from(path), x, y);
+                        self.state.sync_to_raw_editor();
+                    }
+                }
                 sync_mode_status(app, &self.state);
                 Ok(OverlayResult::Continue)
             }
@@ -412,7 +421,8 @@ impl PinstarPlugin {
             if let Some(notice) = outcome.notice {
                 app.set_temporary_status(notice);
             }
-            if matches!(outcome.host_action, Some(PinstarAction::AddImageNode)) {
+            if self.state.trigger_image_picker {
+                self.state.trigger_image_picker = false;
                 let (x, y) = (self.state.context_menu_pos.0, self.state.context_menu_pos.1);
                 if let Ok(Some(path)) = crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp") {
                     self.state
