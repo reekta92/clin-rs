@@ -147,7 +147,7 @@ pub fn draw_menu_specs(
 
 #[must_use]
 pub fn draw_color_menu_specs() -> Vec<crate::ui::CanvasMenuItemSpec> {
-    crate::pinstar::COLOR_PICKER_PALETTE
+    pinstar::COLOR_PICKER_PALETTE
         .iter()
         .map(|(label, _, color)| {
             let shortcut = match *label {

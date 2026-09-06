@@ -248,7 +248,8 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
             app.request_editor_preview_update();
         }
         crate::app::ViewMode::Canvas => {
-            if let Some(state) = &mut app.canvas_state {
+            if let Some(plugin) = &mut app.canvas_state {
+                let state = &mut plugin.state;
                 let (cx, cy) = (state.viewport_x, state.viewport_y);
                 let id = format!(
                     "img_{}",
@@ -261,19 +262,17 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
                 state
                     .data
                     .nodes
-                    .push(crate::pinstar::data::CanvasNode::File(
-                        crate::pinstar::data::FileNode {
-                            id,
-                            x: cx,
-                            y: cy,
-                            width: 200.0,
-                            height: 150.0,
-                            file: rel_path.to_string(),
-                            subpath: None,
-                            title: None,
-                            color: None,
-                        },
-                    ));
+                    .push(pinstar::data::CanvasNode::File(pinstar::data::FileNode {
+                        id,
+                        x: cx,
+                        y: cy,
+                        width: 200.0,
+                        height: 150.0,
+                        file: rel_path.to_string(),
+                        subpath: None,
+                        title: None,
+                        color: None,
+                    }));
                 let _ = state.save();
             }
         }

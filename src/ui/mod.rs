@@ -12,7 +12,6 @@ use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
-pub(crate) mod camera;
 pub(crate) mod canvas_grid;
 pub(crate) mod canvas_menu;
 pub(crate) mod canvas_overlay;
@@ -101,7 +100,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Setup => draw_setup_view(frame, app),
         ViewMode::Graph => {
-            if let Some(mut graf) = app.graph_state.take() {
+            if let Some(mut graf) = app.graph_plugin.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -114,17 +113,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 if let Some(mode) = banner {
                     // Cover the header bar, exactly like Notes SELECT MODE.
                     let text: &'static str = match mode {
-                        crate::graf::graph::ModeBanner::CreateConnection => {
+                        graf::ModeBanner::CreateConnection => {
                             " CONNECTION MODE \u{2014} select target "
                         }
-                        crate::graf::graph::ModeBanner::DeleteConnection => {
+                        graf::ModeBanner::DeleteConnection => {
                             " DELETE CONNECTION MODE \u{2014} select target "
                         }
-                        crate::graf::graph::ModeBanner::LocalGraph => " LOCAL GRAPH ONLY ",
-                        crate::graf::graph::ModeBanner::GroupedGraph => " GROUPED GRAPH ONLY ",
-                        crate::graf::graph::ModeBanner::BoxSelect => {
-                            " BOX SELECT \u{2014} drag, release "
-                        }
+                        graf::ModeBanner::LocalGraph => " LOCAL GRAPH ONLY ",
+                        graf::ModeBanner::GroupedGraph => " GROUPED GRAPH ONLY ",
+                        graf::ModeBanner::BoxSelect => " BOX SELECT \u{2014} drag, release ",
                     };
                     let header_rect = outer[0];
                     frame.render_widget(Clear, header_rect);
@@ -179,7 +176,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 }
 
                 graf.overlay_render(frame, outer[1], app);
-                app.graph_state = Some(graf);
+                app.graph_plugin = Some(graf);
             }
         }
 
@@ -255,7 +252,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.canvas = Some(&canvas);
+                ctx.canvas = Some(&canvas.state);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,

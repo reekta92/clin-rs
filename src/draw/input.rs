@@ -292,7 +292,7 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
     app.active_shape_type = shapes[next_idx];
 }
 fn cycle_color(app: &mut DrawAppState, delta: i32) {
-    let colors = crate::pinstar::COLOR_PICKER_PALETTE;
+    let colors = pinstar::COLOR_PICKER_PALETTE;
     let current_idx = colors
         .iter()
         .position(|&(_, _, c)| {
@@ -398,7 +398,7 @@ fn handle_mouse(
     }
 
     if app.show_color_selector {
-        let colors = crate::pinstar::COLOR_PICKER_PALETTE;
+        let colors = pinstar::COLOR_PICKER_PALETTE;
         let max_item_width = colors.iter().map(|(n, _, _)| n.len()).max().unwrap_or(0) as u16;
         let dropdown_width = max_item_width + 4;
         let dropdown_x = area.x + (area.width.saturating_sub(dropdown_width)) / 2;
@@ -766,7 +766,7 @@ fn execute_menu_item(
         DrawMenuKind::Color => {
             if let Some(id) = target.item_id()
                 && let Some((_, _, ratatui::style::Color::Rgb(red, green, blue))) =
-                    crate::pinstar::COLOR_PICKER_PALETTE.get(index)
+                    pinstar::COLOR_PICKER_PALETTE.get(index)
             {
                 set_item_color(app, id, (*red, *green, *blue))?;
             }

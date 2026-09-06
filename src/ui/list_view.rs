@@ -143,7 +143,7 @@ fn draw_strip_graf(
             // Progressive settle: 10 steps per frame to avoid blocking
             if !gs.is_settled && app.graph_preview_steps < 100 {
                 for _ in 0..10 {
-                    crate::graf::physics::simulation_step(gs, 0.12);
+                    graf::simulation_step(gs, 0.12);
                     app.graph_preview_steps += 1;
                     if gs.is_settled {
                         break;
@@ -215,10 +215,11 @@ fn draw_strip_graf(
 
             // Build per-node colors via the render cache (respects graf node_color_mode config)
             let graph = gs.simulation.get_graph();
-            let colors = app.config.theme_colors();
             let mut cache = gs.render_cache.lock();
             if cache.topology_dirty {
-                cache.rebuild_topology(graph, &app.config, &colors, false);
+                let settings = crate::graf_adapter::clin_settings(&app.config);
+                let theme = crate::graf_adapter::clin_theme(&app.config);
+                cache.rebuild_topology(graph, &settings, &theme, false);
             }
 
             // Map nodes to sub-pixel grid with per-node colors
