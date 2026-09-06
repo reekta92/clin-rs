@@ -33,6 +33,10 @@ All notable changes to clin are documented in this file.
 - Cargo fmt
 - Cargo fmt
 - Cargo fmt
+
+### Release
+
+- V0.12.0
 ## [0.11.3] - 2026-08-22
 
 ### Fixed
@@ -307,6 +311,7 @@ All notable changes to clin are documented in this file.
 - Removed x86_64-darwin
 - Fixed ci warnings
 - Routed all ci/cd channels to the central repo
+- Migrate to a central workflow system
 
 ### Documentation
 
@@ -325,11 +330,14 @@ All notable changes to clin are documented in this file.
 - Align scrollbar with viewport
 - Resolve pane and clipboard regressions
 - Refresh previews and streamline text selection
+- Restore x86_64-darwin support
 
 ### Miscellaneous
 
 - Remove redundant repository files and folders
 - .gitignore formatting
+- Gitignore cleanup
+- Modernize nix packaging
 
 ### Performance
 
@@ -371,6 +379,30 @@ All notable changes to clin are documented in this file.
 ### Release
 
 - V0.10.0-rc.7
+## [0.9.10] - 2026-08-03
+
+### Fixed
+
+- Use XDG config dir on macOS instead of Library/Application Support
+
+### Miscellaneous
+
+- Revert version to 0.9.9 to allow 0.9.10 release
+- Bump toml from 1.1.3+spec-1.1.0 to 1.1.4+spec-1.1.0
+- Bump clap from 4.6.2 to 4.6.4
+- Bump serde_json from 1.0.150 to 1.0.151
+- Bump anyhow from 1.0.103 to 1.0.104
+- Bump uuid from 1.23.5 to 1.24.0
+- Bump clap from 4.6.1 to 4.6.2
+
+### Styling
+
+- Fix line break in config_dir assignment
+
+### Release
+
+- V0.9.10
+- V0.10.0-beta.2
 ## [0.10.0-rc.6] - 2026-07-26
 
 ### Added
@@ -616,7 +648,6 @@ All notable changes to clin are documented in this file.
 - Fixed format checks
 - Fix remaining format warnings in events and keybinds
 - Fixed format warnings
-- Migrate to a central workflow system
 
 ### Changed
 
@@ -674,7 +705,6 @@ All notable changes to clin are documented in this file.
 - Hint bar preview dispatches on hint_bar_style
 - Popup footers ignore hint_bar_style setting
 - Split detail into powerline cells; fix right-side junction bg
-- Restore x86_64-darwin support
 
 ### Miscellaneous
 
@@ -684,8 +714,6 @@ All notable changes to clin are documented in this file.
 - Bump version to 1.90
 - Cleanup project dir
 - Sort Cargo.lock alphabetically
-- Gitignore cleanup
-- Modernize nix packaging
 
 ### Performance
 
@@ -697,30 +725,6 @@ All notable changes to clin are documented in this file.
 
 - V0.10.0-beta.3
 - V0.10.0-beta.3
-## [0.9.10] - 2026-08-03
-
-### Fixed
-
-- Use XDG config dir on macOS instead of Library/Application Support
-
-### Miscellaneous
-
-- Revert version to 0.9.9 to allow 0.9.10 release
-- Bump toml from 1.1.3+spec-1.1.0 to 1.1.4+spec-1.1.0
-- Bump clap from 4.6.2 to 4.6.4
-- Bump serde_json from 1.0.150 to 1.0.151
-- Bump anyhow from 1.0.103 to 1.0.104
-- Bump uuid from 1.23.5 to 1.24.0
-- Bump clap from 4.6.1 to 4.6.2
-
-### Styling
-
-- Fix line break in config_dir assignment
-
-### Release
-
-- V0.9.10
-- V0.10.0-beta.2
 - V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
 
@@ -738,9 +742,34 @@ All notable changes to clin are documented in this file.
 - V0.9.9
 ## [0.9.8] - 2026-07-10
 
+### Added
+
+- Structured items, metric tables, text wrapping, border
+- Add Show Info popup with note/folder metrics
+- Add custom rules and grid layout tab
+- Add sub-notes overlay manager
+- Support smart/pinned folders, inline rename, drag-to-move
+- Add expand-all, expand-to-level, and state persistence
+- Add recursive counts and dim empty folders
+- Add 9 config-gated renderer features
+
+### CI
+
+- Fixed multiple checks issues
+
+### Changed
+
+- XOR obfuscate the entire subnotes database
+- Secure subnotes file format and permissions
+
+### Documentation
+
+- Update ROADMAP.md
+
 ### Fixed
 
 - Restore auto_refresh field lost in merge
+- Clear old name characters in inline rename overlay
 
 ### Miscellaneous
 
@@ -753,6 +782,10 @@ All notable changes to clin are documented in this file.
 ### Release
 
 - V0.9.8
+
+### Revert
+
+- Remove inline rename support, restore popup renames
 ## [0.9.7] - 2026-07-08
 
 ### Added
@@ -778,43 +811,17 @@ All notable changes to clin are documented in this file.
 - V0.9.7
 ## [0.9.6] - 2026-07-06
 
-### Added
-
-- Structured items, metric tables, text wrapping, border
-- Add Show Info popup with note/folder metrics
-- Add custom rules and grid layout tab
-- Add sub-notes overlay manager
-- Support smart/pinned folders, inline rename, drag-to-move
-- Add expand-all, expand-to-level, and state persistence
-- Add recursive counts and dim empty folders
-- Add 9 config-gated renderer features
-
 ### CI
 
-- Fixed multiple checks issues
 - Fixed test checks
-
-### Changed
-
-- XOR obfuscate the entire subnotes database
-- Secure subnotes file format and permissions
-
-### Documentation
-
-- Update ROADMAP.md
 
 ### Fixed
 
-- Clear old name characters in inline rename overlay
 - Fixed custom themes not having transparent option
 
 ### Release
 
 - V0.9.6
-
-### Revert
-
-- Remove inline rename support, restore popup renames
 ## [0.9.5] - 2026-07-06
 
 ### Release
@@ -869,63 +876,15 @@ All notable changes to clin are documented in this file.
 - V0.9.2
 ## [0.9.1] - 2026-06-30
 
+### Added
+
+- Reimplement view with git-style staging
+
 ### CI
 
 - Fixed clippy, format check warnings and errors
 - Fixed clippy, format check warnings and errors
 - Fixed CI check warnings and errors
-
-### Release
-
-- V0.9.1
-- V0.9.0
-## [0.8.32] - 2026-06-27
-
-### Miscellaneous
-
-- Bump anyhow from 1.0.102 to 1.0.103
-- Bump uuid from 1.23.3 to 1.23.4
-
-### Release
-
-- V0.8.32
-## [0.8.31] - 2026-06-23
-
-### Release
-
-- V0.8.31
-## [0.8.30] - 2026-06-23
-
-### Release
-
-- V0.8.30
-## [0.8.29] - 2026-06-23
-
-### Release
-
-- V0.8.29
-## [0.8.28] - 2026-06-23
-
-### Release
-
-- V0.8.28
-## [0.8.27] - 2026-06-23
-
-### Testing
-
-- Testing CI
-- Testing CI
-
-### Release
-
-- V0.8.27
-- V0.9.0-beta.4
-- V0.9.0-beta.4
-## [0.8.26] - 2026-06-21
-
-### Added
-
-- Reimplement view with git-style staging
 
 ### Changed
 
@@ -941,7 +900,6 @@ All notable changes to clin are documented in this file.
 
 ### Fixed
 
-- Correct jump-to-top dispatch and add jump-to-bottom defaults
 - Add #[serde(default)] to all config structs
 - Prevent mouse movement from closing non-target popups
 - Align UI consistency, navigation, and mouse targeting
@@ -949,8 +907,14 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
-- V0.8.26
+- V0.9.1
+- V0.9.0
 ## [0.9.0-rc.3] - 2026-06-29
+
+### Added
+
+- Improve renderer styling, layout, and performance
+- Added a builtin markdown renderer to replace glow
 
 ### Release
 
@@ -959,8 +923,6 @@ All notable changes to clin are documented in this file.
 
 ### Added
 
-- Improve renderer styling, layout, and performance
-- Added a builtin markdown renderer to replace glow
 - Replace month grid with rolling-weeks heatmap
 - Add Draw and Graf strip sections, halfblock preview, centering
 - Added a builtin markdown renderer to replace glow
@@ -1017,6 +979,16 @@ All notable changes to clin are documented in this file.
 ### Release
 
 - V0.9.0-rc.1
+## [0.8.32] - 2026-06-27
+
+### Miscellaneous
+
+- Bump anyhow from 1.0.102 to 1.0.103
+- Bump uuid from 1.23.3 to 1.23.4
+
+### Release
+
+- V0.8.32
 ## [0.9.0-rc.0] - 2026-06-25
 
 ### Added
@@ -1075,6 +1047,38 @@ All notable changes to clin are documented in this file.
 ### Release
 
 - V0.9.0-beta.6
+## [0.8.31] - 2026-06-23
+
+### Release
+
+- V0.8.31
+## [0.8.30] - 2026-06-23
+
+### Release
+
+- V0.8.30
+## [0.8.29] - 2026-06-23
+
+### Release
+
+- V0.8.29
+## [0.8.28] - 2026-06-23
+
+### Release
+
+- V0.8.28
+## [0.8.27] - 2026-06-23
+
+### Testing
+
+- Testing CI
+- Testing CI
+
+### Release
+
+- V0.8.27
+- V0.9.0-beta.4
+- V0.9.0-beta.4
 ## [0.9.0-beta.5] - 2026-06-23
 
 ### Release
@@ -1169,6 +1173,15 @@ All notable changes to clin are documented in this file.
 - V0.9.0-beta.0
 - V0.10.0-beta.0
 - V0.9.0
+## [0.8.26] - 2026-06-21
+
+### Fixed
+
+- Correct jump-to-top dispatch and add jump-to-bottom defaults
+
+### Release
+
+- V0.8.26
 ## [0.8.25] - 2026-06-20
 
 ### Release
@@ -1484,6 +1497,11 @@ All notable changes to clin are documented in this file.
 - V0.8.7
 ## [0.8.6-1] - 2026-06-13
 
+### Documentation
+
+- Update installation versions to v0.7.0-61
+- Update installation versions to v0.7.0-43
+
 ### Miscellaneous
 
 - More CI fixes
@@ -1498,11 +1516,6 @@ All notable changes to clin are documented in this file.
 - Grid view in notes view
 - Title bar for views
 - Backup system using git
-
-### Documentation
-
-- Update installation versions to v0.7.0-61
-- Update installation versions to v0.7.0-43
 
 ### Fixed
 
@@ -1601,6 +1614,10 @@ All notable changes to clin are documented in this file.
 - Custom keybinds for graf
 ## [0.5.2] - 2026-05-03
 
+### Documentation
+
+- Update installation versions to v0.5.0-2
+
 ### Fixed
 
 - Default config fixed, root label missing from legend fixed
@@ -1613,7 +1630,6 @@ All notable changes to clin are documented in this file.
 
 ### Documentation
 
-- Update installation versions to v0.5.0-2
 - Update installation versions to v0.4.4
 
 ### Miscellaneous
