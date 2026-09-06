@@ -110,6 +110,7 @@ impl PinstarPlugin {
             enable_image_nodes: true,
             image_cache_size: config.image.cache_size,
             rename_uses_id: false,
+            show_hints: false,
         };
         state.image_picker = picker;
 
