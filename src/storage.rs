@@ -2229,7 +2229,8 @@ mod tests {
 
     #[test]
     fn test_decrypt_logic() -> Result<()> {
-        let key = [1u8; 32];
+        let mut key = [0u8; 32];
+        rand::rng().fill(&mut key);
         let storage = Storage {
             data_dir: PathBuf::new(),
             config_dir: PathBuf::new(),
@@ -2340,7 +2341,11 @@ mod tests {
             config_dir: PathBuf::new(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: [1u8; 32],
+            key: {
+                let mut k = [0u8; 32];
+                rand::rng().fill(&mut k);
+                k
+            },
             skip_dir_patterns: Vec::new(),
         };
 
@@ -2375,7 +2380,11 @@ mod tests {
             config_dir: PathBuf::new(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: [1u8; 32],
+            key: {
+                let mut k = [0u8; 32];
+                rand::rng().fill(&mut k);
+                k
+            },
             skip_dir_patterns: Vec::new(),
         };
 
@@ -2408,7 +2417,11 @@ mod tests {
             config_dir: PathBuf::new(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: [1u8; 32],
+            key: {
+                let mut k = [0u8; 32];
+                rand::rng().fill(&mut k);
+                k
+            },
             skip_dir_patterns: Vec::new(),
         };
 
@@ -2443,7 +2456,11 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [2u8; 32],
+            key: {
+                let mut k = [0u8; 32];
+                rand::rng().fill(&mut k);
+                k
+            },
             skip_dir_patterns: Vec::new(),
         };
 
@@ -2559,7 +2576,11 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [2u8; 32],
+            key: {
+                let mut k = [0u8; 32];
+                rand::rng().fill(&mut k);
+                k
+            },
             skip_dir_patterns: Vec::new(),
         };
         // Subnotes metadata is always owned by the storage root.
