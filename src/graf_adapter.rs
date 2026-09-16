@@ -140,7 +140,7 @@ pub fn clin_settings(config: &ClinConfig) -> GrafSettings {
             status_bar_color: None,
             background_color: g.visual.colors.background_color,
         },
-        grid_divisions: graf::settings::VisualConfig::default().grid_divisions,
+        ..Default::default()
     };
     settings.physics = graf::settings::PhysicsConfig {
         ideal_distance: g.physics.ideal_distance,
