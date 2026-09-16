@@ -278,6 +278,8 @@ pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
         if target.cut() {
             write_system_clipboard(&target.yank_text());
             set_clipboard_notice("Cut to clipboard");
+        } else {
+            set_clipboard_notice("Nothing selected");
         }
         return true;
     }
@@ -399,5 +401,16 @@ mod tests {
             KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
         ));
         assert_eq!(take_clipboard_notice(), Some("Copied to clipboard"));
+    }
+
+    #[test]
+    fn shortcut_cut_without_selection_reports_notice() {
+        let mut area = text_area("hello");
+        assert!(apply_text_shortcuts(
+            &Keybinds::default(),
+            &mut area,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+        ));
+        assert_eq!(take_clipboard_notice(), Some("Nothing selected"));
     }
 }

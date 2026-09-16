@@ -80,7 +80,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::InsertTab, &["Tab"]),
     (EditAction::SelectAll, &["Ctrl+a", "Ctrl+Shift+a"]),
     (EditAction::Copy, &["Ctrl+c"]),
-    (EditAction::Cut, &["Ctrl+Shift+x", "Shift+Delete", "Ctrl+x"]),
+    (EditAction::Cut, &["Ctrl+x"]),
     (EditAction::Paste, &["Ctrl+v"]),
     (EditAction::Undo, &["Ctrl+z"]),
     (EditAction::Redo, &["Ctrl+y", "Ctrl+Shift+z"]),
