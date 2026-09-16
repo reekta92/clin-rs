@@ -100,6 +100,12 @@ pub struct VisualConfig {
     pub node_size: f64,
     #[serde(default)]
     pub node_size_mode: NodeSizeMode,
+    #[serde(default)]
+    pub node_scale: NodeScale,
+    #[serde(default)]
+    pub node_fill: NodeFill,
+    #[serde(default)]
+    pub selection_focus: SelectionFocus,
     pub edge_thickness: u16,
     pub show_legend: bool,
     #[serde(default)]
@@ -130,6 +136,9 @@ impl Default for VisualConfig {
             label_max_length: 20,
             node_size: 2.0,
             node_size_mode: NodeSizeMode::default(),
+            node_scale: NodeScale::default(),
+            node_fill: NodeFill::default(),
+            selection_focus: SelectionFocus::default(),
             edge_thickness: 1,
             show_legend: true,
             show_minimap: false,
