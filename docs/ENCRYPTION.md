@@ -101,7 +101,7 @@ The YAML frontmatter in `.clin` files is **not encrypted**. This allows:
 - **Search indexing** — titles and tags are visible without the key
 - **Sorting** — `updated_at` is visible for sort operations
 
-The frontmatter metadata (`pinned`, `links`) is preserved across encrypt/decrypt round-trips.
+The frontmatter metadata (`pinned`, `links`, and any unknown keys such as Obsidian Properties) is preserved across save, encrypt, decrypt, and duplicate round-trips.
 
 ---
 

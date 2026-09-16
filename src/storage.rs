@@ -142,6 +142,14 @@ pub(crate) fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Fr
     (None, bytes)
 }
 
+fn existing_extra_frontmatter(path: &std::path::Path) -> serde_yaml_ng::Mapping {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| split_frontmatter_payload(&bytes).0)
+        .map(|fm| fm.extra)
+        .unwrap_or_default()
+}
+
 /// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
 pub(crate) fn is_existing_vault(dir: &Path) -> bool {
     if !dir.exists() {
@@ -551,6 +559,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
+            extra: existing_extra_frontmatter(&old_path),
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
@@ -623,6 +632,7 @@ impl Storage {
                 pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
+                extra: existing_extra_frontmatter(&old_path),
             };
             let final_content = frontmatter::serialize(&fm, &note.content);
             crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
@@ -1313,6 +1323,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(links),
             original_ext: None,
+            extra: existing_extra_frontmatter(&old_path),
         };
 
         let target_path = self.note_path(&target_id);
@@ -1412,6 +1423,16 @@ impl Storage {
         } else {
             format!("{}/{}.{}", target_folder, new_id, source_ext)
         };
+
+
+        let source_path = self.note_path(id);
+        let target_path = self.note_path(&initial_id);
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).context("failed to create note directory")?;
+        }
+        if source_path.exists() {
+            let _ = fs::copy(&source_path, &target_path);
+        }
 
         self.save_note(&initial_id, &new_note)
     }
@@ -2307,6 +2328,97 @@ mod tests {
                 );
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_save_note_preserves_unknown_frontmatter() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let mut storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: [1u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+
+        let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
+        let path = notes_dir.join("obsidian.md");
+        fs::write(&path, content)?;
+
+        let mut note = storage.load_note("obsidian.md")?;
+        note.content = "edited body".to_string();
+        let saved_id = storage.save_note("obsidian.md", &note)?;
+        let saved_path = storage.note_path(&saved_id);
+
+        let saved = fs::read_to_string(&saved_path)?;
+        assert!(saved.contains("type: knowledge_concept"));
+        assert!(saved.contains("confidence: 0.9"));
+        assert!(saved.contains("sources:"));
+        assert!(saved.contains("- '[[kimball-dwt]]'") || saved.contains("- \"[[kimball-dwt]]\"") || saved.contains("- [[kimball-dwt]]"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_preserves_unknown_frontmatter() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let mut storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: [1u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+
+        let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
+        let md_path = notes_dir.join("obsidian.md");
+        fs::write(&md_path, content)?;
+
+        let enc_id = storage.encrypt_note("obsidian.md")?;
+        
+        let clin_path = storage.note_path(&enc_id);
+        let enc_content = String::from_utf8_lossy(&fs::read(&clin_path)?).into_owned();
+        assert!(enc_content.contains("type: knowledge_concept"));
+        assert!(enc_content.contains("confidence: 0.9"));
+        
+        let dec_id = storage.decrypt_note(&enc_id)?;
+        let dec_path = storage.note_path(&dec_id);
+        let dec_content = fs::read_to_string(&dec_path)?;
+        assert!(dec_content.contains("type: knowledge_concept"));
+        assert!(dec_content.contains("confidence: 0.9"));
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_duplicate_preserves_unknown_frontmatter() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let mut storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: [1u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+
+        let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
+        let path = notes_dir.join("obsidian.md");
+        fs::write(&path, content)?;
+
+        let dup_id = storage.duplicate_note("obsidian.md", "")?;
+        let dup_path = storage.note_path(&dup_id);
+        let dup_content = String::from_utf8_lossy(&fs::read(&dup_path)?).into_owned();
+        
+        assert!(dup_content.contains("type: knowledge_concept"));
+        assert!(dup_content.contains("confidence: 0.9"));
 
         Ok(())
     }
