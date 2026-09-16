@@ -1,6 +1,7 @@
 use super::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
-    KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction, SetupAction,
+    BackupAction, CanvasAction, DrawAction, EditAction, GlobalAction, GraphAction, HelpAction,
+    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction,
+    SetupAction,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
@@ -18,18 +19,25 @@ fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone + std::fmt::Debug>(
 ) {
     for (action, strs) in from {
         let mut combos = Vec::with_capacity(strs.len());
+        let mut had_valid = false;
         for s in strs {
             match KeyCombo::parse(s) {
-                Some(c) => combos.push(c),
+                Some(c) => {
+                    combos.push(c);
+                    had_valid = true;
+                }
                 None => warnings.push(format!(
                     "Keybind parse error: skipping invalid combo {:?} for action {:?}",
                     s, action
                 )),
             }
         }
-        if !combos.is_empty() {
-            into.insert(action.clone(), combos);
+        // Allow explicit [] to disable a binding. Only skip insertion when
+        // the array was non-empty but all entries failed to parse.
+        if !strs.is_empty() && !had_valid && combos.is_empty() {
+            continue;
         }
+        into.insert(action.clone(), combos);
     }
 }
 fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone + std::cmp::Ord>(
@@ -175,6 +183,7 @@ impl Keybinds {
         merge_section(&mut keybinds.backup, &toml.backup, warnings);
         merge_section(&mut keybinds.outline, &toml.outline, warnings);
         merge_section(&mut keybinds.setup, &toml.setup, warnings);
+        merge_section(&mut keybinds.global, &toml.global, warnings);
         Ok(keybinds)
     }
 
@@ -202,6 +211,7 @@ impl Keybinds {
             backup: section_to_toml(&self.backup),
             outline: section_to_toml(&self.outline),
             setup: section_to_toml(&self.setup),
+            global: section_to_toml(&self.global),
         }
     }
 
@@ -303,6 +313,13 @@ keybind_scope!(
     matches_setup,
     setup_keys_display,
     display_setup
+);
+keybind_scope!(
+    global,
+    GlobalAction,
+    matches_global,
+    global_keys_display,
+    display_global
 );
 
 #[cfg(test)]

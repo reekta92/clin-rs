@@ -1,5 +1,5 @@
 use crate::keybinds::types::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, ListAction,
+    BackupAction, CanvasAction, DrawAction, EditAction, GlobalAction, GraphAction, ListAction,
 };
 
 #[derive(Clone, Copy)]
@@ -280,6 +280,19 @@ pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
     }
 }
 
+pub fn global_group_order() -> &'static [&'static str] {
+    &["System"]
+}
+
+pub fn global_action_meta(a: GlobalAction) -> HelpMeta {
+    match a {
+        GlobalAction::ToggleHelp => meta("System", "Toggle help"),
+        GlobalAction::ToggleQuickKeybinds => meta("System", "Toggle keybinds overlay"),
+        GlobalAction::ToggleMessages => meta("System", "Toggle messages overlay"),
+        GlobalAction::Redraw => meta("System", "Redraw view"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,5 +330,9 @@ mod tests {
     #[test]
     fn backup_meta_nonempty() {
         assert_meta_nonempty!(BackupAction, backup_action_meta);
+    }
+    #[test]
+    fn global_meta_nonempty() {
+        assert_meta_nonempty!(GlobalAction, global_action_meta);
     }
 }

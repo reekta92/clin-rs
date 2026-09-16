@@ -708,6 +708,17 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | `back` | `Esc`, `q` | Back |
 | `help` | `?` | Show help |
 
+### Global Actions (`[global]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `toggle_help` | `F1` | Toggle help |
+| `toggle_quick_keybinds` | `F2` | Toggle keybinds overlay |
+| `toggle_messages` | `F3` | Toggle messages overlay |
+| `redraw` | `F5` | Redraw view |
+
+Set any action to `[]` to disable it, e.g. `toggle_quick_keybinds = []` in `[global]`.
+
 ---
 
 ## Migration Note

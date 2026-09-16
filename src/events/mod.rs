@@ -776,6 +776,22 @@ pub fn handle_global_popups_and_palette(
     // Message overlay blockade — when a fatal message is active or the
     // overlay is force-opened, intercept most keys for scrolling / dismissal.
     if app.messages.has_fatal() || app.messages.force_open {
+        // Allow global toggles to close the overlay via keybinds
+        if app
+            .keybinds
+            .matches_global(crate::keybinds::GlobalAction::ToggleMessages, &key)
+        {
+            app.messages.force_open = !app.messages.force_open;
+            app.messages.scroll = 0;
+            return true;
+        }
+        if app
+            .keybinds
+            .matches_global(crate::keybinds::GlobalAction::ToggleQuickKeybinds, &key)
+        {
+            app.quick_keybinds_open = !app.quick_keybinds_open;
+            return true;
+        }
         return match key.code {
             crossterm::event::KeyCode::Esc => {
                 if app.messages.has_fatal() {
@@ -806,64 +822,48 @@ pub fn handle_global_popups_and_palette(
                 app.messages.scroll = app.messages.scroll.saturating_sub(10);
                 true
             }
-            crossterm::event::KeyCode::F(3) => {
-                app.messages.force_open = !app.messages.force_open;
-                app.messages.scroll = 0;
-                true
-            }
-            crossterm::event::KeyCode::F(2) => {
-                app.quick_keybinds_open = !app.quick_keybinds_open;
-                true
-            }
             _ => true, // swallow everything else
         };
     }
 
-    // QuickKeybinds toggle — identical combo in every view. F2 is unbound in
-    // all 9 keybind scopes (verified in src/keybinds/defaults.rs); raw check
-    // follows the is_universal_quit_key precedent (global keys live outside
-    // the per-scope enum system). Only toggles when no popup/palette is open
-    // so it never fights modal input.
-    if app.popups.active.is_none()
-        && app.command_palette.is_none()
-        && key.code == crossterm::event::KeyCode::F(2)
-    {
-        app.quick_keybinds_open = !app.quick_keybinds_open;
-        return true;
-    }
-    // Message overlay toggle — F3 force-opens/closes the message overlay.
-    if key.code == crossterm::event::KeyCode::F(3) {
-        app.messages.force_open = !app.messages.force_open;
-        return true;
-    }
-    // F1 — global help toggle. Opens help at the tab related to the current
-    // view. Skipped in Help view (let HelpAction::Close handle F1 so it toggles
-    // closed — bound at src/keybinds/defaults.rs:351) and Setup view (no help
-    // path, per design). Raw check mirrors F2/F3 precedent.
-    if app.popups.active.is_none()
-        && app.command_palette.is_none()
-        && key.code == crossterm::event::KeyCode::F(1)
-        && !matches!(
-            app.mode,
-            crate::app::ViewMode::Help | crate::app::ViewMode::Setup
-        )
-        && let Some(tab) = app.mode.help_tab()
-    {
-        app.open_help_page_with_tab(tab);
-        return true;
-    }
-
-    // F5 — global full view redraw. Sets the existing `needs_full_redraw`
-    // flag; the main loop then calls terminal.clear() and forces
-    // list_dirty/graph_dirty=true so the next frame repaints every view from
-    // scratch. Active from every view.
-    if app.popups.active.is_none()
-        && app.command_palette.is_none()
-        && key.code == crossterm::event::KeyCode::F(5)
-    {
-        app.needs_full_redraw = true;
-        app.set_temporary_status_static("View redrawn");
-        return true;
+    // Global keybinds — [global] section (F1/F2/F3/F5 by default, configurable).
+    // Disabled when set to [] in TOML. Mirrors the previous raw F-key checks
+    // but now goes through the keybind system so users can remap or disable.
+    if app.popups.active.is_none() && app.command_palette.is_none() {
+        if app
+            .keybinds
+            .matches_global(crate::keybinds::GlobalAction::ToggleQuickKeybinds, &key)
+        {
+            app.quick_keybinds_open = !app.quick_keybinds_open;
+            return true;
+        }
+        if app
+            .keybinds
+            .matches_global(crate::keybinds::GlobalAction::ToggleMessages, &key)
+        {
+            app.messages.force_open = !app.messages.force_open;
+            return true;
+        }
+        if app
+            .keybinds
+            .matches_global(crate::keybinds::GlobalAction::ToggleHelp, &key)
+            && !matches!(
+                app.mode,
+                crate::app::ViewMode::Help | crate::app::ViewMode::Setup
+            )
+            && let Some(tab) = app.mode.help_tab()
+        {
+            app.open_help_page_with_tab(tab);
+            return true;
+        }
+        if app
+            .keybinds
+            .matches_global(crate::keybinds::GlobalAction::Redraw, &key)
+        {
+            app.needs_full_redraw = true;
+            app.set_temporary_status_static("View redrawn");
+            return true;
+        }
     }
 
     // Command palette
