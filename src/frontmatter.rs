@@ -107,22 +107,26 @@ mod tests {
     fn test_parse_preserves_unknown_keys() {
         let content = "---\ntitle: Known Title\ntags: [tag1]\npinned: true\ntype: knowledge_concept\ncreated: 2024-03-24\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nBody content";
         let (fm, body) = parse(content);
-        
+
         assert_eq!(fm.title.as_deref(), Some("Known Title"));
         assert_eq!(fm.tags, vec!["tag1"]);
         assert!(fm.pinned);
-        
+
         assert!(fm.extra.contains_key("type"));
         assert!(fm.extra.contains_key("created"));
         assert!(fm.extra.contains_key("confidence"));
         assert!(fm.extra.contains_key("sources"));
-        
+
         assert_eq!(body, "Body content");
-        
+
         let serialized = serialize(&fm, body);
         assert!(serialized.contains("type: knowledge_concept"));
         assert!(serialized.contains("confidence: 0.9"));
         assert!(serialized.contains("sources:"));
-        assert!(serialized.contains("- '[[kimball-dwt]]'") || serialized.contains("- \"[[kimball-dwt]]\"") || serialized.contains("- [[kimball-dwt]]"));
+        assert!(
+            serialized.contains("- '[[kimball-dwt]]'")
+                || serialized.contains("- \"[[kimball-dwt]]\"")
+                || serialized.contains("- [[kimball-dwt]]")
+        );
     }
 }

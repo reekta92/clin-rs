@@ -1424,7 +1424,6 @@ impl Storage {
             format!("{}/{}.{}", target_folder, new_id, source_ext)
         };
 
-
         let source_path = self.note_path(id);
         let target_path = self.note_path(&initial_id);
         if let Some(parent) = target_path.parent() {
@@ -2358,7 +2357,11 @@ mod tests {
         assert!(saved.contains("type: knowledge_concept"));
         assert!(saved.contains("confidence: 0.9"));
         assert!(saved.contains("sources:"));
-        assert!(saved.contains("- '[[kimball-dwt]]'") || saved.contains("- \"[[kimball-dwt]]\"") || saved.contains("- [[kimball-dwt]]"));
+        assert!(
+            saved.contains("- '[[kimball-dwt]]'")
+                || saved.contains("- \"[[kimball-dwt]]\"")
+                || saved.contains("- [[kimball-dwt]]")
+        );
 
         Ok(())
     }
@@ -2381,18 +2384,18 @@ mod tests {
         fs::write(&md_path, content)?;
 
         let enc_id = storage.encrypt_note("obsidian.md")?;
-        
+
         let clin_path = storage.note_path(&enc_id);
         let enc_content = String::from_utf8_lossy(&fs::read(&clin_path)?).into_owned();
         assert!(enc_content.contains("type: knowledge_concept"));
         assert!(enc_content.contains("confidence: 0.9"));
-        
+
         let dec_id = storage.decrypt_note(&enc_id)?;
         let dec_path = storage.note_path(&dec_id);
         let dec_content = fs::read_to_string(&dec_path)?;
         assert!(dec_content.contains("type: knowledge_concept"));
         assert!(dec_content.contains("confidence: 0.9"));
-        
+
         Ok(())
     }
 
@@ -2416,7 +2419,7 @@ mod tests {
         let dup_id = storage.duplicate_note("obsidian.md", "")?;
         let dup_path = storage.note_path(&dup_id);
         let dup_content = String::from_utf8_lossy(&fs::read(&dup_path)?).into_owned();
-        
+
         assert!(dup_content.contains("type: knowledge_concept"));
         assert!(dup_content.contains("confidence: 0.9"));
 
