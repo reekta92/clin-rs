@@ -35,6 +35,16 @@ The `EditMode` enum (READ/EDIT) is defined in `src/editor.rs`:
 
 The `edit_mode_highlight` config option (`EditorConfig.edit_mode_highlight`, default `true`) controls visual highlighting of the active mode. A source-line map keeps READ and EDIT scroll positions in sync.
 
+## Text Selection and Clipboard
+
+Keyboard selection: hold `Shift` while moving the cursor (arrows, Home/End,
+PageUp/PageDown; `Ctrl+Shift+Arrow` selects word-wise) to extend a selection,
+then use the copy/cut keybinds (`Ctrl+Shift+C`/`Ctrl+Shift+X` by default).
+Mouse drag selects and copies immediately by default;
+`EditorConfig.copy_on_select` (bool, default `true`) set to `false` keeps the
+selection instead so it can be copied with the copy keybind.
+
+
 ## Find Popup
 
 A custom find popup replaces the legacy textarea search. State is stored in the `find_popup` field on `NoteEditor`. Triggered via the edit keybind scope.
@@ -72,6 +82,7 @@ The `[editor]` section in `config.toml`:
 | `show_line_numbers` | bool | `true` | Show line numbers |
 | `date_format` | String | `"%Y-%m-%d %H:%M"` | Format for insert-date action |
 | `soft_wrap` | bool | `false` | Soft-wrap the editor body |
+| `copy_on_select` | bool | `true` | Copy to clipboard immediately when a mouse drag selects text |
 | `edit_mode_highlight` | bool | `true` | Highlight the active READ/EDIT mode |
 
 Example:
@@ -84,7 +95,7 @@ preview_enabled = false
 show_line_numbers = true
 date_format = "%Y-%m-%d %H:%M"
 soft_wrap = false
-edit_mode_highlight = true
+copy_on_select = true
 ```
 
 ## Connections

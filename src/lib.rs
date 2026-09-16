@@ -976,7 +976,11 @@ impl TerminalGuard {
                 EnterAlternateScreen,
                 EnableMouseCapture,
                 EnableBracketedPaste,
-                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+                PushKeyboardEnhancementFlags(
+                    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                )
             )
         } else {
             execute!(
@@ -1527,6 +1531,15 @@ where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
     match ev {
+        // All-keys keyboard mode reports bare modifier presses and text-less
+        // IME events (key code 0); drop them before any handler sees them.
+        Event::Key(key)
+            if key.kind == KeyEventKind::Press
+                && (matches!(key.code, KeyCode::Modifier(_))
+                    || key.code == KeyCode::Char('\0')) =>
+        {
+            return Ok(());
+        }
         // Global Ctrl+C — immediately signal exit
         Event::Key(key)
             if key.kind == KeyEventKind::Press

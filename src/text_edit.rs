@@ -1,6 +1,6 @@
 use crate::editor_document::EditorDocument;
 use crate::keybinds::{EditAction, Keybinds};
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui_textarea::{CursorMove, TextArea};
 use std::cell::RefCell;
 use std::io::Write;
@@ -181,6 +181,34 @@ pub(crate) fn copy_mouse_selection<T: TextEditTarget>(target: &mut T) -> Option<
     Some("Copied to clipboard")
 }
 
+/// Extend or collapse the selection for a cursor-movement key before it is fed
+/// to the text target. SHIFT+move (optionally with CTRL for word-wise moves)
+/// starts a selection if none is active; an unmodified move collapses it.
+pub(crate) fn update_selection_for_move<T: TextEditTarget>(target: &mut T, key: &KeyEvent) {
+    if !matches!(
+        key.code,
+        KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Home
+            | KeyCode::End
+            | KeyCode::PageUp
+            | KeyCode::PageDown
+    ) {
+        return;
+    }
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+    let rest = key.modifiers - KeyModifiers::SHIFT;
+    if shift && (rest.is_empty() || rest == KeyModifiers::CONTROL) {
+        if !target.has_selection() {
+            target.start_selection();
+        }
+    } else if key.modifiers.is_empty() {
+        target.cancel_selection();
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct MouseTextSelection {
     pub active: bool,
@@ -200,7 +228,11 @@ impl MouseTextSelection {
         }
     }
 
-    pub fn finish<T: TextEditTarget>(&mut self, target: &mut T) -> Option<&'static str> {
+    pub fn finish<T: TextEditTarget>(
+        &mut self,
+        target: &mut T,
+        copy_on_select: bool,
+    ) -> Option<&'static str> {
         if !self.active {
             return None;
         }
@@ -209,6 +241,9 @@ impl MouseTextSelection {
         self.dragged = false;
         if !dragged {
             target.cancel_selection();
+            return None;
+        }
+        if !copy_on_select {
             return None;
         }
         copy_mouse_selection(target)
@@ -234,6 +269,8 @@ pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
     if keybinds.matches_edit(EditAction::Copy, &key) {
         if let Some(notice) = copy_mouse_selection(target) {
             set_clipboard_notice(notice);
+        } else {
+            set_clipboard_notice("Nothing selected");
         }
         return true;
     }
@@ -290,6 +327,7 @@ mod tests {
     fn text_area(text: &str) -> TextArea<'static> {
         TextArea::new(vec![text.to_owned()])
     }
+
     #[test]
     fn mouse_selection_lifecycle_copies_drag_and_cancels_click() {
         let mut area = text_area("hello world");
@@ -298,13 +336,53 @@ mod tests {
         selection.begin(&mut area);
         area.move_cursor(CursorMove::WordBack);
         selection.mark_drag();
-        assert_eq!(selection.finish(&mut area), Some("Copied to clipboard"));
+        assert_eq!(
+            selection.finish(&mut area, true),
+            Some("Copied to clipboard")
+        );
 
         selection.begin(&mut area);
-        assert_eq!(selection.finish(&mut area), None);
+        assert_eq!(selection.finish(&mut area, true), None);
         assert!(!area.has_selection());
     }
 
+    #[test]
+    fn mouse_selection_without_copy_keeps_selection() {
+        let mut area = text_area("hello world");
+        area.move_cursor(CursorMove::End);
+        let mut selection = MouseTextSelection::default();
+        selection.begin(&mut area);
+        area.move_cursor(CursorMove::WordBack);
+        selection.mark_drag();
+        assert_eq!(selection.finish(&mut area, false), None);
+        assert!(area.has_selection());
+        area.copy();
+        assert_eq!(area.yank_text(), "world");
+    }
+
+    #[test]
+    fn keyboard_shift_move_selects_and_plain_move_collapses() {
+        let mut area = text_area("hello world");
+        let shift_right = KeyEvent::new(KeyCode::Right, KeyModifiers::SHIFT);
+        for _ in 0..5 {
+            update_selection_for_move(&mut area, &shift_right);
+            area.input(ratatui_textarea::Input::from(shift_right));
+        }
+        assert!(area.has_selection());
+        area.copy();
+        assert_eq!(area.yank_text(), "hello");
+    }
+
+    #[test]
+    fn shortcut_copy_without_selection_reports_notice() {
+        let mut area = text_area("hello");
+        assert!(apply_text_shortcuts(
+            &Keybinds::default(),
+            &mut area,
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ));
+        assert_eq!(take_clipboard_notice(), Some("Nothing selected"));
+    }
     #[test]
     fn copy_mouse_selection_ignores_empty_selection() {
         let mut area = text_area("hello");

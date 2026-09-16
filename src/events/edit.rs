@@ -1,7 +1,7 @@
 use crate::actions::Action;
 use crate::app::{App, EditFocus, EditSidebar};
 use crate::keybinds::EditAction;
-use crate::text_edit::{MouseTextSelection, apply_text_shortcuts};
+use crate::text_edit::{MouseTextSelection, apply_text_shortcuts, update_selection_for_move};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui_textarea::Input;
@@ -391,6 +391,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 *focus = EditFocus::Body;
                 return false;
             }
+            update_selection_for_move(&mut app.editor.title_editor, &key);
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
                 return false;
             }
@@ -410,6 +411,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         EditFocus::Body => {
             app.seq_matcher.clear();
             let revision = app.editor.body.revision();
+            update_selection_for_move(&mut app.editor.body, &key);
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.body, key) {
                 if app.editor.body.revision() != revision {
                     app.request_editor_preview_update();
@@ -684,9 +686,12 @@ pub(crate) fn handle_edit_mouse(
         }
         MouseEventKind::Up(MouseButton::Left) => {
             let notice = if *focus == EditFocus::Body {
-                mouse_selection.finish(&mut app.editor.body)
+                mouse_selection.finish(&mut app.editor.body, app.config.editor.copy_on_select)
             } else {
-                mouse_selection.finish(&mut app.editor.title_editor)
+                mouse_selection.finish(
+                    &mut app.editor.title_editor,
+                    app.config.editor.copy_on_select,
+                )
             };
             if let Some(notice) = notice {
                 app.set_temporary_status(notice);

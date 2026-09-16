@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use crate::app::{App, EditFocus, ViewMode};
-use crate::text_edit::MouseTextSelection;
+use crate::text_edit::{MouseTextSelection, TextEditTarget, copy_mouse_selection};
 
 /// Run Edit mode without generic application queue draining or unconditional
 /// redraws. The session remains in-process and mutates the same `App`.
@@ -140,18 +140,43 @@ where
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
     match event {
+        // All-keys keyboard mode reports bare modifier presses and text-less
+        // IME events (key code 0); drop them before any handler sees them.
+        Event::Key(key)
+            if key.kind == KeyEventKind::Press
+                && (matches!(key.code, KeyCode::Modifier(_))
+                    || key.code == KeyCode::Char('\0')) =>
+        {
+            Ok(true)
+        }
         Event::Key(key)
             if key.kind == KeyEventKind::Press
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
-            let _ = app.autosave();
-            crate::force_quit()
+            // Ctrl+C copies when a text selection is active; otherwise it
+            // force-quits (terminals always deliver the plain key).
+            let has_selection = match *focus {
+                EditFocus::Title => app.editor.title_editor.has_selection(),
+                EditFocus::Body => app.editor.body.has_selection(),
+                EditFocus::Sidebar => false,
+            };
+            if has_selection {
+                let notice = if *focus == EditFocus::Title {
+                    copy_mouse_selection(&mut app.editor.title_editor)
+                } else {
+                    copy_mouse_selection(&mut app.editor.body)
+                };
+                if let Some(notice) = notice {
+                    app.set_temporary_status(notice);
+                }
+                Ok(true)
+            } else {
+                let _ = app.autosave();
+                crate::force_quit()
+            }
         }
         Event::Key(key) if key.kind == KeyEventKind::Press => {
-            if crate::events::handle_global_popups_and_palette(app, Event::Key(key), area) {
-                return Ok(true);
-            }
             crate::handle_edit_keys(app, key, focus);
             if let Some(message) = crate::text_edit::take_clipboard_notice() {
                 app.set_temporary_status(message);

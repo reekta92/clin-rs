@@ -109,7 +109,7 @@ fn handle_popup_text_selection(
                 app.popups.text_selection = Some((active_field, selection));
                 return false;
             }
-            if let Some(notice) = selection.finish(input) {
+            if let Some(notice) = selection.finish(input, true) {
                 app.set_temporary_status(notice);
             }
             true
@@ -289,7 +289,7 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
             );
         }
         MouseEventKind::Up(MouseButton::Left) => {
-            if let Some(notice) = palette.mouse_selection.finish(&mut palette.input) {
+            if let Some(notice) = palette.mouse_selection.finish(&mut palette.input, true) {
                 app.set_temporary_status(notice);
             }
         }
