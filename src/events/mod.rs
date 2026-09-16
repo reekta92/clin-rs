@@ -826,6 +826,7 @@ pub fn handle_global_popups_and_palette(
     // so it never fights modal input.
     if app.popups.active.is_none()
         && app.command_palette.is_none()
+        && app.vault_switcher.is_none()
         && key.code == crossterm::event::KeyCode::F(2)
     {
         app.quick_keybinds_open = !app.quick_keybinds_open;
@@ -834,6 +835,22 @@ pub fn handle_global_popups_and_palette(
     // Message overlay toggle — F3 force-opens/closes the message overlay.
     if key.code == crossterm::event::KeyCode::F(3) {
         app.messages.force_open = !app.messages.force_open;
+        return true;
+    }
+
+    // Vault switcher toggle — F4 opens/closes the vault switcher overlay.
+    // Raw check beside the F2/F3/F5 precedent (global keys live outside the
+    // per-scope enum system; F4 is unbound in all 9 keybind scopes).
+    if app.popups.active.is_none()
+        && app.command_palette.is_none()
+        && app.popups.confirm.is_none()
+        && key.code == crossterm::event::KeyCode::F(4)
+    {
+        if app.vault_switcher.is_some() {
+            app.vault_switcher = None;
+        } else {
+            app.open_vault_switcher();
+        }
         return true;
     }
     // F1 — global help toggle. Opens help at the tab related to the current
@@ -866,7 +883,79 @@ pub fn handle_global_popups_and_palette(
         return true;
     }
 
-    // Command palette
+    // Vault switcher overlay (F4) — interactive list; swallows all keys while
+    // open so the view beneath never sees them. A ConfirmPopup layers on top
+    if app.vault_switcher.is_some()
+        && app.popups.active.is_none()
+        && app.popups.confirm.is_none()
+        && app.command_palette.is_none()
+    {
+        enum VaultAction {
+            Close,
+            Add,
+            Switch(std::path::PathBuf),
+            RemoveConfirm(String),
+            ActiveProtected,
+        }
+        let data_dir = app.storage.data_dir.clone();
+        let mut action = None;
+        if let Some(switcher) = app.vault_switcher.as_mut() {
+            let max_index = switcher.vaults.len(); // trailing "+ Add new vault…" row
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    switcher.selected = if switcher.selected == 0 {
+                        max_index
+                    } else {
+                        switcher.selected - 1
+                    };
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    switcher.selected = if switcher.selected >= max_index {
+                        0
+                    } else {
+                        switcher.selected + 1
+                    };
+                }
+                KeyCode::Home => switcher.selected = 0,
+                KeyCode::End => switcher.selected = max_index,
+                KeyCode::Enter => {
+                    action = Some(
+                        switcher
+                            .vaults
+                            .get(switcher.selected)
+                            .cloned()
+                            .map_or(VaultAction::Add, VaultAction::Switch),
+                    );
+                }
+                KeyCode::Char('d') | KeyCode::Delete => {
+                    if let Some(path) = switcher.vaults.get(switcher.selected) {
+                        if crate::app::vaults::same_vault(path, &data_dir) {
+                            action = Some(VaultAction::ActiveProtected);
+                        } else {
+                            action = Some(VaultAction::RemoveConfirm(
+                                path.to_string_lossy().into_owned(),
+                            ));
+                        }
+                    }
+                }
+                KeyCode::Esc | KeyCode::Char('q') => action = Some(VaultAction::Close),
+                _ => {}
+            }
+        }
+        match action {
+            Some(VaultAction::Close) => app.vault_switcher = None,
+            Some(VaultAction::Add) => app.begin_add_vault(),
+            Some(VaultAction::Switch(path)) => app.switch_vault(path),
+            Some(VaultAction::RemoveConfirm(path)) => {
+                app.show_confirm(crate::popups::ConfirmAction::RemoveVault { path })
+            }
+            Some(VaultAction::ActiveProtected) => {
+                app.set_temporary_status_static("Cannot remove the active vault")
+            }
+            None => {}
+        }
+        return true;
+    }
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key, app) {
             if key.code == KeyCode::Enter
@@ -2650,5 +2739,91 @@ mod tests {
         assert!(consumed);
         assert!(!app.messages.force_open);
         assert_eq!(app.messages.scroll, 0);
+    }
+
+    fn vault_key(code: KeyCode) -> crossterm::event::Event {
+        crossterm::event::Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    #[test]
+    fn vault_switcher_open_navigate_delete_and_switch() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        crate::config::set_config_path_override(temp_dir.path().join("config.toml"));
+        let (_temp_dir, mut app) = test_app();
+
+        let vault_b = temp_dir.path().join("vaultB");
+        let vault_c = temp_dir.path().join("vaultC");
+        std::fs::create_dir_all(&vault_b).unwrap();
+        app.config.core.storage_path = Some(app.storage.data_dir.clone());
+        app.config.core.vaults = vec![vault_b.clone(), vault_c.clone()];
+
+        // F4 opens: active vault first, then config vaults, cursor on active.
+        assert!(handle_global_popups_and_palette(
+            &mut app,
+            vault_key(KeyCode::F(4)),
+            Rect::default()
+        ));
+        let sw = app.vault_switcher.as_ref().unwrap();
+        assert_eq!(sw.vaults.len(), 3);
+        assert_eq!(sw.vaults[0], app.storage.data_dir);
+        assert_eq!(sw.selected, 0);
+
+        // Enter on the active vault: status message, no rebootstrap, stays open.
+        assert!(handle_global_popups_and_palette(
+            &mut app,
+            vault_key(KeyCode::Enter),
+            Rect::default()
+        ));
+        assert!(app.setup_rebootstrap.is_none());
+        assert!(!app.should_quit);
+        assert!(app.vault_switcher.is_some());
+
+        // Navigate to vaultC and request removal: confirm popup layers on top.
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Down), Rect::default());
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Down), Rect::default());
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Char('d')), Rect::default());
+        assert!(app.popups.confirm.is_some());
+        assert!(app.vault_switcher.is_some());
+
+        // `y` confirms: vaultC leaves the overlay and the persisted config.
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Char('y')), Rect::default());
+        assert!(app.popups.confirm.is_none());
+        let sw = app.vault_switcher.as_ref().unwrap();
+        assert_eq!(sw.vaults.len(), 2);
+        assert!(!sw.vaults.contains(&vault_c));
+        assert!(app.config.core.vaults.contains(&vault_b));
+        assert!(!app.config.core.vaults.contains(&vault_c));
+        let saved = std::fs::read_to_string(temp_dir.path().join("config.toml")).unwrap();
+        assert!(saved.contains("vaultB") && !saved.contains("vaultC"));
+
+        // d on the ACTIVE vault: protected, no confirm popup.
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Home), Rect::default());
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Char('d')), Rect::default());
+        assert!(app.popups.confirm.is_none());
+
+        // Enter on vaultB: rebootstrap request, overlay closed, config updated.
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Down), Rect::default());
+        handle_global_popups_and_palette(&mut app, vault_key(KeyCode::Enter), Rect::default());
+        assert!(app.vault_switcher.is_none());
+        assert!(app.should_quit);
+        let request = app.setup_rebootstrap.as_ref().unwrap();
+        assert_eq!(request.selected_path, vault_b);
+        assert_eq!(request.previous_path, app.storage.data_dir);
+        assert_eq!(
+            app.config.core.storage_path.as_deref(),
+            Some(vault_b.as_path())
+        );
+
+        // F4 also closes the overlay.
+        app.setup_rebootstrap = None;
+        app.should_quit = false;
+        app.open_vault_switcher();
+        assert!(handle_global_popups_and_palette(
+            &mut app,
+            vault_key(KeyCode::F(4)),
+            Rect::default()
+        ));
+        assert!(app.vault_switcher.is_none());
     }
 }

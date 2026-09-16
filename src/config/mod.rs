@@ -550,6 +550,15 @@ impl ClinConfig {
             None => Self::default_storage_path(),
         }
     }
+
+    /// Extra vaults from `[core] vaults`, `~`/`$VAR` expanded, order preserved.
+    pub fn expanded_vaults(&self) -> Vec<PathBuf> {
+        self.core
+            .vaults
+            .iter()
+            .map(|p| expand_path(&p.to_string_lossy()))
+            .collect()
+    }
     pub fn set_storage_path(&mut self, path: PathBuf) {
         self.core.storage_path = Some(path);
     }

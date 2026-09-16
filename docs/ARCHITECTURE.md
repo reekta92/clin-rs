@@ -255,6 +255,7 @@ src/
 │   ├── settings_ops.rs   — Toggleable settings, layout persistence
 │   ├── tags.rs           — Tag CRUD operations
 │   ├── trash.rs          — Trash lifecycle
+│   ├── vaults.rs         — F4 vault switcher overlay: open/switch/add/remove
 │   └── views.rs          — View-mode switching
 ├── config/               — Config schema, loading, merging, custom themes
 │   ├── mod.rs            — ClinConfig lifecycle, re-exports

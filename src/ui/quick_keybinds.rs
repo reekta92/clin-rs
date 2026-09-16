@@ -57,6 +57,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         || app.command_palette.is_some()
         || app.editor.find_popup.is_some()
         || app.help_search.popup.is_some()
+        || app.vault_switcher.is_some()
     {
         return;
     }

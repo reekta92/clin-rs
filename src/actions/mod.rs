@@ -212,6 +212,16 @@ simple_action!(
     open_setup_view
 );
 simple_action!(
+    OpenVaultSwitcherAction,
+    "vault.switch",
+    "Switch Vault",
+    "Quick-switch the active vault (F4 overlay)",
+    ActionCategory::Views,
+    "\u{f07c}",
+    "\u{1f4c2}",
+    open_vault_switcher
+);
+simple_action!(
     ManageSubnotesList,
     "manage_subnotes_list",
     "Manage Sub-notes",
@@ -232,6 +242,7 @@ pub struct ActionInfo {
 
 pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyLock::new(|| {
     vec![
+        Box::new(OpenVaultSwitcherAction),
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
         Box::new(rasterize::RasterizeNoteAction),

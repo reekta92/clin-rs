@@ -27,6 +27,9 @@ pub enum ConfirmAction {
         folder_paths: Vec<String>,
     },
     QuitApp,
+    RemoveVault {
+        path: String,
+    },
     RemoveAllTagsFromSelected,
 }
 
