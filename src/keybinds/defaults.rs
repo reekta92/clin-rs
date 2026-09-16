@@ -91,6 +91,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::ToggleMarkdownPreview, &["Ctrl+p"]),
     (EditAction::TogglePreviewFullscreen, &["F11"]),
     (EditAction::ToggleWrap, &["F10"]),
+    (EditAction::CycleTextAlignment, &["F9"]),
     // Preview paging; inherited by all presets (none override PageUp/Down).
     (EditAction::PreviewPageUp, &["PageUp"]),
     (EditAction::PreviewPageDown, &["PageDown"]),

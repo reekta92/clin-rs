@@ -315,6 +315,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 app.toggle_wrap();
                 return false;
             }
+            EditAction::CycleTextAlignment => {
+                app.cycle_text_alignment();
+                return false;
+            }
             EditAction::InsertTab => {
                 match *focus {
                     EditFocus::Title => {

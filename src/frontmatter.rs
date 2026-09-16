@@ -14,6 +14,8 @@ pub struct Frontmatter {
     pub links: Option<Vec<String>>,
     #[serde(default)]
     pub original_ext: Option<String>,
+    #[serde(default)]
+    pub text_alignment: Option<crate::config::types::TextAlignment>,
     #[serde(flatten)]
     pub extra: serde_yaml_ng::Mapping,
 }

@@ -465,6 +465,14 @@ pub enum NotesSection {
     Graf,
     Todo,
 }
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlignment {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
 
 impl std::str::FromStr for NotesSection {
     type Err = String;

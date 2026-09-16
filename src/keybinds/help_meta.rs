@@ -122,6 +122,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::ToggleMarkdownPreview => meta("Preview", "Toggle markdown preview"),
         EditAction::TogglePreviewFullscreen => meta("Preview", "Toggle preview fullscreen"),
         EditAction::ToggleWrap => meta("Editing", "Toggle word wrap (editor and preview)"),
+        EditAction::CycleTextAlignment => meta("Editing", "Cycle text alignment"),
         EditAction::PreviewPageUp => meta("Preview", "Page preview up"),
         EditAction::PreviewPageDown => meta("Preview", "Page preview down"),
         EditAction::ToggleOutline => meta("Panels", "Toggle outline pane"),

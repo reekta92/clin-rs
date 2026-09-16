@@ -345,6 +345,37 @@ impl App {
         };
         self.editor.body.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
+
+        let (frontmatter, _) = crate::frontmatter::parse(&self.editor.body.text());
+        self.editor.current_text_alignment = frontmatter
+            .text_alignment
+            .unwrap_or(self.config.editor.text_alignment);
+
+        let alignment = match self.editor.current_text_alignment {
+            crate::config::types::TextAlignment::Left => ratatui::layout::Alignment::Left,
+            crate::config::types::TextAlignment::Center => ratatui::layout::Alignment::Center,
+            crate::config::types::TextAlignment::Right => ratatui::layout::Alignment::Right,
+        };
+        self.editor.body.set_alignment(alignment);
+        self.editor.title_editor.set_alignment(alignment);
+    }
+
+    pub fn cycle_text_alignment(&mut self) {
+        self.editor.current_text_alignment = match self.editor.current_text_alignment {
+            crate::config::types::TextAlignment::Left => crate::config::types::TextAlignment::Center,
+            crate::config::types::TextAlignment::Center => crate::config::types::TextAlignment::Right,
+            crate::config::types::TextAlignment::Right => crate::config::types::TextAlignment::Left,
+        };
+
+        let alignment = match self.editor.current_text_alignment {
+            crate::config::types::TextAlignment::Left => ratatui::layout::Alignment::Left,
+            crate::config::types::TextAlignment::Center => ratatui::layout::Alignment::Center,
+            crate::config::types::TextAlignment::Right => ratatui::layout::Alignment::Right,
+        };
+        self.editor.body.set_alignment(alignment);
+        self.editor.title_editor.set_alignment(alignment);
+
+        self.set_temporary_status(&format!("Text alignment: {:?}", self.editor.current_text_alignment));
     }
 
     pub fn toggle_show_line_numbers(&mut self) {
@@ -801,7 +832,20 @@ mod tests {
         };
         App::new(storage).unwrap()
     }
+    #[test]
+    fn test_cycle_text_alignment() {
+        let mut app = make_app();
+        app.editor.current_text_alignment = crate::config::types::TextAlignment::Left;
 
+        app.cycle_text_alignment();
+        assert_eq!(app.editor.current_text_alignment, crate::config::types::TextAlignment::Center);
+
+        app.cycle_text_alignment();
+        assert_eq!(app.editor.current_text_alignment, crate::config::types::TextAlignment::Right);
+
+        app.cycle_text_alignment();
+        assert_eq!(app.editor.current_text_alignment, crate::config::types::TextAlignment::Left);
+    }
     #[test]
     fn test_swap_section_order_reverses() {
         let _lock = crate::config::ConfigTestGuard::lock();

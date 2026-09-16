@@ -190,6 +190,10 @@ impl EditorDocument {
         self.textarea.set_wrap_mode(mode);
     }
 
+    pub(crate) fn set_alignment(&mut self, alignment: ratatui::layout::Alignment) {
+        self.textarea.set_alignment(alignment);
+    }
+
     pub(crate) fn take_change(&mut self) -> Option<DocumentChange> {
         self.change.take()
     }

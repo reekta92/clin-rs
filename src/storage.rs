@@ -559,6 +559,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
+            text_alignment: None,
             extra: existing_extra_frontmatter(&old_path),
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
@@ -632,6 +633,7 @@ impl Storage {
                 pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
+                text_alignment: None,
                 extra: existing_extra_frontmatter(&old_path),
             };
             let final_content = frontmatter::serialize(&fm, &note.content);
@@ -1323,6 +1325,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(links),
             original_ext: None,
+            text_alignment: None,
             extra: existing_extra_frontmatter(&old_path),
         };
 

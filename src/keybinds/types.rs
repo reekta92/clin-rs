@@ -102,6 +102,7 @@ pub enum EditAction {
     ToggleMarkdownPreview,
     TogglePreviewFullscreen,
     ToggleWrap,
+    CycleTextAlignment,
     PreviewPageUp,
     PreviewPageDown,
     ManageSubnotes,
