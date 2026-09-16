@@ -95,24 +95,18 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         dropdown_area,
     );
 
-    let alt_bg = crate::app_theme::darken(theme.accent, 36);
     const SEP: &str = " • ";
 
     for (i, (name, path, is_active)) in rows.iter().skip(scroll).take(height as usize).enumerate() {
         let row_index = scroll + i;
         let row_y = dropdown_area.y + i as u16;
 
-        // Selection uses the quick-search convention (`heading` bg, `highlight_fg` text).
-        // Unselected rows alternate between `accent` and `alt_bg`.
+        // Single accent bg for all rows; selection uses the quick-search
+        // convention (`heading` bg, `highlight_fg` text).
         let (bg, fg) = if row_index == switcher.selected {
             (theme.heading, theme.highlight_fg)
         } else {
-            let bg = if row_index % 2 == 0 {
-                theme.accent
-            } else {
-                alt_bg
-            };
-            (bg, theme.highlight_fg)
+            (theme.accent, theme.highlight_fg)
         };
 
         let full_row = Rect::new(dropdown_area.x, row_y, popup_width, 1);
