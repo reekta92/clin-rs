@@ -1276,12 +1276,13 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
             }
         }
         MouseEventKind::Moved | MouseEventKind::Drag(MouseButton::Left)
-            if contains_cell(dropdown_area, mouse.column, mouse.row) => {
-                let hover_idx = scroll + (mouse.row - dropdown_area.y) as usize;
-                if hover_idx < total_items {
-                    switcher.selected = hover_idx;
-                }
+            if contains_cell(dropdown_area, mouse.column, mouse.row) =>
+        {
+            let hover_idx = scroll + (mouse.row - dropdown_area.y) as usize;
+            if hover_idx < total_items {
+                switcher.selected = hover_idx;
             }
+        }
         _ => {}
     }
 
