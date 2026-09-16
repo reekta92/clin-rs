@@ -51,7 +51,7 @@ pub fn write_system_clipboard(text: &str) {
 
 pub fn read_system_clipboard() -> Option<String> {
     if is_wayland()
-        && let Ok(out) = Command::new("wl-paste").output()
+        && let Ok(out) = Command::new("wl-paste").arg("--no-newline").output()
         && out.status.success()
     {
         return Some(String::from_utf8_lossy(&out.stdout).into_owned());
