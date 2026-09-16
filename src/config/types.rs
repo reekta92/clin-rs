@@ -560,11 +560,16 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeScale {
-    #[default]
     Automatic,
     Fixed(u8),
+}
+
+impl Default for NodeScale {
+    fn default() -> Self {
+        NodeScale::Fixed(5)
+    }
 }
 
 impl serde::Serialize for NodeScale {
