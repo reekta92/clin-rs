@@ -1,5 +1,3 @@
-use ratatui::{Frame, layout::Rect, style::Color};
-
 pub struct MarqueeDragState {
     pub start: Option<(f64, f64)>,
     pub end: Option<(f64, f64)>,
@@ -42,26 +40,6 @@ impl MarqueeDragState {
     pub fn clear(&mut self) {
         self.start = None;
         self.end = None;
-    }
-}
-
-/// Marquee fill color shared by graf and pinstar.
-pub fn muted_canvas_selection_fill(accent: Color, highlight_bg: Color) -> Color {
-    match accent {
-        Color::Rgb(r, g, b) => Color::Rgb(r / 4, g / 4, b / 4),
-        _ => highlight_bg,
-    }
-}
-
-/// Translucent marquee fill preserving every underlying glyph and foreground.
-pub fn draw_canvas_rect_filled(frame: &mut Frame, rect: Rect, fill: Color) {
-    let buf = frame.buffer_mut();
-    for row in rect.y..rect.y.saturating_add(rect.height) {
-        for col in rect.x..rect.x.saturating_add(rect.width) {
-            if let Some(cell) = buf.cell_mut((col, row)) {
-                cell.set_bg(fill);
-            }
-        }
     }
 }
 
@@ -116,47 +94,5 @@ mod tests {
         // Manhattan move of 4 → dragging.
         assert!(m.is_dragging_screen(4, 0, 0, 0));
         assert!(m.is_dragging_screen(2, 2, 0, 0));
-    }
-    #[test]
-    fn marquee_fill_preserves_underlying_glyphs() {
-        let mut terminal =
-            ratatui::Terminal::new(ratatui::backend::TestBackend::new(6, 6)).unwrap();
-        terminal
-            .draw(|frame| {
-                for y in 1..5 {
-                    for x in 1..5 {
-                        frame
-                            .buffer_mut()
-                            .cell_mut((x, y))
-                            .unwrap()
-                            .set_symbol("x")
-                            .set_fg(Color::Red);
-                    }
-                }
-                draw_canvas_rect_filled(frame, Rect::new(1, 1, 4, 4), Color::Blue);
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        for y in 1..5 {
-            for x in 1..5 {
-                let cell = buf.cell((x, y)).unwrap();
-                assert_eq!(cell.symbol(), "x");
-                assert_eq!(cell.style().fg, Some(Color::Red));
-                assert_eq!(cell.style().bg, Some(Color::Blue));
-            }
-        }
-    }
-
-    #[test]
-    fn muted_selection_fill_uses_accent_or_highlight_fallback() {
-        assert_eq!(
-            muted_canvas_selection_fill(Color::Rgb(96, 64, 32), Color::Cyan),
-            Color::Rgb(24, 16, 8),
-        );
-        assert_eq!(
-            muted_canvas_selection_fill(Color::Yellow, Color::Cyan),
-            Color::Cyan,
-        );
     }
 }

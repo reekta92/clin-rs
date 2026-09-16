@@ -242,7 +242,7 @@ impl ListView {
 pub enum PreviewContent {
     Markdown(Box<MarkdownRenderer>),
     CanvasGrid {
-        data: Box<crate::pinstar::data::CanvasData>,
+        data: Box<pinstar::data::CanvasData>,
         grid: Vec<Vec<(char, Style)>>,
     },
     DrawGrid {

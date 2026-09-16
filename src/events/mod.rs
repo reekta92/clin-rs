@@ -297,6 +297,7 @@ pub fn handle_bracketed_paste(
         },
         ViewMode::Canvas => {
             if let Some(canvas) = &mut app.canvas_state {
+                let canvas = &mut canvas.state;
                 if let Some(ta) = &mut canvas.rename_popup {
                     ta.insert_str(&data);
                     return true;
@@ -320,8 +321,7 @@ pub fn handle_bracketed_paste(
                     canvas.raw_editor.insert_str(&data);
                     // Sync canvas from raw JSON pane without touching note editor state.
                     let content = canvas.raw_editor.lines().join("\n");
-                    if let Ok(parsed) =
-                        serde_json::from_str::<crate::pinstar::data::CanvasData>(&content)
+                    if let Ok(parsed) = serde_json::from_str::<pinstar::data::CanvasData>(&content)
                     {
                         canvas.data = parsed;
                         let _ = canvas.save();

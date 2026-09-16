@@ -60,6 +60,8 @@ pub struct CustomChrome {
     #[serde(default)]
     pub smart: String,
     #[serde(default)]
+    pub selection_indicator: String,
+    #[serde(default)]
     pub subnote: String,
     pub highlight_fg: String,
     pub highlight_bg: String,

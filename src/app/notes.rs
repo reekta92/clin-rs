@@ -739,8 +739,8 @@ impl App {
             self.apply_editor_prefs();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
-            if return_to == ViewMode::Graph && self.graph_state.is_none() {
-                match crate::graf::app::GrafAppState::new(
+            if return_to == ViewMode::Graph && self.graph_plugin.is_none() {
+                match crate::graf_adapter::GrafPlugin::new(
                     &self.config,
                     self.storage.clone(),
                     self.notes.clone(),
@@ -749,7 +749,7 @@ impl App {
                     self.seq_matcher.clone(),
                 ) {
                     Ok(state) => {
-                        self.graph_state = Some(state);
+                        self.graph_plugin = Some(state);
                     }
                     Err(e) => {
                         self.set_temporary_status(&format!("Failed to rebuild graph: {e}"));
@@ -893,8 +893,8 @@ impl App {
             self.open_note_in_external_editor(note_id, None);
             // graph_state was destroyed when note was opened; rebuild it
             self.return_mode.take(); // discard return_mode (was set to Graph above)
-            if self.graph_state.is_none() {
-                match crate::graf::app::GrafAppState::new(
+            if self.graph_plugin.is_none() {
+                match crate::graf_adapter::GrafPlugin::new(
                     &self.config,
                     self.storage.clone(),
                     self.notes.clone(),
@@ -903,7 +903,7 @@ impl App {
                     self.seq_matcher.clone(),
                 ) {
                     Ok(state) => {
-                        self.graph_state = Some(state);
+                        self.graph_plugin = Some(state);
                     }
                     Err(_) => {
                         self.set_temporary_status_static("Failed to rebuild graph view");
@@ -1052,9 +1052,10 @@ impl App {
                         if let Some(parent) = path.parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        let data = crate::pinstar::data::CanvasData {
+                        let data = pinstar::data::CanvasData {
                             nodes: vec![],
                             edges: vec![],
+                            orientation: pinstar::data::DiagramOrientation::default(),
                         };
                         if let Ok(content) = serde_json::to_string_pretty(&data)
                             && let Err(e) = crate::fsutil::atomic_write_str(&path, &content)
@@ -1066,17 +1067,15 @@ impl App {
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
-                    if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
+                    if let Ok(plugin) = crate::pinstar_adapter::PinstarPlugin::new(
                         &path,
+                        &self.config,
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
+                        self.image_picker.clone(),
+                        &self.storage.data_dir,
                     ) {
-                        state.image_cache = crate::image_render::cache::ImageCache::new(
-                            self.config.image.cache_size,
-                        );
-                        state.image_picker = self.image_picker.clone();
-                        state.image_decode_tx = self.image_decode_tx.clone();
-                        self.canvas_state = Some(state);
+                        self.canvas_state = Some(plugin);
                     }
                     self.set_default_status();
                 }

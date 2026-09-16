@@ -34,6 +34,7 @@ pub struct AppThemeColors {
     pub subnote: Color,
     pub highlight_fg: Color,
     pub highlight_bg: Color,
+    pub selection_indicator: Color,
     pub hint_bar_style: crate::config::HintBarStyle,
 }
 
@@ -72,6 +73,7 @@ impl AppThemeColors {
                 subnote: Color::LightCyan,
                 highlight_fg: Color::Black,
                 highlight_bg: Color::Cyan,
+                selection_indicator: Color::Reset,
                 hint_bar_style: crate::config::HintBarStyle::default(),
             },
             crate::config::custom_themes::ResolvedTheme::Builtin(t) => {
@@ -138,6 +140,7 @@ impl AppThemeColors {
                         .get(SLOT_ACCENT)
                         .copied()
                         .unwrap_or(Color::Cyan),
+                    selection_indicator: tc.selected_indicator_color,
                     hint_bar_style: crate::config::HintBarStyle::default(),
                 }
             }
@@ -241,6 +244,7 @@ impl AppThemeColors {
             subnote: crate::config::parse_hex_color(&c.subnote).unwrap_or(Color::Reset),
             highlight_fg: crate::config::parse_hex_color(&c.highlight_fg).unwrap_or(Color::Reset),
             highlight_bg: crate::config::parse_hex_color(&c.highlight_bg).unwrap_or(Color::Reset),
+            selection_indicator: crate::config::parse_hex_color(&c.selection_indicator).unwrap_or(Color::Reset),
             hint_bar_style: crate::config::HintBarStyle::default(),
         }
     }

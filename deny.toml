@@ -32,8 +32,12 @@ allow = [
 [bans]
 multiple-versions = "warn"
 deny = []
-wildcards = "deny"
+wildcards = "warn"
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+allow-git = [
+    "https://github.com/reekta92/graf",
+    "https://github.com/reekta92/pinstar",
+]

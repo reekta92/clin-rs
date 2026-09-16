@@ -2,14 +2,38 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.13.0-testing.1] - 2026-09-06
+
+### Added
+
+- Consume canvas engine from upstream pinstar crate (v0.6.0)
+
+### Changed
+
+- Replace vendored src/graf with graf-rs v0.5.0 adapter
+
+### Fixed
+
+- Replace yanked libssh2-sys 0.3.2 with 0.3.3
+- Make all 6 gates green after pinstar extraction
+
+### Miscellaneous
+
+- Updated toml serde
+
+### Styling
+
+- Fixed formatting issues
+- Cargo fmt
+- Formatting fixes
 ## [0.12.0] - 2026-09-03
 
 ### CI
 
+- Fixed a false positive
 - Applied fixes for clippy warnings
 - Fixed clippy warnings
 - Fmt fixes
-- Fixed a false positive
 
 ### Changed
 
@@ -23,10 +47,10 @@ All notable changes to clin are documented in this file.
 
 ### Miscellaneous
 
-- Prune dead code and slim dependencies
 - Wrap binary with runtime dependencies
 - Include desktop files the package
 - Put devshell and package in separate files
+- Prune dead code and slim dependencies
 
 ### Styling
 

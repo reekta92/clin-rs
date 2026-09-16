@@ -223,7 +223,7 @@ pub fn draw_canvas(
     }
 
     if app.show_color_selector {
-        let colors = crate::pinstar::COLOR_PICKER_PALETTE;
+        let colors = pinstar::COLOR_PICKER_PALETTE;
         let items: Vec<(&str, bool, Option<ratatui::style::Color>)> = colors
             .iter()
             .map(|(name, _, color)| {

@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.13.0-testing.0"
+version = "0.13.0-testing.1"
 edition = "2024"
 rust-version = "1.90.0"
 description = "Feature-packed terminal note management app inspired by Obsidian"
@@ -106,6 +106,8 @@ image = "0.25.10"
 ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm", "image-defaults"] }
 rand = "0.10"
 ratatui = "0.30"
+graf = { package = "graf-rs", git = "https://github.com/reekta92/graf", rev = "d6848f3" }
+pinstar = { git = "https://github.com/reekta92/pinstar", rev = "9cef7ff", features = ["images"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml_ng = "0.10"

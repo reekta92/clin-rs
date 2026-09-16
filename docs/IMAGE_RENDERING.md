@@ -20,7 +20,7 @@ The image rendering pipeline consists of three layers:
 |---|---|
 | `src/ui/edit_view.rs:382-385` | Editor preview pane |
 | `src/ui/list_view.rs:1752-1797` | Notes list preview pane |
-| `src/draw/render.rs`, `src/pinstar/render.rs` | Canvas/draw image nodes |
+| `src/draw/render.rs`, upstream `pinstar` crate (`render.rs`, `images` feature) | Canvas/draw image nodes |
 | `src/app/loading.rs:839` | `install_image` helper |
 | `src/app/notes.rs:919-921` | View-level `ImageCache` initialization |
 | `src/app/views.rs:174` | Per-view `ImageCache` creation with `config.image.cache_size` |

@@ -7,7 +7,7 @@ use ratatui::widgets::*;
 
 use crate::app_theme::AppThemeColors;
 use crate::draw::state::DrawData;
-use crate::pinstar::data::{CanvasData, CanvasNode};
+use pinstar::data::{CanvasData, CanvasNode};
 use unicode_width::UnicodeWidthChar;
 
 pub fn render_canvas_snapshot(
@@ -584,7 +584,7 @@ fn is_image_ext(file: &str) -> bool {
 mod tests {
     use super::*;
     use crate::draw::state::{DrawElement, DrawItem, Shape};
-    use crate::pinstar::data::{GroupNode, TextNode};
+    use pinstar::data::{GroupNode, NodeShape, TextNode};
     use ratatui::backend::TestBackend;
 
     /// Regression guard: a grid cell containing a control char must not
@@ -637,6 +637,7 @@ mod tests {
     #[test]
     fn canvas_snapshot_fits_wide_content() {
         let data = CanvasData {
+            orientation: pinstar::data::DiagramOrientation::default(),
             nodes: vec![
                 CanvasNode::Text(TextNode {
                     id: "n1".to_string(),
@@ -646,6 +647,7 @@ mod tests {
                     height: 700.0,
                     text: "A".to_string(),
                     title: None,
+                    shape: NodeShape::default(),
                     color: None,
                 }),
                 CanvasNode::Text(TextNode {
@@ -656,6 +658,7 @@ mod tests {
                     height: 700.0,
                     text: "B".to_string(),
                     title: None,
+                    shape: NodeShape::default(),
                     color: None,
                 }),
             ],
@@ -725,6 +728,7 @@ mod tests {
     #[test]
     fn canvas_snapshot_fits_wide_fixture() {
         let data = CanvasData {
+            orientation: pinstar::data::DiagramOrientation::default(),
             nodes: vec![
                 CanvasNode::Text(TextNode {
                     id: "left".to_string(),
@@ -734,6 +738,7 @@ mod tests {
                     height: 700.0,
                     text: "Left".to_string(),
                     title: None,
+                    shape: NodeShape::default(),
                     color: None,
                 }),
                 CanvasNode::Text(TextNode {
@@ -744,6 +749,7 @@ mod tests {
                     height: 700.0,
                     text: "Right".to_string(),
                     title: None,
+                    shape: NodeShape::default(),
                     color: None,
                 }),
             ],
@@ -772,8 +778,10 @@ mod tests {
     #[test]
     fn file_nodes_visible_inside_groups() {
         let data = CanvasData {
+            orientation: pinstar::data::DiagramOrientation::default(),
             nodes: vec![
                 CanvasNode::Text(TextNode {
+                    shape: NodeShape::default(),
                     id: "f1".to_string(),
                     x: 100.0,
                     y: 100.0,

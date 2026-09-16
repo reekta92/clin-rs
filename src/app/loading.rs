@@ -976,11 +976,7 @@ impl App {
         };
 
         match self.mode {
-            crate::app::ViewMode::Canvas => {
-                if let Some(state) = &mut self.canvas_state {
-                    state.image_cache.install_decoded(decoded, picker);
-                }
-            }
+            // Canvas decodes through its own plugin worker (pinstar_adapter).
             crate::app::ViewMode::Edit => {
                 self.editor.image_cache.install_decoded(decoded, picker);
             }
@@ -1324,8 +1320,7 @@ impl App {
                     let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
                         Ok(content) => {
-                            match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content)
-                            {
+                            match serde_json::from_str::<pinstar::data::CanvasData>(&content) {
                                 Ok(data) => {
                                     let width = self.desired_list_preview_width();
                                     let height = self.desired_list_preview_height();
