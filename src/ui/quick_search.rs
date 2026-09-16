@@ -378,7 +378,7 @@ pub fn handle_quick_search_mouse<T>(
         crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left)
             if popup.mouse_selection.active =>
         {
-            popup.mouse_selection.finish(&mut popup.input);
+            popup.mouse_selection.finish(&mut popup.input, true);
             return Some(QuickSearchAction::Edited);
         }
         _ => {}

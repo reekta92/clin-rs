@@ -370,7 +370,7 @@ fn handle_text_selection_mouse(
                 *selection = Some((active_field, lifecycle));
                 return (false, None);
             }
-            (true, lifecycle.finish(input))
+            (true, lifecycle.finish(input, true))
         }
         _ => (false, None),
     }

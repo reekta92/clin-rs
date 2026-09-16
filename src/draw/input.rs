@@ -348,7 +348,7 @@ fn handle_text_editor_mouse(
             );
         }
         MouseEventKind::Up(MouseButton::Left) if app.mouse_selection.active => {
-            app.mouse_selection.finish(textarea);
+            app.mouse_selection.finish(textarea, true);
         }
         _ => {}
     }

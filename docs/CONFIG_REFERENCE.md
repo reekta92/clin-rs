@@ -70,6 +70,7 @@ Run `clin config show` to print the active configuration file path.
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
 | `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
 | `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
+| `copy_on_select` | `bool` | `true` | Copy to clipboard immediately when a mouse drag selects text; `false` keeps the selection for the copy keybind |
 | `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
 | `ghost_syntax` | `bool` | `true` | Visually dim markdown delimiters (brackets, URLs, etc.) in edit view |
 | `extended_markdown_features` | `bool` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |

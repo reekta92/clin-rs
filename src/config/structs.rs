@@ -429,6 +429,7 @@ pub struct EditorConfig {
     pub ghost_syntax: bool,
     pub extended_markdown_features: bool,
     pub soft_wrap: bool,
+    pub copy_on_select: bool,
 }
 
 impl Default for EditorConfig {
@@ -443,6 +444,7 @@ impl Default for EditorConfig {
             ghost_syntax: true,
             extended_markdown_features: true,
             soft_wrap: false,
+            copy_on_select: true,
         }
     }
 }
