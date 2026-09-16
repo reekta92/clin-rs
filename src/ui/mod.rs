@@ -919,6 +919,19 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         );
     }
 
+    // Vault rename popup
+    if let Some(crate::popups::ActivePopup::VaultRename(popup)) = &mut app.popups.active {
+        draw_text_prompt_popup(
+            frame,
+            "RENAME VAULT",
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&text_input_hints("rename")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
+            &app.app_theme,
+        );
+    }
+
     // Goals popup
     if let Some(crate::popups::ActivePopup::Goals(popup)) = &mut app.popups.active {
         let (title, keybinds) = match popup.mode {

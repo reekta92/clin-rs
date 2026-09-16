@@ -57,12 +57,20 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         .vaults
         .iter()
         .map(|p| {
-            let name = p
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| p.to_string_lossy().into_owned());
-            let is_active = crate::app::vaults::same_vault(p, &data_dir);
-            (name, p.to_string_lossy().into_owned(), is_active)
+            let name = app
+                .config
+                .core
+                .vault_names
+                .get(&p.raw_path)
+                .cloned()
+                .unwrap_or_else(|| {
+                    p.path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| p.path.to_string_lossy().into_owned())
+                });
+            let is_active = crate::app::vaults::same_vault(&p.path, &data_dir);
+            (name, p.path.to_string_lossy().into_owned(), is_active)
         })
         .collect();
     let add_label = "+ Add new vault…";

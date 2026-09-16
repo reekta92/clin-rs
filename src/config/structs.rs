@@ -496,6 +496,8 @@ pub struct CoreConfig {
     pub storage_path: Option<PathBuf>,
     #[serde(default)]
     pub vaults: Vec<PathBuf>,
+    #[serde(default)]
+    pub vault_names: std::collections::BTreeMap<String, String>,
     pub mouse_enabled: bool,
     #[serde(default)]
     pub default_folder: Option<String>,
@@ -525,6 +527,7 @@ impl Default for CoreConfig {
         Self {
             storage_path: None,
             vaults: Vec::new(),
+            vault_names: std::collections::BTreeMap::new(),
             mouse_enabled: true,
             default_folder: None,
             confirm_on_delete: true,

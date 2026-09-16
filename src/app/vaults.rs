@@ -5,8 +5,14 @@ use crate::app::App;
 /// F4 overlay: quick vault switcher rows. `vaults` holds expanded, deduped
 /// paths with the ACTIVE vault first; `selected` ranges over `0..=vaults.len()`
 /// where index `vaults.len()` is the `+ Add new vault…` row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VaultRow {
+    pub raw_path: String,
+    pub path: PathBuf,
+}
+
 pub struct VaultSwitcher {
-    pub vaults: Vec<PathBuf>,
+    pub vaults: Vec<VaultRow>,
     pub selected: usize,
 }
 
@@ -31,10 +37,30 @@ impl App {
             .config
             .effective_storage_path()
             .unwrap_or_else(|_| self.storage.data_dir.clone());
-        let mut vaults = vec![active];
-        for v in self.config.expanded_vaults() {
-            if !vaults.iter().any(|r| same_vault(r, &v)) {
-                vaults.push(v);
+        let active_raw = self
+            .config
+            .core
+            .storage_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| active.to_string_lossy().into_owned());
+
+        let mut vaults = vec![VaultRow {
+            raw_path: active_raw,
+            path: active,
+        }];
+        for (v, raw) in self.config.expanded_vaults().into_iter().zip(
+            self.config
+                .core
+                .vaults
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned()),
+        ) {
+            if !vaults.iter().any(|r| same_vault(&r.path, &v)) {
+                vaults.push(VaultRow {
+                    raw_path: raw,
+                    path: v,
+                });
             }
         }
         self.vault_switcher = Some(VaultSwitcher {
@@ -110,8 +136,11 @@ impl App {
                     }
                 }
                 if let Some(switcher) = self.vault_switcher.as_mut() {
-                    if !switcher.vaults.iter().any(|v| same_vault(v, &path)) {
-                        switcher.vaults.push(path);
+                    if !switcher.vaults.iter().any(|r| same_vault(&r.path, &path)) {
+                        switcher.vaults.push(VaultRow {
+                            raw_path: path.to_string_lossy().into_owned(),
+                            path: path.clone(),
+                        });
                     }
                     switcher.selected = switcher.vaults.len().saturating_sub(1);
                 }
@@ -143,8 +172,30 @@ impl App {
             }
         }
         if let Some(switcher) = self.vault_switcher.as_mut() {
-            switcher.vaults.retain(|v| !same_vault(v, &target));
+            switcher.vaults.retain(|r| !same_vault(&r.path, &target));
             switcher.selected = switcher.selected.min(switcher.vaults.len());
+        }
+    }
+
+    /// Confirm visual renaming of a vault in the application. Updates
+    /// `[core.vault_names]` map and saves the configuration.
+    pub fn confirm_rename_vault(&mut self) {
+        let Some(crate::popups::ActivePopup::VaultRename(popup)) = self.popups.active.take() else {
+            return;
+        };
+        let new_name = popup.input.lines().join(" ").trim().to_string();
+        if new_name.is_empty() {
+            self.config.core.vault_names.remove(&popup.raw_path_key);
+        } else {
+            self.config
+                .core
+                .vault_names
+                .insert(popup.raw_path_key, new_name);
+        }
+        if !crate::config::has_storage_path_override()
+            && let Err(error) = self.config.save()
+        {
+            self.set_temporary_status(&format!("Failed to save config: {error}"));
         }
     }
 }

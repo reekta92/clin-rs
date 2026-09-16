@@ -122,6 +122,9 @@ fn route_text(
         crate::popups::ActivePopup::NoteRename(p) => {
             route_text_input_popup(&key, &app.keybinds, &mut p.input)
         }
+        crate::popups::ActivePopup::VaultRename(p) => {
+            route_text_input_popup(&key, &app.keybinds, &mut p.input)
+        }
         _ => return false,
     };
     match action {
@@ -221,6 +224,10 @@ pub fn handle_bracketed_paste(
                 return true;
             }
             ActivePopup::NoteRename(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::VaultRename(p) => {
                 p.input.insert_str(&data);
                 return true;
             }
@@ -896,6 +903,7 @@ pub fn handle_global_popups_and_palette(
             Switch(std::path::PathBuf),
             RemoveConfirm(String),
             ActiveProtected,
+            Rename(String),
         }
         let data_dir = app.storage.data_dir.clone();
         let mut action = None;
@@ -923,22 +931,27 @@ pub fn handle_global_popups_and_palette(
                         switcher
                             .vaults
                             .get(switcher.selected)
-                            .cloned()
-                            .map_or(VaultAction::Add, VaultAction::Switch),
+                            .map(|r| VaultAction::Switch(r.path.clone()))
+                            .unwrap_or(VaultAction::Add),
                     );
                 }
                 KeyCode::Char('d') | KeyCode::Delete => {
                     if let Some(path) = switcher.vaults.get(switcher.selected) {
-                        if crate::app::vaults::same_vault(path, &data_dir) {
+                        if crate::app::vaults::same_vault(&path.path, &data_dir) {
                             action = Some(VaultAction::ActiveProtected);
                         } else {
                             action = Some(VaultAction::RemoveConfirm(
-                                path.to_string_lossy().into_owned(),
+                                path.path.to_string_lossy().into_owned(),
                             ));
                         }
                     }
                 }
                 KeyCode::Esc | KeyCode::Char('q') => action = Some(VaultAction::Close),
+                KeyCode::Char('r') | KeyCode::F(2) => {
+                    if let Some(path) = switcher.vaults.get(switcher.selected) {
+                        action = Some(VaultAction::Rename(path.raw_path.clone()));
+                    }
+                }
                 _ => {}
             }
         }
@@ -951,6 +964,23 @@ pub fn handle_global_popups_and_palette(
             }
             Some(VaultAction::ActiveProtected) => {
                 app.set_temporary_status_static("Cannot remove the active vault")
+            }
+            Some(VaultAction::Rename(raw_path_key)) => {
+                let mut input = ratatui_textarea::TextArea::default();
+                input.set_block(
+                    ratatui::widgets::Block::default()
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .style(ratatui::style::Style::default()),
+                );
+                if let Some(existing) = app.config.core.vault_names.get(&raw_path_key) {
+                    input.insert_str(existing);
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::VaultRename(
+                    crate::popups::VaultRenamePopup {
+                        raw_path_key,
+                        input,
+                    },
+                ));
             }
             None => {}
         }
@@ -997,6 +1027,7 @@ pub fn handle_global_popups_and_palette(
             | Some(crate::popups::ActivePopup::Tag(_))
             | Some(crate::popups::ActivePopup::Goals(_))
             | Some(crate::popups::ActivePopup::NoteRename(_))
+            | Some(crate::popups::ActivePopup::VaultRename(_))
             | Some(crate::popups::ActivePopup::Search(_))
     );
     if group_a {
@@ -1322,6 +1353,11 @@ impl crate::popups::ActivePopup {
             ActivePopup::NoteRename(popup) => {
                 route_text(ActivePopup::NoteRename(popup), key, app, |app| {
                     app.confirm_rename_note();
+                })
+            }
+            ActivePopup::VaultRename(popup) => {
+                route_text(ActivePopup::VaultRename(popup), key, app, |app| {
+                    app.confirm_rename_vault();
                 })
             }
             ActivePopup::Search(mut popup) => {
@@ -2766,7 +2802,7 @@ mod tests {
         ));
         let sw = app.vault_switcher.as_ref().unwrap();
         assert_eq!(sw.vaults.len(), 3);
-        assert_eq!(sw.vaults[0], app.storage.data_dir);
+        assert_eq!(sw.vaults[0].path, app.storage.data_dir);
         assert_eq!(sw.selected, 0);
 
         // Enter on the active vault: status message, no rebootstrap, stays open.
@@ -2791,7 +2827,7 @@ mod tests {
         assert!(app.popups.confirm.is_none());
         let sw = app.vault_switcher.as_ref().unwrap();
         assert_eq!(sw.vaults.len(), 2);
-        assert!(!sw.vaults.contains(&vault_c));
+        assert!(!sw.vaults.iter().any(|r| r.path == vault_c));
         assert!(app.config.core.vaults.contains(&vault_b));
         assert!(!app.config.core.vaults.contains(&vault_c));
         let saved = std::fs::read_to_string(temp_dir.path().join("config.toml")).unwrap();

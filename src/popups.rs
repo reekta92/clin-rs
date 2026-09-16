@@ -169,6 +169,11 @@ pub struct NoteRenamePopup {
     pub input: TextArea<'static>,
 }
 
+pub struct VaultRenamePopup {
+    pub raw_path_key: String,
+    pub input: TextArea<'static>,
+}
+
 pub struct NoteCreatePopup {
     pub folder: String,
     pub input: TextArea<'static>,
@@ -349,6 +354,7 @@ pub enum ActivePopup {
     Folder(FolderPopup),
     FolderPicker(FolderPicker),
     NoteRename(NoteRenamePopup),
+    VaultRename(VaultRenamePopup),
     CreateNote(NoteCreatePopup, NoteFormat),
     Import(ImportPopup),
     CreateFormat(CreateFormatPopup),
@@ -448,6 +454,7 @@ pub enum PopupTextField {
     CreateNote,
     Goals,
     NoteRename,
+    VaultRename,
     Import,
     Folder,
     Tag,

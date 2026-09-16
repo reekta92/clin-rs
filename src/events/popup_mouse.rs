@@ -386,7 +386,7 @@ impl crate::popups::ActivePopup {
         use crate::popups::ActivePopup::{
             CreateFormat, CreateNote, Folder, FolderPicker, Goals, HintBarStyle, IconMode, Import,
             Info, KeybindPreset, NoteRename, Search, Sort, Subnotes, Tag, Template, Theme,
-            TrashView,
+            TrashView, VaultRename,
         };
         match self {
             // === Group A: Simple list-style popups ===
@@ -513,6 +513,19 @@ impl crate::popups::ActivePopup {
                     crate::popups::PopupTextField::NoteRename,
                 ) {
                     app.popups.active = Some(NoteRename(p));
+                }
+                true
+            }
+            VaultRename(mut p) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::VaultRename,
+                ) {
+                    app.popups.active = Some(VaultRename(p));
                 }
                 true
             }
@@ -1199,6 +1212,7 @@ fn popup_selection_matches_active(
         (ActivePopup::CreateNote(..), PopupTextField::CreateNote)
             | (ActivePopup::Goals(_), PopupTextField::Goals)
             | (ActivePopup::NoteRename(_), PopupTextField::NoteRename)
+            | (ActivePopup::VaultRename(_), PopupTextField::VaultRename)
             | (ActivePopup::Import(_), PopupTextField::Import)
             | (ActivePopup::Folder(_), PopupTextField::Folder)
             | (ActivePopup::Tag(_), PopupTextField::Tag)
