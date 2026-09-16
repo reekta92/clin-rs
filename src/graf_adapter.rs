@@ -114,6 +114,9 @@ pub fn clin_settings(config: &ClinConfig) -> GrafSettings {
         label_max_length: g.visual.label_max_length,
         node_size: g.visual.node_size,
         node_size_mode: map_node_size_mode(&g.visual.node_size_mode),
+        node_scale: map_node_scale(&g.visual.node_scale),
+        node_fill: map_node_fill(&g.visual.node_fill),
+        selection_focus: map_selection_focus(&g.visual.selection_focus),
         edge_thickness: g.visual.edge_thickness,
         show_legend: g.visual.show_legend,
         show_minimap: g.visual.show_minimap,
@@ -1774,5 +1777,29 @@ fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
             cell.set_symbol("│");
             cell.set_fg(color);
         }
+    }
+}
+
+fn map_node_scale(m: &crate::config::NodeScale) -> graf::settings::NodeScale {
+    match m {
+        crate::config::NodeScale::Automatic => graf::settings::NodeScale::Automatic,
+        crate::config::NodeScale::Fixed(n) => graf::settings::NodeScale::Fixed(*n),
+    }
+}
+
+fn map_node_fill(m: &crate::config::NodeFill) -> graf::settings::NodeFill {
+    match m {
+        crate::config::NodeFill::Dynamic => graf::settings::NodeFill::Dynamic,
+        crate::config::NodeFill::Filled => graf::settings::NodeFill::Filled,
+        crate::config::NodeFill::None => graf::settings::NodeFill::None,
+    }
+}
+
+fn map_selection_focus(m: &crate::config::SelectionFocus) -> graf::settings::SelectionFocus {
+    match m {
+        crate::config::SelectionFocus::None => graf::settings::SelectionFocus::None,
+        crate::config::SelectionFocus::Grow => graf::settings::SelectionFocus::Grow,
+        crate::config::SelectionFocus::Dim => graf::settings::SelectionFocus::Dim,
+        crate::config::SelectionFocus::GrowDim => graf::settings::SelectionFocus::GrowDim,
     }
 }

@@ -559,3 +559,76 @@ mod tests {
         );
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NodeScale {
+    #[default]
+    Automatic,
+    Fixed(u8),
+}
+
+impl serde::Serialize for NodeScale {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            NodeScale::Automatic => serializer.serialize_str("automatic"),
+            NodeScale::Fixed(n) => serializer.serialize_u8(*n),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for NodeScale {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct NodeScaleVisitor;
+
+        impl serde::de::Visitor<'_> for NodeScaleVisitor {
+            type Value = NodeScale;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str(r#""automatic" or an integer 1-10"#)
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<NodeScale, E> {
+                if v.eq_ignore_ascii_case("automatic") {
+                    Ok(NodeScale::Automatic)
+                } else {
+                    Err(E::custom(
+                        r#"node_scale: expected "automatic" or integer 1-10"#,
+                    ))
+                }
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<NodeScale, E> {
+                u8::try_from(v)
+                    .map(NodeScale::Fixed)
+                    .map_err(|_| E::custom(r#"node_scale: expected "automatic" or integer 1-10"#))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<NodeScale, E> {
+                u8::try_from(v)
+                    .map(NodeScale::Fixed)
+                    .map_err(|_| E::custom(r#"node_scale: expected "automatic" or integer 1-10"#))
+            }
+        }
+
+        deserializer.deserialize_any(NodeScaleVisitor)
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeFill {
+    #[default]
+    Dynamic,
+    Filled,
+    None,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectionFocus {
+    None,
+    #[default]
+    Grow,
+    Dim,
+    GrowDim,
+}
