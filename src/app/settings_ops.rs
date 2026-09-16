@@ -362,8 +362,12 @@ impl App {
 
     pub fn cycle_text_alignment(&mut self) {
         self.editor.current_text_alignment = match self.editor.current_text_alignment {
-            crate::config::types::TextAlignment::Left => crate::config::types::TextAlignment::Center,
-            crate::config::types::TextAlignment::Center => crate::config::types::TextAlignment::Right,
+            crate::config::types::TextAlignment::Left => {
+                crate::config::types::TextAlignment::Center
+            }
+            crate::config::types::TextAlignment::Center => {
+                crate::config::types::TextAlignment::Right
+            }
             crate::config::types::TextAlignment::Right => crate::config::types::TextAlignment::Left,
         };
 
@@ -375,7 +379,10 @@ impl App {
         self.editor.body.set_alignment(alignment);
         self.editor.title_editor.set_alignment(alignment);
 
-        self.set_temporary_status(&format!("Text alignment: {:?}", self.editor.current_text_alignment));
+        self.set_temporary_status(&format!(
+            "Text alignment: {:?}",
+            self.editor.current_text_alignment
+        ));
     }
 
     pub fn toggle_show_line_numbers(&mut self) {
@@ -838,13 +845,22 @@ mod tests {
         app.editor.current_text_alignment = crate::config::types::TextAlignment::Left;
 
         app.cycle_text_alignment();
-        assert_eq!(app.editor.current_text_alignment, crate::config::types::TextAlignment::Center);
+        assert_eq!(
+            app.editor.current_text_alignment,
+            crate::config::types::TextAlignment::Center
+        );
 
         app.cycle_text_alignment();
-        assert_eq!(app.editor.current_text_alignment, crate::config::types::TextAlignment::Right);
+        assert_eq!(
+            app.editor.current_text_alignment,
+            crate::config::types::TextAlignment::Right
+        );
 
         app.cycle_text_alignment();
-        assert_eq!(app.editor.current_text_alignment, crate::config::types::TextAlignment::Left);
+        assert_eq!(
+            app.editor.current_text_alignment,
+            crate::config::types::TextAlignment::Left
+        );
     }
     #[test]
     fn test_swap_section_order_reverses() {
