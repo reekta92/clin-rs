@@ -244,7 +244,8 @@ impl AppThemeColors {
             subnote: crate::config::parse_hex_color(&c.subnote).unwrap_or(Color::Reset),
             highlight_fg: crate::config::parse_hex_color(&c.highlight_fg).unwrap_or(Color::Reset),
             highlight_bg: crate::config::parse_hex_color(&c.highlight_bg).unwrap_or(Color::Reset),
-            selection_indicator: crate::config::parse_hex_color(&c.selection_indicator).unwrap_or(Color::Reset),
+            selection_indicator: crate::config::parse_hex_color(&c.selection_indicator)
+                .unwrap_or(Color::Reset),
             hint_bar_style: crate::config::HintBarStyle::default(),
         }
     }

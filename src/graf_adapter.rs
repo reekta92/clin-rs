@@ -172,7 +172,10 @@ pub fn clin_settings(config: &ClinConfig) -> GrafSettings {
 }
 
 /// Convert clin's `AppThemeColors` into the lib's 14-field one.
-pub fn clin_theme(config: &ClinConfig, app_theme: &crate::app_theme::AppThemeColors) -> GrafThemeColors {
+pub fn clin_theme(
+    config: &ClinConfig,
+    app_theme: &crate::app_theme::AppThemeColors,
+) -> GrafThemeColors {
     let c = config.theme_colors();
     // Base = upstream default palette; the shared fields are overridden
     // from clin's own theme resolution below.
@@ -188,7 +191,11 @@ pub fn clin_theme(config: &ClinConfig, app_theme: &crate::app_theme::AppThemeCol
     t.minimap_bg_color = c.minimap_bg_color;
     t.highlight_fg = Some(app_theme.highlight_fg);
     t.highlight_bg = Some(app_theme.highlight_bg);
-    t.menu_bg_color = Some(app_theme.preview_bg().unwrap_or(ratatui::style::Color::Reset));
+    t.menu_bg_color = Some(
+        app_theme
+            .preview_bg()
+            .unwrap_or(ratatui::style::Color::Reset),
+    );
     t.menu_shortcut_color = Some(app_theme.muted);
     t
 }
