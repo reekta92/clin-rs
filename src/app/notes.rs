@@ -417,6 +417,8 @@ impl App {
                 ));
             }
             self.editor.body = body;
+            let (fm, _) = crate::frontmatter::parse(&note.content);
+            self.editor.text_align = fm.text_align.unwrap_or(self.config.editor.text_align);
             self.apply_editor_prefs();
             self.rebuild_outline();
             self.editor.links = self.compute_links();
@@ -653,6 +655,7 @@ impl App {
             self.app_theme.highlight_bg,
         );
         self.editor.body = EditorDocument::from_text(&content);
+        self.editor.text_align = self.config.editor.text_align;
         self.apply_editor_prefs();
         self.set_default_status();
     }

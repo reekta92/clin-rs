@@ -1806,6 +1806,201 @@ pub(crate) fn render_editor_document_with_theme(
     );
 }
 
+pub(crate) fn ensure_editor_visual_rows(editor: &mut crate::editor::NoteEditor, inner_width: u16) {
+    use ratatui_textarea::WrapMode;
+    let show_ln = editor.show_line_numbers;
+    let wrap_mode = editor.body.textarea().wrap_mode();
+    let tab_len = editor.body.textarea().tab_length();
+
+    if wrap_mode != WrapMode::None {
+        let key = (
+            editor.body.revision(),
+            inner_width,
+            show_ln,
+            wrap_mode,
+            tab_len,
+        );
+        if editor.visual_row_cache.key != Some(key) {
+            let full_doc: &[String] = editor.body.lines();
+            editor.visual_row_cache.rows =
+                editor_visual_rows(full_doc, wrap_mode, inner_width, show_ln, tab_len);
+            editor.visual_row_cache.key = Some(key);
+        }
+    }
+}
+
+/// Shift rendered editor content for center/right/justified alignment.
+/// Operates on `frame.buffer_mut()` after the textarea has been rendered left-aligned.
+pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &mut App, area: Rect) {
+    use crate::config::TextAlignment;
+    use ratatui_textarea::WrapMode;
+
+    let align = app.editor.text_align;
+    if align == TextAlignment::Left {
+        return;
+    }
+    // Only meaningful when wrap is on.
+    if app.editor.body.textarea().wrap_mode() == WrapMode::None {
+        return;
+    }
+
+    let inner = app.editor.body.inner_rect(area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+
+    let gutter: u16 = if app.editor.show_line_numbers {
+        app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
+    } else {
+        0
+    };
+
+    let text_left = inner.x + gutter;
+    let text_width = inner.width.saturating_sub(gutter);
+    if text_width == 0 {
+        return;
+    }
+
+    ensure_editor_visual_rows(&mut app.editor, inner.width);
+
+    let rows = &app.editor.visual_row_cache.rows;
+    let scroll_top = app.editor.body_viewport_row as usize;
+    let buf = frame.buffer_mut();
+
+    for screen_row in 0..inner.height {
+        let y = inner.y + screen_row;
+        if y >= buf.area.y + buf.area.height {
+            break;
+        }
+
+        // Find content width: scan from right to find last non-space symbol.
+        let mut content_width: u16 = 0;
+        for cx in (0..text_width).rev() {
+            let x = text_left + cx;
+            if buf[(x, y)].symbol() != " " {
+                content_width = cx + 1;
+                break;
+            }
+        }
+
+        if content_width == 0 || content_width >= text_width {
+            continue;
+        }
+
+        let slack = text_width - content_width;
+        let visual_idx = scroll_top + screen_row as usize;
+
+        match align {
+            TextAlignment::Center => {
+                let pad = slack / 2;
+                if pad > 0 {
+                    shift_row_right(buf, y, text_left, text_width, content_width, pad);
+                }
+            }
+            TextAlignment::Right => {
+                if slack > 0 {
+                    shift_row_right(buf, y, text_left, text_width, content_width, slack);
+                }
+            }
+            TextAlignment::Justified => {
+                let is_last_of_source = visual_idx >= rows.len()
+                    || visual_idx + 1 >= rows.len()
+                    || rows.get(visual_idx + 1).map(|r| r.source_line)
+                        != rows.get(visual_idx).map(|r| r.source_line);
+
+                if !is_last_of_source && slack > 0 {
+                    let mut gap_positions = Vec::new();
+                    for cx in 0..content_width {
+                        let x = text_left + cx;
+                        if buf[(x, y)].symbol() == " " {
+                            let has_left = cx > 0 && buf[(text_left + cx - 1, y)].symbol() != " ";
+                            let has_right = cx + 1 < content_width
+                                && buf[(text_left + cx + 1, y)].symbol() != " ";
+                            if has_left && has_right {
+                                gap_positions.push(cx);
+                            }
+                        }
+                    }
+
+                    if !gap_positions.is_empty() {
+                        let extra = slack as usize;
+                        let g = gap_positions.len();
+                        let mut gap_idx = 0;
+                        let mut new_cells = Vec::with_capacity(text_width as usize);
+
+                        for cx in 0..content_width {
+                            let src_cell = buf[(text_left + cx, y)].clone();
+                            new_cells.push(src_cell.clone());
+                            if gap_idx < g && cx == gap_positions[gap_idx] {
+                                let add = extra / g + if gap_idx < extra % g { 1 } else { 0 };
+                                for _ in 0..add {
+                                    let mut blank = src_cell.clone();
+                                    blank.modifier.remove(ratatui::style::Modifier::REVERSED);
+                                    new_cells.push(blank);
+                                }
+                                gap_idx += 1;
+                            }
+                        }
+
+                        // Clear the row with filler to avoid ghost cursors
+                        let filler_x = text_left + text_width - 1;
+                        let mut filler = ratatui::buffer::Cell::default();
+                        if filler_x < buf.area.x + buf.area.width {
+                            filler = buf[(filler_x, y)].clone();
+                            filler.set_symbol(" ");
+                        }
+                        for cx in 0..text_width {
+                            let x = text_left + cx;
+                            if x < buf.area.x + buf.area.width {
+                                buf[(x, y)] = filler.clone();
+                            }
+                        }
+
+                        for (i, cell) in new_cells.iter().enumerate() {
+                            let x = text_left + i as u16;
+                            if x < buf.area.x + buf.area.width {
+                                buf[(x, y)] = cell.clone();
+                            }
+                        }
+                    }
+                }
+            }
+            TextAlignment::Left => unreachable!(),
+        }
+    }
+}
+
+/// Shift buffer cells in a row rightward by `pad` columns.
+fn shift_row_right(
+    buf: &mut ratatui::prelude::Buffer,
+    y: u16,
+    text_left: u16,
+    text_width: u16,
+    content_width: u16,
+    pad: u16,
+) {
+    let filler_x = text_left + text_width - 1;
+    let mut filler = ratatui::buffer::Cell::default();
+    if filler_x < buf.area.x + buf.area.width {
+        filler = buf[(filler_x, y)].clone();
+        filler.set_symbol(" ");
+    }
+
+    // Copy from right to left to avoid overwriting.
+    for cx in (0..content_width).rev() {
+        let src_x = text_left + cx;
+        let dst_x = text_left + cx + pad;
+        if dst_x < buf.area.x + buf.area.width {
+            let cell = buf[(src_x, y)].clone();
+            buf[(dst_x, y)] = cell;
+        }
+        // Clear source cell with filler to prevent ghost cursor and keep bg.
+        if src_x < buf.area.x + buf.area.width {
+            buf[(src_x, y)] = filler.clone();
+        }
+    }
+}
+
 /// Highlight search-match cells in the rendered frame buffer.
 /// Walks each visible row, reconstructs the grapheme string, and paints
 /// the background of every cell that falls within a case-insensitive match.
@@ -1864,6 +2059,176 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
             }
         }
     }
+}
+
+pub(crate) fn aligned_cursor_target(
+    lines: &[String],
+    rows: &[crate::editor::EditorVisualRow],
+    viewport_row: u16,
+    screen_row: u16,
+    rel_col: u16,
+    text_width: u16,
+    align: crate::config::TextAlignment,
+    tab_len: u8,
+) -> Option<(usize, usize)> {
+    use crate::config::TextAlignment;
+    use unicode_width::UnicodeWidthChar;
+
+    let visual_idx = viewport_row as usize + screen_row as usize;
+    if visual_idx >= rows.len() {
+        let last = rows.last()?;
+        return Some((last.source_line, last.end_char));
+    }
+    let row = rows[visual_idx];
+    let line = lines.get(row.source_line)?;
+
+    let mut display_cells = Vec::new(); // (cell_idx, char_idx)
+    let mut display_width = 0usize;
+
+    for (offset, ch) in line
+        .chars()
+        .skip(row.start_char)
+        .take(row.end_char.saturating_sub(row.start_char))
+        .enumerate()
+    {
+        let width = if ch == '\t' {
+            if tab_len == 0 {
+                0
+            } else {
+                let tab = usize::from(tab_len);
+                tab - (display_width % tab)
+            }
+        } else {
+            ch.width().unwrap_or(0)
+        };
+
+        for _ in 0..width {
+            display_cells.push((display_width, offset));
+            display_width += 1;
+        }
+    }
+
+    // Find content width (exclude trailing space cells)
+    let mut content_width = 0;
+    for (cell_idx, char_idx) in display_cells.iter().rev() {
+        let ch = line.chars().nth(row.start_char + char_idx).unwrap_or(' ');
+        if ch != ' ' {
+            content_width = *cell_idx + 1;
+            break;
+        }
+    }
+
+    let content_width = (content_width as u16).min(text_width);
+    let slack = text_width.saturating_sub(content_width);
+
+    if content_width == 0 || slack == 0 {
+        let matched = display_cells.iter().find(|(cx, _)| *cx == rel_col as usize);
+        return Some((
+            row.source_line,
+            row.start_char
+                + matched
+                    .map(|(_, i)| *i)
+                    .unwrap_or(row.end_char.saturating_sub(row.start_char)),
+        ));
+    }
+
+    let mut adjusted_col = rel_col as i32;
+
+    match align {
+        TextAlignment::Center => {
+            adjusted_col -= (slack / 2) as i32;
+        }
+        TextAlignment::Right => {
+            adjusted_col -= slack as i32;
+        }
+        TextAlignment::Justified => {
+            let is_last_of_source =
+                visual_idx + 1 >= rows.len() || rows[visual_idx + 1].source_line != row.source_line;
+            if !is_last_of_source {
+                let mut gap_positions = Vec::new();
+                for cx in 0..content_width {
+                    let ch = display_cells
+                        .iter()
+                        .find(|(idx, _)| *idx == cx as usize)
+                        .map(|(_, i)| line.chars().nth(row.start_char + *i).unwrap_or(' '))
+                        .unwrap_or(' ');
+                    if ch == ' ' {
+                        let left_ch = if cx > 0 {
+                            display_cells
+                                .iter()
+                                .find(|(idx, _)| *idx == (cx - 1) as usize)
+                                .map(|(_, i)| line.chars().nth(row.start_char + *i).unwrap_or(' '))
+                                .unwrap_or(' ')
+                        } else {
+                            ' '
+                        };
+                        let right_ch = if cx + 1 < content_width {
+                            display_cells
+                                .iter()
+                                .find(|(idx, _)| *idx == (cx + 1) as usize)
+                                .map(|(_, i)| line.chars().nth(row.start_char + *i).unwrap_or(' '))
+                                .unwrap_or(' ')
+                        } else {
+                            ' '
+                        };
+                        if left_ch != ' ' && right_ch != ' ' {
+                            gap_positions.push(cx);
+                        }
+                    }
+                }
+
+                if !gap_positions.is_empty() {
+                    let extra = slack as usize;
+                    let g = gap_positions.len();
+                    let mut gap_idx = 0;
+
+                    let mut shifts = std::collections::BTreeMap::new();
+                    for cx in 0..content_width {
+                        if gap_idx < g && cx == gap_positions[gap_idx] {
+                            let add = extra / g + if gap_idx < extra % g { 1 } else { 0 };
+                            shifts.insert(cx, add);
+                            gap_idx += 1;
+                        }
+                    }
+
+                    let mut visual_x = 0;
+                    let mut found = false;
+                    for cx in 0..content_width {
+                        if visual_x == rel_col as usize {
+                            adjusted_col = cx as i32;
+                            found = true;
+                            break;
+                        }
+                        visual_x += 1;
+                        if let Some(&add) = shifts.get(&cx) {
+                            if (rel_col as usize) < visual_x + add {
+                                adjusted_col = cx as i32;
+                                found = true;
+                                break;
+                            }
+                            visual_x += add;
+                        }
+                    }
+                    if !found {
+                        adjusted_col = content_width as i32;
+                    }
+                }
+            }
+        }
+        TextAlignment::Left => {}
+    }
+
+    if adjusted_col < 0 {
+        return Some((row.source_line, row.start_char));
+    }
+
+    let matched = display_cells
+        .iter()
+        .find(|(cx, _)| *cx == adjusted_col as usize);
+    let char_offset = matched
+        .map(|(_, i)| *i)
+        .unwrap_or(row.end_char.saturating_sub(row.start_char));
+    Some((row.source_line, row.start_char + char_offset))
 }
 
 /// Overlay EDIT-mode markdown highlighting on top of the rendered textarea.
@@ -2096,13 +2461,8 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             e.md_highlight_change = e.last_editor_change;
         }
 
-        if wrap_mode != WrapMode::None {
-            let key = (e.body.revision(), inner.width, show_ln, wrap_mode, tab_len);
-            if e.visual_row_cache.key != Some(key) {
-                e.visual_row_cache.rows =
-                    editor_visual_rows(full_doc, wrap_mode, inner.width, show_ln, tab_len);
-                e.visual_row_cache.key = Some(key);
-            }
+        if wrap_mode != ratatui_textarea::WrapMode::None {
+            ensure_editor_visual_rows(e, inner.width);
         }
     }
 
@@ -2338,9 +2698,71 @@ mod markdown_highlight_tests {
         }
     }
 
-    fn display_fragment(fragment: &str, tab_len: u8) -> String {
+    #[test]
+    fn aligned_cursor_target_compensates_shift() {
+        use crate::config::TextAlignment;
+        use crate::editor::EditorVisualRow;
+        let lines = vec!["aa bb cc".to_string()];
+        // One visual row, text width 20, content 8 → slack 12.
+        let rows = vec![EditorVisualRow {
+            source_line: 0,
+            start_char: 0,
+            end_char: 8,
+        }];
+        // Center: pad 6. Click on 'b' of first "bb" (cells 3..5 → screen 9..11).
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 9, 20, TextAlignment::Center, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 3));
+        // Right: pad 12. 'c' of "cc" starts at cell 6 → screen 18.
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 18, 20, TextAlignment::Right, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 6));
+        // Left of pad → col 0; past end → last char.
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 2, 20, TextAlignment::Center, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 0));
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 19, 20, TextAlignment::Right, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 7));
+    }
+
+    #[test]
+    fn right_alignment_leaves_single_cursor() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+        app.editor.body = EditorDocument::from_lines(vec!["short line".to_string()]);
+        app.editor.body.set_wrap_mode(WrapMode::WordOrGlyph);
+        app.editor.text_align = crate::config::TextAlignment::Right;
+        let mut terminal = Terminal::new(TestBackend::new(60, 5)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                crate::ui::edit_view::render_editor_widget(
+                    frame,
+                    &mut app,
+                    crate::editor::EditFocus::Body,
+                    area,
+                    None,
+                    None,
+                );
+                overlay_text_alignment(frame, &mut app, area);
+            })
+            .expect("render");
+        let buf = terminal.backend().buffer();
+        let reversed = buf
+            .content()
+            .iter()
+            .filter(|c| c.modifier.contains(ratatui::style::Modifier::REVERSED))
+            .count();
+        assert_eq!(reversed, 1, "exactly one cursor cell after shifting");
+    }
+
+    /// Like `display_fragment` but includes the (width-1) blank continuation
+    /// cells ratatui writes after each wide grapheme.
+    fn display_fragment_cells(fragment: &str, tab_len: u8) -> String {
         let mut out = String::new();
-        let mut width = 0;
+        let mut width = 0usize;
         for ch in fragment.chars() {
             if ch == '\t' {
                 let pad = if tab_len == 0 {
@@ -2349,12 +2771,14 @@ mod markdown_highlight_tests {
                     let tab = usize::from(tab_len);
                     tab - (width % tab)
                 };
-                out.push_str(&" ".repeat(pad));
                 width += pad;
-            } else {
-                out.push(ch);
-                width += ch.width().unwrap_or(0);
+                out.push_str(&" ".repeat(pad));
+                continue;
             }
+            let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            width += w;
+            out.push(ch);
+            out.push_str(&" ".repeat(w.saturating_sub(1)));
         }
         out
     }
@@ -2401,13 +2825,194 @@ mod markdown_highlight_tests {
                     .collect();
                 assert_eq!(
                     actual.trim_end(),
-                    display_fragment(&fragment, 4).trim_end(),
+                    display_fragment_cells(&fragment, 4).trim_end(),
                     "line_numbers={line_numbers}, visual row={y}"
                 );
             }
         }
     }
 
+    #[test]
+    fn editor_visual_rows_match_textarea_rendering_many_widths() {
+        let corpus: Vec<Vec<String>> = vec![
+            vec!["# Heading with **bold** and `code` spans".into()],
+            vec!["some **bold** text and `code` and a rather long line of words".into()],
+            vec![
+                "trailing   spaces   inside   and   long   words   like   supercalifragilistic"
+                    .into(),
+            ],
+            vec!["CJK 你好世界 mixed with english words 界界界 and more text here".into()],
+            vec!["\tTabbed\ttext\twith\ttabs and words".into()],
+            vec!["a  b   c    d     e      f       g        h".into()],
+            vec!["- list item with [link](url) and *em* **strong** ***both***".into()],
+            vec!["emoji 🎉🎉🎉 clusters and text continue after them".into()],
+        ];
+        for lines in &corpus {
+            for width in 8u16..=60 {
+                for line_numbers in [false, true] {
+                    for tab_len in [0u8, 4] {
+                        let rows = editor_visual_rows(
+                            lines,
+                            WrapMode::WordOrGlyph,
+                            width,
+                            line_numbers,
+                            tab_len,
+                        );
+                        assert!(!rows.is_empty(), "width={width}, ln={line_numbers}");
+                        let backend = TestBackend::new(width, rows.len() as u16);
+                        let mut terminal = Terminal::new(backend).expect("terminal");
+                        let mut textarea = TextArea::from(lines.clone());
+                        textarea.set_wrap_mode(WrapMode::WordOrGlyph);
+                        textarea.set_tab_length(tab_len);
+                        if line_numbers {
+                            textarea.set_line_number_style(Style::default());
+                        }
+                        terminal
+                            .draw(|frame| frame.render_widget(&textarea, frame.area()))
+                            .expect("render");
+
+                        let digits = lines.len().max(1).to_string().len() as u16;
+                        let gutter: u16 = if line_numbers { digits + 2 } else { 0 };
+                        for (y, row) in rows.iter().enumerate() {
+                            let source = &lines[row.source_line];
+                            let fragment: String = source
+                                .chars()
+                                .skip(row.start_char)
+                                .take(row.end_char - row.start_char)
+                                .collect();
+                            let actual: String = (gutter..width)
+                                .filter_map(|x| {
+                                    terminal
+                                        .backend()
+                                        .buffer()
+                                        .cell((x, y as u16))
+                                        .map(|cell| cell.symbol())
+                                })
+                                .collect();
+                            assert_eq!(
+                                actual.trim_end(),
+                                display_fragment_cells(&fragment, tab_len).trim_end(),
+                                "width={width}, ln={line_numbers}, tab={tab_len}, visual row={y}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn wrapped_highlight_stays_glued_across_scroll_and_resize() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut lines: Vec<String> = vec![
+            "# Big Heading One That Is Deliberately Long Enough To Wrap At Eighty Columns Total"
+                .into(),
+            "some **bold text** and `inline code` plus [a link](https://example.com/xyz)".into(),
+            "**an entire paragraph wrapped in bold markers that keeps going and going and going further still**"
+                .into(),
+            "```rust".into(),
+            "fn main() { println!(\"hello wrapped world\"); }".into(),
+            "```".into(),
+        ];
+        for i in 0..40 {
+            lines.push(format!(
+                "- item {i:02} with **bold** tail and more words to wrap"
+            ));
+        }
+
+        let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+        app.editor.body = EditorDocument::from_lines(lines.clone());
+        app.editor.body.set_wrap_mode(WrapMode::WordOrGlyph);
+        app.editor.show_line_numbers = true;
+
+        fn check(app: &crate::app::App, terminal: &Terminal<TestBackend>, area: Rect) {
+            let buf = terminal.backend().buffer();
+            let inner = app.editor.body.inner_rect(area);
+            let top = app.editor.body_viewport_row as usize;
+            let rows = &app.editor.visual_row_cache.rows;
+            let lines_ref = app.editor.body.lines();
+            for i in 0..inner.height as usize {
+                let Some(row) = rows.get(top + i) else {
+                    continue;
+                };
+                let source = &lines_ref[row.source_line];
+                let frag: String = source
+                    .chars()
+                    .skip(row.start_char)
+                    .take(row.end_char - row.start_char)
+                    .collect();
+                // Expected: fragment with line-number gutter blanked and tabs expanded.
+                let expected: String = {
+                    let total = lines_ref.len();
+                    let digits = total.to_string().len();
+                    let n = row.source_line + 1;
+                    let mut out = if row.start_char == 0 {
+                        let lead = digits - n.to_string().len() + 1;
+                        format!("{}{} ", " ".repeat(lead), n)
+                    } else {
+                        " ".repeat(digits + 2)
+                    };
+                    let mut width = 0usize;
+                    for ch in frag.chars() {
+                        if ch == '\t' {
+                            let tab = 4usize;
+                            let padw = tab - (width % tab);
+                            width += padw;
+                            out.push_str(&" ".repeat(padw));
+                        } else {
+                            width += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                            out.push(ch);
+                        }
+                    }
+                    out
+                };
+                let actual: String = (inner.x..inner.right())
+                    .map(|x| {
+                        buf.cell((x, inner.y + i as u16))
+                            .map(|c| c.symbol())
+                            .unwrap_or("")
+                    })
+                    .collect();
+                assert_eq!(
+                    actual.trim_end(),
+                    expected.trim_end(),
+                    "viewport_row={top}, screen row={i}: buffer shows wrong visual row",
+                );
+            }
+        }
+
+        fn render(app: &mut crate::app::App, terminal: &mut Terminal<TestBackend>, area: Rect) {
+            terminal
+                .draw(|frame| {
+                    crate::ui::edit_view::render_editor_widget(
+                        frame,
+                        app,
+                        crate::editor::EditFocus::Body,
+                        area,
+                        None,
+                        None,
+                    );
+                    overlay_markdown_highlight(frame, app, area);
+                })
+                .expect("render");
+            check(app, terminal, area);
+        }
+
+        // Full width (no preview pane)
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("terminal");
+        render(&mut app, &mut terminal, Rect::new(0, 0, 80, 24));
+        // Scroll down like a mouse wheel, then partially back up
+        app.scroll_editor(10, 0);
+        render(&mut app, &mut terminal, Rect::new(0, 0, 80, 24));
+        app.scroll_editor(-4, 0);
+        render(&mut app, &mut terminal, Rect::new(0, 0, 80, 24));
+        // Preview pane on: narrower editor
+        let mut narrow = Terminal::new(TestBackend::new(40, 24)).expect("terminal");
+        render(&mut app, &mut narrow, Rect::new(0, 0, 40, 24));
+        // Preview pane off again: back to full width
+        render(&mut app, &mut terminal, Rect::new(0, 0, 80, 24));
+    }
     #[test]
     fn edit_markdown_highlight_tracks_soft_wrapped_source_offsets() {
         let _lock = crate::config::ConfigTestGuard::lock();

@@ -307,6 +307,19 @@ impl App {
         }
     }
 
+    pub fn toggle_zen_mode(&mut self) {
+        self.zen_mode = !self.zen_mode;
+    }
+
+    /// Horizontal padding (percent of body width per side) when zen mode is on; 0 when off.
+    pub fn zen_padding(&self) -> u16 {
+        if self.zen_mode {
+            self.config.editor.zen_padding_percent.min(45)
+        } else {
+            0
+        }
+    }
+
     pub fn toggle_wrap(&mut self) {
         let new_wrap = match self.mode {
             ViewMode::Edit => !self.config.editor.soft_wrap,
@@ -335,6 +348,35 @@ impl App {
             _ => self.update_preview(),
         }
         self.set_temporary_status_static(if new_wrap { "Wrap on" } else { "Wrap off" });
+    }
+
+    pub fn cycle_text_alignment(&mut self) {
+        if self.editor.body.textarea().wrap_mode() == ratatui_textarea::WrapMode::None {
+            let key = self
+                .keybinds
+                .display_edit(crate::keybinds::EditAction::ToggleWrap);
+            self.set_temporary_status(&format!("Alignment requires soft wrap — enable with {key}"));
+            return;
+        }
+
+        let new_align = self.editor.text_align.cycle();
+        self.editor.text_align = new_align;
+
+        // Persist to frontmatter of current note.
+        if let Some(note_id) = self.editor.editing_id.clone()
+            && let Ok(mut note) = self.storage.load_note(&note_id)
+        {
+            let (mut fm, body) = crate::frontmatter::parse(&note.content);
+            fm.text_align = Some(new_align);
+            note.content = crate::frontmatter::serialize(&fm, body);
+            let _ = self.storage.save_note(&note_id, &note);
+        }
+
+        if self.mode == ViewMode::Edit {
+            self.update_editor_markdown_preview();
+        }
+
+        self.set_temporary_status(new_align.status_label());
     }
 
     pub fn apply_editor_prefs(&mut self) {
@@ -800,6 +842,27 @@ mod tests {
             skip_dir_patterns: Vec::new(),
         };
         App::new(storage).unwrap()
+    }
+
+    #[test]
+    fn cycle_alignment_with_wrap_off_shows_warning() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let mut app = make_app();
+        app.editor
+            .body
+            .set_wrap_mode(ratatui_textarea::WrapMode::None);
+        app.cycle_text_alignment();
+        assert!(app.status.contains("requires soft wrap"));
+        assert_eq!(app.editor.text_align, crate::config::TextAlignment::Left);
+        // With wrap on the plain label shows instead.
+        app.editor
+            .body
+            .set_wrap_mode(ratatui_textarea::WrapMode::WordOrGlyph);
+        app.cycle_text_alignment();
+        assert_eq!(
+            app.status,
+            crate::config::TextAlignment::Center.status_label()
+        );
     }
 
     #[test]

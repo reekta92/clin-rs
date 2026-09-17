@@ -311,8 +311,16 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 app.request_editor_preview_update();
                 return false;
             }
+            EditAction::ToggleZenMode => {
+                app.toggle_zen_mode();
+                return false;
+            }
             EditAction::ToggleWrap => {
                 app.toggle_wrap();
+                return false;
+            }
+            EditAction::CycleAlignment => {
+                app.cycle_text_alignment();
                 return false;
             }
             EditAction::InsertTab => {
@@ -501,6 +509,7 @@ pub(crate) fn handle_edit_mouse(
         app.editor.sidebar,
         app.preview_position,
         app.editor.header_title_rect,
+        app.zen_padding(),
     );
 
     let md_area = if app.preview_fullscreen {
@@ -514,7 +523,12 @@ pub(crate) fn handle_edit_mouse(
             .split(terminal_area);
         Some(chunks[1])
     } else if app.editor.editor_preview_enabled {
-        edit_view_md_preview_area(terminal_area, app.editor.sidebar, app.preview_position)
+        edit_view_md_preview_area(
+            terminal_area,
+            app.editor.sidebar,
+            app.preview_position,
+            app.zen_padding(),
+        )
     } else {
         None
     };
@@ -527,6 +541,7 @@ pub(crate) fn handle_edit_mouse(
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
                     let h = app.editor.last_body_height.max(1) as usize;
                     renderer.scroll_up(3.min(h));
+                    app.editor.preview_scroll_overridden = true;
                 }
                 return;
             }
@@ -534,6 +549,7 @@ pub(crate) fn handle_edit_mouse(
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
                     let h = app.editor.last_body_height.max(1) as usize;
                     renderer.scroll_down(3.min(h), h);
+                    app.editor.preview_scroll_overridden = true;
                 }
                 return;
             }
@@ -640,13 +656,45 @@ pub(crate) fn handle_edit_mouse(
             app.editor.last_sidebar_click = None;
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
-                let _ = app.editor.body.hit_test_cursor(
-                    body_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                    app.editor.body_viewport_row,
-                    app.editor.body_viewport_col,
-                );
+                let align = app.editor.text_align;
+                let wrap_mode = app.editor.body.textarea().wrap_mode();
+                if align != crate::config::TextAlignment::Left
+                    && wrap_mode != ratatui_textarea::WrapMode::None
+                {
+                    let gutter: u16 = if app.editor.show_line_numbers {
+                        app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
+                    } else {
+                        0
+                    };
+                    let text_left = body_inner.x + gutter;
+                    let text_width = body_inner.width.saturating_sub(gutter);
+                    let screen_row = mouse_event.row.saturating_sub(body_inner.y);
+                    let rel_col = mouse_event.column.saturating_sub(text_left);
+                    let tab_len = app.editor.body.textarea().tab_length();
+
+                    if let Some((r, c)) = crate::ui::aligned_cursor_target(
+                        app.editor.body.lines(),
+                        &app.editor.visual_row_cache.rows,
+                        app.editor.body_viewport_row,
+                        screen_row,
+                        rel_col,
+                        text_width,
+                        align,
+                        tab_len,
+                    ) {
+                        app.editor
+                            .body
+                            .move_cursor(ratatui_textarea::CursorMove::Jump(r as u16, c as u16));
+                    }
+                } else {
+                    let _ = app.editor.body.hit_test_cursor(
+                        body_inner,
+                        mouse_event.column,
+                        mouse_event.row,
+                        app.editor.body_viewport_row,
+                        app.editor.body_viewport_col,
+                    );
+                }
                 mouse_selection.begin(&mut app.editor.body);
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
@@ -665,13 +713,47 @@ pub(crate) fn handle_edit_mouse(
             if mouse_selection.active {
                 mouse_selection.mark_drag();
                 if *focus == EditFocus::Body {
-                    let _ = app.editor.body.hit_test_cursor(
-                        body_inner,
-                        mouse_event.column,
-                        mouse_event.row,
-                        app.editor.body_viewport_row,
-                        app.editor.body_viewport_col,
-                    );
+                    let align = app.editor.text_align;
+                    let wrap_mode = app.editor.body.textarea().wrap_mode();
+                    if align != crate::config::TextAlignment::Left
+                        && wrap_mode != ratatui_textarea::WrapMode::None
+                    {
+                        let gutter: u16 = if app.editor.show_line_numbers {
+                            app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
+                        } else {
+                            0
+                        };
+                        let text_left = body_inner.x + gutter;
+                        let text_width = body_inner.width.saturating_sub(gutter);
+                        let screen_row = mouse_event.row.saturating_sub(body_inner.y);
+                        let rel_col = mouse_event.column.saturating_sub(text_left);
+                        let tab_len = app.editor.body.textarea().tab_length();
+
+                        if let Some((r, c)) = crate::ui::aligned_cursor_target(
+                            app.editor.body.lines(),
+                            &app.editor.visual_row_cache.rows,
+                            app.editor.body_viewport_row,
+                            screen_row,
+                            rel_col,
+                            text_width,
+                            align,
+                            tab_len,
+                        ) {
+                            app.editor
+                                .body
+                                .move_cursor(ratatui_textarea::CursorMove::Jump(
+                                    r as u16, c as u16,
+                                ));
+                        }
+                    } else {
+                        let _ = app.editor.body.hit_test_cursor(
+                            body_inner,
+                            mouse_event.column,
+                            mouse_event.row,
+                            app.editor.body_viewport_row,
+                            app.editor.body_viewport_col,
+                        );
+                    }
                 } else {
                     move_textarea_cursor_to_mouse(
                         &mut app.editor.title_editor,

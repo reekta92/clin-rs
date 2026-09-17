@@ -53,6 +53,16 @@ A custom find popup replaces the legacy textarea search. State is stored in the 
 
 `EditorConfig.soft_wrap` (bool, default `false`) controls soft-wrapping of the editor body. Toggle via the command palette.
 
+## Zen Mode
+
+`F8` (edit view, remappable) toggles zen mode: the footer hint bar is hidden,
+the header bar is hidden except while the title field is focused (`Ctrl+t` to
+cycle focus) or a transient status (clipboard notices, autosave errors) is
+active, and the editor content is padded from the left and right edges.
+`EditorConfig.zen_padding_percent` (default `15`) sets the padding as a
+percent of the terminal width per side, clamped to 45. Overlays, popups, and
+message toasts stay visible. Zen mode is per-session; it resets on restart.
+
 ## Sidebars + Wikilink Previews
 
 The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. Cycle focus with `Tab` to reach sidebars.
@@ -83,7 +93,8 @@ The `[editor]` section in `config.toml`:
 | `date_format` | String | `"%Y-%m-%d %H:%M"` | Format for insert-date action |
 | `soft_wrap` | bool | `false` | Soft-wrap the editor body |
 | `copy_on_select` | bool | `true` | Copy to clipboard immediately when a mouse drag selects text |
-| `edit_mode_highlight` | bool | `true` | Highlight the active READ/EDIT mode |
+| `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
+| `zen_padding_percent` | `u16` | `15` | Zen-mode padding per side, percent of width (max 45) |
 
 Example:
 

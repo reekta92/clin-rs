@@ -101,6 +101,7 @@ pub enum EditAction {
     MoveToBottom,
     ToggleMarkdownPreview,
     TogglePreviewFullscreen,
+    ToggleZenMode,
     ToggleWrap,
     PreviewPageUp,
     PreviewPageDown,
@@ -114,6 +115,7 @@ pub enum EditAction {
     PreviewLink,
     GoToLine,
     Save,
+    CycleAlignment,
 }
 
 #[derive(

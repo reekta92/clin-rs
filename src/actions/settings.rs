@@ -39,6 +39,19 @@ toggle_action!(
 );
 
 toggle_action!(
+    ToggleZenModeAction,
+    "settings.zen",
+    "Toggle Zen Mode",
+    "Hide header/footer bars and pad the editor text",
+    ActionCategory::Settings,
+    "\u{f186}",
+    "\u{1f319}",
+    toggle_zen_mode,
+    app,
+    if app.zen_mode { "On" } else { "Off" }
+);
+
+toggle_action!(
     ToggleCalendarAction,
     "settings.calendar",
     "Toggle Calendar",
@@ -579,3 +592,16 @@ impl Action for ConfigureSmartFoldersAction {
         Ok(())
     }
 }
+
+toggle_action!(
+    CycleAlignmentAction,
+    "settings.text_align",
+    "Cycle Text Alignment",
+    "Cycle text alignment between left, center, right, and justified",
+    ActionCategory::Settings,
+    "\u{f036}",
+    "\u{2261}",
+    cycle_text_alignment,
+    app,
+    app.editor.text_align.status_label()
+);

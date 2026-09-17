@@ -90,6 +90,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::MoveToBottom, &["Ctrl+End"]),
     (EditAction::ToggleMarkdownPreview, &["Ctrl+p"]),
     (EditAction::TogglePreviewFullscreen, &["F11"]),
+    (EditAction::ToggleZenMode, &["F8"]),
     (EditAction::ToggleWrap, &["F10"]),
     // Preview paging; inherited by all presets (none override PageUp/Down).
     (EditAction::PreviewPageUp, &["PageUp"]),
@@ -103,6 +104,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::ToggleOutline, &["Ctrl+o"]),
     (EditAction::ToggleLinks, &["Ctrl+b"]),
     (EditAction::PreviewLink, &["Alt+l"]),
+    (EditAction::CycleAlignment, &["F9"]),
 ];
 
 const DEFAULT_HELP: &[(HelpAction, &[&str])] = &[

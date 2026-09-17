@@ -637,3 +637,34 @@ pub enum SelectionFocus {
     Dim,
     GrowDim,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextAlignment {
+    #[default]
+    Left,
+    Center,
+    Right,
+    Justified,
+}
+
+impl TextAlignment {
+    #[must_use]
+    pub fn cycle(self) -> Self {
+        match self {
+            Self::Left => Self::Center,
+            Self::Center => Self::Right,
+            Self::Right => Self::Justified,
+            Self::Justified => Self::Left,
+        }
+    }
+
+    pub fn status_label(self) -> &'static str {
+        match self {
+            Self::Left => "Align: Left",
+            Self::Center => "Align: Center",
+            Self::Right => "Align: Right",
+            Self::Justified => "Align: Justified",
+        }
+    }
+}

@@ -1805,6 +1805,8 @@ impl App {
             renderer.render_with(&content, width, &self.app_theme, &opts, viewport);
             self.editor.preview_content_width = Some(width);
             self.editor.pending_markdown_resize = None;
+            self.editor.preview_scroll_synced_row = None;
+            self.editor.preview_scroll_overridden = false;
         }
         self.editor.md_preview_renderer = Some(renderer);
         self.editor.preview_content_height = Some(height);

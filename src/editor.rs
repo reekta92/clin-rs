@@ -134,6 +134,8 @@ pub struct NoteEditor {
     pub title_viewport_col: u16,
     pub last_body_width: u16,
     pub last_body_height: u16,
+    pub preview_scroll_synced_row: Option<u16>,
+    pub preview_scroll_overridden: bool,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<i32>,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
@@ -148,6 +150,7 @@ pub struct NoteEditor {
     pub(crate) visual_row_cache: EditorVisualRowCache,
     /// TTL cache for {modified} statusline token (500ms bounded).
     pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
+    pub text_align: crate::config::TextAlignment,
 }
 
 impl Default for NoteEditor {
@@ -200,6 +203,8 @@ impl Default for NoteEditor {
             preview_drag_last_pos: None,
             last_body_width: 0u16,
             last_body_height: 0u16,
+            preview_scroll_synced_row: None,
+            preview_scroll_overridden: false,
             last_scroll: None,
             scroll_drag: None,
             body_viewport_row: 0,
@@ -212,6 +217,7 @@ impl Default for NoteEditor {
             md_highlight_memo: lru::LruCache::new(std::num::NonZeroUsize::MIN),
             visual_row_cache: EditorVisualRowCache::default(),
             modified_status_cache: std::cell::RefCell::new(None),
+            text_align: crate::config::TextAlignment::default(),
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }

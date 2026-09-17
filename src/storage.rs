@@ -150,6 +150,13 @@ fn existing_extra_frontmatter(path: &std::path::Path) -> serde_yaml_ng::Mapping 
         .unwrap_or_default()
 }
 
+fn existing_text_align(path: &std::path::Path) -> Option<crate::config::TextAlignment> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| split_frontmatter_payload(&bytes).0)
+        .and_then(|fm| fm.text_align)
+}
+
 /// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
 pub(crate) fn is_existing_vault(dir: &Path) -> bool {
     if !dir.exists() {
@@ -577,6 +584,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
+            text_align: existing_text_align(&old_path),
             extra: existing_extra_frontmatter(&old_path),
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
@@ -650,6 +658,7 @@ impl Storage {
                 pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
+                text_align: existing_text_align(&old_path),
                 extra: existing_extra_frontmatter(&old_path),
             };
             let final_content = frontmatter::serialize(&fm, &note.content);
@@ -1341,6 +1350,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(links),
             original_ext: None,
+            text_align: existing_text_align(&old_path),
             extra: existing_extra_frontmatter(&old_path),
         };
 

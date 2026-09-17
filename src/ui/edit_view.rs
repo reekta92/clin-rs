@@ -93,7 +93,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         false
     };
 
-    if has_status {
+    if app.zen_mode && focus != EditFocus::Title && !has_status {
+        let blank = Paragraph::new("").style(app.app_theme.bg_style());
+        frame.render_widget(blank, outer_chunks[0]);
+        app.editor.header_title_rect = Rect::default();
+    } else if has_status {
         draw_view_title_bar(
             frame,
             outer_chunks[0],
@@ -260,6 +264,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         app.editor.editor_preview_enabled,
         app.editor.sidebar,
         app.preview_position,
+        app.zen_padding(),
     );
 
     if app.preview_fullscreen {
@@ -290,6 +295,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         if app.config.editor.edit_mode_highlight {
             super::overlay_markdown_highlight(frame, app, editor_container);
         }
+        super::overlay_text_alignment(frame, app, editor_container);
         // Scrollbar for editor body
         if app.config.ui.scrollbars {
             let content_len = app.editor.body.lines().len();
@@ -317,27 +323,38 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
-    // Sync preview scroll with editor scroll
-    if let Some(renderer) = &mut app.editor.md_preview_renderer {
-        if renderer.document().is_some() {
-            if let Some(preview_area) = preview_area_rect {
-                let block = Block::default()
-                    .style(app.app_theme.preview_bg_style())
-                    .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1));
-                let inner = block.inner(preview_area);
+    // Sync preview scroll with editor scroll. Skip while the user is
+    // mouse-scrolling the preview independently: re-sync once the editor
+    // viewport moves or the preview content is rebuilt.
+    if let Some(renderer) = &mut app.editor.md_preview_renderer
+        && renderer.document().is_some()
+    {
+        if let Some(preview_area) = preview_area_rect {
+            let block = Block::default()
+                .style(app.app_theme.preview_bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 1));
+            let inner = block.inner(preview_area);
 
+            let editor_row = app.editor.body_viewport_row;
+            let last_synced = app.editor.preview_scroll_synced_row;
+            let resync = !app.editor.preview_scroll_overridden
+                || last_synced.is_none()
+                || last_synced != Some(editor_row);
+            if resync {
                 let rendered_start = if app.config.editor.soft_wrap {
                     // With wrap ON: body_viewport_row is first visible screen line
                     // Preview scroll_offset is also in rendered (screen) lines
                     // Use directly for 1:1 visual line correspondence
-                    app.editor.body_viewport_row as usize
+                    editor_row as usize
                 } else {
                     // Wrap OFF: viewport row = source line, convert to rendered line
-                    let source_line = app.editor.body_viewport_row as usize;
+                    let source_line = editor_row as usize;
                     renderer.source_to_rendered_line(source_line)
                 };
                 renderer.set_scroll_offset(rendered_start, inner.height as usize);
+                app.editor.preview_scroll_synced_row = Some(editor_row);
+                app.editor.preview_scroll_overridden = false;
             }
         }
     }
@@ -356,7 +373,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
                 let scroll = renderer.scroll_offset();
                 let widget_range = scroll..(scroll + inner.height as usize);
-                let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone());
+                let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone())
+                    .text_align(app.editor.text_align);
                 frame.render_widget(widget, inner);
 
                 // Overlay images continuously
@@ -413,44 +431,49 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     }
-    let kb = &app.keybinds;
-    let hints_items = vec![
-        (kb.display_edit(EditAction::CycleFocus), "focus"),
-        (
-            kb.display_edit(EditAction::ToggleMarkdownPreview),
-            "preview",
-        ),
-        (kb.display_edit(EditAction::ToggleOutline), "outline"),
-        (kb.display_edit(EditAction::ToggleLinks), "links"),
-        (kb.display_edit(EditAction::Find), "find"),
-        (kb.display_edit(EditAction::ToggleWrap), "wrap"),
-        (kb.edit_keys_display(EditAction::Back), "back"),
-        ("F1".to_string(), "help"),
-        ("F2".to_string(), "keybinds"),
-    ];
-    let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
-    let hint = default_hints;
-    let note = crate::statusline::active_note(app, ViewMode::Edit);
-    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
-    ctx.area = Some(hint_area);
-    ctx.note = note;
-    ctx.hints = Some(hint.spans);
-    if let Some(p) = &app.seq_matcher.pending_display() {
-        ctx.pending = Some(vec![Span::styled(
-            format!("{} ", p),
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent),
-        )]);
-    }
+    if app.zen_mode {
+        let blank = Paragraph::new("").style(app.app_theme.bg_style());
+        frame.render_widget(blank, hint_area);
+    } else {
+        let kb = &app.keybinds;
+        let hints_items = vec![
+            (kb.display_edit(EditAction::CycleFocus), "focus"),
+            (
+                kb.display_edit(EditAction::ToggleMarkdownPreview),
+                "preview",
+            ),
+            (kb.display_edit(EditAction::ToggleOutline), "outline"),
+            (kb.display_edit(EditAction::ToggleLinks), "links"),
+            (kb.display_edit(EditAction::Find), "find"),
+            (kb.display_edit(EditAction::ToggleWrap), "wrap"),
+            (kb.edit_keys_display(EditAction::Back), "back"),
+            ("F1".to_string(), "help"),
+            ("F2".to_string(), "keybinds"),
+        ];
+        let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
+        let hint = default_hints;
+        let note = crate::statusline::active_note(app, ViewMode::Edit);
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
+        ctx.area = Some(hint_area);
+        ctx.note = note;
+        ctx.hints = Some(hint.spans);
+        if let Some(p) = &app.seq_matcher.pending_display() {
+            ctx.pending = Some(vec![Span::styled(
+                format!("{} ", p),
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.accent),
+            )]);
+        }
 
-    let (left_line, right_line) = crate::statusline::render_footer(
-        &ctx,
-        &app.config.statusline,
-        ViewMode::Edit,
-        &app.app_theme,
-    );
-    draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
+        let (left_line, right_line) = crate::statusline::render_footer(
+            &ctx,
+            &app.config.statusline,
+            ViewMode::Edit,
+            &app.app_theme,
+        );
+        draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
+    }
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }
@@ -679,7 +702,8 @@ fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
         frame.render_widget(padding_block, inner);
 
         let range = renderer.current_page_range();
-        let widget = crate::markdown::MarkdownWidget::new(doc, range);
+        let widget =
+            crate::markdown::MarkdownWidget::new(doc, range).text_align(app.editor.text_align);
         frame.render_widget(widget, padded_inner);
     } else {
         let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));

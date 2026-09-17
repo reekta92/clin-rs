@@ -1,3 +1,4 @@
+use crate::config::TextAlignment;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -14,6 +15,8 @@ pub struct Frontmatter {
     pub links: Option<Vec<String>>,
     #[serde(default)]
     pub original_ext: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_align: Option<TextAlignment>,
     #[serde(flatten)]
     pub extra: serde_yaml_ng::Mapping,
 }
@@ -54,6 +57,7 @@ pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
         && frontmatter.links.is_none()
         && frontmatter.original_ext.is_none()
         && frontmatter.extra.is_empty()
+        && frontmatter.text_align.is_none()
     {
         return content.to_string();
     }

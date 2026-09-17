@@ -460,8 +460,21 @@ pub fn compute_edit_layout(
     preview_enabled: bool,
     sidebar: EditSidebar,
     preview_position: PreviewPosition,
+    zen_padding: u16,
 ) -> EditLayout {
-    let editor_area = body_area;
+    let editor_area = if zen_padding > 0 {
+        let w = body_area.width;
+        // Percent of full width per side, clamped so >=20 columns remain.
+        let pad = ((w as u32 * zen_padding as u32 / 100) as u16).min(w.saturating_sub(20) / 2);
+        Rect::new(
+            body_area.x + pad,
+            body_area.y,
+            w - pad * 2,
+            body_area.height,
+        )
+    } else {
+        body_area
+    };
     let title = Rect::default();
 
     if fullscreen {
@@ -554,6 +567,7 @@ pub fn compute_edit_layout(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn edit_view_input_areas(
     area: Rect,
     fullscreen: bool,
@@ -563,6 +577,7 @@ pub fn edit_view_input_areas(
     sidebar: crate::editor::EditSidebar,
     sidebar_position: crate::config::PreviewPosition,
     header_title_rect: Rect,
+    zen_padding: u16,
 ) -> (Rect, Rect, Option<Rect>) {
     // Outer vertical split (pad / body / footer) to find the body area.
     // This matches the layout used by draw_edit_view.
@@ -578,7 +593,14 @@ pub fn edit_view_input_areas(
 
     let body_area = chunks[2];
 
-    let layout = compute_edit_layout(body_area, fullscreen, md_preview, sidebar, sidebar_position);
+    let layout = compute_edit_layout(
+        body_area,
+        fullscreen,
+        md_preview,
+        sidebar,
+        sidebar_position,
+        zen_padding,
+    );
     // Apply gutter offset to the body rect for mouse hit-testing.
     // In fullscreen (READ) mode the preview has no editor gutter.
     let gutter_width = if fullscreen {
@@ -603,6 +625,7 @@ pub fn edit_view_md_preview_area(
     area: Rect,
     sidebar: crate::editor::EditSidebar,
     preview_position: crate::config::PreviewPosition,
+    zen_padding: u16,
 ) -> Option<Rect> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -616,7 +639,14 @@ pub fn edit_view_md_preview_area(
 
     let body_area = chunks[2];
 
-    let layout = compute_edit_layout(body_area, false, true, sidebar, preview_position);
+    let layout = compute_edit_layout(
+        body_area,
+        false,
+        true,
+        sidebar,
+        preview_position,
+        zen_padding,
+    );
     layout.preview.map(|r| {
         Rect::new(
             r.x + 2,
@@ -2307,6 +2337,43 @@ mod tests {
     }
 
     #[test]
+    fn edit_layout_zen_padding() {
+        use crate::app::EditSidebar;
+        use crate::config::PreviewPosition;
+        use ratatui::layout::Rect;
+
+        let area = Rect::new(0, 0, 100, 40);
+        let plain = compute_edit_layout(
+            area,
+            false,
+            false,
+            EditSidebar::None,
+            PreviewPosition::Right,
+            0,
+        );
+        let zen = compute_edit_layout(
+            area,
+            false,
+            false,
+            EditSidebar::None,
+            PreviewPosition::Right,
+            15,
+        );
+        assert_eq!(plain.body, area);
+        assert_eq!(zen.body, Rect::new(15, 0, 70, 40));
+        // Narrow terminal: padding clamps away so >=20 columns remain.
+        let narrow = compute_edit_layout(
+            Rect::new(0, 0, 20, 40),
+            false,
+            false,
+            EditSidebar::None,
+            PreviewPosition::Right,
+            15,
+        );
+        assert_eq!(narrow.body, Rect::new(0, 0, 20, 40));
+    }
+
+    #[test]
     fn test_sidebar_double_click() {
         let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::{App, EditFocus, EditSidebar};
@@ -2357,6 +2424,7 @@ mod tests {
             EditSidebar::Links,
             crate::config::PreviewPosition::Right,
             Rect::default(),
+            0,
         );
         let sb = sidebar_inner.unwrap();
         app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
@@ -2450,6 +2518,7 @@ mod tests {
             EditSidebar::Outline,
             crate::config::PreviewPosition::Right,
             Rect::default(),
+            0,
         );
         let sb = sidebar_inner.unwrap();
         app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
@@ -2531,6 +2600,7 @@ mod tests {
             app.editor.sidebar,
             app.preview_position,
             app.editor.header_title_rect,
+            0,
         );
 
         // Put cursor at the start
