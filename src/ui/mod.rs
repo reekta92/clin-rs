@@ -2723,7 +2723,6 @@ mod markdown_highlight_tests {
         out
     }
 
-
     #[test]
     fn editor_visual_rows_match_textarea_rendering() {
         let lines = vec![
@@ -2778,7 +2777,10 @@ mod markdown_highlight_tests {
         let corpus: Vec<Vec<String>> = vec![
             vec!["# Heading with **bold** and `code` spans".into()],
             vec!["some **bold** text and `code` and a rather long line of words".into()],
-            vec!["trailing   spaces   inside   and   long   words   like   supercalifragilistic".into()],
+            vec![
+                "trailing   spaces   inside   and   long   words   like   supercalifragilistic"
+                    .into(),
+            ],
             vec!["CJK 你好世界 mixed with english words 界界界 and more text here".into()],
             vec!["\tTabbed\ttext\twith\ttabs and words".into()],
             vec!["a  b   c    d     e      f       g        h".into()],
@@ -2796,10 +2798,7 @@ mod markdown_highlight_tests {
                             line_numbers,
                             tab_len,
                         );
-                        assert!(
-                            !rows.is_empty(),
-                            "width={width}, ln={line_numbers}"
-                        );
+                        assert!(!rows.is_empty(), "width={width}, ln={line_numbers}");
                         let backend = TestBackend::new(width, rows.len() as u16);
                         let mut terminal = Terminal::new(backend).expect("terminal");
                         let mut textarea = TextArea::from(lines.clone());
@@ -2857,7 +2856,9 @@ mod markdown_highlight_tests {
             "```".into(),
         ];
         for i in 0..40 {
-            lines.push(format!("- item {i:02} with **bold** tail and more words to wrap"));
+            lines.push(format!(
+                "- item {i:02} with **bold** tail and more words to wrap"
+            ));
         }
 
         let mut app = crate::app::App::new(storage(temp.path())).expect("app");
@@ -2921,11 +2922,7 @@ mod markdown_highlight_tests {
             }
         }
 
-        fn render(
-            app: &mut crate::app::App,
-            terminal: &mut Terminal<TestBackend>,
-            area: Rect,
-        ) {
+        fn render(app: &mut crate::app::App, terminal: &mut Terminal<TestBackend>, area: Rect) {
             terminal
                 .draw(|frame| {
                     crate::ui::edit_view::render_editor_widget(

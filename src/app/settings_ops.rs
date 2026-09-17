@@ -356,10 +356,10 @@ impl App {
         }
 
         if self.editor.body.textarea().wrap_mode() == ratatui_textarea::WrapMode::None {
-            let key = self.keybinds.display_edit(crate::keybinds::EditAction::ToggleWrap);
-            self.set_temporary_status(&format!(
-                "Alignment requires soft wrap — enable with {key}"
-            ));
+            let key = self
+                .keybinds
+                .display_edit(crate::keybinds::EditAction::ToggleWrap);
+            self.set_temporary_status(&format!("Alignment requires soft wrap — enable with {key}"));
         } else {
             self.set_temporary_status(new_align.status_label());
         }
