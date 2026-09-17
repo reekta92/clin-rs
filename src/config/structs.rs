@@ -440,6 +440,7 @@ pub struct EditorConfig {
     pub soft_wrap: bool,
     pub copy_on_select: bool,
     pub text_align: TextAlignment,
+    pub zen_padding_percent: u16,
 }
 
 impl Default for EditorConfig {
@@ -456,6 +457,7 @@ impl Default for EditorConfig {
             soft_wrap: false,
             copy_on_select: true,
             text_align: TextAlignment::default(),
+            zen_padding_percent: 15,
         }
     }
 }

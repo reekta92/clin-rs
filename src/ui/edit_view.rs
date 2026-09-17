@@ -93,7 +93,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         false
     };
 
-    if has_status {
+    if app.zen_mode && focus != EditFocus::Title && !has_status {
+        let blank = Paragraph::new("").style(app.app_theme.bg_style());
+        frame.render_widget(blank, outer_chunks[0]);
+        app.editor.header_title_rect = Rect::default();
+    } else if has_status {
         draw_view_title_bar(
             frame,
             outer_chunks[0],
@@ -260,6 +264,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         app.editor.editor_preview_enabled,
         app.editor.sidebar,
         app.preview_position,
+        app.zen_padding(),
     );
 
     if app.preview_fullscreen {
@@ -415,44 +420,49 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     }
-    let kb = &app.keybinds;
-    let hints_items = vec![
-        (kb.display_edit(EditAction::CycleFocus), "focus"),
-        (
-            kb.display_edit(EditAction::ToggleMarkdownPreview),
-            "preview",
-        ),
-        (kb.display_edit(EditAction::ToggleOutline), "outline"),
-        (kb.display_edit(EditAction::ToggleLinks), "links"),
-        (kb.display_edit(EditAction::Find), "find"),
-        (kb.display_edit(EditAction::ToggleWrap), "wrap"),
-        (kb.edit_keys_display(EditAction::Back), "back"),
-        ("F1".to_string(), "help"),
-        ("F2".to_string(), "keybinds"),
-    ];
-    let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
-    let hint = default_hints;
-    let note = crate::statusline::active_note(app, ViewMode::Edit);
-    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
-    ctx.area = Some(hint_area);
-    ctx.note = note;
-    ctx.hints = Some(hint.spans);
-    if let Some(p) = &app.seq_matcher.pending_display() {
-        ctx.pending = Some(vec![Span::styled(
-            format!("{} ", p),
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent),
-        )]);
-    }
+    if app.zen_mode {
+        let blank = Paragraph::new("").style(app.app_theme.bg_style());
+        frame.render_widget(blank, hint_area);
+    } else {
+        let kb = &app.keybinds;
+        let hints_items = vec![
+            (kb.display_edit(EditAction::CycleFocus), "focus"),
+            (
+                kb.display_edit(EditAction::ToggleMarkdownPreview),
+                "preview",
+            ),
+            (kb.display_edit(EditAction::ToggleOutline), "outline"),
+            (kb.display_edit(EditAction::ToggleLinks), "links"),
+            (kb.display_edit(EditAction::Find), "find"),
+            (kb.display_edit(EditAction::ToggleWrap), "wrap"),
+            (kb.edit_keys_display(EditAction::Back), "back"),
+            ("F1".to_string(), "help"),
+            ("F2".to_string(), "keybinds"),
+        ];
+        let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
+        let hint = default_hints;
+        let note = crate::statusline::active_note(app, ViewMode::Edit);
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
+        ctx.area = Some(hint_area);
+        ctx.note = note;
+        ctx.hints = Some(hint.spans);
+        if let Some(p) = &app.seq_matcher.pending_display() {
+            ctx.pending = Some(vec![Span::styled(
+                format!("{} ", p),
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.accent),
+            )]);
+        }
 
-    let (left_line, right_line) = crate::statusline::render_footer(
-        &ctx,
-        &app.config.statusline,
-        ViewMode::Edit,
-        &app.app_theme,
-    );
-    draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
+        let (left_line, right_line) = crate::statusline::render_footer(
+            &ctx,
+            &app.config.statusline,
+            ViewMode::Edit,
+            &app.app_theme,
+        );
+        draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
+    }
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }

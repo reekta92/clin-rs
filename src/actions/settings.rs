@@ -39,6 +39,19 @@ toggle_action!(
 );
 
 toggle_action!(
+    ToggleZenModeAction,
+    "settings.zen",
+    "Toggle Zen Mode",
+    "Hide header/footer bars and pad the editor text",
+    ActionCategory::Settings,
+    "\u{f186}",
+    "\u{1f319}",
+    toggle_zen_mode,
+    app,
+    if app.zen_mode { "On" } else { "Off" }
+);
+
+toggle_action!(
     ToggleCalendarAction,
     "settings.calendar",
     "Toggle Calendar",

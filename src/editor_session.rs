@@ -177,6 +177,13 @@ where
             }
         }
         Event::Key(key) if key.kind == KeyEventKind::Press => {
+            // Route through the global dispatcher first (mirrors lib.rs and
+            // the mouse path below): F1 help, F2 quick-keybinds, F3 message
+            // overlay, F4 vault switcher, and popup/palette input would
+            // otherwise be unreachable inside the nested editor session.
+            if crate::events::handle_global_popups_and_palette(app, Event::Key(key), area) {
+                return Ok(true);
+            }
             crate::handle_edit_keys(app, key, focus);
             if let Some(message) = crate::text_edit::take_clipboard_notice() {
                 app.set_temporary_status(message);

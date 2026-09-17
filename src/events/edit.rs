@@ -311,6 +311,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 app.request_editor_preview_update();
                 return false;
             }
+            EditAction::ToggleZenMode => {
+                app.toggle_zen_mode();
+                return false;
+            }
             EditAction::ToggleWrap => {
                 app.toggle_wrap();
                 return false;
@@ -505,6 +509,7 @@ pub(crate) fn handle_edit_mouse(
         app.editor.sidebar,
         app.preview_position,
         app.editor.header_title_rect,
+        app.zen_padding(),
     );
 
     let md_area = if app.preview_fullscreen {
@@ -518,7 +523,12 @@ pub(crate) fn handle_edit_mouse(
             .split(terminal_area);
         Some(chunks[1])
     } else if app.editor.editor_preview_enabled {
-        edit_view_md_preview_area(terminal_area, app.editor.sidebar, app.preview_position)
+        edit_view_md_preview_area(
+            terminal_area,
+            app.editor.sidebar,
+            app.preview_position,
+            app.zen_padding(),
+        )
     } else {
         None
     };

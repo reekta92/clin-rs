@@ -307,6 +307,19 @@ impl App {
         }
     }
 
+    pub fn toggle_zen_mode(&mut self) {
+        self.zen_mode = !self.zen_mode;
+    }
+
+    /// Horizontal padding (percent of body width per side) when zen mode is on; 0 when off.
+    pub fn zen_padding(&self) -> u16 {
+        if self.zen_mode {
+            self.config.editor.zen_padding_percent.min(45)
+        } else {
+            0
+        }
+    }
+
     pub fn toggle_wrap(&mut self) {
         let new_wrap = match self.mode {
             ViewMode::Edit => !self.config.editor.soft_wrap,
