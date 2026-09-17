@@ -1808,11 +1808,7 @@ pub(crate) fn render_editor_document_with_theme(
 
 /// Shift rendered editor content for center/right/justified alignment.
 /// Operates on `frame.buffer_mut()` after the textarea has been rendered left-aligned.
-pub(crate) fn overlay_text_alignment(
-    frame: &mut Frame,
-    app: &App,
-    area: Rect,
-) {
+pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &App, area: Rect) {
     use crate::config::TextAlignment;
 
     let align = app.editor.text_align;
@@ -1874,7 +1870,8 @@ pub(crate) fn overlay_text_alignment(
         let visual_idx = scroll_top + screen_row as usize;
         let is_last_of_source = visual_idx >= rows.len()
             || visual_idx + 1 >= rows.len()
-            || rows.get(visual_idx + 1).map(|r| r.source_line) != rows.get(visual_idx).map(|r| r.source_line);
+            || rows.get(visual_idx + 1).map(|r| r.source_line)
+                != rows.get(visual_idx).map(|r| r.source_line);
 
         match align {
             TextAlignment::Center => {

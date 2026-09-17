@@ -681,8 +681,8 @@ fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
         frame.render_widget(padding_block, inner);
 
         let range = renderer.current_page_range();
-        let widget = crate::markdown::MarkdownWidget::new(doc, range)
-            .text_align(app.editor.text_align);
+        let widget =
+            crate::markdown::MarkdownWidget::new(doc, range).text_align(app.editor.text_align);
         frame.render_widget(widget, padded_inner);
     } else {
         let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));

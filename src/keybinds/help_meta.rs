@@ -133,7 +133,10 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::Find => meta("Editing", "Find in document"),
         EditAction::InsertDate => meta("Editing", "Insert date/time"),
         EditAction::Save => meta("General", "Save"),
-        EditAction::CycleAlignment => meta("Editing", "Cycle text alignment (left/center/right/justified)"),
+        EditAction::CycleAlignment => meta(
+            "Editing",
+            "Cycle text alignment (left/center/right/justified)",
+        ),
     }
 }
 
