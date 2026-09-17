@@ -2,6 +2,49 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.13.0-testing.2] - 2026-09-17
+
+### Added
+
+- Added zen mode
+- Improvements to the justified logic
+- Add text alignment (left/center/right/justified) for editor and preview
+- Add mouse interaction and hover to vault switcher
+- Add visual vault renaming via r/F2 keybind
+- Add multi-vault quick switcher (F4)
+
+### Fixed
+
+- Fixed scrolling not working in preview pane
+- Fixed editor styling breaking with alignment
+- Editor body alignment detection, remove justified mode
+- Prevent wl-paste from appending artificial newlines
+- Apply smart cut feedback and simplify cut bindings
+- Implement keyboard selection and smart copy
+- Preserve unknown YAML frontmatter keys across saves
+- Duplicate hint bars in pinstar
+- Marquee selection color
+- Fixed context menu theme in graf view
+
+### Miscellaneous
+
+- Bumped the versions of graf-rs and pinstar
+- Recommended clippy fixes applied
+- Bump trash from 5.2.7 to 5.2.8
+
+### Styling
+
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt applied
+- Restore alternating backgrounds for vault switcher rows
+- Cargo fmt
+- Cargo fmt
+
+### Testing
+
+- Resolve CodeQL alert for zeroized byte arrays
+- Fix CodeQL cryptographic key alerts in tests
 ## [0.13.0-testing.1] - 2026-09-06
 
 ### Added
@@ -26,6 +69,15 @@ All notable changes to clin are documented in this file.
 - Fixed formatting issues
 - Cargo fmt
 - Formatting fixes
+
+### Release
+
+- V0.13.0-testing.1
+## [0.13.0-testing.0] - 2026-09-06
+
+### Release
+
+- V0.13.0-testing.0
 ## [0.12.0] - 2026-09-03
 
 ### CI
