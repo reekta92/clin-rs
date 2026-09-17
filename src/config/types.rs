@@ -645,14 +645,17 @@ pub enum TextAlignment {
     Left,
     Center,
     Right,
+    Justified,
 }
 
 impl TextAlignment {
+    #[must_use]
     pub fn cycle(self) -> Self {
         match self {
             Self::Left => Self::Center,
             Self::Center => Self::Right,
-            Self::Right => Self::Left,
+            Self::Right => Self::Justified,
+            Self::Justified => Self::Left,
         }
     }
 
@@ -661,6 +664,7 @@ impl TextAlignment {
             Self::Left => "Align: Left",
             Self::Center => "Align: Center",
             Self::Right => "Align: Right",
+            Self::Justified => "Align: Justified",
         }
     }
 }

@@ -75,7 +75,7 @@ Run `clin config show` to print the active configuration file path.
 | `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
 | `ghost_syntax` | `bool` | `true` | Visually dim markdown delimiters (brackets, URLs, etc.) in edit view |
 | `extended_markdown_features` | `bool` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |
-
+ | `text_align` | `enum` | `"left"` | Text alignment (`"left"`, `"center"`, `"right"`, `"justified"`). Active only when `soft_wrap` is `true` |
 ### `[ui]`
 
 

@@ -342,20 +342,27 @@ impl App {
         self.editor.text_align = new_align;
 
         // Persist to frontmatter of current note.
-        if let Some(note_id) = self.editor.editing_id.clone() {
-            if let Ok(mut note) = self.storage.load_note(&note_id) {
-                let (mut fm, body) = crate::frontmatter::parse(&note.content);
-                fm.text_align = Some(new_align);
-                note.content = crate::frontmatter::serialize(&fm, body);
-                let _ = self.storage.save_note(&note_id, &note);
-            }
+        if let Some(note_id) = self.editor.editing_id.clone()
+            && let Ok(mut note) = self.storage.load_note(&note_id)
+        {
+            let (mut fm, body) = crate::frontmatter::parse(&note.content);
+            fm.text_align = Some(new_align);
+            note.content = crate::frontmatter::serialize(&fm, body);
+            let _ = self.storage.save_note(&note_id, &note);
         }
 
         if self.mode == ViewMode::Edit {
             self.update_editor_markdown_preview();
         }
 
-        self.set_temporary_status_static(new_align.status_label());
+        if self.editor.body.textarea().wrap_mode() == ratatui_textarea::WrapMode::None {
+            let key = self.keybinds.display_edit(crate::keybinds::EditAction::ToggleWrap);
+            self.set_temporary_status(&format!(
+                "Alignment requires soft wrap — enable with {key}"
+            ));
+        } else {
+            self.set_temporary_status(new_align.status_label());
+        }
     }
 
     pub fn apply_editor_prefs(&mut self) {

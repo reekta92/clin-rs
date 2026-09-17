@@ -287,10 +287,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
     if !app.preview_fullscreen {
         render_editor_widget(frame, app, focus, editor_container, None, None);
-        super::overlay_text_alignment(frame, app, editor_container);
         if app.config.editor.edit_mode_highlight {
             super::overlay_markdown_highlight(frame, app, editor_container);
         }
+        super::overlay_text_alignment(frame, app, editor_container);
         // Scrollbar for editor body
         if app.config.ui.scrollbars {
             let content_len = app.editor.body.lines().len();
