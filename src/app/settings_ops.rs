@@ -831,6 +831,27 @@ mod tests {
     }
 
     #[test]
+    fn cycle_alignment_with_wrap_off_shows_warning() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let mut app = make_app();
+        app.editor
+            .body
+            .set_wrap_mode(ratatui_textarea::WrapMode::None);
+        app.cycle_text_alignment();
+        assert!(app.status.contains("requires soft wrap"));
+        assert_eq!(app.editor.text_align, crate::config::TextAlignment::Center);
+        // With wrap on the plain label shows instead.
+        app.editor
+            .body
+            .set_wrap_mode(ratatui_textarea::WrapMode::WordOrGlyph);
+        app.cycle_text_alignment();
+        assert_eq!(
+            app.status,
+            crate::config::TextAlignment::Right.status_label()
+        );
+    }
+
+    #[test]
     fn test_swap_section_order_reverses() {
         let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();

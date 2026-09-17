@@ -2698,6 +2698,66 @@ mod markdown_highlight_tests {
         }
     }
 
+    #[test]
+    fn aligned_cursor_target_compensates_shift() {
+        use crate::config::TextAlignment;
+        use crate::editor::EditorVisualRow;
+        let lines = vec!["aa bb cc".to_string()];
+        // One visual row, text width 20, content 8 → slack 12.
+        let rows = vec![EditorVisualRow {
+            source_line: 0,
+            start_char: 0,
+            end_char: 8,
+        }];
+        // Center: pad 6. Click on 'b' of first "bb" (cells 3..5 → screen 9..11).
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 9, 20, TextAlignment::Center, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 3));
+        // Right: pad 12. 'c' of "cc" starts at cell 6 → screen 18.
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 18, 20, TextAlignment::Right, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 6));
+        // Left of pad → col 0; past end → last char.
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 2, 20, TextAlignment::Center, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 0));
+        let (l, c) = aligned_cursor_target(&lines, &rows, 0, 0, 19, 20, TextAlignment::Right, 0)
+            .expect("target");
+        assert_eq!((l, c), (0, 7));
+    }
+
+    #[test]
+    fn right_alignment_leaves_single_cursor() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+        app.editor.body = EditorDocument::from_lines(vec!["short line".to_string()]);
+        app.editor.body.set_wrap_mode(WrapMode::WordOrGlyph);
+        app.editor.text_align = crate::config::TextAlignment::Right;
+        let mut terminal = Terminal::new(TestBackend::new(60, 5)).expect("terminal");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                crate::ui::edit_view::render_editor_widget(
+                    frame,
+                    &mut app,
+                    crate::editor::EditFocus::Body,
+                    area,
+                    None,
+                    None,
+                );
+                overlay_text_alignment(frame, &mut app, area);
+            })
+            .expect("render");
+        let buf = terminal.backend().buffer();
+        let reversed = buf
+            .content()
+            .iter()
+            .filter(|c| c.modifier.contains(ratatui::style::Modifier::REVERSED))
+            .count();
+        assert_eq!(reversed, 1, "exactly one cursor cell after shifting");
+    }
+
     /// Like `display_fragment` but includes the (width-1) blank continuation
     /// cells ratatui writes after each wide grapheme.
     fn display_fragment_cells(fragment: &str, tab_len: u8) -> String {
