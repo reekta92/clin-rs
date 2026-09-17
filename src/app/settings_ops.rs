@@ -351,6 +351,14 @@ impl App {
     }
 
     pub fn cycle_text_alignment(&mut self) {
+        if self.editor.body.textarea().wrap_mode() == ratatui_textarea::WrapMode::None {
+            let key = self
+                .keybinds
+                .display_edit(crate::keybinds::EditAction::ToggleWrap);
+            self.set_temporary_status(&format!("Alignment requires soft wrap — enable with {key}"));
+            return;
+        }
+
         let new_align = self.editor.text_align.cycle();
         self.editor.text_align = new_align;
 
@@ -368,14 +376,7 @@ impl App {
             self.update_editor_markdown_preview();
         }
 
-        if self.editor.body.textarea().wrap_mode() == ratatui_textarea::WrapMode::None {
-            let key = self
-                .keybinds
-                .display_edit(crate::keybinds::EditAction::ToggleWrap);
-            self.set_temporary_status(&format!("Alignment requires soft wrap — enable with {key}"));
-        } else {
-            self.set_temporary_status(new_align.status_label());
-        }
+        self.set_temporary_status(new_align.status_label());
     }
 
     pub fn apply_editor_prefs(&mut self) {
@@ -852,7 +853,7 @@ mod tests {
             .set_wrap_mode(ratatui_textarea::WrapMode::None);
         app.cycle_text_alignment();
         assert!(app.status.contains("requires soft wrap"));
-        assert_eq!(app.editor.text_align, crate::config::TextAlignment::Center);
+        assert_eq!(app.editor.text_align, crate::config::TextAlignment::Left);
         // With wrap on the plain label shows instead.
         app.editor
             .body
@@ -860,7 +861,7 @@ mod tests {
         app.cycle_text_alignment();
         assert_eq!(
             app.status,
-            crate::config::TextAlignment::Right.status_label()
+            crate::config::TextAlignment::Center.status_label()
         );
     }
 

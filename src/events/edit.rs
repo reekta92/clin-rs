@@ -541,6 +541,7 @@ pub(crate) fn handle_edit_mouse(
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
                     let h = app.editor.last_body_height.max(1) as usize;
                     renderer.scroll_up(3.min(h));
+                    app.editor.preview_scroll_overridden = true;
                 }
                 return;
             }
@@ -548,6 +549,7 @@ pub(crate) fn handle_edit_mouse(
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
                     let h = app.editor.last_body_height.max(1) as usize;
                     renderer.scroll_down(3.min(h), h);
+                    app.editor.preview_scroll_overridden = true;
                 }
                 return;
             }

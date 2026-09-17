@@ -323,27 +323,38 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
-    // Sync preview scroll with editor scroll
-    if let Some(renderer) = &mut app.editor.md_preview_renderer {
-        if renderer.document().is_some() {
-            if let Some(preview_area) = preview_area_rect {
-                let block = Block::default()
-                    .style(app.app_theme.preview_bg_style())
-                    .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1));
-                let inner = block.inner(preview_area);
+    // Sync preview scroll with editor scroll. Skip while the user is
+    // mouse-scrolling the preview independently: re-sync once the editor
+    // viewport moves or the preview content is rebuilt.
+    if let Some(renderer) = &mut app.editor.md_preview_renderer
+        && renderer.document().is_some()
+    {
+        if let Some(preview_area) = preview_area_rect {
+            let block = Block::default()
+                .style(app.app_theme.preview_bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 1));
+            let inner = block.inner(preview_area);
 
+            let editor_row = app.editor.body_viewport_row;
+            let last_synced = app.editor.preview_scroll_synced_row;
+            let resync = !app.editor.preview_scroll_overridden
+                || last_synced.is_none()
+                || last_synced != Some(editor_row);
+            if resync {
                 let rendered_start = if app.config.editor.soft_wrap {
                     // With wrap ON: body_viewport_row is first visible screen line
                     // Preview scroll_offset is also in rendered (screen) lines
                     // Use directly for 1:1 visual line correspondence
-                    app.editor.body_viewport_row as usize
+                    editor_row as usize
                 } else {
                     // Wrap OFF: viewport row = source line, convert to rendered line
-                    let source_line = app.editor.body_viewport_row as usize;
+                    let source_line = editor_row as usize;
                     renderer.source_to_rendered_line(source_line)
                 };
                 renderer.set_scroll_offset(rendered_start, inner.height as usize);
+                app.editor.preview_scroll_synced_row = Some(editor_row);
+                app.editor.preview_scroll_overridden = false;
             }
         }
     }
