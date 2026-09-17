@@ -262,14 +262,32 @@ impl Storage {
     /// Initialize storage layout from an already-validated candidate config.
     pub(crate) fn init_with_config(config: &ClinConfig) -> (Result<Self>, Vec<String>) {
         let mut warnings = Vec::new();
-        let result = Self::init_inner(config, &mut warnings);
+        let result = match config
+            .effective_storage_path()
+            .context("failed to determine storage path")
+        {
+            Ok(data_dir) => Self::init_inner(config, data_dir, &mut warnings),
+            Err(error) => Err(error),
+        };
         (result, warnings)
     }
 
-    fn init_inner(bootstrap: &ClinConfig, warnings: &mut Vec<String>) -> Result<Self> {
-        let data_dir = bootstrap
-            .effective_storage_path()
-            .context("failed to determine storage path")?;
+    /// Initialize storage layout at an explicit data dir, bypassing config path
+    /// resolution (used for session-only vault switches under `--vault`).
+    pub(crate) fn init_with_config_at(
+        config: &ClinConfig,
+        data_dir: &Path,
+    ) -> (Result<Self>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let result = Self::init_inner(config, data_dir.to_path_buf(), &mut warnings);
+        (result, warnings)
+    }
+
+    fn init_inner(
+        bootstrap: &ClinConfig,
+        data_dir: PathBuf,
+        warnings: &mut Vec<String>,
+    ) -> Result<Self> {
         if !bootstrap.has_custom_storage_path() {
             migrate_legacy_default_vault(&data_dir, warnings);
         }

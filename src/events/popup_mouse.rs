@@ -386,7 +386,7 @@ impl crate::popups::ActivePopup {
         use crate::popups::ActivePopup::{
             CreateFormat, CreateNote, Folder, FolderPicker, Goals, HintBarStyle, IconMode, Import,
             Info, KeybindPreset, NoteRename, Search, Sort, Subnotes, Tag, Template, Theme,
-            TrashView,
+            TrashView, VaultRename,
         };
         match self {
             // === Group A: Simple list-style popups ===
@@ -513,6 +513,19 @@ impl crate::popups::ActivePopup {
                     crate::popups::PopupTextField::NoteRename,
                 ) {
                     app.popups.active = Some(NoteRename(p));
+                }
+                true
+            }
+            VaultRename(mut p) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::VaultRename,
+                ) {
+                    app.popups.active = Some(VaultRename(p));
                 }
                 true
             }
@@ -1199,6 +1212,7 @@ fn popup_selection_matches_active(
         (ActivePopup::CreateNote(..), PopupTextField::CreateNote)
             | (ActivePopup::Goals(_), PopupTextField::Goals)
             | (ActivePopup::NoteRename(_), PopupTextField::NoteRename)
+            | (ActivePopup::VaultRename(_), PopupTextField::VaultRename)
             | (ActivePopup::Import(_), PopupTextField::Import)
             | (ActivePopup::Folder(_), PopupTextField::Folder)
             | (ActivePopup::Tag(_), PopupTextField::Tag)
@@ -1217,7 +1231,66 @@ fn popup_selection_matches_active(
 /// Entry point called from `src/lib.rs` for all mouse events.
 ///
 /// Returns `true` if the event was consumed, `false` otherwise (so the
-/// view-specific handler can process it).
+fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
+    let Some(mut switcher) = app.vault_switcher.take() else {
+        return false;
+    };
+
+    let popup_width = (terminal_area.width / 2).clamp(30, 80);
+    let x = terminal_area.x + (terminal_area.width.saturating_sub(popup_width)) / 2;
+
+    let total_items = switcher.vaults.len() + 1; // + Add row
+    let max_visible_rows = 12usize;
+    let scroll = switcher
+        .selected
+        .saturating_sub(max_visible_rows.saturating_sub(1))
+        .min(total_items.saturating_sub(max_visible_rows));
+    let total_rows = total_items.min(max_visible_rows);
+    let height = (total_rows as u16).min(terminal_area.height.saturating_sub(2).max(1));
+    let dropdown_area = Rect::new(x, terminal_area.y + 1, popup_width, height);
+    let header_rect = Rect::new(terminal_area.x, terminal_area.y, terminal_area.width, 1);
+
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            if !contains_cell(dropdown_area, mouse.column, mouse.row)
+                && !contains_cell(header_rect, mouse.column, mouse.row)
+            {
+                return true; // Dismiss (switcher is taken and we return true)
+            }
+            if contains_cell(dropdown_area, mouse.column, mouse.row) {
+                let clicked_idx = scroll + (mouse.row - dropdown_area.y) as usize;
+                if clicked_idx < total_items {
+                    switcher.selected = clicked_idx;
+                    if clicked_idx == switcher.vaults.len() {
+                        app.vault_switcher = Some(switcher);
+                        app.begin_add_vault();
+                        return true;
+                    } else if let Some(path) =
+                        switcher.vaults.get(clicked_idx).map(|r| r.path.clone())
+                    {
+                        app.vault_switcher = Some(switcher);
+                        app.switch_vault(path);
+                        return true;
+                    }
+                }
+            }
+        }
+        MouseEventKind::Moved | MouseEventKind::Drag(MouseButton::Left)
+            if contains_cell(dropdown_area, mouse.column, mouse.row) =>
+        {
+            let hover_idx = scroll + (mouse.row - dropdown_area.y) as usize;
+            if hover_idx < total_items {
+                switcher.selected = hover_idx;
+            }
+        }
+        _ => {}
+    }
+
+    app.vault_switcher = Some(switcher);
+    true
+}
+
+/// Top-level dispatch for active popups and command palettes (so that any
 pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
     // 1. Confirm overlay (highest priority)
     if app.popups.confirm.is_some() {
@@ -1229,6 +1302,11 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
     // 2. Command palette
     if app.command_palette.is_some() {
         return handle_command_palette_mouse(app, mouse, terminal_area);
+    }
+
+    // 3. Vault Switcher overlay
+    if app.vault_switcher.is_some() {
+        return handle_vault_switcher_mouse(app, mouse, terminal_area);
     }
 
     let selection_matches = app

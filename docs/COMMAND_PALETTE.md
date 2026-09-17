@@ -82,7 +82,7 @@ Actions are grouped by category:
 | **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note |
-| **Views** | Graph, draw, canvas, backup, setup wizard |
+| **Views** | Graph, draw, canvas, backup, setup wizard, vault switcher |
 | **Settings** | Theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
 File-format conversion can require external tools; URL import requires `curl`. CSV and JSON conversions are handled in Rust.

@@ -12,6 +12,7 @@ pub(crate) mod search_worker;
 mod settings_ops;
 mod tags;
 mod trash;
+pub(crate) mod vaults;
 mod views;
 
 pub use crate::editor::*;
@@ -369,6 +370,7 @@ pub struct App {
     pub help_suggestions: Vec<crate::ui::HelpSuggestion>,
     pub command_palette: Option<crate::palette::CommandPalette>,
     pub quick_keybinds_open: bool,
+    pub vault_switcher: Option<crate::app::vaults::VaultSwitcher>,
     pub needs_full_redraw: bool,
     pub confirm_on_delete: bool,
     pub confirm_on_quit: bool,
@@ -616,6 +618,7 @@ impl App {
             help_suggestions: Vec::new(),
             command_palette: None,
             quick_keybinds_open: false,
+            vault_switcher: None,
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
             confirm_on_delete: bootstrap_config.core.confirm_on_delete,
@@ -878,6 +881,7 @@ impl App {
             help_suggestions: Vec::new(),
             command_palette: None,
             quick_keybinds_open: false,
+            vault_switcher: None,
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
             confirm_on_delete: bootstrap_config.core.confirm_on_delete,

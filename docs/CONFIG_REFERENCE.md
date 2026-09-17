@@ -12,6 +12,7 @@ Run `clin config show` to print the active configuration file path.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `storage_path` | `PathBuf` | platform default | Custom vault storage path. Supports `~` and `$VAR`/`${VAR}` expansion (e.g., `~/notes`, `$HOME/vault`) |
+| `vaults` | `array<PathBuf>` | `[]` | Extra vaults shown in the F4 vault switcher. Supports `~` and `$VAR`/`${VAR}` expansion. Vault removal via the switcher removes entries from this list; files on disk are never touched. Not persisted while `--vault` override is active |
 | `mouse_enabled` | `bool` | `true` | Enable mouse support (clicking, scrolling, panning) |
 | `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |

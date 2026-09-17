@@ -27,6 +27,7 @@ pub(crate) mod quick_search;
 pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
+pub(crate) mod vault_switcher;
 
 pub(crate) use canvas_grid::{CanvasGridProjection, draw_canvas_grid};
 pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
@@ -338,6 +339,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if app.messages.is_active() {
         crate::ui::message_overlay::draw_message_overlay(frame, app, &app.app_theme, frame.area());
     }
+    crate::ui::vault_switcher::draw_vault_switcher(frame, app);
 
     // Global popups — rendered on top of the active view
     // Template popup
@@ -909,6 +911,19 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_text_prompt_popup(
             frame,
             "RENAME",
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&text_input_hints("rename")),
+            &mut popup.input,
+            Style::default().fg(app.app_theme.heading),
+            &app.app_theme,
+        );
+    }
+
+    // Vault rename popup
+    if let Some(crate::popups::ActivePopup::VaultRename(popup)) = &mut app.popups.active {
+        draw_text_prompt_popup(
+            frame,
+            "RENAME VAULT",
             PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("rename")),
             &mut popup.input,

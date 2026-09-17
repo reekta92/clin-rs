@@ -321,6 +321,12 @@ template = """
                 "Quit".into(),
                 false,
             ),
+            ConfirmAction::RemoveVault { path } => (
+                "Remove vault from list?".into(),
+                Some(format!("{path}\nFiles on disk are not touched.")),
+                "Remove".into(),
+                false,
+            ),
             ConfirmAction::RemoveAllTagsFromSelected => (
                 "Remove ALL tags from selected notes?".into(),
                 Some("This cannot be undone.".into()),
@@ -365,6 +371,9 @@ template = """
                     folder_paths,
                 } => {
                     self.confirm_bulk_delete(note_ids, folder_paths);
+                }
+                ConfirmAction::RemoveVault { path } => {
+                    self.remove_vault_from_list(&path);
                 }
                 ConfirmAction::QuitApp => {
                     self.should_quit = true;
