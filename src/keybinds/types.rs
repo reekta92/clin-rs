@@ -114,6 +114,7 @@ pub enum EditAction {
     PreviewLink,
     GoToLine,
     Save,
+    CycleAlignment,
 }
 
 #[derive(

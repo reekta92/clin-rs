@@ -337,6 +337,27 @@ impl App {
         self.set_temporary_status_static(if new_wrap { "Wrap on" } else { "Wrap off" });
     }
 
+    pub fn cycle_text_alignment(&mut self) {
+        let new_align = self.editor.text_align.cycle();
+        self.editor.text_align = new_align;
+
+        // Persist to frontmatter of current note.
+        if let Some(note_id) = self.editor.editing_id.clone() {
+            if let Ok(mut note) = self.storage.load_note(&note_id) {
+                let (mut fm, body) = crate::frontmatter::parse(&note.content);
+                fm.text_align = Some(new_align);
+                note.content = crate::frontmatter::serialize(&fm, body);
+                let _ = self.storage.save_note(&note_id, &note);
+            }
+        }
+
+        if self.mode == ViewMode::Edit {
+            self.update_editor_markdown_preview();
+        }
+
+        self.set_temporary_status_static(new_align.status_label());
+    }
+
     pub fn apply_editor_prefs(&mut self) {
         let mode = if self.config.editor.soft_wrap {
             ratatui_textarea::WrapMode::WordOrGlyph

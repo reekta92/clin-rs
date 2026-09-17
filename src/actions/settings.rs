@@ -579,3 +579,16 @@ impl Action for ConfigureSmartFoldersAction {
         Ok(())
     }
 }
+
+toggle_action!(
+    CycleAlignmentAction,
+    "settings.text_align",
+    "Cycle Text Alignment",
+    "Cycle text alignment between left, center, right, and justified",
+    ActionCategory::Settings,
+    "\u{f036}",
+    "\u{2261}",
+    cycle_text_alignment,
+    app,
+    app.editor.text_align.status_label()
+);

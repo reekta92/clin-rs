@@ -103,6 +103,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::ToggleOutline, &["Ctrl+o"]),
     (EditAction::ToggleLinks, &["Ctrl+b"]),
     (EditAction::PreviewLink, &["Alt+l"]),
+    (EditAction::CycleAlignment, &["F9"]),
 ];
 
 const DEFAULT_HELP: &[(HelpAction, &[&str])] = &[

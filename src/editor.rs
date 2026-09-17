@@ -148,6 +148,7 @@ pub struct NoteEditor {
     pub(crate) visual_row_cache: EditorVisualRowCache,
     /// TTL cache for {modified} statusline token (500ms bounded).
     pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
+    pub text_align: crate::config::TextAlignment,
 }
 
 impl Default for NoteEditor {
@@ -212,6 +213,7 @@ impl Default for NoteEditor {
             md_highlight_memo: lru::LruCache::new(std::num::NonZeroUsize::MIN),
             visual_row_cache: EditorVisualRowCache::default(),
             modified_status_cache: std::cell::RefCell::new(None),
+            text_align: crate::config::TextAlignment::default(),
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }

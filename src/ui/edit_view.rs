@@ -287,6 +287,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
     if !app.preview_fullscreen {
         render_editor_widget(frame, app, focus, editor_container, None, None);
+        super::overlay_text_alignment(frame, app, editor_container);
         if app.config.editor.edit_mode_highlight {
             super::overlay_markdown_highlight(frame, app, editor_container);
         }
@@ -356,7 +357,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
                 let scroll = renderer.scroll_offset();
                 let widget_range = scroll..(scroll + inner.height as usize);
-                let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone());
+                let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone())
+                    .text_align(app.editor.text_align);
                 frame.render_widget(widget, inner);
 
                 // Overlay images continuously
@@ -679,7 +681,8 @@ fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
         frame.render_widget(padding_block, inner);
 
         let range = renderer.current_page_range();
-        let widget = crate::markdown::MarkdownWidget::new(doc, range);
+        let widget = crate::markdown::MarkdownWidget::new(doc, range)
+            .text_align(app.editor.text_align);
         frame.render_widget(widget, padded_inner);
     } else {
         let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));
