@@ -1806,7 +1806,7 @@ pub(crate) fn render_editor_document_with_theme(
     );
 }
 
-/// Shift rendered editor content for center/right/justified alignment.
+/// Shift rendered editor content for center/right alignment.
 /// Operates on `frame.buffer_mut()` after the textarea has been rendered left-aligned.
 pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &App, area: Rect) {
     use crate::config::TextAlignment;
@@ -1837,11 +1837,6 @@ pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Determine which visual rows are the last row of their source line,
-    // so justified alignment can leave them ragged.
-    let rows = &app.editor.visual_row_cache.rows;
-    let scroll_top = app.editor.body_viewport_row as usize;
-
     let buf = frame.buffer_mut();
 
     for screen_row in 0..inner.height {
@@ -1850,12 +1845,13 @@ pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &App, area: Rect) {
             break;
         }
 
-        // Find content width: scan from right to find last non-empty cell.
+        // Find content width: scan from right to find last non-space symbol.
+        // Ignore cell style — the editor theme paints bg/fg on every cell
+        // including trailing blanks.
         let mut content_width: u16 = 0;
         for cx in (0..text_width).rev() {
             let x = text_left + cx;
-            let cell = &buf[(x, y)];
-            if cell.symbol() != " " || cell.style() != ratatui::style::Style::default() {
+            if buf[(x, y)].symbol() != " " {
                 content_width = cx + 1;
                 break;
             }
@@ -1867,12 +1863,6 @@ pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &App, area: Rect) {
 
         let slack = text_width - content_width;
 
-        let visual_idx = scroll_top + screen_row as usize;
-        let is_last_of_source = visual_idx >= rows.len()
-            || visual_idx + 1 >= rows.len()
-            || rows.get(visual_idx + 1).map(|r| r.source_line)
-                != rows.get(visual_idx).map(|r| r.source_line);
-
         match align {
             TextAlignment::Center => {
                 let pad = slack / 2;
@@ -1883,12 +1873,6 @@ pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &App, area: Rect) {
             TextAlignment::Right => {
                 if slack > 0 {
                     shift_row_right(buf, y, text_left, content_width, slack);
-                }
-            }
-            TextAlignment::Justified => {
-                // Don't justify the last visual row of a source line.
-                if !is_last_of_source && slack > 0 {
-                    justify_row(buf, y, text_left, content_width, text_width);
                 }
             }
             TextAlignment::Left => unreachable!(),
@@ -1912,69 +1896,9 @@ fn shift_row_right(
             let cell = buf[(src_x, y)].clone();
             buf[(dst_x, y)] = cell;
         }
-        // Clear source cell.
-        buf[(src_x, y)].reset();
-    }
-}
-
-/// Distribute extra horizontal space between words in a row (justified alignment).
-fn justify_row(
-    buf: &mut ratatui::prelude::Buffer,
-    y: u16,
-    text_left: u16,
-    content_width: u16,
-    total_width: u16,
-) {
-    // Collect positions of space-character cells that separate words.
-    let mut space_positions: Vec<u16> = Vec::new();
-    for cx in 0..content_width {
-        let x = text_left + cx;
-        let cell = &buf[(x, y)];
-        // A space between non-space chars is a word gap.
-        if cell.symbol() == " " {
-            // Check it's between content (not leading/trailing).
-            let has_left = cx > 0 && buf[(text_left + cx - 1, y)].symbol() != " ";
-            let has_right = cx + 1 < content_width && buf[(text_left + cx + 1, y)].symbol() != " ";
-            if has_left && has_right {
-                space_positions.push(cx);
-            }
-        }
-    }
-
-    if space_positions.is_empty() {
-        return;
-    }
-
-    let extra = (total_width - content_width) as usize;
-    let gap_count = space_positions.len();
-    // ponytail: integer distribution — works for monospace TUI, no sub-pixel
-    let base_add = extra / gap_count;
-    let remainder = extra % gap_count;
-
-    // Build new row content by reading cells left-to-right, inserting extra spaces at gaps.
-    let mut cells: Vec<ratatui::buffer::Cell> = Vec::with_capacity(total_width as usize);
-    let mut gap_idx = 0;
-    for cx in 0..content_width {
-        cells.push(buf[(text_left + cx, y)].clone());
-        if gap_idx < gap_count && cx == space_positions[gap_idx] {
-            let add = base_add + if gap_idx < remainder { 1 } else { 0 };
-            for _ in 0..add {
-                let mut blank = ratatui::buffer::Cell::default();
-                blank.set_symbol(" ");
-                // Inherit style from the space cell for visual consistency.
-                blank.set_style(buf[(text_left + cx, y)].style());
-                cells.push(blank);
-            }
-            gap_idx += 1;
-        }
-    }
-
-    // Write back.
-    for (i, cell) in cells.iter().enumerate() {
-        let x = text_left + i as u16;
-        if x < buf.area.x + buf.area.width {
-            buf[(x, y)] = cell.clone();
-        }
+        // Clear source cell but keep its background style so the editor
+        // theme background remains continuous.
+        buf[(src_x, y)].set_symbol(" ");
     }
 }
 

@@ -584,7 +584,7 @@ toggle_action!(
     CycleAlignmentAction,
     "settings.text_align",
     "Cycle Text Alignment",
-    "Cycle text alignment between left, center, right, and justified",
+    "Cycle text alignment between left, center, and right",
     ActionCategory::Settings,
     "\u{f036}",
     "\u{2261}",
