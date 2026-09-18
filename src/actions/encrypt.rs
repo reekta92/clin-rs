@@ -27,18 +27,8 @@ impl Action for EncryptNoteAction {
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
         let note_id = context_note_id
-            .map(|s| s.to_string())
-            .or_else(|| {
-                app.list
-                    .visual_list
-                    .get(app.list.visual_index)
-                    .and_then(|item| match item {
-                        crate::app::VisualItem::Note { summary_idx, .. } => {
-                            Some(app.notes[*summary_idx].id.clone())
-                        }
-                        _ => None,
-                    })
-            })
+            .map(str::to_owned)
+            .or_else(|| app.get_selected_note_id())
             .ok_or_else(|| anyhow!("No note selected"))?;
 
         if note_id.ends_with(".clin") {

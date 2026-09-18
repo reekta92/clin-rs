@@ -3,7 +3,6 @@ use rand::RngExt;
 const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 const NONCE_LEN: usize = 12;
 use crate::frontmatter;
-use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
@@ -752,10 +751,6 @@ impl Storage {
             preset.base_keybinds()
         });
         (keybinds, warnings)
-    }
-
-    pub fn template_manager(&self) -> TemplateManager {
-        TemplateManager::new(self.templates_dir.clone())
     }
 
     pub fn note_path(&self, id: &str) -> PathBuf {

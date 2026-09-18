@@ -74,7 +74,7 @@ run_tui_session(app)
 
 ### Main Event Loop (`run_app()`)
 
-`run_app_with_hook()` owns generic application work: catalog/search/watcher
+`run_app()` owns generic application work: catalog/search/watcher
 drains, backup scheduling, list and graph state, then generic rendering.
 
 When `app.mode == ViewMode::Edit`, it enters `editor_session::run_editor_session`
@@ -317,11 +317,7 @@ src/
 │   ├── todotxt.rs        — Render plugin for todo.txt items
 │   ├── widget.rs         — Ratatui Widget impl for RenderLine slices
 │   └── worker.rs         — Cancelable background render thread
-├── templates/            — Template system: data model, substitution, persistence
-│   ├── mod.rs            — Module root, re-exports
-│   ├── model.rs          — Template, TitleConfig, ContentConfig
-│   ├── variables.rs      — Template date/time variable substitution
-│   └── manager.rs        — TemplateManager CRUD orchestration
+├── templates.rs          — Template system: data model, substitution, persistence
 ├── image_render/         — Native image rendering
 │   ├── cache.rs          — LRU image cache
 │   └── worker.rs         — Background decode worker

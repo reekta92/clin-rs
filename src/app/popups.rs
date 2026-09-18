@@ -6,8 +6,7 @@ use crate::templates::Template;
 
 impl App {
     pub fn open_template_popup(&mut self) {
-        let template_manager = self.storage.template_manager();
-        match template_manager.list() {
+        match self.storage.list_templates() {
             Ok(templates) => {
                 let input = crate::ui::make_popup_textarea(&self.app_theme, "Search templates...");
                 self.popups.active = Some(crate::popups::ActivePopup::Template(TemplatePopup {
@@ -47,8 +46,7 @@ impl App {
         if let Some(crate::popups::ActivePopup::Template(popup)) = self.popups.active.take()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
-            let template_manager = self.storage.template_manager();
-            match template_manager.load(&summary.filename) {
+            match self.storage.load_template(&summary.filename) {
                 Ok(template) => {
                     self.start_note_from_template(&template, folder);
                 }
@@ -68,9 +66,7 @@ impl App {
             self.popups.active.as_ref()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
-            self.storage
-                .template_manager()
-                .template_path(&summary.filename)
+            self.storage.template_path(&summary.filename)
         } else {
             self.set_temporary_status_static("No template selected");
             return;
@@ -121,9 +117,7 @@ impl App {
         };
 
         let new_path = self
-            .storage
-            .template_manager()
-            .template_path(&template.name);
+            .storage.template_path(&template.name);
 
         if new_path == path {
             return path.to_path_buf();
@@ -178,11 +172,10 @@ impl App {
     }
 
     pub fn refresh_template_popup(&mut self) {
-        let template_manager = self.storage.template_manager();
         if let Some(crate::popups::ActivePopup::Template(popup)) = &mut self.popups.active {
             let selected = popup.selected;
             let focus = popup.focus;
-            match template_manager.list() {
+            match self.storage.list_templates() {
                 Ok(all_templates) => {
                     popup.all_templates = all_templates;
                     popup.focus = focus;
@@ -206,8 +199,7 @@ impl App {
     }
 
     pub fn confirm_delete_template(&mut self, filename: String) {
-        let template_manager = self.storage.template_manager();
-        match template_manager.delete(&filename) {
+        match self.storage.delete_template(&filename) {
             Ok(()) => {
                 self.refresh_template_popup();
                 self.set_temporary_status_static("Template deleted");
@@ -219,8 +211,7 @@ impl App {
     }
 
     pub fn create_template_from_popup(&mut self) {
-        let template_manager = self.storage.template_manager();
-        if let Err(e) = template_manager.ensure_dir() {
+        if let Err(e) = self.storage.ensure_templates_dir() {
             self.set_temporary_status(&format!("Failed to prepare templates dir: {e}"));
             return;
         }
@@ -232,14 +223,14 @@ impl App {
             } else {
                 format!("new_template_{idx}")
             };
-            let path = template_manager.template_path(&candidate);
+            let path = self.storage.template_path(&candidate);
             if !path.exists() {
                 break candidate;
             }
             idx += 1;
         };
 
-        let path = template_manager.template_path(&filename);
+        let path = self.storage.template_path(&filename);
         let skeleton = r#"name = "New Template"
 
 [title]
@@ -924,7 +915,7 @@ template = """
         if !changed_vault {
             match self.config.save() {
                 Ok(()) => {
-                    let _ = self.storage.template_manager().create_examples();
+                    let _ = self.storage.create_example_templates();
                     self.request_notes_reconcile();
                     self.set_temporary_status_static("Setup complete");
                     self.setup_state = None;

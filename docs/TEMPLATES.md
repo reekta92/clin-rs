@@ -8,12 +8,11 @@ Technical docs for the note template system — reusable templates with variable
 
 Templates allow users to create notes from predefined structures. In native storage, templates live in its `templates/` directory; for a custom vault, they live in `<vault>/.clin/templates/`. Templates can include dynamic variables (`{date}`, `{time}`, etc.) that are substituted at creation time.
 
-**Source:** `src/templates/` module — `Template`, `TemplateVariables`, `TemplateManager`
+**Source:** `src/templates.rs` — `Template`, `TemplateSummary`, `Storage` templates API
 
-- `src/templates/model.rs` — template schema + load/save/render
-- `src/templates/variables.rs` — variable substitution
-- `src/templates/store.rs` — filename sanitization
-- `src/templates/manager.rs` — directory/list/load/save/example orchestration
+- Defines the template schema + load/save/render logic.
+- Performs variable substitution.
+- Filename sanitization and orchestration (list, load, save, examples) are implemented on `Storage`.
 
 ---
 
@@ -169,20 +168,17 @@ clin notes new "My Note"
 
 ---
 
-## TemplateManager API
+## Storage Templates API
 
 ```rust
-pub struct TemplateManager {
-    templates_dir: PathBuf,
-}
-
-impl TemplateManager {
-    pub fn list(&self) -> Result<Vec<TemplateSummary>>;
-    pub fn load(&self, filename: &str) -> Result<Template>;
-    pub fn save(&self, filename: &str, template: &Template) -> Result<()>;
-    pub fn load_default(&self) -> Option<Template>;
+impl Storage {
+    pub fn list_templates(&self) -> Result<Vec<TemplateSummary>>;
+    pub fn load_template(&self, filename: &str) -> Result<Template>;
+    pub fn save_template(&self, filename: &str, template: &Template) -> Result<()>;
+    pub fn delete_template(&self, filename: &str) -> Result<()>;
+    pub fn load_default_template(&self) -> Option<Template>;
     pub fn has_templates(&self) -> bool;
-    pub fn create_examples(&self) -> Result<()>;
+    pub fn create_example_templates(&self) -> Result<()>;
 }
 ```
 
