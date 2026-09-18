@@ -505,7 +505,7 @@ pub(crate) fn handle_edit_mouse(
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
         app.editor.body.lines().len(),
-        app.editor.show_line_numbers,
+        app.editor_show_line_numbers(),
         app.editor.sidebar,
         app.preview_position,
         app.editor.header_title_rect,
@@ -661,7 +661,7 @@ pub(crate) fn handle_edit_mouse(
                 if align != crate::config::TextAlignment::Left
                     && wrap_mode != ratatui_textarea::WrapMode::None
                 {
-                    let gutter: u16 = if app.editor.show_line_numbers {
+                    let gutter: u16 = if app.editor_show_line_numbers() {
                         app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
                     } else {
                         0
@@ -718,7 +718,7 @@ pub(crate) fn handle_edit_mouse(
                     if align != crate::config::TextAlignment::Left
                         && wrap_mode != ratatui_textarea::WrapMode::None
                     {
-                        let gutter: u16 = if app.editor.show_line_numbers {
+                        let gutter: u16 = if app.editor_show_line_numbers() {
                             app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
                         } else {
                             0

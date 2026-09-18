@@ -604,8 +604,7 @@ impl App {
     }
 
     pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
-        let template_manager = self.storage.template_manager();
-        if let Some(default_template) = template_manager.load_default() {
+        if let Some(default_template) = self.storage.load_default_template() {
             self.start_note_from_template_with_title(&default_template, folder, title);
         } else {
             self.start_blank_note_with_title(folder, title);

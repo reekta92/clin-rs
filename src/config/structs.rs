@@ -423,6 +423,14 @@ impl Default for ListConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FocusUnit {
+    #[default]
+    Paragraph,
+    Line,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EditorConfig {
@@ -433,6 +441,11 @@ pub struct EditorConfig {
     #[serde(default)]
     pub preview_enabled: bool,
     pub show_line_numbers: bool,
+    pub zen_hide_line_numbers: bool,
+    pub zen_hide_scrollbar: bool,
+    pub zen_focus_dimming: bool,
+    pub zen_focus_unit: FocusUnit,
+    pub zen_focus_context: usize,
     pub date_format: String,
     pub edit_mode_highlight: bool,
     pub ghost_syntax: bool,
@@ -450,6 +463,11 @@ impl Default for EditorConfig {
             external_enabled: false,
             preview_enabled: false,
             show_line_numbers: true,
+            zen_hide_line_numbers: true,
+            zen_hide_scrollbar: true,
+            zen_focus_dimming: false,
+            zen_focus_unit: FocusUnit::Paragraph,
+            zen_focus_context: 3,
             date_format: "%Y-%m-%d %H:%M".to_string(),
             edit_mode_highlight: true,
             ghost_syntax: true,

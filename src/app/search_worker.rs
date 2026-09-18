@@ -28,11 +28,14 @@ pub(crate) struct SearchWorker {
 }
 
 impl SearchWorker {
-    pub fn spawn(storage: Storage, pool: Arc<rayon::ThreadPool>) -> Self {
+    pub fn spawn(
+        storage: Storage,
+        pool: Arc<rayon::ThreadPool>,
+        generation: Arc<AtomicU64>,
+    ) -> Self {
         let (req_tx, req_rx) = sync_channel::<SearchRequest>(1);
         let (event_tx, event_rx) = sync_channel::<SearchEvent>(2);
-        let generation = Arc::new(AtomicU64::new(1));
-        let worker_gen = generation.clone();
+        let worker_gen = generation;
 
         std::thread::Builder::new()
             .name("search-worker".to_string())

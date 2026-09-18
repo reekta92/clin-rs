@@ -184,12 +184,12 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
 
             let (content, tags) = if let Some(tmpl_name) = template {
-                let template_manager = app.storage.template_manager();
-                if let Ok(templates) = template_manager.list() {
+                if let Ok(templates) = app.storage.list_templates() {
                     if let Some(template_summary) =
                         templates.into_iter().find(|t| t.name == tmpl_name)
                     {
-                        if let Ok(template_data) = template_manager.load(&template_summary.filename)
+                        if let Ok(template_data) =
+                            app.storage.load_template(&template_summary.filename)
                         {
                             (template_data.content.template.clone(), Vec::new())
                         } else {
@@ -648,8 +648,7 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
         TemplatesCmd::List => {
             let (storage, _) = Storage::init();
             let storage = storage?;
-            let template_manager = storage.template_manager();
-            let templates = template_manager.list()?;
+            let templates = storage.list_templates()?;
 
             if templates.is_empty() {
                 println!("{}", console::info("No templates found."));
@@ -682,8 +681,7 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
         TemplatesCmd::Init => {
             let (storage, _) = Storage::init();
             let storage = storage?;
-            let template_manager = storage.template_manager();
-            template_manager.create_examples()?;
+            storage.create_example_templates()?;
             println!(
                 "{}",
                 console::success(&format!(
@@ -692,7 +690,7 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
                 ))
             );
 
-            let templates = template_manager.list()?;
+            let templates = storage.list_templates()?;
             for t in templates {
                 println!(
                     "  {} {} {}",
@@ -1127,7 +1125,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
                     .messages
                     .push(warning, crate::app::messages::MessageSeverity::Warning);
             }
-            let _ = fresh.storage.template_manager().create_examples();
+            let _ = fresh.storage.create_example_templates();
             fresh.set_temporary_status_static("Setup complete");
             *app = fresh;
             continue;
@@ -1241,20 +1239,6 @@ pub fn run_app<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
-    run_app_with_hook(terminal, app, events, &mut |_| false)
-}
-
-/// `pre_draw_hook` runs every loop iteration before the draw phase.
-/// record_frame/fps/dirty-flag bookkeeping still runs.
-pub fn run_app_with_hook<B: ratatui::backend::Backend>(
-    terminal: &mut ratatui::Terminal<B>,
-    app: &mut crate::app::App,
-    events: &mut crate::event_source::EventSource,
-    pre_draw_hook: &mut dyn FnMut(&mut crate::app::App) -> bool,
-) -> Result<()>
-where
-    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
-{
     if app.config.core.syntax_highlighting {
         let code_theme = std::sync::Arc::from(app.config.core.code_theme.as_str());
         crate::markdown::prewarm_syntax_assets(code_theme);
@@ -1271,7 +1255,7 @@ where
             break;
         }
         if app.mode == ViewMode::Edit {
-            crate::editor_session::run_editor_session(terminal, app, events, pre_draw_hook)?;
+            crate::editor_session::run_editor_session(terminal, app, events, &mut |_| false)?;
             prev_mode = app.mode;
             continue;
         }
@@ -1303,7 +1287,9 @@ where
                 list_dirty = true;
             }
         }
-        app.handle_search_events();
+        if app.handle_search_events() && app.mode == ViewMode::List {
+            list_dirty = true;
+        }
         process_watcher_events(app);
 
         if app.tick_status() {
@@ -1373,12 +1359,8 @@ where
             true
         };
 
-        let skip_draw = pre_draw_hook(app);
-
         if should_draw {
-            if !skip_draw
-                && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
-            {
+            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
                 return Err(e.into());
             }
             let now = std::time::Instant::now();
@@ -1468,9 +1450,7 @@ where
         }
 
         if app.mode != ViewMode::List && need_redraw {
-            if !skip_draw
-                && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
-            {
+            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
                 return Err(e.into());
             }
             let now = std::time::Instant::now();

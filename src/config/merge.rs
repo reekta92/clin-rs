@@ -83,4 +83,23 @@ mod tests {
         assert_eq!(parsed.backup, default.backup);
         assert_eq!(parsed.statusline, default.statusline);
     }
+
+    #[test]
+    fn editor_config_backward_compat() {
+        let old_toml = r#"
+        [editor]
+        show_line_numbers = false
+        "#;
+        let parsed: crate::config::ClinConfig = toml::from_str(old_toml).unwrap();
+        assert!(!parsed.editor.show_line_numbers);
+        // New fields should have defaults
+        assert!(parsed.editor.zen_hide_line_numbers);
+        assert!(parsed.editor.zen_hide_scrollbar);
+        assert!(!parsed.editor.zen_focus_dimming);
+        assert_eq!(
+            parsed.editor.zen_focus_unit,
+            crate::config::FocusUnit::Paragraph
+        );
+        assert_eq!(parsed.editor.zen_focus_context, 3);
+    }
 }
