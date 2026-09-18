@@ -347,7 +347,9 @@ fn handle_search_popup_scrollbar(
     mouse: &MouseEvent,
 ) -> bool {
     if let Some(meta) = popup.last_scroll {
-        let has_grep = !popup.grep_results.is_empty();
+        let query_text = popup.input.lines().join("");
+        let parsed = crate::app::parse_search_query(&query_text);
+        let has_grep = parsed.grep_mode;
         let total_items = if has_grep {
             popup.total_grep_rows()
         } else {
@@ -909,7 +911,7 @@ impl crate::popups::ActivePopup {
 
                 let results_chunk_idx = if has_filter { 2 } else { 1 };
                 let has_title = !p.title_result_ids.is_empty();
-                let has_grep = !p.grep_results.is_empty();
+                let has_grep = parsed.grep_mode;
                 let total_items = if has_grep {
                     p.total_grep_rows()
                 } else if has_title {

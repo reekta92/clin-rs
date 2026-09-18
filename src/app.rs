@@ -599,6 +599,8 @@ impl App {
 
         let (message_tx, message_rx) = std::sync::mpsc::channel();
 
+        let search_query_generation = Arc::new(AtomicU64::new(1));
+
         let mut app = Self {
             storage: storage.clone(),
             notes_worker_pool: notes_worker_pool.clone(),
@@ -654,9 +656,10 @@ impl App {
             search_worker: crate::app::search_worker::SearchWorker::spawn(
                 storage.clone(),
                 notes_worker_pool.clone(),
+                search_query_generation.clone(),
             ),
             search_debounce_deadline: None,
-            search_query_generation: Arc::new(AtomicU64::new(1)),
+            search_query_generation,
             unsent_search_request: None,
             note_index: None,
             notes_revision: 0,
@@ -862,6 +865,8 @@ impl App {
             show_all: bootstrap_config.list.show_all_files,
         });
 
+        let search_query_generation = Arc::new(AtomicU64::new(1));
+
         let (message_tx, message_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             storage: storage.clone(),
@@ -918,9 +923,10 @@ impl App {
             search_worker: crate::app::search_worker::SearchWorker::spawn(
                 storage.clone(),
                 notes_worker_pool.clone(),
+                search_query_generation.clone(),
             ),
             search_debounce_deadline: None,
-            search_query_generation: Arc::new(AtomicU64::new(1)),
+            search_query_generation,
             unsent_search_request: None,
             note_index: None,
             notes_revision: 0,

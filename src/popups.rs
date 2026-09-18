@@ -233,6 +233,7 @@ pub struct SearchPopup {
     pub grep_selected: usize,
     pub globally_truncated: bool,
     pub read_errors: usize,
+    pub grep_generation: u64,
 
     pub results_scroll_offset: usize,
     pub original_index: usize,

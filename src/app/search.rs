@@ -87,6 +87,7 @@ impl App {
             grep_selected: 0,
             globally_truncated: false,
             read_errors: 0,
+            grep_generation: 0,
             results_scroll_offset: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
@@ -146,6 +147,9 @@ impl App {
                 popup.globally_truncated = false;
                 popup.read_errors = 0;
             }
+            self.search_query_generation.fetch_add(1, Ordering::SeqCst);
+            self.search_debounce_deadline = None;
+            self.unsent_search_request = None;
             self.search_status = None;
             return;
         }
@@ -210,6 +214,11 @@ impl App {
                 query: grep_query,
                 candidate_ids: candidate_ids.into_boxed_slice(),
             });
+        } else {
+            self.search_query_generation.fetch_add(1, Ordering::SeqCst);
+            self.search_status = None;
+            self.search_debounce_deadline = None;
+            self.unsent_search_request = None;
             if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
                 popup.grep_results.clear();
                 popup.grep_row_offsets.clear();
@@ -218,9 +227,6 @@ impl App {
                 popup.globally_truncated = false;
                 popup.read_errors = 0;
             }
-            self.search_status = None;
-            self.search_debounce_deadline = None;
-            self.unsent_search_request = None;
         }
     }
 
@@ -270,8 +276,9 @@ impl App {
         }
     }
 
-    pub fn handle_search_events(&mut self) {
+    pub fn handle_search_events(&mut self) -> bool {
         use crate::app::search_worker::SearchEvent;
+        let mut changed = false;
         let cur_gen = self.search_query_generation.load(Ordering::SeqCst);
 
         if let Some(deadline) = self.search_debounce_deadline
@@ -287,6 +294,7 @@ impl App {
                     "Search worker disconnected; search unavailable".to_string(),
                     crate::app::messages::MessageSeverity::Warning,
                 );
+                changed = true;
             }
         }
 
@@ -303,6 +311,15 @@ impl App {
                         if let Some(crate::popups::ActivePopup::Search(popup)) =
                             &mut self.popups.active
                         {
+                            if popup.grep_generation != generation {
+                                popup.grep_results.clear();
+                                popup.grep_row_offsets.clear();
+                                popup.grep_expanded.clear();
+                                popup.grep_selected = 0;
+                                popup.globally_truncated = false;
+                                popup.read_errors = 0;
+                                popup.grep_generation = generation;
+                            }
                             popup.grep_results.extend(hits);
                             popup.globally_truncated = globally_truncated;
                             popup.read_errors = errors;
@@ -319,10 +336,12 @@ impl App {
                                 ));
                             }
                         }
+                        changed = true;
                     }
                 }
             }
         }
+        changed
     }
     pub fn cancel_search(&mut self) {
         if let Some(crate::popups::ActivePopup::Search(popup)) = self.popups.active.take() {
@@ -441,6 +460,7 @@ impl App {
             }
             self.request_preview_update();
         } else {
+
             self.expand_selected_folder();
         }
     }
@@ -454,5 +474,122 @@ impl App {
         let max_index = self.list.visual_list.len().saturating_sub(1);
         self.list.visual_index = (self.list.visual_index + self.list.page_size).min(max_index);
         self.request_preview_update();
+    }
+}
+#[cfg(test)]
+mod tests {
+
+    fn make_test_storage(dir: &std::path::Path) -> crate::storage::Storage {
+        crate::storage::Storage {
+            data_dir: dir.to_path_buf(),
+            config_dir: dir.to_path_buf(),
+            notes_dir: dir.to_path_buf(),
+            templates_dir: dir.to_path_buf(),
+            key: [1u8; 32],
+            skip_dir_patterns: vec![],
+        }
+    }
+
+    #[test]
+    fn grep_query_queues_worker_request_and_builds_tree() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut storage = make_test_storage(tmp.path());
+        storage
+            .save_note(
+                "grepme.md",
+                &crate::storage::Note {
+                    title: "Grep Target".to_string(),
+                    content: "alpha zebra\nno match\nbeta zebra\n".to_string(),
+                    updated_at: 1000,
+                    tags: vec![],
+                },
+            )
+            .unwrap();
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.begin_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("g:zebra");
+        }
+        app.update_search();
+
+        assert!(app.unsent_search_request.is_some());
+        assert!(app.search_debounce_deadline.is_some());
+
+        app.search_debounce_deadline = Some(std::time::Instant::now());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut saw_change = false;
+        loop {
+            saw_change |= app.handle_search_events();
+            let done = app
+                .popups
+                .active
+                .as_ref()
+                .is_some_and(|p| {
+                    matches!(p, crate::popups::ActivePopup::Search(sp) if !sp.grep_results.is_empty())
+                });
+            if done || std::time::Instant::now() > deadline {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        assert!(saw_change, "result arrival must report changed=true");
+
+
+        let popup = match &mut app.popups.active {
+            Some(crate::popups::ActivePopup::Search(p)) => p,
+            _ => panic!("search popup missing"),
+        };
+        assert_eq!(popup.grep_results.len(), 1);
+        let hit = &popup.grep_results[0];
+        assert_eq!(hit.lines.len(), 2);
+        assert_eq!(hit.lines[0].line_number, 1);
+
+        assert_eq!(popup.total_grep_rows(), 1);
+        popup.grep_expanded.insert(popup.grep_results[0].note_id.clone());
+        popup.rebuild_grep_offsets();
+        assert_eq!(popup.total_grep_rows(), 3);
+
+        // drain until finish
+        loop {
+            let changed = app.handle_search_events();
+            if !changed && app.search_status.is_none() {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("timeout waiting for worker to finish");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!app.handle_search_events(), "idle drain must report changed=false");
+    }
+
+    #[test]
+    fn clearing_grep_filter_cancels_pending_request() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let storage = make_test_storage(tmp.path());
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.begin_search();
+        
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("g:zebra");
+        }
+        app.update_search();
+        assert!(app.unsent_search_request.is_some());
+        
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input = ratatui_textarea::TextArea::default();
+            popup.input.insert_str("zebra");
+        }
+        app.update_search();
+        
+        assert!(app.unsent_search_request.is_none());
+        assert!(app.search_debounce_deadline.is_none());
+        
+        let popup = match &app.popups.active {
+            Some(crate::popups::ActivePopup::Search(p)) => p,
+            _ => panic!("search popup missing"),
+        };
+        assert!(popup.grep_results.is_empty());
     }
 }

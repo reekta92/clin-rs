@@ -1145,7 +1145,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(&popup.input, input_chunk);
 
         let has_title = !popup.title_result_ids.is_empty();
-        let has_grep = !popup.grep_results.is_empty();
+        let has_grep = parsed.grep_mode;
 
         let results_focused = popup.focus == crate::popups::SearchFocus::Results;
         let results_border = if results_focused {

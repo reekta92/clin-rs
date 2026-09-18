@@ -1287,7 +1287,9 @@ where
                 list_dirty = true;
             }
         }
-        app.handle_search_events();
+        if app.handle_search_events() && app.mode == ViewMode::List {
+            list_dirty = true;
+        }
         process_watcher_events(app);
 
         if app.tick_status() {

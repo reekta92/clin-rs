@@ -1392,7 +1392,9 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::Search(mut popup) => {
                 let has_title = !popup.title_result_ids.is_empty();
-                let has_grep = !popup.grep_results.is_empty();
+                let query_text = popup.input.lines().join("");
+                let parsed = crate::app::parse_search_query(&query_text);
+                let has_grep = parsed.grep_mode;
                 let has_results = has_title || has_grep;
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
