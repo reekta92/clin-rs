@@ -460,7 +460,6 @@ impl App {
             }
             self.request_preview_update();
         } else {
-
             self.expand_selected_folder();
         }
     }
@@ -535,7 +534,6 @@ mod tests {
 
         assert!(saw_change, "result arrival must report changed=true");
 
-
         let popup = match &mut app.popups.active {
             Some(crate::popups::ActivePopup::Search(p)) => p,
             _ => panic!("search popup missing"),
@@ -546,7 +544,9 @@ mod tests {
         assert_eq!(hit.lines[0].line_number, 1);
 
         assert_eq!(popup.total_grep_rows(), 1);
-        popup.grep_expanded.insert(popup.grep_results[0].note_id.clone());
+        popup
+            .grep_expanded
+            .insert(popup.grep_results[0].note_id.clone());
         popup.rebuild_grep_offsets();
         assert_eq!(popup.total_grep_rows(), 3);
 
@@ -561,7 +561,10 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        assert!(!app.handle_search_events(), "idle drain must report changed=false");
+        assert!(
+            !app.handle_search_events(),
+            "idle drain must report changed=false"
+        );
     }
 
     #[test]
@@ -570,22 +573,22 @@ mod tests {
         let storage = make_test_storage(tmp.path());
         let mut app = crate::app::App::new(storage).unwrap();
         app.begin_search();
-        
+
         if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
             popup.input.insert_str("g:zebra");
         }
         app.update_search();
         assert!(app.unsent_search_request.is_some());
-        
+
         if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
             popup.input = ratatui_textarea::TextArea::default();
             popup.input.insert_str("zebra");
         }
         app.update_search();
-        
+
         assert!(app.unsent_search_request.is_none());
         assert!(app.search_debounce_deadline.is_none());
-        
+
         let popup = match &app.popups.active {
             Some(crate::popups::ActivePopup::Search(p)) => p,
             _ => panic!("search popup missing"),
