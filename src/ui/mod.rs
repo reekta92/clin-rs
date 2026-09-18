@@ -1013,6 +1013,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ("p:".to_string(), "pinned"),
                 ("t:".to_string(), "tag"),
                 ("g:".to_string(), "text"),
+                ("sn:".to_string(), "subnotes"),
                 ("\\e\\".to_string(), "escapes filters"),
             ]),
             &app.app_theme,
@@ -1023,7 +1024,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let has_filter = parsed.folder_filter.is_some()
             || parsed.pinned_only
             || parsed.tag_filter.is_some()
-            || parsed.grep_mode;
+            || parsed.grep_mode
+            || parsed.subnote_text.is_some();
 
         let constraints = if has_filter {
             vec![
@@ -1084,7 +1086,21 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         .add_modifier(Modifier::BOLD),
                 ));
             }
-            if parsed.grep_mode {
+            if let Some(sn_text) = &parsed.subnote_text {
+                add_sep(&mut spans, &mut first, &app.app_theme);
+                let sn_display = if sn_text.is_empty() {
+                    "Subnotes".to_string()
+                } else {
+                    sn_text.clone()
+                };
+                let sn_icon = crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", app.config.ui.icon_mode);
+                spans.push(Span::styled(
+                    format!("{sn_icon} {sn_display}"),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            } else if parsed.grep_mode {
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 let grep_display = if parsed.grep_text.is_empty() {
                     "Grep".to_string()
@@ -1145,7 +1161,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(&popup.input, input_chunk);
 
         let has_title = !popup.title_result_ids.is_empty();
-        let has_grep = parsed.grep_mode;
+        let has_subnote = !popup.subnote_results.is_empty();
+        let has_grep = parsed.grep_mode && parsed.subnote_text.is_none();
 
         let results_focused = popup.focus == crate::popups::SearchFocus::Results;
         let results_border = if results_focused {
@@ -1164,6 +1181,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let total_items = if has_grep {
             popup.total_grep_rows()
+        } else if has_subnote {
+            popup.subnote_results.len()
         } else if has_title {
             popup.title_result_ids.len()
         } else {
@@ -1172,6 +1191,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let selected_idx = if has_grep {
             popup.grep_selected
+        } else if has_subnote {
+            popup.subnote_selected
         } else if has_title {
             popup.title_selected
         } else {
@@ -1248,6 +1269,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             ))
                         }
                     }
+                })
+                .collect()
+        } else if has_subnote {
+            (offset..end)
+                .map(|idx| {
+                    let label = &popup.subnote_results[idx].label;
+                    ListItem::new(crate::ui::styled_result_line(
+                        label,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                    ))
                 })
                 .collect()
         } else if has_title {

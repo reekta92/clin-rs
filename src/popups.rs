@@ -220,6 +220,13 @@ pub struct SearchNoteHit {
     pub lines: Vec<SearchLineHit>,
     pub truncated: bool,
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SubnoteHit {
+    pub parent_id: String,
+    pub subnote_idx: usize,
+    pub label: String,
+}
 pub struct SearchPopup {
     pub input: TextArea<'static>,
     pub focus: SearchFocus,
@@ -236,6 +243,9 @@ pub struct SearchPopup {
     pub grep_generation: u64,
 
     pub results_scroll_offset: usize,
+
+    pub subnote_results: Vec<SubnoteHit>,
+    pub subnote_selected: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,

@@ -1392,10 +1392,11 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::Search(mut popup) => {
                 let has_title = !popup.title_result_ids.is_empty();
+                let has_subnote = !popup.subnote_results.is_empty();
                 let query_text = popup.input.lines().join("");
                 let parsed = crate::app::parse_search_query(&query_text);
-                let has_grep = parsed.grep_mode;
-                let has_results = has_title || has_grep;
+                let has_grep = parsed.grep_mode && parsed.subnote_text.is_none();
+                let has_results = has_title || has_grep || has_subnote;
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.active = Some(ActivePopup::Search(popup));
@@ -1468,6 +1469,9 @@ impl crate::popups::ActivePopup {
                         } else if has_grep {
                             popup.grep_selected = popup.grep_selected.saturating_sub(1);
                             app.popups.active = Some(reinsert(popup));
+                        } else if has_subnote {
+                            popup.subnote_selected = popup.subnote_selected.saturating_sub(1);
+                            app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             popup.title_selected = popup.title_selected.saturating_sub(1);
                             app.popups.active = Some(reinsert(popup));
@@ -1481,6 +1485,11 @@ impl crate::popups::ActivePopup {
                         } else if has_grep {
                             popup.grep_selected = (popup.grep_selected + 1)
                                 .min(popup.total_grep_rows().saturating_sub(1));
+                            app.popups.active = Some(reinsert(popup));
+                        } else if has_subnote {
+                            if popup.subnote_selected + 1 < popup.subnote_results.len() {
+                                popup.subnote_selected += 1;
+                            }
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             if popup.title_selected + 1 < popup.title_result_ids.len() {

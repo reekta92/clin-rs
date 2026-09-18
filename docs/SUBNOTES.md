@@ -44,6 +44,10 @@ The `SubnotesPopup` struct and `SubnotesFocus` enum (`src/ui/popups.rs:278-291`)
 - Delete — remove a subnote
 - Save — persist changes
 
+## Search
+
+The notes search popup supports the `sn:` prefix to exclusively search subnotes (matches both title and content). Accepting a result automatically navigates to that subnote in the list and opens the manager popup.
+
 ## Keybindings
 
 | Action | Default Key | Scope |

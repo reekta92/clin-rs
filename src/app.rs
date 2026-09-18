@@ -80,6 +80,7 @@ pub struct SearchQuery {
     pub tag_filter: Option<Vec<String>>,
     pub grep_mode: bool,
     pub grep_text: String,
+    pub subnote_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -89,8 +90,8 @@ pub struct HelpSearchState {
 }
 
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
-    let spaced = [" f:", " g:", " p:", " t:"];
-    let bare = ["f:", "g:", "p:", "t:"];
+    let spaced = [" f:", " g:", " p:", " t:", " sn:"];
+    let bare = ["f:", "g:", "p:", "t:", "sn:"];
     let mut tokens: Vec<(usize, &'static str)> = Vec::new();
 
     let is_escaped = |s: &str, pos: usize, _prefix_len: usize| -> bool {
@@ -170,6 +171,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
     let mut grep_mode = false;
     let mut grep_text = String::new();
     let mut tag_filter = None;
+    let mut subnote_text = None;
 
     let tokens = find_filter_tokens(&text);
     if tokens.is_empty() {
@@ -180,6 +182,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
             grep_mode,
             grep_text,
             tag_filter,
+            subnote_text,
         };
     }
 
@@ -216,6 +219,9 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
                     .collect();
                 tag_filter = Some(tags);
             }
+            " sn:" | "sn:" => {
+                subnote_text = Some(strip_escape_filter(&value));
+            }
             _ => {}
         }
     }
@@ -234,6 +240,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
         grep_mode,
         grep_text,
         tag_filter,
+        subnote_text,
     }
 }
 

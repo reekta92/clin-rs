@@ -89,6 +89,8 @@ impl App {
             read_errors: 0,
             grep_generation: 0,
             results_scroll_offset: 0,
+            subnote_results: Vec::new(),
+            subnote_selected: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
             last_scroll: None,
@@ -96,16 +98,20 @@ impl App {
     }
 
     fn jump_to_note_index(&mut self, note_idx: usize) {
-        if let Some(note) = self.notes.get(note_idx)
-            && !note.folder.is_empty()
-        {
-            let mut path = String::new();
-            for part in note.folder.split('/') {
-                if !path.is_empty() {
-                    path.push('/');
+        if let Some(note) = self.notes.get(note_idx) {
+            if self.list.notes_layout == crate::config::NotesLayout::Grid {
+                // Grid: navigate into the folder holding the note.
+                self.list.grid_folder = note.folder.clone();
+            }
+            if !note.folder.is_empty() {
+                let mut path = String::new();
+                for part in note.folder.split('/') {
+                    if !path.is_empty() {
+                        path.push('/');
+                    }
+                    path.push_str(part);
+                    self.list.folder_expanded.insert(path.clone());
                 }
-                path.push_str(part);
-                self.list.folder_expanded.insert(path.clone());
             }
         }
 
@@ -130,12 +136,14 @@ impl App {
         let parsed = parse_search_query(&query_text);
         let title_query = parsed.text.trim().to_lowercase();
         let grep_query = parsed.grep_text.trim().to_lowercase();
+        let subnote_text = parsed.subnote_text.clone();
 
         let no_filters = title_query.is_empty()
             && grep_query.is_empty()
             && parsed.folder_filter.is_none()
             && !parsed.pinned_only
-            && parsed.tag_filter.is_none();
+            && parsed.tag_filter.is_none()
+            && subnote_text.is_none();
         if no_filters {
             if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
                 popup.title_result_ids.clear();
@@ -146,11 +154,89 @@ impl App {
                 popup.grep_selected = 0;
                 popup.globally_truncated = false;
                 popup.read_errors = 0;
+                popup.subnote_results.clear();
+                popup.subnote_selected = 0;
             }
             self.search_query_generation.fetch_add(1, Ordering::SeqCst);
             self.search_debounce_deadline = None;
             self.unsent_search_request = None;
             self.search_status = None;
+            return;
+        }
+
+        // sn: prefix — exclusive subnote search (no note/grep matching).
+        if let Some(sn_query) = subnote_text {
+            let q = sn_query.trim().to_lowercase();
+            let hits: Vec<crate::popups::SubnoteHit> = if q.is_empty() {
+                Vec::new()
+            } else {
+                self.refresh_subnotes_view_cache();
+                self.subnotes_view_cache
+                    .iter()
+                    .flat_map(|(parent_id, subs)| {
+                        let parent_title = self
+                            .notes
+                            .iter()
+                            .find(|n| n.id == *parent_id)
+                            .map(|n| n.title.clone())
+                            .or_else(|| {
+                                let stem = std::path::Path::new(parent_id)
+                                    .file_stem()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or(parent_id);
+                                self.notes
+                                    .iter()
+                                    .find(|n| {
+                                        std::path::Path::new(&n.id)
+                                            .file_stem()
+                                            .and_then(|s| s.to_str())
+                                            == Some(stem)
+                                    })
+                                    .map(|n| n.title.clone())
+                            });
+                        subs.iter().enumerate().filter_map({
+                            let parent_id = parent_id.clone();
+                            let parent_title = parent_title.clone();
+                            let q = q.clone();
+                            move |(i, s)| {
+                                if s.title.to_lowercase().contains(&q)
+                                    || s.content.to_lowercase().contains(&q)
+                                {
+                                    let label = match &parent_title {
+                                        Some(p) => format!("{p} / {}", s.title),
+                                        None => format!("{parent_id} / {}", s.title),
+                                    };
+                                    Some(crate::popups::SubnoteHit {
+                                        parent_id: parent_id.clone(),
+                                        subnote_idx: i,
+                                        label,
+                                    })
+                                } else {
+                                    None
+                                }
+                            }
+                        })
+                    })
+                    .collect()
+            };
+            if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
+                popup.title_result_ids.clear();
+                popup.title_selected = 0;
+                popup.grep_results.clear();
+                popup.grep_row_offsets.clear();
+                popup.grep_expanded.clear();
+                popup.grep_selected = 0;
+                popup.globally_truncated = false;
+                popup.read_errors = 0;
+                popup.subnote_results = hits;
+                popup.subnote_selected = popup
+                    .subnote_selected
+                    .min(popup.subnote_results.len().saturating_sub(1));
+            }
+            self.search_query_generation.fetch_add(1, Ordering::SeqCst);
+            self.search_status = None;
+            self.search_debounce_deadline = None;
+            self.unsent_search_request = None;
             return;
         }
 
@@ -231,11 +317,27 @@ impl App {
     }
 
     pub fn confirm_search(&mut self) {
-        self.popups.active = None;
+        if matches!(
+            self.popups.active,
+            Some(crate::popups::ActivePopup::Search(_))
+        ) {
+            self.popups.active = None;
+        }
     }
 
     pub fn jump_to_selected_result(&mut self) {
         if let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active {
+            // Subnote results — exclusive sn: mode.
+            if popup.focus == crate::popups::SearchFocus::Results
+                && !popup.subnote_results.is_empty()
+            {
+                if let Some(hit) = popup.subnote_results.get(popup.subnote_selected).cloned() {
+                    self.jump_to_subnote(&hit.parent_id, hit.subnote_idx);
+                    self.open_subnotes_popup_for(&hit.parent_id, Some(hit.subnote_idx));
+                }
+                return;
+            }
+
             let mut target_line = None;
             let mut target_id = None;
 
@@ -272,6 +374,34 @@ impl App {
             {
                 self.jump_to_note_index(idx);
                 self.open_note_at_line(&id, target_line);
+            }
+        }
+    }
+
+    fn jump_to_subnote(&mut self, parent_id: &str, subnote_idx: usize) {
+        if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder = format!("subnotes:{parent_id}");
+        } else {
+            self.list
+                .folder_expanded
+                .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
+            self.list
+                .folder_expanded
+                .insert(format!("subnotes:{parent_id}"));
+        }
+        self.refresh_visual_list();
+        for (idx, item) in self.list.visual_list.iter().enumerate() {
+            if let VisualItem::Subnote {
+                parent_id: pid,
+                subnote_idx: si,
+                ..
+            } = item
+                && pid == parent_id
+                && *si == subnote_idx
+            {
+                self.list.visual_index = idx;
+                self.request_preview_update();
+                return;
             }
         }
     }
@@ -556,9 +686,10 @@ mod tests {
             if !changed && app.search_status.is_none() {
                 break;
             }
-            if std::time::Instant::now() > deadline {
-                panic!("timeout waiting for worker to finish");
-            }
+            assert!(
+                std::time::Instant::now() <= deadline,
+                "timeout waiting for worker to finish"
+            );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(
@@ -594,5 +725,132 @@ mod tests {
             _ => panic!("search popup missing"),
         };
         assert!(popup.grep_results.is_empty());
+    }
+    #[test]
+    fn sn_prefix_parses_and_is_exclusive_of_grep_consumption() {
+        let q1 = crate::app::parse_search_query("sn:needle");
+        assert_eq!(q1.subnote_text.as_deref(), Some("needle"));
+        assert_eq!(q1.text, "");
+        assert!(!q1.grep_mode);
+
+        let q2 = crate::app::parse_search_query("g:foo sn:bar");
+        assert_eq!(q2.subnote_text.as_deref(), Some("bar"));
+        assert_eq!(q2.grep_text, "foo");
+        assert!(q2.grep_mode);
+        // exclusivity is enforced at consumption
+    }
+
+    #[test]
+    fn grid_search_jump_enters_result_folder() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut storage = make_test_storage(tmp.path());
+        storage
+            .save_note(
+                "sub/target.md",
+                &crate::storage::Note {
+                    title: "Target".to_string(),
+                    content: "hello".to_string(),
+                    updated_at: 1000,
+                    tags: vec![],
+                },
+            )
+            .unwrap();
+
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.refresh_visual_list();
+
+        app.begin_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("target");
+        }
+        app.update_search();
+
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.focus = crate::popups::SearchFocus::Results;
+            popup.title_selected = 0;
+        }
+        app.jump_to_selected_result();
+        app.confirm_search();
+
+        assert_eq!(app.list.grid_folder, "sub");
+        let current_item = &app.list.visual_list[app.list.visual_index];
+        if let crate::list_view::VisualItem::Note { summary_idx, .. } = current_item {
+            assert_eq!(app.notes[*summary_idx].id, "sub/Target.md");
+        } else {
+            panic!("jumped to wrong visual item: {:?}", current_item);
+        }
+        assert_eq!(app.mode, crate::app::ViewMode::Edit);
+    }
+
+    #[test]
+    fn sn_search_lists_and_jumps_to_subnote() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut storage = make_test_storage(tmp.path());
+        storage
+            .save_note(
+                "parent.md",
+                &crate::storage::Note {
+                    title: "Parent".to_string(),
+                    content: "hello".to_string(),
+                    updated_at: 1000,
+                    tags: vec![],
+                },
+            )
+            .unwrap();
+        storage
+            .set_subnotes(
+                "parent.md",
+                &[crate::storage::SubNote {
+                    id: "s1".into(),
+                    title: "Secret Plan".into(),
+                    content: "needle here".into(),
+                    updated_at: 1,
+                }],
+            )
+            .unwrap();
+
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.refresh_visual_list();
+
+        app.begin_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("sn:needle");
+        }
+        app.update_search();
+
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            assert_eq!(popup.subnote_results.len(), 1);
+            assert!(popup.title_result_ids.is_empty());
+            assert!(app.unsent_search_request.is_none());
+            popup.focus = crate::popups::SearchFocus::Results;
+        } else {
+            panic!("popup missing");
+        }
+
+        app.jump_to_selected_result();
+        app.confirm_search();
+
+        assert_eq!(app.list.grid_folder, "subnotes:parent.md");
+        let current_item = &app.list.visual_list[app.list.visual_index];
+        if let crate::list_view::VisualItem::Subnote {
+            parent_id,
+            subnote_idx,
+            ..
+        } = current_item
+        {
+            assert_eq!(parent_id, "parent.md");
+            assert_eq!(*subnote_idx, 0);
+        } else {
+            panic!("jumped to wrong visual item: {:?}", current_item);
+        }
+
+        if let Some(crate::popups::ActivePopup::Subnotes(p)) = &app.popups.active {
+            assert_eq!(p.parent_id, "parent.md");
+            assert_eq!(p.selected, 0);
+        } else {
+            panic!("subnotes popup did not open or was cleared");
+        }
     }
 }
