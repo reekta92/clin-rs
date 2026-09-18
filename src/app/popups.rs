@@ -116,8 +116,7 @@ impl App {
             Err(_) => return path.to_path_buf(),
         };
 
-        let new_path = self
-            .storage.template_path(&template.name);
+        let new_path = self.storage.template_path(&template.name);
 
         if new_path == path {
             return path.to_path_buf();

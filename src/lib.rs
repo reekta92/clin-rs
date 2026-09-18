@@ -188,7 +188,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
                     if let Some(template_summary) =
                         templates.into_iter().find(|t| t.name == tmpl_name)
                     {
-                        if let Ok(template_data) = app.storage.load_template(&template_summary.filename)
+                        if let Ok(template_data) =
+                            app.storage.load_template(&template_summary.filename)
                         {
                             (template_data.content.template.clone(), Vec::new())
                         } else {
@@ -688,7 +689,6 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
                     console::path(&storage.templates_dir)
                 ))
             );
-
 
             let templates = storage.list_templates()?;
             for t in templates {

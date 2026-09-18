@@ -1630,8 +1630,7 @@ impl App {
         {
             let mut path_to_write = path.clone();
             if let Ok(template) = toml::from_str::<Template>(&content) {
-                let new_path = self
-                    .storage.template_path(&template.name);
+                let new_path = self.storage.template_path(&template.name);
                 if new_path != *path && !new_path.exists() {
                     if let Err(e) = std::fs::rename(path, &new_path) {
                         let err = format!("Failed to rename template: {e}");
