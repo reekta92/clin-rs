@@ -77,6 +77,11 @@ Run `clin config show` to print the active configuration file path.
 | `extended_markdown_features` | `bool` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |
  | `text_align` | `enum` | `"left"` | Text alignment (`"left"`, `"center"`, `"right"`, `"justified"`). Active only when `soft_wrap` is `true` |
 | `zen_padding_percent` | `u16` | `15` | Percent of terminal width padded on each side in zen mode; clamped to 45 |
+| `zen_hide_line_numbers` | `bool` | `true` | Hide line numbers while zen mode is active |
+| `zen_hide_scrollbar` | `bool` | `true` | Hide scrollbar while zen mode is active |
+| `zen_focus_dimming` | `bool` | `false` | Dim content outside the active neighborhood in zen mode |
+| `zen_focus_unit` | `enum` | `"paragraph"` | Unit for focus neighborhood (`"paragraph"`, `"line"`) |
+| `zen_focus_context` | `usize` | `3` | Number of units above the cursor to keep bright |
 ### `[ui]`
 
 

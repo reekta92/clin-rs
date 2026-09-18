@@ -63,6 +63,22 @@ active, and the editor content is padded from the left and right edges.
 percent of the terminal width per side, clamped to 45. Overlays, popups, and
 message toasts stay visible. Zen mode is per-session; it resets on restart.
 
+By default, line numbers and the scrollbar are also hidden while in zen mode.
+These can be restored by setting `zen_hide_line_numbers = false` and 
+`zen_hide_scrollbar = false`.
+
+### Focus Dimming
+
+Zen mode supports an optional dimming feature to help focus on writing. When 
+`zen_focus_dimming = true`, everything outside the active neighborhood is 
+dimmed. The bright neighborhood is defined by `zen_focus_unit` (`"paragraph"` 
+or `"line"`) and `zen_focus_context` (number of units above the cursor to keep 
+bright).
+
+For example, with `"paragraph"` and context `3`, the cursor's current 
+paragraph plus the 3 paragraphs immediately above it remain at full brightness, 
+while older text above and all text below the current paragraph are dimmed.
+
 ## Sidebars + Wikilink Previews
 
 The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. Cycle focus with `Tab` to reach sidebars.
@@ -95,6 +111,11 @@ The `[editor]` section in `config.toml`:
 | `copy_on_select` | bool | `true` | Copy to clipboard immediately when a mouse drag selects text |
 | `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
 | `zen_padding_percent` | `u16` | `15` | Zen-mode padding per side, percent of width (max 45) |
+| `zen_hide_line_numbers` | `bool` | `true` | Hide line numbers while zen mode is active |
+| `zen_hide_scrollbar` | `bool` | `true` | Hide scrollbar while zen mode is active |
+| `zen_focus_dimming` | `bool` | `false` | Dim content outside the active neighborhood in zen mode |
+| `zen_focus_unit` | `String` | `"paragraph"` | Unit for focus neighborhood (`"paragraph"` or `"line"`) |
+| `zen_focus_context` | `usize` | `3` | Number of units above the cursor to keep bright |
 
 Example:
 
@@ -107,6 +128,11 @@ show_line_numbers = true
 date_format = "%Y-%m-%d %H:%M"
 soft_wrap = false
 copy_on_select = true
+zen_hide_line_numbers = true
+zen_hide_scrollbar = true
+zen_focus_dimming = false
+zen_focus_unit = "paragraph"
+zen_focus_context = 3
 ```
 
 ## Connections

@@ -2607,7 +2607,7 @@ mod tests {
             false,
             app.editor.editor_preview_enabled,
             app.editor.body.lines().len(),
-            app.editor.show_line_numbers,
+            app.editor_show_line_numbers(),
             app.editor.sidebar,
             app.preview_position,
             app.editor.header_title_rect,

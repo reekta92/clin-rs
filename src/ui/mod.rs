@@ -1838,9 +1838,12 @@ pub(crate) fn render_editor_document_with_theme(
     );
 }
 
-pub(crate) fn ensure_editor_visual_rows(editor: &mut crate::editor::NoteEditor, inner_width: u16) {
+pub(crate) fn ensure_editor_visual_rows(
+    editor: &mut crate::editor::NoteEditor,
+    inner_width: u16,
+    show_ln: bool,
+) {
     use ratatui_textarea::WrapMode;
-    let show_ln = editor.show_line_numbers;
     let wrap_mode = editor.body.textarea().wrap_mode();
     let tab_len = editor.body.textarea().tab_length();
 
@@ -1881,7 +1884,7 @@ pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &mut App, area: Rec
         return;
     }
 
-    let gutter: u16 = if app.editor.show_line_numbers {
+    let gutter: u16 = if app.editor_show_line_numbers() {
         app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
     } else {
         0
@@ -1893,7 +1896,8 @@ pub(crate) fn overlay_text_alignment(frame: &mut Frame, app: &mut App, area: Rec
         return;
     }
 
-    ensure_editor_visual_rows(&mut app.editor, inner.width);
+    let show_ln = app.editor_show_line_numbers();
+    ensure_editor_visual_rows(&mut app.editor, inner.width, show_ln);
 
     let rows = &app.editor.visual_row_cache.rows;
     let scroll_top = app.editor.body_viewport_row as usize;
@@ -2047,7 +2051,7 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
     let ql = query.to_lowercase();
     let editor = &app.editor.body;
     let inner = editor.inner_rect(area);
-    let gutter = if app.editor.show_line_numbers {
+    let gutter = if app.editor_show_line_numbers() {
         editor.lines().len().to_string().len() as u16 + 2
     } else {
         0
@@ -2087,6 +2091,110 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
             for x in x_start..x_end {
                 if let Some(c) = buf.cell_mut((x, y)) {
                     c.set_bg(bg);
+                }
+            }
+        }
+    }
+}
+pub(crate) fn zen_focus_range(
+    lines: &[String],
+    cursor_row: usize,
+    unit: crate::config::FocusUnit,
+    context: usize,
+) -> std::ops::Range<usize> {
+    if lines.is_empty() {
+        return 0..0;
+    }
+    let mut lo = cursor_row;
+    let mut hi = cursor_row;
+
+    match unit {
+        crate::config::FocusUnit::Line => {
+            lo = cursor_row.saturating_sub(context);
+        }
+        crate::config::FocusUnit::Paragraph => {
+            if !lines[cursor_row].trim().is_empty() {
+                // Expand current block downward.
+                while hi + 1 < lines.len() && !lines[hi + 1].trim().is_empty() {
+                    hi += 1;
+                }
+                // Expand current block upward.
+                while lo > 0 && !lines[lo - 1].trim().is_empty() {
+                    lo -= 1;
+                }
+            }
+            // Extend upward by context blocks.
+            for _ in 0..context {
+                // Skip blank lines above the current block.
+                while lo > 0 && lines[lo - 1].trim().is_empty() {
+                    lo -= 1;
+                }
+                // Consume the non-blank block.
+                let mut moved = false;
+                while lo > 0 && !lines[lo - 1].trim().is_empty() {
+                    lo -= 1;
+                    moved = true;
+                }
+                if !moved && lo == 0 {
+                    break;
+                }
+            }
+        }
+    }
+    lo..hi + 1
+}
+
+pub fn overlay_zen_focus(frame: &mut Frame, app: &mut App, area: Rect) {
+    if !(app.zen_mode && app.config.editor.zen_focus_dimming) {
+        return;
+    }
+    let show_ln = app.editor_show_line_numbers();
+    let editor = &mut app.editor;
+    let inner = editor.body.inner_rect(area);
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let lines = editor.body.lines();
+    let cursor_row = editor.body.cursor().row;
+    let bright = zen_focus_range(
+        lines,
+        cursor_row,
+        app.config.editor.zen_focus_unit,
+        app.config.editor.zen_focus_context,
+    );
+
+    let wrap_mode = editor.body.textarea().wrap_mode();
+
+    if wrap_mode != ratatui_textarea::WrapMode::None {
+        ensure_editor_visual_rows(editor, inner.width, show_ln);
+    }
+
+    let rows = &editor.visual_row_cache.rows;
+    let viewport_row = editor.body_viewport_row as usize;
+    let buf = frame.buffer_mut();
+
+    for i in 0..inner.height {
+        let y = inner.y + i;
+        if y >= buf.area.y + buf.area.height {
+            break;
+        }
+        let source_line = if wrap_mode != ratatui_textarea::WrapMode::None {
+            if viewport_row + i as usize >= rows.len() {
+                continue;
+            }
+            rows[viewport_row + i as usize].source_line
+        } else {
+            viewport_row + i as usize
+        };
+
+        if !bright.contains(&source_line) {
+            for x in inner.x..inner.x + inner.width {
+                if x < buf.area.x + buf.area.width {
+                    let _ = buf.cell_mut((x, y)).map(|c| {
+                        c.set_fg(app.app_theme.muted);
+                        c.set_bg(app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset));
+                        c.modifier = ratatui::style::Modifier::DIM;
+                    });
                 }
             }
         }
@@ -2438,7 +2546,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         .editing_id
         .as_ref()
         .is_some_and(|id| id.ends_with("todo.txt"));
-    let show_ln = app.editor.show_line_numbers;
+    let show_ln = app.editor_show_line_numbers();
     let gutter = if show_ln {
         app.editor.body.lines().len().to_string().len() as u16 + 2
     } else {
@@ -2494,7 +2602,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         }
 
         if wrap_mode != ratatui_textarea::WrapMode::None {
-            ensure_editor_visual_rows(e, inner.width);
+            ensure_editor_visual_rows(e, inner.width, show_ln);
         }
     }
 
@@ -3125,5 +3233,168 @@ mod markdown_highlight_tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_zen_focus_range() {
+        let lines: Vec<String> = vec![
+            "p1 line 1".into(),
+            "p1 line 2".into(),
+            "".into(),
+            "p2 line 1".into(),
+            "".into(),
+            "".into(),
+            "p3 line 1".into(),
+            "p3 line 2".into(),
+            "p3 line 3".into(),
+        ];
+
+        // Focus Unit: Line
+        assert_eq!(
+            zen_focus_range(&lines, 7, crate::config::FocusUnit::Line, 2),
+            5..8
+        );
+        // Clamps at 0
+        assert_eq!(
+            zen_focus_range(&lines, 1, crate::config::FocusUnit::Line, 5),
+            0..2
+        );
+
+        // Focus Unit: Paragraph, context = 1
+        // Cursor in p3 (row 7) -> expects p2 (row 3) and p3 (rows 6..=8) -> range 3..9
+        assert_eq!(
+            zen_focus_range(&lines, 7, crate::config::FocusUnit::Paragraph, 1),
+            3..9
+        );
+
+        // Focus Unit: Paragraph, context = 2
+        // Cursor in p3 -> expects p1, p2, p3 -> range 0..9
+        assert_eq!(
+            zen_focus_range(&lines, 7, crate::config::FocusUnit::Paragraph, 2),
+            0..9
+        );
+
+        // Cursor on blank line 4, context = 1
+        // current block is empty (4..=4). 1 block above is p2 (row 3). -> range 3..5
+        assert_eq!(
+            zen_focus_range(&lines, 4, crate::config::FocusUnit::Paragraph, 1),
+            3..5
+        );
+
+        // Context 0 -> only current paragraph
+        assert_eq!(
+            zen_focus_range(&lines, 7, crate::config::FocusUnit::Paragraph, 0),
+            6..9
+        );
+    }
+
+    #[test]
+    fn zen_focus_dimming_render() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+
+        app.zen_mode = true;
+        app.config.editor.zen_focus_dimming = true;
+        app.config.editor.zen_focus_unit = crate::config::FocusUnit::Paragraph;
+        app.config.editor.zen_focus_context = 0; // Only current paragraph
+
+        let lines = vec![
+            "paragraph 1".into(),
+            "".into(),
+            "paragraph 2".into(),
+            "".into(),
+            "paragraph 3".into(),
+        ];
+        app.editor.body = EditorDocument::from_lines(lines);
+        // Cursor on paragraph 2
+        app.editor.body.input(ratatui_textarea::Input {
+            key: ratatui_textarea::Key::Down,
+            ctrl: false,
+            alt: false,
+            shift: false,
+        });
+        app.editor.body.input(ratatui_textarea::Input {
+            key: ratatui_textarea::Key::Down,
+            ctrl: false,
+            alt: false,
+            shift: false,
+        });
+
+        let backend = ratatui::backend::TestBackend::new(20, 10);
+        let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| {
+                let area = ratatui::layout::Rect::new(0, 0, 20, 10);
+                crate::ui::edit_view::render_editor_widget(
+                    frame,
+                    &mut app,
+                    crate::app::EditFocus::Body,
+                    area,
+                    None,
+                    None,
+                );
+                overlay_zen_focus(frame, &mut app, area);
+            })
+            .expect("render");
+
+        let buf = terminal.backend().buffer();
+        // paragraph 1 (row 1 because of top padding) should be dimmed
+        assert!(
+            buf.cell((0, 1))
+                .unwrap()
+                .modifier
+                .contains(ratatui::style::Modifier::DIM)
+        );
+        // paragraph 2 (row 3) should NOT be dimmed
+        assert!(
+            !buf.cell((0, 3))
+                .unwrap()
+                .modifier
+                .contains(ratatui::style::Modifier::DIM)
+        );
+        // paragraph 3 (row 5) should be dimmed
+        assert!(
+            buf.cell((0, 5))
+                .unwrap()
+                .modifier
+                .contains(ratatui::style::Modifier::DIM)
+        );
+    }
+
+    #[test]
+    fn zen_hide_line_numbers_render() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+
+        app.zen_mode = true;
+        app.editor.show_line_numbers = true;
+        app.config.editor.zen_hide_line_numbers = true;
+
+        let lines = vec!["hello world".into()];
+        app.editor.body = EditorDocument::from_lines(lines);
+
+        let backend = ratatui::backend::TestBackend::new(20, 5);
+        let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+
+        terminal
+            .draw(|frame| {
+                let area = ratatui::layout::Rect::new(0, 0, 20, 5);
+                crate::ui::edit_view::render_editor_widget(
+                    frame,
+                    &mut app,
+                    crate::app::EditFocus::Body,
+                    area,
+                    None,
+                    None,
+                );
+            })
+            .expect("render");
+
+        let buf = terminal.backend().buffer();
+        // Line numbers are hidden, so the first text cell (row 1 due to padding) should be 'h'.
+        assert_eq!(buf.cell((0, 1)).unwrap().symbol(), "h");
     }
 }
