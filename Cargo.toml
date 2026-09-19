@@ -119,7 +119,7 @@ trash = "5"
 ratatui-textarea = { version = "0.9", features = ["search"] }
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
-comrak = { version = "0.36", default-features = false }
+comrak = { version = "0.55", default-features = false }
 syntect = { version = "5.2", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
 unicode-width = "0.2"
