@@ -149,6 +149,12 @@ pub fn remove_file_if_exists(path: &Path) -> std::io::Result<bool> {
     }
 }
 
+/// True when both paths resolve to the same file (device+inode / file index).
+/// False on any error — callers treat "unknown" as "different file".
+pub fn is_same_file(a: &Path, b: &Path) -> bool {
+    same_file::is_same_file(a, b).unwrap_or(false)
+}
+
 /// Strip ASCII/Unicode control characters from a string destined for the
 /// terminal. Borrows the input when it is already clean.
 pub fn sanitize_for_terminal(s: &str) -> Cow<'_, str> {

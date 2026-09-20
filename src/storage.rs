@@ -109,6 +109,8 @@ pub struct Storage {
     pub key: [u8; 32],
     #[zeroize(skip)]
     pub skip_dir_patterns: Vec<regex::Regex>,
+    #[zeroize(skip)]
+    pub rename_on_title_change: bool,
 }
 
 pub(crate) fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
@@ -469,6 +471,7 @@ impl Storage {
             templates_dir,
             key,
             skip_dir_patterns,
+            rename_on_title_change: bootstrap.notes.rename_on_title_change,
         };
         storage.migrate_native_subnotes_metadata()?;
         storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
@@ -1314,10 +1317,7 @@ impl Storage {
         self.delete_editor_draft();
         Ok(())
     }
-
     pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
-        let preferred_stem = self.note_file_stem_from_title(&note.title);
-
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
@@ -1332,7 +1332,14 @@ impl Storage {
             "md"
         };
 
-        let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
+        // Keep the note's existing filename unless title→filename syncing is
+        // enabled or the note is new (its file does not exist yet).
+        let target_id = if self.rename_on_title_change || !old_path.exists() {
+            let preferred_stem = self.note_file_stem_from_title(&note.title);
+            self.unique_note_id(&preferred_stem, target_ext, id)
+        } else {
+            id.to_string()
+        };
         let existing_pinned = self
             .load_note_summary(id)
             .map(|s| s.pinned)
@@ -1376,7 +1383,12 @@ impl Storage {
 
         if id != target_id {
             let old_path_to_remove = self.note_path(id);
-            if old_path_to_remove.exists() {
+            // On case-insensitive filesystems the old and new paths can be
+            // the same file (case-only rename) — removing would delete the
+            // just-written note.
+            if old_path_to_remove.exists()
+                && !crate::fsutil::is_same_file(&old_path_to_remove, &target_path)
+            {
                 fs::remove_file(&old_path_to_remove).context("failed to rename note file")?;
             }
             // Keep subnotes DB key in sync with the note's new id.
@@ -1798,8 +1810,16 @@ impl Storage {
         };
 
         let mut counter = 2_u32;
+        let current_path = self.note_path(current_id);
 
-        while candidate != current_id && self.note_path(&candidate).exists() {
+        // A candidate that differs from the current id only in case (or is
+        // otherwise the same file, e.g. on case-insensitive filesystems)
+        // collides with itself — treat it as free instead of bumping to
+        // `Name (2)`, which would orphan inbound wikilinks.
+        while candidate != current_id
+            && self.note_path(&candidate).exists()
+            && !crate::fsutil::is_same_file(&self.note_path(&candidate), &current_path)
+        {
             candidate_stem = format!("{preferred_stem} ({counter})");
             candidate_name = format!("{candidate_stem}.{ext}");
             candidate = if folder.is_empty() {
@@ -2138,6 +2158,7 @@ impl Storage {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         }
     }
 }
@@ -2260,6 +2281,7 @@ mod tests {
             templates_dir: PathBuf::new(),
             key,
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         let plaintext = b"Secret Message";
@@ -2288,6 +2310,7 @@ mod tests {
             templates_dir: PathBuf::new(),
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         // Truncated payload: valid magic but no nonce/ciphertext
         let truncated = b"CLIN1";
@@ -2306,6 +2329,7 @@ mod tests {
             templates_dir: PathBuf::new(),
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         let content = "Test content for duplicate";
@@ -2365,6 +2389,7 @@ mod tests {
             templates_dir: PathBuf::new(),
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -2390,6 +2415,108 @@ mod tests {
     }
 
     #[test]
+    fn save_note_case_only_title_change_keeps_single_note() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let mut storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: core::array::from_fn(|_| 0),
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
+        };
+
+        fs::write(
+            notes_dir.join("activity.md"),
+            "---\ntitle: activity\n---\nold body",
+        )?;
+        // Two directory entries, one inode: what a case-insensitive filesystem
+        // (APFS/NTFS) presents for "activity.md" vs "Activity.md".
+        std::fs::hard_link(notes_dir.join("activity.md"), notes_dir.join("Activity.md"))?;
+
+        let note = Note {
+            title: "Activity".to_string(),
+            content: "new body".to_string(),
+            updated_at: 0,
+            tags: Vec::new(),
+        };
+        let saved_id = storage.save_note("activity.md", &note)?;
+
+        // The note must not be bumped to "Activity (2).md" by colliding
+        // with itself, and nothing may be deleted.
+        assert_eq!(saved_id, "Activity.md");
+        assert!(!notes_dir.join("Activity (2).md").exists());
+        assert!(fs::read_to_string(notes_dir.join("Activity.md"))?.contains("new body"));
+        Ok(())
+    }
+
+    #[test]
+    fn save_note_rename_on_title_change_disabled_keeps_id() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let mut storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: core::array::from_fn(|_| 0),
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+
+        fs::write(
+            notes_dir.join("data_vault_sal.md"),
+            "---\ntitle: Data Vault Same-As Link\n---\nold body",
+        )?;
+
+        let note = Note {
+            title: "Data Vault Same-As Link".to_string(),
+            content: "edited body".to_string(),
+            updated_at: 0,
+            tags: Vec::new(),
+        };
+        let saved_id = storage.save_note("data_vault_sal.md", &note)?;
+
+        // Filename stability: no title-derived rename, so inbound
+        // [[wikilinks]] keep resolving.
+        assert_eq!(saved_id, "data_vault_sal.md");
+        assert!(!notes_dir.join("Data Vault Same-As Link.md").exists());
+        assert!(fs::read_to_string(notes_dir.join("data_vault_sal.md"))?.contains("edited body"));
+        Ok(())
+    }
+
+    #[test]
+    fn save_note_rename_disabled_new_note_still_derives_name() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let mut storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: core::array::from_fn(|_| 0),
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+
+        // Extension-less transient id, file absent: creation path must still
+        // derive a filename from the title.
+        let note = Note {
+            title: "Python UV".to_string(),
+            content: "body".to_string(),
+            updated_at: 0,
+            tags: Vec::new(),
+        };
+        let saved_id = storage.save_note("9f0c2b1a4d5e6f708192a3b4c5d6e7f8", &note)?;
+
+        assert!(saved_id.ends_with(".md"));
+        assert!(storage.note_path(&saved_id).exists());
+        Ok(())
+    }
+
+    #[test]
     fn test_encrypt_decrypt_preserves_unknown_frontmatter() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
@@ -2400,6 +2527,7 @@ mod tests {
             templates_dir: PathBuf::new(),
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -2433,6 +2561,7 @@ mod tests {
             templates_dir: PathBuf::new(),
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -2468,6 +2597,7 @@ mod tests {
             templates_dir,
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         // 1. Plain note subnotes
@@ -2584,6 +2714,7 @@ mod tests {
             templates_dir,
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         // Subnotes metadata is always owned by the storage root.
         fs::create_dir_all(storage.data_dir.join(".clin"))?;
@@ -2621,6 +2752,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         // Create an unreadable .md file
@@ -2667,6 +2799,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         // Write a binary PDF file with non-UTF-8 bytes
@@ -2718,6 +2851,7 @@ mod tests {
             templates_dir: temp_dir.path().join("templates"),
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let preset = crate::config::KeybindPreset::Vim;
         let path = storage.keybinds_path_for_preset(preset);

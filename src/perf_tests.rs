@@ -28,6 +28,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         let lines = vec![
@@ -81,6 +82,7 @@ mod tests {
             templates_dir: temp_dir.path().join("templates_b"),
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         std::fs::create_dir_all(storage_b.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_b.config_dir.clone()).unwrap();
@@ -153,6 +155,7 @@ mod tests {
             templates_dir: temp_dir.path().join("templates_c"),
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         std::fs::create_dir_all(storage_c.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_c.config_dir.clone()).unwrap();
@@ -223,6 +226,7 @@ mod tests {
             templates_dir: dirs[3].clone(),
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
 
         // Generate 5000-line synthetic markdown

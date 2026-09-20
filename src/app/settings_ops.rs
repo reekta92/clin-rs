@@ -846,6 +846,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         App::new(storage).unwrap()
     }
@@ -1207,6 +1208,7 @@ mod tests {
             templates_dir: old_path.join("templates"),
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
         let mut state =

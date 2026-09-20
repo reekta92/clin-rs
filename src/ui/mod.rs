@@ -2835,6 +2835,7 @@ mod markdown_highlight_tests {
             templates_dir,
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         }
     }
 

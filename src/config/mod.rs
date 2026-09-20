@@ -1304,4 +1304,16 @@ max_nodes = 42
             style.as_config_str()
         );
     }
+
+    #[test]
+    fn notes_config_parses_rename_on_title_change() {
+        let parsed: ClinConfig =
+            toml::from_str("[notes]\nrename_on_title_change = false\n").unwrap();
+        assert!(!parsed.notes.rename_on_title_change);
+
+        // Default preserves current behavior: title-derived renames stay on.
+        assert!(ClinConfig::default().notes.rename_on_title_change);
+        let from_empty: ClinConfig = toml::from_str("").unwrap();
+        assert!(from_empty.notes.rename_on_title_change);
+    }
 }
