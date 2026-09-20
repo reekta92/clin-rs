@@ -486,13 +486,6 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 - [Subnotes](docs/SUBNOTES.md) — encrypted attached notes, grid tab, radial graph, manager popup
 - [Templates](docs/TEMPLATES.md) — TOML-based note templates
 
-## Stats
-
-<div align="center">
-<img src="https://github-readme-activity-graph.vercel.app/graph?username=reekta92&theme=tokyo-night&area=true&hide_total_contributions=false" alt="Contribution activity" width="100%" />
-</div>
-
----
 
 ## Roadmap
 
