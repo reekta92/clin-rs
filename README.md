@@ -33,12 +33,12 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 
 <table>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/1de315ca-1585-4315-94b4-6e57c310b322" alt="Notes view" width="100%"><br><sub>Notes — grid layout with preview pane</sub></td>
-    <td><img src="https://github.com/user-attachments/assets/a1f56629-9c40-4151-95b3-e35494106c43" alt="Graph view" width="100%"><br><sub>Graph — force-directed node visualization</sub></td>
+    <td><img src="https://github.com/user-attachments/assets/1de315ca-1585-4315-94b4-6e57c310b322" alt="Notes view" width="100%"><br></td>
+    <td><img src="https://github.com/user-attachments/assets/a1f56629-9c40-4151-95b3-e35494106c43" alt="Graph view" width="100%"><br></td>
   </tr>
   <tr>
-    <td><img src="https://github.com/user-attachments/assets/ac972010-3a15-4faf-869a-11ea475e4ee0" alt="Canvas view" width="100%"><br><sub>Canvas — node/edge 2D canvas</sub></td>
-    <td><img src="https://github.com/user-attachments/assets/ac3291f2-21a9-452a-b603-366f1d8bd3fe" alt="Editor view" width="100%"><br><sub>Editor — text editor with markdown preview</sub></td>
+    <td><img src="https://github.com/user-attachments/assets/ac972010-3a15-4faf-869a-11ea475e4ee0" alt="Canvas view" width="100%"><br></td>
+    <td><img src="https://github.com/user-attachments/assets/ac3291f2-21a9-452a-b603-366f1d8bd3fe" alt="Editor view" width="100%"><br></td>
   </tr>
 </table>
 
