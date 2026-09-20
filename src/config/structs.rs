@@ -311,6 +311,20 @@ pub struct BackupConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
+pub struct NotesConfig {
+    pub rename_on_title_change: bool,
+}
+
+impl Default for NotesConfig {
+    fn default() -> Self {
+        Self {
+            rename_on_title_change: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct ImageConfig {
     pub enabled: bool,
     pub cache_size: usize,
@@ -622,6 +636,8 @@ pub struct ClinConfig {
     pub ui: UiConfig,
     #[serde(default)]
     pub backup: BackupConfig,
+    #[serde(default)]
+    pub notes: NotesConfig,
 
     #[serde(default)]
     pub list: ListConfig,

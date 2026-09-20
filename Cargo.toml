@@ -126,6 +126,7 @@ unicode-width = "0.2"
 unicode-segmentation = "1.13"
 git2 = { version = "0.21", features = ["ssh", "https"] }
 notify = "8.2.0"
+same-file = "1"
 rayon = "1.12"
 regex = "1"
 strum = { version = "0.28", features = ["derive"] }

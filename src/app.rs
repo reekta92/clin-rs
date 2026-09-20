@@ -1893,6 +1893,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
@@ -1932,6 +1933,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1992,6 +1994,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2028,6 +2031,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.external_editor_enabled = false;
@@ -2100,6 +2104,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2202,6 +2207,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2240,6 +2246,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2326,6 +2333,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2367,6 +2375,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2405,6 +2414,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2435,6 +2445,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2478,6 +2489,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2544,6 +2556,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         // Write default config
         std::fs::write(&config_path, crate::config::merge::default_config_content())

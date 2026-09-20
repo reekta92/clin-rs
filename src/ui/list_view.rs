@@ -2294,6 +2294,7 @@ mod tests {
             templates_dir: temp_dir.path().join("templates"),
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         for path in [
             &storage.data_dir,
@@ -2530,6 +2531,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
 

@@ -372,6 +372,12 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `remote_url` | `String` | — | Remote git repository URL |
 | `remote_name` | `String` | `"origin"` | Name of the git remote |
 
+### `[notes]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `rename_on_title_change` | `bool` | `true` | Sync the note's filename to its `title:` frontmatter on every save. Set to `false` to keep filenames stable (e.g. when the vault is shared with Obsidian, where filenames are the `[[wikilink]]` targets) |
+
 ### `[goals]`
 
 | Option | Type | Default | Description |

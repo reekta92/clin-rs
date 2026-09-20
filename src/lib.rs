@@ -1734,6 +1734,7 @@ mod tests {
             templates_dir: PathBuf::from("/tmp"),
             key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
+            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
         app.mode = ViewMode::List;
