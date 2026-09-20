@@ -26,23 +26,25 @@ pub(crate) fn render_editor_widget(
             .padding(Padding::new(0, 2, 1, 0))
     });
     let base_style = custom_style.unwrap_or_else(|| app.app_theme.bg_style());
+    let show_ln = app.editor_show_line_numbers();
     super::render_editor_document_with_theme(
         frame,
         &mut app.editor.body,
         area,
         &app.app_theme,
         focus == EditFocus::Body,
-        app.editor.show_line_numbers,
+        show_ln,
         block,
         base_style,
     );
     {
+        let show_ln = app.editor_show_line_numbers();
         let (r, c) = super::refresh_editor_document_viewport(
             &app.editor.body,
             app.editor.body_viewport_row,
             app.editor.body_viewport_col,
             area,
-            app.editor.show_line_numbers,
+            show_ln,
         );
         app.editor.body_viewport_row = r;
         app.editor.body_viewport_col = c;
@@ -296,8 +298,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             super::overlay_markdown_highlight(frame, app, editor_container);
         }
         super::overlay_text_alignment(frame, app, editor_container);
+        super::overlay_zen_focus(frame, app, editor_container);
         // Scrollbar for editor body
-        if app.config.ui.scrollbars {
+        if app.config.ui.scrollbars && !(app.zen_mode && app.config.editor.zen_hide_scrollbar) {
             let content_len = app.editor.body.lines().len();
             // The editor block uses Padding::new(0, 2, 1, 0), so the textarea
             // renders height-1 rows. Match refresh_textarea_viewport
@@ -320,6 +323,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 content_len.saturating_sub(viewport_len),
                 &app.app_theme,
             );
+        } else {
+            app.editor.last_scroll = None;
         }
     }
 

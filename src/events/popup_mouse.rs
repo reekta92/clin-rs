@@ -347,7 +347,9 @@ fn handle_search_popup_scrollbar(
     mouse: &MouseEvent,
 ) -> bool {
     if let Some(meta) = popup.last_scroll {
-        let has_grep = !popup.grep_results.is_empty();
+        let query_text = popup.input.lines().join("");
+        let parsed = crate::app::parse_search_query(&query_text);
+        let has_grep = parsed.grep_mode;
         let total_items = if has_grep {
             popup.total_grep_rows()
         } else {
@@ -871,7 +873,8 @@ impl crate::popups::ActivePopup {
                 let has_filter = parsed.folder_filter.is_some()
                     || parsed.pinned_only
                     || parsed.tag_filter.is_some()
-                    || parsed.grep_mode;
+                    || parsed.grep_mode
+                    || parsed.subnote_text.is_some();
                 let constraints = if has_filter {
                     vec![
                         Constraint::Length(3),
@@ -909,9 +912,12 @@ impl crate::popups::ActivePopup {
 
                 let results_chunk_idx = if has_filter { 2 } else { 1 };
                 let has_title = !p.title_result_ids.is_empty();
-                let has_grep = !p.grep_results.is_empty();
+                let has_subnote = !p.subnote_results.is_empty();
+                let has_grep = parsed.grep_mode && parsed.subnote_text.is_none();
                 let total_items = if has_grep {
                     p.total_grep_rows()
+                } else if has_subnote {
+                    p.subnote_results.len()
                 } else if has_title {
                     p.title_result_ids.len()
                 } else {
@@ -923,6 +929,8 @@ impl crate::popups::ActivePopup {
                             p.focus = SearchFocus::Results;
                             if has_grep {
                                 p.grep_selected = p.grep_selected.saturating_sub(1);
+                            } else if has_subnote {
+                                p.subnote_selected = p.subnote_selected.saturating_sub(1);
                             } else if has_title {
                                 p.title_selected = p.title_selected.saturating_sub(1);
                             }
@@ -934,11 +942,13 @@ impl crate::popups::ActivePopup {
                             if has_grep {
                                 p.grep_selected =
                                     (p.grep_selected + 1).min(total_items.saturating_sub(1));
+                            } else if has_subnote
+                                && p.subnote_selected + 1 < p.subnote_results.len()
+                            {
+                                p.subnote_selected += 1;
                             } else if has_title && p.title_selected + 1 < p.title_result_ids.len() {
                                 p.title_selected += 1;
                             }
-                            app.popups.active = Some(Search(p));
-                            return true;
                         }
                         _ => {}
                     }
@@ -986,6 +996,14 @@ impl crate::popups::ActivePopup {
                             } else {
                                 open_result = true;
                             }
+                        }
+                    } else if has_subnote {
+                        let flat = target_vis.min(p.subnote_results.len().saturating_sub(1));
+                        let already_selected = flat == p.subnote_selected;
+                        p.subnote_selected = flat;
+                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                        {
+                            open_result = true;
                         }
                     } else if has_title {
                         let flat = target_vis.min(p.title_result_ids.len().saturating_sub(1));

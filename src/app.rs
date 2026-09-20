@@ -80,6 +80,7 @@ pub struct SearchQuery {
     pub tag_filter: Option<Vec<String>>,
     pub grep_mode: bool,
     pub grep_text: String,
+    pub subnote_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -89,8 +90,8 @@ pub struct HelpSearchState {
 }
 
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
-    let spaced = [" f:", " g:", " p:", " t:"];
-    let bare = ["f:", "g:", "p:", "t:"];
+    let spaced = [" f:", " g:", " p:", " t:", " sn:"];
+    let bare = ["f:", "g:", "p:", "t:", "sn:"];
     let mut tokens: Vec<(usize, &'static str)> = Vec::new();
 
     let is_escaped = |s: &str, pos: usize, _prefix_len: usize| -> bool {
@@ -170,6 +171,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
     let mut grep_mode = false;
     let mut grep_text = String::new();
     let mut tag_filter = None;
+    let mut subnote_text = None;
 
     let tokens = find_filter_tokens(&text);
     if tokens.is_empty() {
@@ -180,6 +182,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
             grep_mode,
             grep_text,
             tag_filter,
+            subnote_text,
         };
     }
 
@@ -216,6 +219,9 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
                     .collect();
                 tag_filter = Some(tags);
             }
+            " sn:" | "sn:" => {
+                subnote_text = Some(strip_escape_filter(&value));
+            }
             _ => {}
         }
     }
@@ -234,6 +240,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
         grep_mode,
         grep_text,
         tag_filter,
+        subnote_text,
     }
 }
 
@@ -599,6 +606,8 @@ impl App {
 
         let (message_tx, message_rx) = std::sync::mpsc::channel();
 
+        let search_query_generation = Arc::new(AtomicU64::new(1));
+
         let mut app = Self {
             storage: storage.clone(),
             notes_worker_pool: notes_worker_pool.clone(),
@@ -654,9 +663,10 @@ impl App {
             search_worker: crate::app::search_worker::SearchWorker::spawn(
                 storage.clone(),
                 notes_worker_pool.clone(),
+                search_query_generation.clone(),
             ),
             search_debounce_deadline: None,
-            search_query_generation: Arc::new(AtomicU64::new(1)),
+            search_query_generation,
             unsent_search_request: None,
             note_index: None,
             notes_revision: 0,
@@ -862,6 +872,8 @@ impl App {
             show_all: bootstrap_config.list.show_all_files,
         });
 
+        let search_query_generation = Arc::new(AtomicU64::new(1));
+
         let (message_tx, message_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             storage: storage.clone(),
@@ -918,9 +930,10 @@ impl App {
             search_worker: crate::app::search_worker::SearchWorker::spawn(
                 storage.clone(),
                 notes_worker_pool.clone(),
+                search_query_generation.clone(),
             ),
             search_debounce_deadline: None,
-            search_query_generation: Arc::new(AtomicU64::new(1)),
+            search_query_generation,
             unsent_search_request: None,
             note_index: None,
             notes_revision: 0,
@@ -1630,10 +1643,7 @@ impl App {
         {
             let mut path_to_write = path.clone();
             if let Ok(template) = toml::from_str::<Template>(&content) {
-                let new_path = self
-                    .storage
-                    .template_manager()
-                    .template_path(&template.name);
+                let new_path = self.storage.template_path(&template.name);
                 if new_path != *path && !new_path.exists() {
                     if let Err(e) = std::fs::rename(path, &new_path) {
                         let err = format!("Failed to rename template: {e}");

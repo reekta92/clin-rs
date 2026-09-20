@@ -320,6 +320,12 @@ impl App {
         }
     }
 
+    /// Line numbers actually rendered: user pref, suppressed in zen mode when configured.
+    pub fn editor_show_line_numbers(&self) -> bool {
+        self.editor.show_line_numbers
+            && !(self.zen_mode && self.config.editor.zen_hide_line_numbers)
+    }
+
     pub fn toggle_wrap(&mut self) {
         let new_wrap = match self.mode {
             ViewMode::Edit => !self.config.editor.soft_wrap,
