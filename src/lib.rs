@@ -128,6 +128,37 @@ pub fn run() -> Result<()> {
         prev(panic_info);
     }));
 
+    // ponytail: crossterm 0.29 poll() spins forever on a dead PTY (EIO/EOF
+    // errors are swallowed in its mio read loop), wedging the main thread
+    // inside events.poll() — the signal handlers set SHOULD_EXIT but the
+    // event loop never returns to check it, leaving a background clin process
+    // burning one core (issue #168). This watchdog turns the exit signals
+    // into a hard exit when the graceful path cannot run. Ceiling: a wedge
+    // with NO signal delivered (no controlling tty) is not covered; every
+    // real terminal emulator delivers SIGHUP on close. Remove this thread
+    // once crossterm fixes the dead-PTY spin (crossterm-rs/crossterm#500).
+    const EXIT_GRACE: Duration = Duration::from_secs(3);
+    std::thread::Builder::new()
+        .name("exit-watchdog".to_string())
+        .spawn(|| {
+            let mut graceful_since: Option<Instant> = None;
+            loop {
+                if FORCE_QUIT.load(Ordering::Acquire) {
+                    force_quit();
+                }
+                if SHOULD_EXIT.load(Ordering::Acquire) {
+                    let since = *graceful_since.get_or_insert_with(Instant::now);
+                    if since.elapsed() >= EXIT_GRACE {
+                        force_quit();
+                    }
+                } else {
+                    graceful_since = None;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        })
+        .ok();
+
     let matches = Cli::command()
         .styles(crate::console::CLAP_STYLES)
         .get_matches();

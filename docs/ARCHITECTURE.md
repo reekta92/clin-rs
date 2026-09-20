@@ -387,6 +387,14 @@ src/
 │  - Runs in a cancelable background thread             │
 │  - Result polled by main loop via poll_renderers()    │
 └──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Exit Watchdog Thread                                │
+│  - Spawned once in run()                             │
+│  - Hard-exits (code 130) on FORCE_QUIT, or on        │
+│    SHOULD_EXIT not consumed within 3s                │
+│  - Breaks the crossterm poll spin on a dead PTY      │
+│    (issue #168); inert for CLI subcommands           │
+└──────────────────────────────────────────────────────┘
 ```
 
 ---
