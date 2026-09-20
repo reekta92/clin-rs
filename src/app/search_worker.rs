@@ -212,7 +212,7 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: [1u8; 32],
+            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
         }
     }

@@ -1701,7 +1701,7 @@ mod tests {
             config_dir: PathBuf::from("/tmp"),
             notes_dir: PathBuf::from("/tmp"),
             templates_dir: PathBuf::from("/tmp"),
-            key: [1u8; 32],
+            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
         };
         let mut app = App::new(storage).unwrap();
