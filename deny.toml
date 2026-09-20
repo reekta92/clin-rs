@@ -24,6 +24,7 @@ allow = [
     "Unlicense",
     "0BSD",
     "NCSA",
+    "Unicode-DFS-2016",
     # The clin-rs package itself is GPL-3.0-only (Cargo.toml license field).
     "ISC",
     "GPL-3.0-only",
