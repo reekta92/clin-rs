@@ -323,7 +323,7 @@ impl Storage {
         }
         let legacy_candidates: Vec<PathBuf> = legacy_set.into_iter().collect();
 
-        let mut key = [0_u8; 32];
+        let mut key = <[u8; 32]>::default();
 
         if target_key_path.exists() {
             // Target exists — read, validate, clean up matching legacy sources
@@ -490,7 +490,7 @@ impl Storage {
     }
 
     pub fn ensure_key(&mut self) -> Result<()> {
-        if self.key != [0_u8; 32] {
+        if self.key != <[u8; 32]>::default() {
             return Ok(());
         }
 

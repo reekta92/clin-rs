@@ -26,7 +26,7 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
         config_dir: config_dir.clone(),
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: [0u8; 32],
+        key: Default::default(),
         skip_dir_patterns: Vec::new(),
         rename_on_title_change: true,
     };
@@ -95,7 +95,7 @@ fn test_app() -> clin::app::App {
         config_dir,
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: [0u8; 32],
+        key: Default::default(),
         skip_dir_patterns: Vec::new(),
         rename_on_title_change: true,
     };
