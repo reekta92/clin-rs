@@ -678,7 +678,7 @@ fn render_block<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, depth: usize) 
         let checked = {
             let data = node.data.borrow();
             match &data.value {
-                NodeValue::TaskItem(c) => *c,
+                NodeValue::TaskItem(c) => c.symbol,
                 _ => None,
             }
         };
@@ -1029,7 +1029,7 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
                     let mut checked_state: Option<Option<char>> = None;
                     for grandchild in child.children() {
                         if let NodeValue::TaskItem(c) = &grandchild.data.borrow().value {
-                            checked_state = Some(*c);
+                            checked_state = Some(c.symbol);
                             break;
                         }
                     }
@@ -1065,7 +1065,7 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
                 // No trailing new_line — next item or block ensures its own source line
             }
             NodeValue::TaskItem(checked) => {
-                if checked.is_some() {
+                if checked.symbol.is_some() {
                     ctx.push_str("[✓] ", ctx.theme.task_checked, margin);
                 } else {
                     ctx.push_str("[ ] ", ctx.theme.task_unchecked, margin);
@@ -1555,7 +1555,7 @@ fn render_inline<'a>(
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Text(t) => {
-            // `t` is &String — access as &str
+            // `t` is &Cow<str> — access as &str via deref coercion
             ctx.push_str(t, base_style, margin);
         }
         NodeValue::Code(c) => {
@@ -1629,7 +1629,7 @@ fn render_inline<'a>(
                 .map(|c| {
                     let d = c.data.borrow();
                     if let NodeValue::Text(t) = &d.value {
-                        t.clone()
+                        t.to_string()
                     } else {
                         String::new()
                     }
