@@ -2,6 +2,38 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.13.0] - 2026-09-23
+
+### Added
+
+- Zen mode dimming, scrollbar and linenumber toggles
+- Added sn: filter to the search popup
+
+### Changed
+
+- Apply ponytail audit cleanup fixes
+
+### Fixed
+
+- Hardcoded values have been changed with default
+- Removed hardcoded key values
+- Recognize self-collision when deriving filename from title
+- Exit via watchdog when the terminal dies under clin
+- Fixed codeql security issue regarding keys
+- Search no always prioritizes grep results
+- Fix fetching git cargo dependencies
+
+### Miscellaneous
+
+- Removed stats section from readme
+- Allow Unicode-DFS-2016 license in cargo-deny
+- Bump comrak from 0.36 to 0.55
+- Update flake.lock
+
+### Styling
+
+- Cargo fmt
+- Cargo fmt
 ## [0.13.0-testing.2] - 2026-09-17
 
 ### Added
@@ -45,6 +77,10 @@ All notable changes to clin are documented in this file.
 
 - Resolve CodeQL alert for zeroized byte arrays
 - Fix CodeQL cryptographic key alerts in tests
+
+### Release
+
+- V0.13.0-testing.2
 ## [0.13.0-testing.1] - 2026-09-06
 
 ### Added
