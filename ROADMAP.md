@@ -109,10 +109,11 @@
 - [ ] **Advanced clipboard** — multi-selection copy/paste
 - [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
 
-#### To-Do View
+#### To-Do View & Calendar
 - [ ] **To-do view** — a new view for specifically managing to-dos
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
+- [ ] **Interactive calendar** — for managing tasks/assigning tasks to dates
 
 #### Project Management View
 - [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.
