@@ -1,5 +1,8 @@
 # Roadmap
 
+## Main Goal for v1.0.0
+Make the `clin-rs` project a modular platform that only provides main functionalities like notes view(including every popup in notes view), editor view, preview pane and add other features via library logic so they are both easier to manage and open for possible **plugins** along the way. **So all the other views except editor and notes will be a plugin/library that can be enabled/disabled according to how much does the user use it or not. Bigger views like `pinstar`, `graf` -and future ones- will have their own repositories that will be attached to the `clin-rs` as a library. These modularity also will be expanded for command palette actions as well.** Of course this is **just** a plan and might not even happen at all since managing multiple big projects is quite cumbersome.
+
 ## Completed
 
 - [x] **Orthagonal connections** — arrow like connections between nodes, toggleable
