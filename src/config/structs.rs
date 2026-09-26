@@ -657,7 +657,7 @@ impl serde::Serialize for FeatureState {
 impl<'de> serde::Deserialize<'de> for FeatureState {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct FeatureStateVisitor;
-        impl<'de> serde::de::Visitor<'de> for FeatureStateVisitor {
+        impl serde::de::Visitor<'_> for FeatureStateVisitor {
             type Value = FeatureState;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
