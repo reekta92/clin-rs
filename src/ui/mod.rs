@@ -753,6 +753,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         );
     }
 
+    let p_tabs = if app.command_palette.is_some() { Some(crate::palette::palette_tabs(app)) } else { None };
     // Command palette
     if let Some(palette) = &mut app.command_palette {
         let area = frame.area();
@@ -788,7 +789,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         );
         frame.render_widget(&palette.input, chunks[0]);
 
-        let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app.config.ui.icon_mode)
+        let tabs: Vec<(&str, Option<&str>)> = p_tabs.clone().expect("palette is some so p_tabs is some")
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
@@ -3348,21 +3349,21 @@ mod markdown_highlight_tests {
         // paragraph 1 (row 1 because of top padding) should be dimmed
         assert!(
             buf.cell((0, 1))
-                .unwrap()
+                .expect("palette is some so p_tabs is some")
                 .modifier
                 .contains(ratatui::style::Modifier::DIM)
         );
         // paragraph 2 (row 3) should NOT be dimmed
         assert!(
             !buf.cell((0, 3))
-                .unwrap()
+                .expect("palette is some so p_tabs is some")
                 .modifier
                 .contains(ratatui::style::Modifier::DIM)
         );
         // paragraph 3 (row 5) should be dimmed
         assert!(
             buf.cell((0, 5))
-                .unwrap()
+                .expect("palette is some so p_tabs is some")
                 .modifier
                 .contains(ratatui::style::Modifier::DIM)
         );
@@ -3400,6 +3401,6 @@ mod markdown_highlight_tests {
 
         let buf = terminal.backend().buffer();
         // Line numbers are hidden, so the first text cell (row 1 due to padding) should be 'h'.
-        assert_eq!(buf.cell((0, 1)).unwrap().symbol(), "h");
+        assert_eq!(buf.cell((0, 1)).expect("palette is some so p_tabs is some").symbol(), "h");
     }
 }
