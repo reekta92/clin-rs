@@ -894,6 +894,29 @@ template = """
                 self.config.ui.hint_bar_style = hbs;
                 visuals_changed = true;
             }
+
+            // 6. Notes layout
+            let layout = crate::setup::layout_at(state.notes_layout);
+            if self.config.list.default_view != layout {
+                self.config.list.default_view = layout;
+                visuals_changed = true;
+            }
+
+            // 7. Feature preset
+            let preset = match state.feature_preset {
+                1 => crate::setup::FeaturePreset::Expanded,
+                2 => crate::setup::FeaturePreset::Minimal,
+                3 => crate::setup::FeaturePreset::Custom,
+                _ => crate::setup::FeaturePreset::Default,
+            };
+            let new_features = if preset == crate::setup::FeaturePreset::Custom {
+                state.custom_features.clone()
+            } else {
+                crate::setup::features_for_preset(preset)
+            };
+            if self.config.features != new_features {
+                self.config.features = new_features;
+            }
         }
 
         // Preview theme/background immediately (in-memory; no disk write).
@@ -907,6 +930,19 @@ template = """
     pub fn finish_setup(&mut self) {
         let previous_config = self.config.clone();
         self.apply_setup_live();
+        // Re-enabling a previously-Deleted feature needs its keybinds restored;
+        // bootstrap strips Deleted-feature keybinds at load.
+        if previous_config.features != self.config.features {
+            let (kb, warnings) = self
+                .storage
+                .load_keybinds_with_preset(self.config.core.keybind_preset);
+            self.keybinds = kb;
+            for w in warnings {
+                self.messages
+                    .push(w, crate::app::messages::MessageSeverity::Warning);
+            }
+            self.seq_matcher.clear();
+        }
         let (selected_path, changed_vault, confirmed_path) = {
             let Some(state) = self.setup_state.as_ref() else {
                 return;

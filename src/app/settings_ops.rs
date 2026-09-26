@@ -1096,7 +1096,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_setup_live_writes_5_fields() {
+    fn apply_setup_live_writes_7_fields() {
         let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         let config_file_path = app.storage.config_dir.join("config.toml");
@@ -1111,6 +1111,11 @@ mod tests {
             hint_bar_style: 1, // Sharp
             icon_mode: 1,      // Unicode
             keybind_preset: 2, // Vim
+            notes_layout: 1,   // Tree
+            feature_preset: 2, // Minimal
+            custom_features: crate::config::FeaturesConfig::default(),
+            feature_scroll: 0,
+            feature_cursor: 0,
             selected: 0,
             confirm_exit: false,
             vault_path: std::path::PathBuf::from("/vault"),
@@ -1138,6 +1143,12 @@ mod tests {
             app.config.core.keybind_preset,
             crate::config::KeybindPreset::Vim
         );
+        assert_eq!(
+            app.config.list.default_view,
+            crate::config::NotesLayout::Tree
+        );
+        assert!(app.config.features.tags.is_enabled());
+        assert!(!app.config.features.graph_view.is_enabled());
         // finish_setup tears down the view.
         assert!(app.setup_state.is_none());
         assert_eq!(app.mode, crate::app::ViewMode::List);
@@ -1157,6 +1168,11 @@ mod tests {
             hint_bar_style: 0,
             icon_mode: 0,
             keybind_preset: 0,
+            notes_layout: 0,
+            feature_preset: 0,
+            custom_features: crate::config::FeaturesConfig::default(),
+            feature_scroll: 0,
+            feature_cursor: 0,
             selected: 1, // Theme row
             confirm_exit: false,
             vault_path: std::path::PathBuf::from("/vault"),
@@ -1201,6 +1217,11 @@ mod tests {
             hint_bar_style: 0,
             icon_mode: 0,
             keybind_preset: 0,
+            notes_layout: 0,
+            feature_preset: 0,
+            custom_features: crate::config::FeaturesConfig::default(),
+            feature_scroll: 0,
+            feature_cursor: 0,
             selected: 0,
             confirm_exit: false,
             vault_path: std::path::PathBuf::from("/vault"),
@@ -1221,7 +1242,7 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         };
-        crate::events::handle_setup_keys(&mut app, esc);
+        crate::events::handle_setup_keys(&mut app, esc, ratatui::layout::Rect::new(0, 0, 120, 40));
         assert!(app.setup_state.as_ref().unwrap().confirm_exit);
 
         // 'n' cancels the confirm overlay.
@@ -1231,7 +1252,7 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         };
-        crate::events::handle_setup_keys(&mut app, n);
+        crate::events::handle_setup_keys(&mut app, n, ratatui::layout::Rect::new(0, 0, 120, 40));
         assert!(!app.setup_state.as_ref().unwrap().confirm_exit);
 
         // Re-open and confirm with 'y' → finish_setup saves + closes.
@@ -1242,7 +1263,7 @@ mod tests {
             kind: KeyEventKind::Press,
             state: KeyEventState::empty(),
         };
-        crate::events::handle_setup_keys(&mut app, y);
+        crate::events::handle_setup_keys(&mut app, y, ratatui::layout::Rect::new(0, 0, 120, 40));
         assert!(app.setup_state.is_none());
         assert_eq!(app.mode, crate::app::ViewMode::List);
         assert_eq!(app.config.ui.theme, "gruvbox");

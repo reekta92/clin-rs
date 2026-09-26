@@ -6,7 +6,7 @@ use crate::keybinds::{MatchOutcome, SetupAction};
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
-pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
+pub fn handle_setup_keys(app: &mut App, key: KeyEvent, area: Rect) {
     if let Some(modal) = app
         .setup_state
         .as_mut()
@@ -95,25 +95,52 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
 
     match act {
         SetupAction::Up => {
-            if let Some(state) = app.setup_state.as_mut() {
+            let Some(state) = app.setup_state.as_mut() else {
+                return;
+            };
+            if state.custom_features_active() {
+                let visible = crate::setup::feature_visible_rows(preview_inner_height(area));
+                if !state.move_feature_cursor(false, visible) {
+                    state.move_sel(false);
+                }
+            } else {
                 state.move_sel(false);
             }
         }
         SetupAction::Down => {
-            if let Some(state) = app.setup_state.as_mut() {
+            let Some(state) = app.setup_state.as_mut() else {
+                return;
+            };
+            if state.custom_features_active() {
+                let visible = crate::setup::feature_visible_rows(preview_inner_height(area));
+                if !state.move_feature_cursor(true, visible) {
+                    state.move_sel(true);
+                }
+            } else {
                 state.move_sel(true);
             }
         }
         SetupAction::Activate => {
-            let (finish, vault_selected) = app
+            let (finish, vault_selected, custom_features) = app
                 .setup_state
                 .as_ref()
-                .map(|s| (s.is_done_selected(), s.vault_selected()))
-                .unwrap_or((false, false));
+                .map(|s| {
+                    (
+                        s.is_done_selected(),
+                        s.vault_selected(),
+                        s.custom_features_active(),
+                    )
+                })
+                .unwrap_or((false, false, false));
             if finish {
                 app.finish_setup();
             } else if vault_selected {
                 app.begin_setup_vault_selection();
+            } else if custom_features {
+                if let Some(state) = app.setup_state.as_mut() {
+                    state.toggle_feature_cursor();
+                }
+                app.apply_setup_live();
             } else if let Some(state) = app.setup_state.as_mut() {
                 state.cycle(true);
                 app.apply_setup_live();
@@ -149,6 +176,16 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
     }
 }
 
+/// Preview panel's inner height: the preview rect minus block border (2) and
+/// top padding (1) used by `draw_preview_features`. Keep in sync with the
+/// block geometry there.
+fn preview_inner_height(area: Rect) -> u16 {
+    crate::ui::setup::setup_layout(area)
+        .preview
+        .height
+        .saturating_sub(3)
+}
+
 pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect) {
     if !app.config.core.mouse_enabled {
         return;
@@ -167,6 +204,7 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
         Finish,
         CycleOption(usize),
         MoveSel(bool),
+        ToggleFeature(usize),
     }
     let action = match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
@@ -179,7 +217,8 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
                     .min((crate::setup::OPTION_ROWS - 1) as u16);
                 Some(MouseAction::CycleOption(row_index as usize))
             } else {
-                None
+                feature_click_index(app, &layout.preview, mouse.column, mouse.row)
+                    .map(MouseAction::ToggleFeature)
             }
         }
         MouseEventKind::ScrollDown => Some(MouseAction::MoveSel(true)),
@@ -194,6 +233,9 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
     // Resolve selection mutation while borrowing state, then release before
     // calling App methods that need &mut self.
     let finish = matches!(action, MouseAction::Finish);
+    let visible = crate::setup::feature_visible_rows(
+        crate::ui::setup::features_preview_inner(layout.preview).height,
+    );
     if let Some(state) = app.setup_state.as_mut() {
         match action {
             MouseAction::Finish => state.selected = crate::setup::DONE_ROW,
@@ -204,6 +246,7 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
                 }
             }
             MouseAction::MoveSel(down) => state.move_sel(down),
+            MouseAction::ToggleFeature(idx) => state.toggle_feature_at(idx, visible),
         }
     }
 
@@ -218,4 +261,22 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
     } else {
         app.apply_setup_live();
     }
+}
+
+/// Feature index for a click inside the Custom-mode preview list, if any.
+fn feature_click_index(app: &App, preview: &Rect, col: u16, row: u16) -> Option<usize> {
+    let state = app.setup_state.as_ref()?;
+    if !state.custom_features_active() {
+        return None;
+    }
+    let inner = crate::ui::setup::features_preview_inner(*preview);
+    if !crate::events::contains_cell(inner, col, row) {
+        return None;
+    }
+    let visible = crate::setup::feature_visible_rows(inner.height);
+    let line = row.saturating_sub(inner.y) as usize;
+    if line >= visible {
+        return None;
+    }
+    Some(state.feature_scroll + line)
 }

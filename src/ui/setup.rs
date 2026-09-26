@@ -12,8 +12,8 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 
-const COL_HEIGHT: u16 = 18;
-/// Vertical column: logo (5), gap, options (6), gap, hint (2), Done (3).
+const COL_HEIGHT: u16 = 20;
+/// Vertical column: logo (5), gap, options (8), gap, hint (2), Done (3).
 const COL_WIDTH: u16 = 44;
 const VALUE_WIDTH: usize = 18;
 const PREVIEW_WIDTH: u16 = 50;
@@ -95,6 +95,19 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
         hint: v_chunks[4],
         done: v_chunks[5],
         preview: preview_col,
+    }
+}
+
+/// Content rect for the Features preview block: `preview` minus the block's
+/// `Borders::ALL` (2) and `Padding::new(1, 1, 1, 0)` (1 top). Must match the
+/// block used by `draw_preview_features`; the mouse handler reuses it for
+/// hit-testing.
+pub(crate) fn features_preview_inner(area: Rect) -> Rect {
+    Rect {
+        x: area.x.saturating_add(2),
+        y: area.y.saturating_add(2),
+        width: area.width.saturating_sub(4),
+        height: area.height.saturating_sub(3),
     }
 }
 
@@ -330,9 +343,184 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             1 | 2 => draw_preview_markdown(frame, area, theme, icon_mode, state),
             3 => draw_preview_hint_bar(frame, area, theme),
             4 => draw_preview_icons(frame, area, theme, icon_mode),
-            5 => draw_preview_keybinds(frame, area, theme, keybinds),
+            5 => draw_preview_layout(frame, area, theme, state),
+            6 => draw_preview_features(frame, area, theme, state),
+            7 => draw_preview_keybinds(frame, area, theme, keybinds),
             _ => draw_preview_overview(frame, area, theme, state),
         }
+    }
+
+    fn draw_preview_layout(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        state: &SetupState,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(
+                " Layout ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .padding(Padding::new(1, 1, 1, 0));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.width < 4 || inner.height < 1 {
+            return;
+        }
+
+        if state.notes_layout == 0 {
+            // Grid: 3 columns × 2 rows of small tiles.
+            let titles = ["Meetings", "Ideas", "TODO", "Recipe", "Journal", "Project"];
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(3), Constraint::Length(3)])
+                .split(inner);
+            for (r, row_area) in rows.iter().enumerate() {
+                let cols = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Ratio(1, 3); 3])
+                    .split(*row_area);
+                for (c, cell) in cols.iter().enumerate() {
+                    let tile = Block::default()
+                        .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded);
+                    frame.render_widget(
+                        Paragraph::new(titles[r * 3 + c])
+                            .block(tile)
+                            .alignment(Alignment::Center),
+                        *cell,
+                    );
+                }
+            }
+        } else {
+            // Tree: indented folder/file lines.
+            let mut lines: Vec<Line> = Vec::new();
+            let roots = [
+                (
+                    "Documents",
+                    &["Meeting notes.md", "Ideas.md", "TODO.md"][..],
+                ),
+                ("Personal", &["Recipe.md", "Journal.md"][..]),
+            ];
+            for (folder, notes) in roots {
+                lines.push(Line::from(vec![
+                    Span::styled("▼ ", Style::default().fg(theme.accent)),
+                    Span::styled(format!("{folder}/"), Style::default().fg(theme.folder)),
+                ]));
+                for (i, note) in notes.iter().enumerate() {
+                    let branch = if i == notes.len() - 1 {
+                        "└── "
+                    } else {
+                        "├── "
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled("  ", Style::default().fg(theme.text)),
+                        Span::styled(branch, Style::default().fg(theme.muted)),
+                        Span::styled(*note, Style::default().fg(theme.text)),
+                    ]));
+                }
+            }
+            frame.render_widget(Paragraph::new(lines), inner);
+        }
+    }
+
+    fn draw_preview_features(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        state: &SetupState,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(
+                " Features ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .padding(Padding::new(1, 1, 1, 0));
+        frame.render_widget(block, area);
+        let inner = features_preview_inner(area);
+        if inner.width < 2 || inner.height < 1 {
+            return;
+        }
+
+        let is_custom = state.feature_preset == 3;
+        let preset = match state.feature_preset {
+            1 => crate::setup::FeaturePreset::Expanded,
+            2 => crate::setup::FeaturePreset::Minimal,
+            _ => crate::setup::FeaturePreset::Default,
+        };
+        let cfg = if is_custom {
+            state.custom_features.clone()
+        } else {
+            crate::setup::features_for_preset(preset)
+        };
+
+        let mut lines: Vec<Line> = Vec::new();
+        if !is_custom {
+            let desc = match state.feature_preset {
+                1 => "Most features, no graph/canvas/draw/backup",
+                2 => "Core features only",
+                _ => "All features enabled",
+            };
+            lines.push(Line::from(Span::styled(
+                desc,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )));
+        }
+
+        let visible = crate::setup::feature_visible_rows(inner.height);
+        let start = if is_custom { state.feature_scroll } else { 0 };
+        let end = if is_custom {
+            (start + visible).min(crate::setup::FEATURE_NAMES.len())
+        } else {
+            crate::setup::FEATURE_NAMES.len()
+        };
+        for i in start..end {
+            let enabled = crate::setup::get_feature(&cfg, i).is_some_and(|s| s.is_enabled());
+            let mark = if enabled { "✓" } else { "✗" };
+            let mark_fg = if enabled { theme.accent } else { theme.muted };
+            let highlight = is_custom && i == state.feature_cursor;
+            let name_style = if highlight {
+                Style::default()
+                    .fg(theme.highlight_fg)
+                    .bg(theme.highlight_bg)
+            } else {
+                Style::default().fg(theme.text)
+            };
+            let mark_bg = if highlight {
+                theme.highlight_bg
+            } else {
+                Color::Reset
+            };
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!(" {mark} "),
+                    Style::default().fg(mark_fg).bg(mark_bg),
+                ),
+                Span::styled(crate::setup::FEATURE_NAMES[i], name_style),
+            ]));
+        }
+
+        if is_custom {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "↑/↓ select feature, Enter toggles, ←/→ change preset",
+                Style::default()
+                    .fg(theme.muted)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+        }
+
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 
     fn draw_preview_markdown(
@@ -747,5 +935,67 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn setup_view_renders_new_rows() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().unwrap();
+        let (data_dir, config_dir, notes_dir, templates_dir) = (
+            temp.path().join("data"),
+            temp.path().join("config"),
+            temp.path().join("notes"),
+            temp.path().join("templates"),
+        );
+        for d in [&data_dir, &config_dir, &notes_dir, &templates_dir] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
+        };
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.setup_state = Some(crate::setup::SetupState::from_config(
+            &app.config,
+            &crate::app_theme::AppThemeColors::default(),
+            std::path::PathBuf::from("/vault"),
+            false,
+        ));
+
+        fn render(app: &mut crate::app::App) -> String {
+            let backend = TestBackend::new(120, 40);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|frame| draw_setup_view(frame, app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            let mut text = String::new();
+            for y in 0..buf.area.height {
+                for x in 0..buf.area.width {
+                    text.push_str(buf.cell((x, y)).unwrap().symbol());
+                }
+            }
+            text
+        }
+
+        let text = render(&mut app);
+        assert!(text.contains("Layout"));
+        assert!(text.contains("Features"));
+
+        let state = app.setup_state.as_mut().unwrap();
+        state.selected = 5;
+        state.notes_layout = 1;
+        let text = render(&mut app);
+        assert!(text.contains("Documents"));
+
+        let state = app.setup_state.as_mut().unwrap();
+        state.selected = 6;
+        state.feature_preset = 3;
+        let text = render(&mut app);
+        assert!(text.contains("Graph View"));
+        assert!(text.contains("Enter toggles"));
     }
 }

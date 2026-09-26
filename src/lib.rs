@@ -1624,7 +1624,7 @@ where
                         // generic dispatch resumes.
                         ViewMode::Edit => false,
                         ViewMode::Setup => {
-                            crate::events::handle_setup_keys(app, key);
+                            crate::events::handle_setup_keys(app, key, area);
                             false
                         }
                         ViewMode::Graph

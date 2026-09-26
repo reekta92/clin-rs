@@ -37,9 +37,9 @@ The screen is centered both horizontally and vertically. The left column contain
 | Constant | Value | Description |
 |---|---|---|
 | `COL_WIDTH` | 44 | Width of left column |
-| `COL_HEIGHT` | 19 | Total centered-column height |
-| `OPTION_ROWS` | 6 | Vault plus five cycle-in-place rows |
-| `DONE_ROW` | 6 | Done button index |
+| `COL_HEIGHT` | 20 | Total centered-column height |
+| `OPTION_ROWS` | 8 | Vault plus seven cycle-in-place rows |
+| `DONE_ROW` | 8 | Done button index |
 | `PREVIEW_WIDTH` | 50 | Markdown preview width |
 
 ### Rows
@@ -51,6 +51,8 @@ The screen is centered both horizontally and vertically. The left column contain
 | Background | `[Background]` | Transparent / Solid |
 | Hint bar | `[Hint bar]` | Hint bar styles |
 | Icons | `[Icons]` | Nerd / Unicode / None |
+| Layout | `[Layout]` | Notes view Grid / Tree |
+| Features | `[Features]` | Default / Expanded / Minimal / Custom feature toggles |
 | Keybinds | `[Keybinds]` | Default / Helix / Vim / Emacs |
 ---
 
@@ -63,6 +65,10 @@ The screen is centered both horizontally and vertically. The left column contain
 | Left / Right | Cycle selected non-Vault option |
 | `Esc` | Confirm setup exit, or cancel vault modal |
 | `F2` | Toggle global QuickKeybinds |
+
+On the Features row in Custom mode: ↑/↓ move the feature cursor in the preview
+list, `Enter` toggles the highlighted feature, and ←/→ cycle the preset
+(cycling away from Custom and back preserves the custom toggles).
 
 Above Done, wizard always shows: `Remember: press ? for help or F2 for keybinds.`
 `?` is display-only during setup; help opens after setup.
