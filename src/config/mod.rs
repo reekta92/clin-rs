@@ -491,30 +491,35 @@ impl ClinConfig {
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("enabled"))
                 .and_then(|v| v.as_bool())
+                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
                 .unwrap_or(defaults.images);
             let backup = root
                 .get("backup")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("enabled"))
                 .and_then(|v| v.as_bool())
+                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
                 .unwrap_or(defaults.backup);
             let goals = root
                 .get("goals")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("enabled"))
                 .and_then(|v| v.as_bool())
+                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
                 .unwrap_or(defaults.goals);
             let calendar = root
                 .get("list")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("calendar_enabled"))
                 .and_then(|v| v.as_bool())
+                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
                 .unwrap_or(defaults.calendar);
             let smart_folders = root
                 .get("list")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("smart_folders_enabled"))
                 .and_then(|v| v.as_bool())
+                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
                 .unwrap_or(defaults.smart_folders);
 
             let mut features = toml::value::Table::new();
@@ -536,7 +541,11 @@ impl ClinConfig {
                 ("calendar", calendar),
                 ("smart_folders", smart_folders),
             ] {
-                features.insert(k.to_string(), toml::Value::Boolean(v));
+                features.insert(k.to_string(), match v {
+                    FeatureState::Enabled => toml::Value::Boolean(true),
+                    FeatureState::Disabled => toml::Value::Boolean(false),
+                    FeatureState::Deleted => toml::Value::String("deleted".to_string()),
+                });
             }
 
             if let Some(t) = root.get_mut("image").and_then(|s| s.as_table_mut()) {
@@ -846,7 +855,7 @@ unknown_field = "ignore me"
         config.list.show_file_size = true;
         config.list.inline_info = false;
         config.list.default_view = NotesLayout::Tree;
-        config.features.calendar = false;
+        config.features.calendar = crate::config::FeatureState::Disabled;
         config.backup.auto_backup_interval = Some(60);
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -858,7 +867,7 @@ unknown_field = "ignore me"
         assert!(parsed.list.show_file_size);
         assert!(!parsed.list.inline_info);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
-        assert!(!parsed.features.calendar);
+        assert!(!parsed.features.calendar.is_enabled());
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
     }
 
@@ -867,18 +876,18 @@ unknown_field = "ignore me"
         // A [features] section that omits calendar must deserialize to true
         // (visible by default), matching the FeaturesConfig default.
         let cfg: ClinConfig = toml::from_str("[list]\npreview_enabled = false\n").unwrap();
-        assert!(cfg.features.calendar);
+        assert!(cfg.features.calendar.is_enabled());
 
         // Explicitly setting it false also survives a round-trip.
         let cfg2: ClinConfig = toml::from_str("[features]\ncalendar = false\n").unwrap();
-        assert!(!cfg2.features.calendar);
+        assert!(!cfg2.features.calendar.is_enabled());
     }
 
     #[test]
     fn backup_defaults_disabled_when_keys_omitted() {
         // A [backup] section that omits the enable flags must default to off.
         let cfg: ClinConfig = toml::from_str("[backup]\nauto_push = false\n").unwrap();
-        assert!(!cfg.features.backup);
+        assert!(!cfg.features.backup.is_enabled());
         assert!(!cfg.backup.backup_on_save);
         assert!(!cfg.backup.backup_on_quit);
     }
@@ -898,13 +907,13 @@ unknown_field = "ignore me"
 
         let config = ClinConfig::load().0.unwrap();
 
-        assert!(!config.features.images);
-        assert!(config.features.backup);
-        assert!(!config.features.goals);
-        assert!(!config.features.calendar);
-        assert!(config.features.smart_folders);
+        assert!(!config.features.images.is_enabled());
+        assert!(config.features.backup.is_enabled());
+        assert!(!config.features.goals.is_enabled());
+        assert!(!config.features.calendar.is_enabled());
+        assert!(config.features.smart_folders.is_enabled());
         // Flags without a legacy counterpart fall back to defaults.
-        assert!(config.features.tags);
+        assert!(config.features.tags.is_enabled());
 
         let saved = fs::read_to_string(&config_file_path).unwrap();
         assert!(saved.contains("[features]"));
@@ -1081,7 +1090,7 @@ show_status_bar = false
         // The embedded default template is what a first-run user gets. It must
         // be valid ClinConfig TOML and ship with the calendar visible.
         let config: ClinConfig = toml::from_str(&merge::default_config_content()).unwrap();
-        assert!(config.features.calendar);
+        assert!(config.features.calendar.is_enabled());
         // Sanity: a few other shipped defaults still hold.
         assert!(config.list.preview_enabled);
         // [statusline] section is present but fields are commented → parsed as None.
@@ -1094,12 +1103,12 @@ show_status_bar = false
     #[test]
     fn test_goals_config_deserialization() {
         let config: ClinConfig = toml::from_str(&merge::default_config_content()).unwrap();
-        assert!(config.features.goals);
+        assert!(config.features.goals.is_enabled());
         assert_eq!(config.goals.word_goal, 500);
         assert_eq!(config.goals.note_goal, 3);
 
         let empty_config: ClinConfig = toml::from_str("").unwrap();
-        assert!(empty_config.features.goals);
+        assert!(empty_config.features.goals.is_enabled());
         assert_eq!(empty_config.goals.word_goal, 500);
         assert_eq!(empty_config.goals.note_goal, 3);
     }

@@ -598,7 +598,7 @@ impl App {
         self.list
             .folder_expanded
             .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
-        if self.config.features.smart_folders {
+        if self.config.features.smart_folders.is_enabled() {
             self.list.folder_expanded.insert("@today".to_string());
             self.list.folder_expanded.insert("@week".to_string());
             self.list.folder_expanded.insert("@untagged".to_string());

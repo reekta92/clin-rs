@@ -75,7 +75,7 @@ pub fn start_session(app: &mut App) -> SessionGuard {
     }
 
     // Spawn the background backup worker (only when the feature is enabled).
-    let done_rx = if app.config.features.backup {
+    let done_rx = if app.config.features.backup.is_enabled() {
         let (tx, done_rx) = crate::backup::worker::spawn(
             app.git_lock.clone(),
             app.backup_status.clone(),
@@ -90,7 +90,7 @@ pub fn start_session(app: &mut App) -> SessionGuard {
     };
 
     // Spawn the background image decode worker (only when the feature is enabled).
-    if app.config.features.images {
+    if app.config.features.images.is_enabled() {
         let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
         app.image_decode_tx = Some(decode_tx);
         app.image_decode_rx = Some(decode_rx);
@@ -201,7 +201,7 @@ pub fn finish_session(app: &mut App, guard: SessionGuard) -> Result<()> {
 
     if signal_exit {
         drop(app.backup_tx.take());
-    } else if app.config.features.backup && app.config.backup.backup_on_quit {
+    } else if app.config.features.backup.is_enabled() && app.config.backup.backup_on_quit {
         println!("Backing up…");
         let _ = app.backup_tx.as_ref().map(|tx| {
             tx.send(crate::backup::worker::BackupJob::Flush(

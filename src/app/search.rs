@@ -9,8 +9,8 @@ impl App {
         if self.list.notes_layout != crate::config::NotesLayout::Grid {
             return;
         }
-        let sf = self.config.features.smart_folders;
-        let sn = self.config.features.subnotes;
+        let sf = self.config.features.smart_folders.is_enabled();
+        let sn = self.config.features.subnotes.is_enabled();
         let cur = self.list.grid_folder.clone();
         let next = if cur == VIRTUAL_PINNED_PATH {
             if sf {
@@ -37,8 +37,8 @@ impl App {
         if self.list.notes_layout != crate::config::NotesLayout::Grid {
             return;
         }
-        let sf = self.config.features.smart_folders;
-        let sn = self.config.features.subnotes;
+        let sf = self.config.features.smart_folders.is_enabled();
+        let sn = self.config.features.subnotes.is_enabled();
         let cur = self.list.grid_folder.clone();
         let next = if sf && (cur == VIRTUAL_SMART_PATH || cur.starts_with('@')) {
             VIRTUAL_PINNED_PATH
@@ -124,8 +124,8 @@ impl App {
         let query_text = popup.input.lines().join("");
         let parsed = parse_search_query(
             &query_text,
-            self.config.features.tags,
-            self.config.features.subnotes,
+            self.config.features.tags.is_enabled(),
+            self.config.features.subnotes.is_enabled(),
         );
         let title_query = parsed.text.trim().to_lowercase();
         let grep_query = parsed.grep_text.trim().to_lowercase();
@@ -766,6 +766,7 @@ mod tests {
 
         let mut app = crate::app::App::new(storage).unwrap();
         app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.refresh_subnotes_view_cache();
         app.refresh_visual_list();
 
         app.begin_search();
@@ -820,6 +821,7 @@ mod tests {
 
         let mut app = crate::app::App::new(storage).unwrap();
         app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.refresh_subnotes_view_cache();
         app.refresh_visual_list();
 
         app.begin_search();

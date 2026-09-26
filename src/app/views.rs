@@ -9,7 +9,7 @@ impl App {
     }
 
     pub fn open_help_page_with_tab(&mut self, tab: HelpTab) {
-        if self.feature_disabled(self.config.features.help_view, "Help", "help_view") {
+        if self.feature_disabled(self.config.features.help_view.is_enabled(), "Help", "help_view") {
             return;
         }
         if self.mode != ViewMode::Help {
@@ -56,7 +56,7 @@ impl App {
     }
 
     pub fn open_graph_view(&mut self) {
-        if self.feature_disabled(self.config.features.graph_view, "Graph view", "graph_view") {
+        if self.feature_disabled(self.config.features.graph_view.is_enabled(), "Graph view", "graph_view") {
             return;
         }
         if self.graph_plugin.is_none() {
@@ -88,7 +88,7 @@ impl App {
     }
     pub fn open_outline_view(&mut self) {
         if self.feature_disabled(
-            self.config.features.outline_view,
+            self.config.features.outline_view.is_enabled(),
             "Outline view",
             "outline_view",
         ) {
@@ -128,7 +128,7 @@ impl App {
     }
 
     pub fn open_backup_view(&mut self) {
-        if self.feature_disabled(self.config.features.backup, "Backup", "backup") {
+        if self.feature_disabled(self.config.features.backup.is_enabled(), "Backup", "backup") {
             return;
         }
         let vault_path = crate::config::vault_path_or_dot(&self.config);
@@ -136,7 +136,7 @@ impl App {
 
         self.backup_state = Some(crate::backup::state::BackupState::new(
             vault_path,
-            config.features.backup,
+            config.features.backup.is_enabled(),
             &config.backup,
             self.app_theme.clone(),
             self.keybinds.clone(),
@@ -151,7 +151,7 @@ impl App {
     }
 
     pub fn open_draw_view(&mut self) {
-        if self.feature_disabled(self.config.features.draw_view, "Draw view", "draw_view") {
+        if self.feature_disabled(self.config.features.draw_view.is_enabled(), "Draw view", "draw_view") {
             return;
         }
         let note_id = self.get_selected_note_id();
@@ -183,7 +183,7 @@ impl App {
 
     pub fn open_canvas_view(&mut self) {
         if self.feature_disabled(
-            self.config.features.canvas_view,
+            self.config.features.canvas_view.is_enabled(),
             "Canvas view",
             "canvas_view",
         ) {
@@ -264,7 +264,7 @@ impl App {
     }
 
     pub fn begin_create_draw(&mut self) {
-        if self.feature_disabled(self.config.features.draw_view, "Draw view", "draw_view") {
+        if self.feature_disabled(self.config.features.draw_view.is_enabled(), "Draw view", "draw_view") {
             return;
         }
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
@@ -296,7 +296,7 @@ impl App {
 
     pub fn begin_create_canvas(&mut self) {
         if self.feature_disabled(
-            self.config.features.canvas_view,
+            self.config.features.canvas_view.is_enabled(),
             "Canvas view",
             "canvas_view",
         ) {
@@ -330,7 +330,7 @@ impl App {
     }
 
     pub fn open_trash_view(&mut self) {
-        if self.feature_disabled(self.config.features.trash, "Trash", "trash") {
+        if self.feature_disabled(self.config.features.trash.is_enabled(), "Trash", "trash") {
             return;
         }
         match self.storage.list_trash() {
@@ -376,7 +376,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let storage = make_test_storage(tmp.path());
         let mut app = crate::app::App::new(storage).unwrap();
-        app.config.features.graph_view = false;
+        app.config.features.graph_view = crate::config::FeatureState::Disabled;
         app.mode = crate::app::ViewMode::List;
         app.open_graph_view();
         assert_eq!(app.mode, crate::app::ViewMode::List);

@@ -310,7 +310,7 @@ toggle_action!(
     "\u{26a1}",
     toggle_smart_folders,
     app,
-    if app.config.features.smart_folders {
+    if app.config.features.smart_folders.is_enabled() {
         "On"
     } else {
         "Off"
@@ -493,7 +493,7 @@ toggle_action!(
     "\u{1f3af}",
     toggle_goals,
     app,
-    if app.config.features.goals {
+    if app.config.features.goals.is_enabled() {
         "On"
     } else {
         "Off"
@@ -510,7 +510,7 @@ toggle_action!(
     "\u{1f5fa}",
     toggle_graph_view,
     app,
-    if app.config.features.graph_view {
+    if app.config.features.graph_view.is_enabled() {
         "On"
     } else {
         "Off"
@@ -527,7 +527,7 @@ toggle_action!(
     "\u{1f58c}",
     toggle_canvas_view,
     app,
-    if app.config.features.canvas_view {
+    if app.config.features.canvas_view.is_enabled() {
         "On"
     } else {
         "Off"
@@ -544,7 +544,7 @@ toggle_action!(
     "\u{270f}",
     toggle_draw_view,
     app,
-    if app.config.features.draw_view {
+    if app.config.features.draw_view.is_enabled() {
         "On"
     } else {
         "Off"
@@ -561,7 +561,7 @@ toggle_action!(
     "\u{1f332}",
     toggle_outline_view,
     app,
-    if app.config.features.outline_view {
+    if app.config.features.outline_view.is_enabled() {
         "On"
     } else {
         "Off"
@@ -578,7 +578,7 @@ toggle_action!(
     "\u{2753}",
     toggle_help_view,
     app,
-    if app.config.features.help_view {
+    if app.config.features.help_view.is_enabled() {
         "On"
     } else {
         "Off"
@@ -595,7 +595,7 @@ toggle_action!(
     "\u{1f3f7}",
     toggle_tags,
     app,
-    if app.config.features.tags {
+    if app.config.features.tags.is_enabled() {
         "On"
     } else {
         "Off"
@@ -612,7 +612,7 @@ toggle_action!(
     "\u{1f5d1}",
     toggle_trash,
     app,
-    if app.config.features.trash {
+    if app.config.features.trash.is_enabled() {
         "On"
     } else {
         "Off"
@@ -629,7 +629,7 @@ toggle_action!(
     "\u{1f4dd}",
     toggle_subnotes,
     app,
-    if app.config.features.subnotes {
+    if app.config.features.subnotes.is_enabled() {
         "On"
     } else {
         "Off"
@@ -646,7 +646,7 @@ toggle_action!(
     "\u{1f4c4}",
     toggle_templates,
     app,
-    if app.config.features.templates {
+    if app.config.features.templates.is_enabled() {
         "On"
     } else {
         "Off"
@@ -663,7 +663,7 @@ toggle_action!(
     "\u{2b07}",
     toggle_import,
     app,
-    if app.config.features.import {
+    if app.config.features.import.is_enabled() {
         "On"
     } else {
         "Off"
@@ -680,7 +680,7 @@ toggle_action!(
     "\u{1f512}",
     toggle_encryption,
     app,
-    if app.config.features.encryption {
+    if app.config.features.encryption.is_enabled() {
         "On"
     } else {
         "Off"

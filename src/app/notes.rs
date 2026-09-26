@@ -1244,7 +1244,7 @@ impl App {
     }
 
     pub fn open_subnotes_popup(&mut self) {
-        if self.feature_disabled(self.config.features.subnotes, "Subnotes", "subnotes") {
+        if self.feature_disabled(self.config.features.subnotes.is_enabled(), "Subnotes", "subnotes") {
             return;
         }
         let parent_id = match self.get_selected_note_id() {

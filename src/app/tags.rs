@@ -20,7 +20,7 @@ impl App {
     }
 
     pub fn begin_manage_tags(&mut self) {
-        if self.feature_disabled(self.config.features.tags, "Tags", "tags") {
+        if self.feature_disabled(self.config.features.tags.is_enabled(), "Tags", "tags") {
             return;
         }
         let in_select_mode = self.list.list_mode == crate::list_view::ListMode::Select;
@@ -267,7 +267,7 @@ impl App {
     }
 
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
-        if self.feature_disabled(self.config.features.tags, "Tags", "tags") {
+        if self.feature_disabled(self.config.features.tags.is_enabled(), "Tags", "tags") {
             return;
         }
         let count = self

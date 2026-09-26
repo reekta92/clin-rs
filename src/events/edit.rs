@@ -239,7 +239,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
             EditAction::ToggleOutline => {
                 if app.feature_disabled(
-                    app.config.features.outline_view,
+                    app.config.features.outline_view.is_enabled(),
                     "Outline view",
                     "outline_view",
                 ) {
@@ -279,7 +279,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::PasteImage => {
-                if app.feature_disabled(app.config.features.import, "Import", "import") {
+                if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import") {
                     return false;
                 }
                 let action = &crate::actions::ocr::PasteImageAction;
@@ -289,7 +289,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertImageFromFile => {
-                if app.feature_disabled(app.config.features.import, "Import", "import") {
+                if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import") {
                     return false;
                 }
                 let action = &crate::actions::ocr::InsertImageFromFileAction;

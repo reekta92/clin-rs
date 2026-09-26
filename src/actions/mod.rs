@@ -358,16 +358,30 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
 /// `true` for every action not explicitly tied to a feature.
 fn action_feature_enabled(id: &str, app: &App) -> bool {
     match id {
-        "backup.open" => app.config.features.backup,
-        "draw.create" => app.config.features.draw_view,
-        "graph.open" => app.config.features.graph_view,
-        "create_canvas" => app.config.features.canvas_view,
-        "outline.open" => app.config.features.outline_view,
-        "manage_subnotes_list" => app.config.features.subnotes,
-        "note.encrypt" | "note.decrypt" => app.config.features.encryption,
-        "settings.configure_smart_folders" => app.config.features.smart_folders,
-        "ocr.paste" | "paste_image" | "insert_image_from_file" => app.config.features.import,
-        id if id.starts_with("insert.") => app.config.features.import,
+        "backup.open" => app.config.features.backup.is_enabled(),
+        "draw.create" => app.config.features.draw_view.is_enabled(),
+        "graph.open" => app.config.features.graph_view.is_enabled(),
+        "create_canvas" => app.config.features.canvas_view.is_enabled(),
+        "outline.open" => app.config.features.outline_view.is_enabled(),
+        "manage_subnotes_list" => app.config.features.subnotes.is_enabled(),
+        "note.encrypt" | "note.decrypt" => app.config.features.encryption.is_enabled(),
+        "settings.configure_smart_folders" => app.config.features.smart_folders.is_enabled(),
+        "ocr.paste" | "paste_image" | "insert_image_from_file" => app.config.features.import.is_enabled(),
+        id if id.starts_with("insert.") => app.config.features.import.is_enabled(),
+        "settings.toggle_graph_view" => !app.config.features.graph_view.is_deleted(),
+        "settings.toggle_canvas_view" => !app.config.features.canvas_view.is_deleted(),
+        "settings.toggle_draw_view" => !app.config.features.draw_view.is_deleted(),
+        "settings.toggle_outline_view" => !app.config.features.outline_view.is_deleted(),
+        "settings.toggle_help_view" => !app.config.features.help_view.is_deleted(),
+        "settings.toggle_tags" => !app.config.features.tags.is_deleted(),
+        "settings.toggle_trash" => !app.config.features.trash.is_deleted(),
+        "settings.toggle_subnotes" => !app.config.features.subnotes.is_deleted(),
+        "settings.toggle_templates" => !app.config.features.templates.is_deleted(),
+        "settings.toggle_import" => !app.config.features.import.is_deleted(),
+        "settings.toggle_encryption" => !app.config.features.encryption.is_deleted(),
+        "settings.goals" => !app.config.features.goals.is_deleted(),
+        "settings.toggle_calendar" => !app.config.features.calendar.is_deleted(),
+        "settings.toggle_smart_folders" => !app.config.features.smart_folders.is_deleted(),
         _ => true,
     }
 }
@@ -426,7 +440,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let storage = make_test_storage(tmp.path());
         let mut app = crate::app::App::new(storage).unwrap();
-        app.config.features.graph_view = false;
+        app.config.features.graph_view = crate::config::FeatureState::Disabled;
         let infos = get_all_action_infos(&app);
         assert!(!infos.iter().any(|i| i.id == "graph.open"));
         // Toggle actions stay available so the feature can be re-enabled.

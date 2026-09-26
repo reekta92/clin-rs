@@ -155,7 +155,7 @@ fn run_backup(
         status,
         &vault_path,
         &config.backup,
-        config.features.backup,
+        config.features.backup.is_enabled(),
         message,
     );
 }

@@ -515,7 +515,7 @@ impl StatuslineContext<'_> {
                 let count = self
                     .app
                     .map(|a| {
-                        if a.config.features.tags {
+                        if a.config.features.tags.is_enabled() {
                             a.collect_live_tags().len()
                         } else {
                             0
@@ -580,8 +580,8 @@ impl StatuslineContext<'_> {
                         if let Some(crate::popups::ActivePopup::Search(popup)) = &a.popups.active {
                             let parsed = crate::app::parse_search_query(
                                 &popup.input.lines().join(""),
-                                a.config.features.tags,
-                                a.config.features.subnotes,
+                                a.config.features.tags.is_enabled(),
+                                a.config.features.subnotes.is_enabled(),
                             );
                             if parsed.grep_mode { "on" } else { "off" }
                         } else {
@@ -598,8 +598,8 @@ impl StatuslineContext<'_> {
                         if let Some(crate::popups::ActivePopup::Search(popup)) = &a.popups.active {
                             let parsed = crate::app::parse_search_query(
                                 &popup.input.lines().join(""),
-                                a.config.features.tags,
-                                a.config.features.subnotes,
+                                a.config.features.tags.is_enabled(),
+                                a.config.features.subnotes.is_enabled(),
                             );
                             parsed
                                 .tag_filter
@@ -620,8 +620,8 @@ impl StatuslineContext<'_> {
                         if let Some(crate::popups::ActivePopup::Search(popup)) = &a.popups.active {
                             let parsed = crate::app::parse_search_query(
                                 &popup.input.lines().join(""),
-                                a.config.features.tags,
-                                a.config.features.subnotes,
+                                a.config.features.tags.is_enabled(),
+                                a.config.features.subnotes.is_enabled(),
                             );
                             parsed.folder_filter.clone().unwrap_or_default()
                         } else {
@@ -726,7 +726,7 @@ impl StatuslineContext<'_> {
             }
             "tags" => Some(
                 self.note
-                    .filter(|_| self.app.is_none_or(|a| a.config.features.tags))
+                    .filter(|_| self.app.is_none_or(|a| a.config.features.tags.is_enabled()))
                     .map(|note| {
                         if self.view == ViewMode::List {
                             compact_list_tags(&note.tags)
@@ -738,7 +738,7 @@ impl StatuslineContext<'_> {
                     .into(),
             ),
             "has_tags" => {
-                let has = self.app.is_none_or(|a| a.config.features.tags)
+                let has = self.app.is_none_or(|a| a.config.features.tags.is_enabled())
                     && self.note.map(|n| !n.tags.is_empty()).unwrap_or(false);
                 Some((if has { "on" } else { "off" }).into())
             }

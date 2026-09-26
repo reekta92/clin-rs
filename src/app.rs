@@ -484,7 +484,7 @@ impl App {
     pub fn rebuild_note_index(&mut self) {
         let now = crate::ui::now_unix_secs();
         let custom_rules: &[crate::config::CustomSmartFolder] =
-            if self.config.features.smart_folders {
+            if self.config.features.smart_folders.is_enabled() {
                 &self.config.list.custom_smart_folders
             } else {
                 &[]
@@ -495,7 +495,7 @@ impl App {
             &self.catalog_folders,
             custom_rules,
             now,
-            self.config.features.calendar,
+            self.config.features.calendar.is_enabled(),
         );
         self.note_index = Some(index);
     }
@@ -555,7 +555,7 @@ impl App {
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.show_all_files = bootstrap_config.list.show_all_files;
-        list.calendar_enabled = bootstrap_config.features.calendar;
+        list.calendar_enabled = bootstrap_config.features.calendar.is_enabled();
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
@@ -727,7 +727,7 @@ impl App {
             app.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
-        app.goals_progress = if app.config.features.goals {
+        app.goals_progress = if app.config.features.goals.is_enabled() {
             app.load_goals_progress()
         } else {
             crate::goals::DailyProgress::default()
@@ -786,8 +786,59 @@ impl App {
                     .expect("single thread pool"),
             )
         });
-        let (keybinds, keybind_warnings) =
+        let (mut keybinds, keybind_warnings) =
             storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
+        
+        if bootstrap_config.features.graph_view.is_deleted() {
+            keybinds.list.retain(|a, _| *a != crate::keybinds::ListAction::OpenGraph);
+            keybinds.graph.clear();
+        }
+        if bootstrap_config.features.draw_view.is_deleted() {
+            keybinds.list.retain(|a, _| *a != crate::keybinds::ListAction::OpenCanvas);
+            keybinds.draw.clear();
+        }
+        if bootstrap_config.features.canvas_view.is_deleted() {
+            keybinds.canvas.clear();
+        }
+        if bootstrap_config.features.outline_view.is_deleted() {
+            keybinds.edit.retain(|a, _| *a != crate::keybinds::EditAction::ToggleOutline);
+            keybinds.outline.clear();
+        }
+        if bootstrap_config.features.help_view.is_deleted() {
+            keybinds.list.retain(|a, _| *a != crate::keybinds::ListAction::Help);
+            keybinds.graph.retain(|a, _| *a != crate::keybinds::GraphAction::Help);
+            keybinds.draw.retain(|a, _| *a != crate::keybinds::DrawAction::Help);
+            keybinds.canvas.retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
+            keybinds.backup.retain(|a, _| *a != crate::keybinds::BackupAction::Help);
+            keybinds.outline.retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
+            keybinds.help.clear();
+        }
+        if bootstrap_config.features.tags.is_deleted() {
+            keybinds.list.retain(|a, _| {
+                *a != crate::keybinds::ListAction::ManageTags
+                    && *a != crate::keybinds::ListAction::RemoveTagsFromSelected
+            });
+        }
+        if bootstrap_config.features.trash.is_deleted() {
+            keybinds.list.retain(|a, _| *a != crate::keybinds::ListAction::OpenTrash);
+        }
+        if bootstrap_config.features.subnotes.is_deleted() {
+            keybinds.list.retain(|a, _| *a != crate::keybinds::ListAction::ManageSubnotes);
+            keybinds.edit.retain(|a, _| *a != crate::keybinds::EditAction::ManageSubnotes);
+        }
+        if bootstrap_config.features.templates.is_deleted() {
+            keybinds.list.retain(|a, _| *a != crate::keybinds::ListAction::NewFromTemplate);
+        }
+        if bootstrap_config.features.import.is_deleted() {
+            keybinds.edit.retain(|a, _| {
+                *a != crate::keybinds::EditAction::PasteImage
+                    && *a != crate::keybinds::EditAction::InsertImageFromFile
+            });
+        }
+        if bootstrap_config.features.backup.is_deleted() {
+            keybinds.backup.clear();
+        }
+
         let mut theme_warnings = Vec::new();
         let app_theme = crate::app_theme::AppThemeColors::from_config(
             &bootstrap_config.ui,
@@ -818,7 +869,7 @@ impl App {
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_all_files = bootstrap_config.list.show_all_files;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
-        list.calendar_enabled = bootstrap_config.features.calendar;
+        list.calendar_enabled = bootstrap_config.features.calendar.is_enabled();
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
@@ -998,7 +1049,7 @@ impl App {
             app.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
-        app.goals_progress = if app.config.features.goals {
+        app.goals_progress = if app.config.features.goals.is_enabled() {
             app.load_goals_progress()
         } else {
             crate::goals::DailyProgress::default()
@@ -2496,7 +2547,7 @@ word_goal = 1200
         assert_eq!(app.return_mode, None);
 
         // Backup view requires the backup feature flag.
-        app.config.features.backup = true;
+        app.config.features.backup = crate::config::FeatureState::Enabled;
 
         // 2. Open Backup view first time
         app.open_backup_view();

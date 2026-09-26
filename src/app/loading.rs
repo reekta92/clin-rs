@@ -15,7 +15,7 @@ impl App {
         self.list.list_viewport_offset = None;
         let mut visual = Vec::new();
         // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
-        let subnotes_cache = if !self.config.features.subnotes {
+        let subnotes_cache = if !self.config.features.subnotes.is_enabled() {
             self.subnotes_view_cache.clear();
             self.subnotes_view_cache.clone()
         } else if self.subnotes_view_cache_sig
@@ -312,7 +312,7 @@ impl App {
             }
         }
         let mut computed_smart_folders = Vec::new();
-        if self.config.features.smart_folders {
+        if self.config.features.smart_folders.is_enabled() {
             let today_matches = self.notes_in_smart_folder(&SmartFolderKind::Today);
             if !today_matches.is_empty() {
                 computed_smart_folders.push(SmartFolderData {
@@ -446,7 +446,7 @@ impl App {
             }
         }
         let subnotes_total: usize = subnotes_cache.iter().map(|(_, v)| v.len()).sum();
-        if self.config.features.subnotes {
+        if self.config.features.subnotes.is_enabled() {
             visual.push(VisualItem::Folder {
                 path: VIRTUAL_SUBNOTES_PATH.to_string(),
                 name: VIRTUAL_SUBNOTES_LABEL.to_string(),
@@ -1016,7 +1016,7 @@ impl App {
     /// Returns indices into `self.notes` that match the given smart folder kind.
     /// Respects `smart_folders_enabled` (empty when disabled).
     pub(crate) fn notes_in_smart_folder(&self, kind: &SmartFolderKind) -> Vec<usize> {
-        if !self.config.features.smart_folders {
+        if !self.config.features.smart_folders.is_enabled() {
             return Vec::new();
         }
         let now = crate::ui::now_unix_secs();
@@ -1441,7 +1441,7 @@ impl App {
             {
                 let folder_path = path.clone();
                 let is_pinned = folder_path == crate::app::VIRTUAL_PINNED_PATH;
-                if self.config.list.folder_graph_preview && self.config.features.graph_view {
+                if self.config.list.folder_graph_preview && self.config.features.graph_view.is_enabled() {
                     self.list.preview_content = Some(PreviewContent::FolderGraph {
                         root_path: folder_path.clone(),
                         focused_path: folder_path,

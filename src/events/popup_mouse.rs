@@ -870,8 +870,8 @@ impl crate::popups::ActivePopup {
                 let query_text = p.input.lines().join("");
                 let parsed = crate::app::parse_search_query(
                     &query_text,
-                    app.config.features.tags,
-                    app.config.features.subnotes,
+                    app.config.features.tags.is_enabled(),
+                    app.config.features.subnotes.is_enabled(),
                 );
                 let has_filter = parsed.folder_filter.is_some()
                     || parsed.pinned_only

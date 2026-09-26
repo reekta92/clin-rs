@@ -104,7 +104,7 @@ impl Action for ShowInfoAction {
                         ("Size".to_string(), format!("{:.1} KB", size_kb)),
                         ("Modified".to_string(), modified),
                     ];
-                    if app.config.features.tags {
+                    if app.config.features.tags.is_enabled() {
                         size_metrics.push(("Tags".to_string(), format!("{}", summary.tags.len())));
                     }
                     size_metrics.push(("Links".to_string(), format!("{}", summary.links.len())));
@@ -126,7 +126,7 @@ impl Action for ShowInfoAction {
                     body: top_5.join(", "),
                 },
             ];
-            if !app.config.features.tags {
+            if !app.config.features.tags.is_enabled() {
                 items.retain(|item| !matches!(item, InfoItem::Tags(_)));
             }
 

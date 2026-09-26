@@ -661,7 +661,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     )),
                 ),
             ];
-            if app.config.features.smart_folders {
+            if app.config.features.smart_folders.is_enabled() {
                 tabs.push((
                     "Smart",
                     Some(crate::ui::get_icon(
@@ -672,7 +672,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 ));
             }
             // Subnotes tab (like Pinned) — hidden when the feature is off.
-            if app.config.features.subnotes {
+            if app.config.features.subnotes.is_enabled() {
                 tabs.push((
                     "Subnotes",
                     Some(crate::ui::get_icon(
@@ -688,11 +688,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 || app.list.grid_folder.starts_with('@')
             {
                 2
-            } else if app.config.features.subnotes
+            } else if app.config.features.subnotes.is_enabled()
                 && (app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
                     || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder))
             {
-                if app.config.features.smart_folders {
+                if app.config.features.smart_folders.is_enabled() {
                     3
                 } else {
                     2
@@ -2213,7 +2213,7 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
             ));
             groups.push((ListHeaderField::Age, age));
 
-            if app.config.features.tags && !note.tags.is_empty() {
+            if app.config.features.tags.is_enabled() && !note.tags.is_empty() {
                 let tag_icon =
                     crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode);
                 let mut tags = Vec::new();

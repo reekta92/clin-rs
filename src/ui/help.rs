@@ -39,11 +39,11 @@ pub fn help_tabs(
 /// Whether a help tab's feature is enabled. Notes/Editor/About are always on.
 pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool {
     match tab {
-        HelpTab::Graph => f.graph_view,
-        HelpTab::Draw => f.draw_view,
-        HelpTab::Canvas => f.canvas_view,
-        HelpTab::Backup => f.backup,
-        HelpTab::Templates => f.templates,
+        HelpTab::Graph => f.graph_view.is_enabled(),
+        HelpTab::Draw => f.draw_view.is_enabled(),
+        HelpTab::Canvas => f.canvas_view.is_enabled(),
+        HelpTab::Backup => f.backup.is_enabled(),
+        HelpTab::Templates => f.templates.is_enabled(),
         HelpTab::Notes | HelpTab::Editor | HelpTab::About => true,
     }
 }

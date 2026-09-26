@@ -615,49 +615,115 @@ pub struct StatuslineOverride {
     pub footer_left: Option<String>,
     pub footer_right: Option<String>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FeatureState {
+    #[default]
+    Enabled,
+    Disabled,
+    Deleted,
+}
 
-/// Master feature toggles. Each flag gates one view or feature; when `false`
+impl FeatureState {
+    pub fn is_enabled(self) -> bool {
+        self == FeatureState::Enabled
+    }
+
+    pub fn is_deleted(self) -> bool {
+        self == FeatureState::Deleted
+    }
+}
+
+impl std::ops::Not for FeatureState {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        if self == FeatureState::Enabled {
+            FeatureState::Disabled
+        } else {
+            FeatureState::Enabled
+        }
+    }
+}
+
+impl serde::Serialize for FeatureState {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            FeatureState::Enabled => serializer.serialize_bool(true),
+            FeatureState::Disabled => serializer.serialize_bool(false),
+            FeatureState::Deleted => serializer.serialize_str("deleted"),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FeatureState {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FeatureStateVisitor;
+        impl<'de> serde::de::Visitor<'de> for FeatureStateVisitor {
+            type Value = FeatureState;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a boolean or 'deleted'")
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(if v { FeatureState::Enabled } else { FeatureState::Disabled })
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v.to_lowercase().as_str() {
+                    "enabled" | "true" => Ok(FeatureState::Enabled),
+                    "disabled" | "false" => Ok(FeatureState::Disabled),
+                    "deleted" => Ok(FeatureState::Deleted),
+                    _ => Err(E::custom(format!("unknown feature state: {}", v))),
+                }
+            }
+        }
+        deserializer.deserialize_any(FeatureStateVisitor)
+    }
+}
+
+/// Master feature toggles. Each flag gates one view or feature; when `Disabled`
 /// the feature's launch cost is skipped and its entry points are hidden.
+/// When `Deleted`, the keybinds are additionally cleared.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct FeaturesConfig {
-    pub graph_view: bool,
-    pub canvas_view: bool,
-    pub draw_view: bool,
-    pub outline_view: bool,
-    pub help_view: bool,
-    pub tags: bool,
-    pub trash: bool,
-    pub subnotes: bool,
-    pub templates: bool,
-    pub import: bool,
-    pub encryption: bool,
-    pub images: bool,
-    pub backup: bool,
-    pub goals: bool,
-    pub calendar: bool,
-    pub smart_folders: bool,
+    pub graph_view: FeatureState,
+    pub canvas_view: FeatureState,
+    pub draw_view: FeatureState,
+    pub outline_view: FeatureState,
+    pub help_view: FeatureState,
+    pub tags: FeatureState,
+    pub trash: FeatureState,
+    pub subnotes: FeatureState,
+    pub templates: FeatureState,
+    pub import: FeatureState,
+    pub encryption: FeatureState,
+    pub images: FeatureState,
+    pub backup: FeatureState,
+    pub goals: FeatureState,
+    pub calendar: FeatureState,
+    pub smart_folders: FeatureState,
 }
 
 impl Default for FeaturesConfig {
     fn default() -> Self {
         Self {
-            graph_view: true,
-            canvas_view: true,
-            draw_view: true,
-            outline_view: true,
-            help_view: true,
-            tags: true,
-            trash: true,
-            subnotes: true,
-            templates: true,
-            import: true,
-            encryption: true,
-            images: true,
-            backup: false,
-            goals: true,
-            calendar: true,
-            smart_folders: false,
+            graph_view: FeatureState::Enabled,
+            canvas_view: FeatureState::Enabled,
+            draw_view: FeatureState::Enabled,
+            outline_view: FeatureState::Enabled,
+            help_view: FeatureState::Enabled,
+            tags: FeatureState::Enabled,
+            trash: FeatureState::Enabled,
+            subnotes: FeatureState::Enabled,
+            templates: FeatureState::Enabled,
+            import: FeatureState::Enabled,
+            encryption: FeatureState::Enabled,
+            images: FeatureState::Enabled,
+            backup: FeatureState::Disabled,
+            goals: FeatureState::Enabled,
+            calendar: FeatureState::Enabled,
+            smart_folders: FeatureState::Disabled,
         }
     }
 }
