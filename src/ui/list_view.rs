@@ -3,17 +3,205 @@ use super::{
     draw_view_title_bar_with_tabs, format_keybind_hints, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
-#[cfg(test)]
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
 use unicode_width::UnicodeWidthStr;
 
-const GRID_TILE_W: u16 = 10; // outer width incl. border
-const GRID_TILE_H: u16 = 5; // outer height incl. border
-const GRID_GAP: u16 = 1; // space between tiles (h and v)
-const GRID_LEFT_MARGIN: u16 = 2; // left inset inside list_area
-const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
+pub(crate) const GRID_TILE_W: u16 = 10; // outer width incl. border
+pub(crate) const GRID_TILE_H: u16 = 5; // outer height incl. border
+pub(crate) const GRID_GAP: u16 = 1; // space between tiles (h and v)
+pub(crate) const GRID_LEFT_MARGIN: u16 = 2; // left inset inside list_area
+pub(crate) const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
+
+/// Grid tile render inputs, shared by the notes-view grid and the setup
+/// wizard's layout preview so both render identical tiles.
+#[derive(Clone, Copy)]
+pub(crate) struct GridTileSpec<'a> {
+    pub icon_char: char,
+    /// Shown centered instead of `icon_char` when icons are off.
+    pub text_label: &'a str,
+    pub glyph_color: Color,
+    pub raw_name: &'a str,
+    pub is_selected: bool,
+    pub in_selection: bool,
+    pub is_hovered: bool,
+    pub has_tags: bool,
+    pub is_pinned_folder: bool,
+}
+
+/// Columns/rows of grid tiles that fit in `area`; columns always >= 1.
+pub(crate) fn grid_dims(area: Rect) -> (usize, usize) {
+    let cols = ((area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP)) / (GRID_TILE_W + GRID_GAP))
+        .max(1) as usize;
+    let rows = ((area.height.saturating_sub(GRID_TOP_MARGIN + GRID_GAP)) / (GRID_TILE_H + GRID_GAP))
+        as usize;
+    (cols, rows)
+}
+
+/// Tile rect for grid cell (`col`, `row`) inside `area`.
+pub(crate) fn grid_tile_rect(area: Rect, col: usize, row: usize) -> Rect {
+    Rect::new(
+        area.x + GRID_LEFT_MARGIN + (col as u16) * (GRID_TILE_W + GRID_GAP),
+        area.y + GRID_TOP_MARGIN + (row as u16) * (GRID_TILE_H + GRID_GAP),
+        GRID_TILE_W,
+        GRID_TILE_H,
+    )
+}
+
+/// Render one grid tile: plain border, centered icon (or text label with
+/// icons off), tag/pin glyph in the top-right corner, centered name on the
+/// bottom inner row.
+pub(crate) fn render_grid_tile(
+    buf: &mut ratatui::buffer::Buffer,
+    tile_rect: Rect,
+    spec: GridTileSpec<'_>,
+    theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
+) {
+    let GridTileSpec {
+        icon_char,
+        text_label,
+        glyph_color,
+        raw_name,
+        is_selected,
+        in_selection,
+        is_hovered,
+        has_tags,
+        is_pinned_folder,
+    } = spec;
+
+    // --- tile border (plain border = "button") ---
+    // Selected tiles get accent bg. Cursor-on-selected gets a brighter border
+    // so the cursor position remains visible on already-selected tiles.
+    let mut block = Block::default().borders(Borders::ALL);
+    if in_selection {
+        block = block.style(Style::default().bg(theme.accent));
+    } else if is_hovered && !is_selected {
+        block = block.style(theme.hover_style());
+    }
+    let border_fg = if is_selected && in_selection {
+        theme.highlight_fg
+    } else if is_selected {
+        theme.highlight_bg
+    } else if in_selection {
+        theme.accent
+    } else {
+        theme.border
+    };
+    block = block.border_style(Style::default().fg(border_fg));
+    let inner = block.inner(tile_rect);
+    block.render(tile_rect, buf); // paints border
+    let icon_fg = if in_selection {
+        theme.highlight_fg
+    } else {
+        glyph_color
+    };
+    let base_style = if in_selection {
+        Style::default().bg(theme.accent)
+    } else if is_hovered && !is_selected {
+        theme.hover_style()
+    } else {
+        Style::default()
+    };
+    let icon_style = base_style
+        .fg(icon_fg)
+        .add_modifier(if is_selected || in_selection {
+            Modifier::BOLD
+        } else {
+            Modifier::empty()
+        });
+    buf.set_style(Rect::new(inner.x, inner.y, inner.width, 1), icon_style);
+    let inner_w = inner.width as usize;
+    if icon_mode == crate::config::IconMode::None {
+        let label_chars: Vec<char> = text_label.chars().collect();
+        let label_start = inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
+        for (k, ch) in label_chars.iter().enumerate() {
+            if let Some(cell) = buf.cell_mut((label_start + k as u16, inner.y)) {
+                cell.set_char(*ch).set_style(icon_style);
+            }
+        }
+    } else {
+        use unicode_width::UnicodeWidthChar;
+        let w = UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
+        let icon_x = inner.x + (inner_w.saturating_sub(w as usize) / 2) as u16;
+        buf.set_string(icon_x, inner.y, icon_char.to_string(), icon_style);
+    }
+
+    // --- tag icon: top right corner for items that have tags ---
+    if has_tags {
+        let tag_x = inner.x + inner.width.saturating_sub(1);
+        let tag_fg = if in_selection {
+            theme.highlight_fg
+        } else {
+            theme.tag
+        };
+        let tag_style = base_style
+            .fg(tag_fg)
+            .add_modifier(if is_selected || in_selection {
+                Modifier::BOLD
+            } else {
+                Modifier::empty()
+            });
+        use unicode_width::UnicodeWidthChar;
+        let tg = crate::ui::get_char('\u{f02b}', '\u{1f3f7}', icon_mode);
+        let tw = UnicodeWidthChar::width(tg).unwrap_or(1) as u16;
+        let tg_x = tag_x.saturating_sub(tw.saturating_sub(1));
+        buf.set_string(tg_x, inner.y, tg.to_string(), tag_style);
+    }
+
+    // --- pin icon: top right corner for pinned folders ---
+    if is_pinned_folder {
+        let pin_x = inner.x + inner.width.saturating_sub(1);
+        let pin_fg = if in_selection {
+            theme.highlight_fg
+        } else {
+            theme.pinned
+        };
+        let pin_style = base_style
+            .fg(pin_fg)
+            .add_modifier(if is_selected || in_selection {
+                Modifier::BOLD
+            } else {
+                Modifier::empty()
+            });
+        let pg = crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', icon_mode);
+        let pw = unicode_width::UnicodeWidthChar::width(pg).unwrap_or(1) as u16;
+        let pg_x = pin_x.saturating_sub(pw.saturating_sub(1));
+        buf.set_string(pg_x, inner.y, pg.to_string(), pin_style);
+    }
+
+    // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
+    let sanitized = crate::fsutil::sanitize_for_terminal(raw_name);
+    let mut chars: Vec<char> = sanitized.chars().collect();
+    if chars.len() > inner_w {
+        chars.truncate(inner_w - 1);
+        chars.push('…');
+    }
+    let pad = inner_w.saturating_sub(chars.len());
+    let left = pad / 2;
+    let name_style = if is_selected || in_selection {
+        if in_selection {
+            Style::default()
+                .fg(theme.highlight_fg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().add_modifier(Modifier::BOLD)
+        }
+    } else if is_hovered {
+        theme.hover_style()
+    } else {
+        Style::default()
+    };
+    let mut name_string: String = " ".repeat(left);
+    name_string.extend(chars.iter());
+    let name_row = inner.y + 2; // bottom row of the 3 inner rows
+    for (k, ch) in name_string.chars().enumerate() {
+        if let Some(cell) = buf.cell_mut((inner.x + k as u16, name_row)) {
+            cell.set_char(ch).set_style(name_style);
+        }
+    }
+}
 
 /// Viewport base span for SubnoteGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
 /// Shared between renderer and mouse handler to prevent drift.
@@ -661,7 +849,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     )),
                 ),
             ];
-            if app.config.list.smart_folders_enabled {
+            if app.config.features.smart_folders.is_enabled() {
                 tabs.push((
                     "Smart",
                     Some(crate::ui::get_icon(
@@ -671,25 +859,28 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     )),
                 ));
             }
-            // Subnotes tab always visible (like Pinned)
-            tabs.push((
-                "Subnotes",
-                Some(crate::ui::get_icon(
-                    "\u{f02c}",
-                    "\u{1f3f7}",
-                    app.config.ui.icon_mode,
-                )),
-            ));
+            // Subnotes tab (like Pinned) — hidden when the feature is off.
+            if app.config.features.subnotes.is_enabled() {
+                tabs.push((
+                    "Subnotes",
+                    Some(crate::ui::get_icon(
+                        "\u{f02c}",
+                        "\u{1f3f7}",
+                        app.config.ui.icon_mode,
+                    )),
+                ));
+            }
             let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
                 1
             } else if app.list.grid_folder == VIRTUAL_SMART_PATH
                 || app.list.grid_folder.starts_with('@')
             {
                 2
-            } else if app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
-                || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder)
+            } else if app.config.features.subnotes.is_enabled()
+                && (app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                    || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder))
             {
-                if app.config.list.smart_folders_enabled {
+                if app.config.features.smart_folders.is_enabled() {
                     3
                 } else {
                     2
@@ -965,11 +1156,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
 
             // --- columns / visible rows ---
-            let cols = ((list_area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP))
-                / (GRID_TILE_W + GRID_GAP))
-                .max(1) as usize;
-            let rows = ((list_area.height.saturating_sub(GRID_TOP_MARGIN + GRID_GAP))
-                / (GRID_TILE_H + GRID_GAP)) as usize;
+            let (cols, rows) = grid_dims(list_area);
             app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
 
             let len = app.list.visual_list.len();
@@ -1003,12 +1190,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 let row = i / cols;
                 let col = i % cols;
-                let tile_rect = ratatui::layout::Rect::new(
-                    list_area.x + GRID_LEFT_MARGIN + (col as u16) * (GRID_TILE_W + GRID_GAP),
-                    list_area.y + GRID_TOP_MARGIN + (row as u16) * (GRID_TILE_H + GRID_GAP),
-                    GRID_TILE_W,
-                    GRID_TILE_H,
-                );
+                let tile_rect = grid_tile_rect(list_area, col, row);
                 let is_selected = vi == app.list.visual_index;
                 let in_selection = app.list.selected_indices.contains(&vi);
                 let is_hovered = app
@@ -1213,95 +1395,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
                 };
 
-                // --- tile border (plain border = "button") ---
-                let mut block = Block::default().borders(Borders::ALL);
-                // Selected tiles get accent bg. Cursor-on-selected gets a brighter border
-                // so the cursor position remains visible on already-selected tiles.
-                if in_selection {
-                    block = block.style(Style::default().bg(app.app_theme.accent));
-                } else if is_hovered && !is_selected {
-                    block = block.style(app.app_theme.hover_style());
-                }
-                let border_fg = if is_selected && in_selection {
-                    app.app_theme.highlight_fg
-                } else if is_selected {
-                    app.app_theme.highlight_bg
-                } else if in_selection {
-                    app.app_theme.accent
-                } else {
-                    app.app_theme.border
-                };
-                block = block.border_style(Style::default().fg(border_fg));
-                let inner = block.inner(tile_rect);
-                block.render(tile_rect, buf); // paints border
-                let icon_fg = if in_selection {
-                    app.app_theme.highlight_fg
-                } else {
-                    glyph_color
-                };
-                let base_style = if in_selection {
-                    Style::default().bg(app.app_theme.accent)
-                } else if is_hovered && !is_selected {
-                    app.app_theme.hover_style()
-                } else {
-                    Style::default()
-                };
-                let icon_style =
-                    base_style
-                        .fg(icon_fg)
-                        .add_modifier(if is_selected || in_selection {
-                            Modifier::BOLD
-                        } else {
-                            Modifier::empty()
-                        });
-                buf.set_style(Rect::new(inner.x, inner.y, inner.width, 1), icon_style);
-                let inner_w = inner.width as usize;
-                if app.config.ui.icon_mode == crate::config::IconMode::None {
-                    let label_chars: Vec<char> = text_label.chars().collect();
-                    let label_start =
-                        inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
-                    for (k, ch) in label_chars.iter().enumerate() {
-                        if let Some(cell) = buf.cell_mut((label_start + k as u16, inner.y)) {
-                            cell.set_char(*ch).set_style(icon_style);
-                        }
-                    }
-                } else {
-                    use unicode_width::UnicodeWidthChar;
-                    let w = UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
-                    let icon_x = inner.x + (inner_w.saturating_sub(w as usize) / 2) as u16;
-                    buf.set_string(icon_x, inner.y, icon_char.to_string(), icon_style);
-                }
-
-                // --- tag icon: top right corner for items that have tags ---
                 let has_tags = match item {
                     crate::app::VisualItem::Note { summary_idx, .. } => {
                         !app.notes[*summary_idx].tags.is_empty()
                     }
                     _ => false,
                 };
-                if has_tags {
-                    let tag_x = inner.x + inner.width.saturating_sub(1);
-                    let tag_fg = if in_selection {
-                        app.app_theme.highlight_fg
-                    } else {
-                        app.app_theme.tag
-                    };
-                    let tag_style =
-                        base_style
-                            .fg(tag_fg)
-                            .add_modifier(if is_selected || in_selection {
-                                Modifier::BOLD
-                            } else {
-                                Modifier::empty()
-                            });
-                    use unicode_width::UnicodeWidthChar;
-                    let tg = crate::ui::get_char('\u{f02b}', '\u{1f3f7}', app.config.ui.icon_mode);
-                    let tw = UnicodeWidthChar::width(tg).unwrap_or(1) as u16;
-                    let tg_x = tag_x.saturating_sub(tw.saturating_sub(1));
-                    buf.set_string(tg_x, inner.y, tg.to_string(), tag_style);
-                }
-
-                // --- pin icon: top right corner for pinned folders ---
                 let is_pinned_folder = matches!(
                     item,
                     crate::app::VisualItem::Folder {
@@ -1309,57 +1408,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         ..
                     }
                 );
-                if is_pinned_folder {
-                    let pin_x = inner.x + inner.width.saturating_sub(1);
-                    let pin_fg = if in_selection {
-                        app.app_theme.highlight_fg
-                    } else {
-                        app.app_theme.pinned
-                    };
-                    let pin_style =
-                        base_style
-                            .fg(pin_fg)
-                            .add_modifier(if is_selected || in_selection {
-                                Modifier::BOLD
-                            } else {
-                                Modifier::empty()
-                            });
-                    let pg = crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode);
-                    let pw = unicode_width::UnicodeWidthChar::width(pg).unwrap_or(1) as u16;
-                    let pg_x = pin_x.saturating_sub(pw.saturating_sub(1));
-                    buf.set_string(pg_x, inner.y, pg.to_string(), pin_style);
-                }
-
-                // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
-                let sanitized = crate::fsutil::sanitize_for_terminal(&raw_name);
-                let mut chars: Vec<char> = sanitized.chars().collect();
-                if chars.len() > inner_w {
-                    chars.truncate(inner_w - 1);
-                    chars.push('…');
-                }
-                let pad = inner_w.saturating_sub(chars.len());
-                let left = pad / 2;
-                let name_style = if is_selected || in_selection {
-                    if in_selection {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().add_modifier(Modifier::BOLD)
-                    }
-                } else if is_hovered {
-                    app.app_theme.hover_style()
-                } else {
-                    Style::default()
-                };
-                let mut name_string: String = " ".repeat(left);
-                name_string.extend(chars.iter());
-                let name_row = inner.y + 2; // bottom row of the 3 inner rows
-                for (k, ch) in name_string.chars().enumerate() {
-                    if let Some(cell) = buf.cell_mut((inner.x + k as u16, name_row)) {
-                        cell.set_char(ch).set_style(name_style);
-                    }
-                }
+                render_grid_tile(
+                    buf,
+                    tile_rect,
+                    GridTileSpec {
+                        icon_char,
+                        text_label,
+                        glyph_color,
+                        raw_name: &raw_name,
+                        is_selected,
+                        in_selection,
+                        is_hovered,
+                        has_tags,
+                        is_pinned_folder,
+                    },
+                    &app.app_theme,
+                    app.config.ui.icon_mode,
+                );
 
                 // --- record tile for mouse hit-testing ---
                 app.list.grid_tiles.push(crate::list_view::GridTile {
@@ -1818,7 +1883,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ("Space/click".to_string(), "cycle section"),
             ("a".to_string(), "add/remove section"),
             ("s".to_string(), "preview"),
-            ("c".to_string(), "calendar"),
+            ("c".to_string(), "widget pane"),
             ("←→ ↑↓".to_string(), "resize"),
             ("Esc".to_string(), "done"),
         ];
@@ -2210,7 +2275,7 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
             ));
             groups.push((ListHeaderField::Age, age));
 
-            if !note.tags.is_empty() {
+            if app.config.features.tags.is_enabled() && !note.tags.is_empty() {
                 let tag_icon =
                     crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode);
                 let mut tags = Vec::new();

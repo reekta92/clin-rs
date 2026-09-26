@@ -54,8 +54,8 @@ toggle_action!(
 toggle_action!(
     ToggleCalendarAction,
     "settings.calendar",
-    "Toggle Calendar",
-    "Show or hide the month calendar in the notes list",
+    "Toggle Widget Pane",
+    "Show or hide the widget pane in the notes list",
     ActionCategory::Settings,
     "\u{f073}",
     "\u{1f4c5}",
@@ -310,7 +310,7 @@ toggle_action!(
     "\u{26a1}",
     toggle_smart_folders,
     app,
-    if app.config.list.smart_folders_enabled {
+    if app.config.features.smart_folders.is_enabled() {
         "On"
     } else {
         "Off"
@@ -493,7 +493,194 @@ toggle_action!(
     "\u{1f3af}",
     toggle_goals,
     app,
-    if app.config.goals.enabled {
+    if app.config.features.goals.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleGraphViewAction,
+    "settings.toggle_graph_view",
+    "Toggle Graph View",
+    "Enable or disable the Graph view",
+    ActionCategory::Settings,
+    "\u{f0e8}",
+    "\u{1f5fa}",
+    toggle_graph_view,
+    app,
+    if app.config.features.graph_view.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleCanvasViewAction,
+    "settings.toggle_canvas_view",
+    "Toggle Canvas View",
+    "Enable or disable the Canvas view",
+    ActionCategory::Settings,
+    "\u{f005}",
+    "\u{1f58c}",
+    toggle_canvas_view,
+    app,
+    if app.config.features.canvas_view.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleDrawViewAction,
+    "settings.toggle_draw_view",
+    "Toggle Draw View",
+    "Enable or disable the Draw view",
+    ActionCategory::Settings,
+    "\u{f1fc}",
+    "\u{270f}",
+    toggle_draw_view,
+    app,
+    if app.config.features.draw_view.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleOutlineViewAction,
+    "settings.toggle_outline_view",
+    "Toggle Outline View",
+    "Enable or disable the Outline view",
+    ActionCategory::Settings,
+    "\u{f1c0}",
+    "\u{1f332}",
+    toggle_outline_view,
+    app,
+    if app.config.features.outline_view.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleHelpViewAction,
+    "settings.toggle_help_view",
+    "Toggle Help View",
+    "Enable or disable the Help view",
+    ActionCategory::Settings,
+    "\u{f059}",
+    "\u{2753}",
+    toggle_help_view,
+    app,
+    if app.config.features.help_view.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleTagsAction,
+    "settings.toggle_tags",
+    "Toggle Tags",
+    "Enable or disable tags",
+    ActionCategory::Settings,
+    "\u{f02b}",
+    "\u{1f3f7}",
+    toggle_tags,
+    app,
+    if app.config.features.tags.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleTrashAction,
+    "settings.toggle_trash",
+    "Toggle Trash",
+    "Enable or disable the trash view",
+    ActionCategory::Settings,
+    "\u{f1f8}",
+    "\u{1f5d1}",
+    toggle_trash,
+    app,
+    if app.config.features.trash.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleSubnotesAction,
+    "settings.toggle_subnotes",
+    "Toggle Subnotes",
+    "Enable or disable subnotes",
+    ActionCategory::Settings,
+    "\u{f02c}",
+    "\u{1f4dd}",
+    toggle_subnotes,
+    app,
+    if app.config.features.subnotes.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleTemplatesAction,
+    "settings.toggle_templates",
+    "Toggle Templates",
+    "Enable or disable note templates",
+    ActionCategory::Settings,
+    "\u{f15b}",
+    "\u{1f4c4}",
+    toggle_templates,
+    app,
+    if app.config.features.templates.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleImportAction,
+    "settings.toggle_import",
+    "Toggle Import",
+    "Enable or disable import and OCR paste",
+    ActionCategory::Settings,
+    "\u{f019}",
+    "\u{2b07}",
+    toggle_import,
+    app,
+    if app.config.features.import.is_enabled() {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
+    ToggleEncryptionAction,
+    "settings.toggle_encryption",
+    "Toggle Encryption",
+    "Enable or disable encrypt/decrypt actions",
+    ActionCategory::Settings,
+    "\u{f023}",
+    "\u{1f512}",
+    toggle_encryption,
+    app,
+    if app.config.features.encryption.is_enabled() {
         "On"
     } else {
         "Off"

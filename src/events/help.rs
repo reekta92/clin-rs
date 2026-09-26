@@ -1,4 +1,4 @@
-use crate::app::{App, HelpTab};
+use crate::app::App;
 use crate::keybinds::HelpAction;
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
@@ -55,10 +55,22 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
                 app.help_page = app.help_page.saturating_sub(1);
             }
             HelpAction::NextTab => {
-                app.switch_help_tab(app.help_tab.next());
+                let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
+                let cur_idx = tabs_data
+                    .iter()
+                    .position(|(t, _, _)| *t == app.help_tab)
+                    .unwrap_or(0);
+                let next_idx = (cur_idx + 1) % tabs_data.len();
+                app.switch_help_tab(tabs_data[next_idx].0);
             }
             HelpAction::PrevTab => {
-                app.switch_help_tab(app.help_tab.prev());
+                let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
+                let cur_idx = tabs_data
+                    .iter()
+                    .position(|(t, _, _)| *t == app.help_tab)
+                    .unwrap_or(0);
+                let prev_idx = (cur_idx + tabs_data.len() - 1) % tabs_data.len();
+                app.switch_help_tab(tabs_data[prev_idx].0);
             }
             HelpAction::Search => {
                 let theme = &app.app_theme;
@@ -72,14 +84,13 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         },
         crate::keybinds::MatchOutcome::Pending => {}
         crate::keybinds::MatchOutcome::NoMatch => match key.code {
-            KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
-            KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
-            KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
-            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
-            KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
-            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Backup),
-            KeyCode::Char('7') => app.switch_help_tab(HelpTab::Templates),
-            KeyCode::Char('8') => app.switch_help_tab(HelpTab::About),
+            KeyCode::Char(c) if ('1'..='8').contains(&c) => {
+                let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
+                let idx = (c as u8 - b'1') as usize;
+                if let Some((tab, _, _)) = tabs_data.get(idx) {
+                    app.switch_help_tab(*tab);
+                }
+            }
             KeyCode::Char('n') => {
                 let len = crate::ui::help_content::tab_popup_descriptions(app.help_tab).len();
                 if len > 0 {
@@ -129,9 +140,10 @@ pub fn handle_help_mouse(app: &mut App, mouse_event: MouseEvent, area: Rect) {
 
     let tab_bar_y = area.y;
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) && mouse_event.row == tab_bar_y {
-        let tabs: Vec<(&str, Option<&str>)> = crate::ui::help_tabs(app.config.ui.icon_mode);
+        let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
+        let tabs: Vec<(&str, Option<&str>)> = tabs_data.iter().map(|(_, l, i)| (*l, *i)).collect();
         let region = crate::ui::title_bar_tabs_region(area, "Help");
-        if let Some(i) = crate::ui::hit_test_tabs(
+        if let Some((tab, _, _)) = crate::ui::hit_test_tabs(
             &tabs,
             area.x,
             area.width,
@@ -139,8 +151,10 @@ pub fn handle_help_mouse(app: &mut App, mouse_event: MouseEvent, area: Rect) {
             mouse_event.column,
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
-        ) {
-            app.switch_help_tab(crate::app::HelpTab::from_index(i));
+        )
+        .and_then(|i| tabs_data.get(i))
+        {
+            app.switch_help_tab(*tab);
         }
     } else if mouse_event.kind == MouseEventKind::ScrollUp {
         app.help_page = app.help_page.saturating_sub(1);

@@ -164,7 +164,7 @@ fn strip_escape_filter(s: &str) -> String {
     out
 }
 
-pub fn parse_search_query(query: &str) -> SearchQuery {
+pub fn parse_search_query(query: &str, tags_enabled: bool, subnotes_enabled: bool) -> SearchQuery {
     let text = query.to_string();
     let mut folder_filter = None;
     let mut pinned_only = false;
@@ -174,6 +174,15 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
     let mut subnote_text = None;
 
     let tokens = find_filter_tokens(&text);
+    // Disabled features: leave their tokens in the query as literal text.
+    let tokens: Vec<(usize, &'static str)> = tokens
+        .into_iter()
+        .filter(|&(_, prefix)| match prefix {
+            " t:" | "t:" => tags_enabled,
+            " sn:" | "sn:" => subnotes_enabled,
+            _ => true,
+        })
+        .collect();
     if tokens.is_empty() {
         return SearchQuery {
             text,
@@ -474,12 +483,19 @@ impl App {
     }
     pub fn rebuild_note_index(&mut self) {
         let now = crate::ui::now_unix_secs();
+        let custom_rules: &[crate::config::CustomSmartFolder] =
+            if self.config.features.smart_folders.is_enabled() {
+                &self.config.list.custom_smart_folders
+            } else {
+                &[]
+            };
         let index = crate::note_index::NoteIndex::build(
             self.notes_revision,
             &self.notes,
             &self.catalog_folders,
-            &self.config.list.custom_smart_folders,
+            custom_rules,
             now,
+            self.config.features.calendar.is_enabled(),
         );
         self.note_index = Some(index);
     }
@@ -539,7 +555,7 @@ impl App {
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.show_all_files = bootstrap_config.list.show_all_files;
-        list.calendar_enabled = bootstrap_config.list.calendar_enabled;
+        list.calendar_enabled = bootstrap_config.features.calendar.is_enabled();
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
@@ -711,7 +727,11 @@ impl App {
             app.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
-        app.goals_progress = app.load_goals_progress();
+        app.goals_progress = if app.config.features.goals.is_enabled() {
+            app.load_goals_progress()
+        } else {
+            crate::goals::DailyProgress::default()
+        };
         app.list.folder_expanded.insert(String::new());
 
         if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir) {
@@ -766,8 +786,11 @@ impl App {
                     .expect("single thread pool"),
             )
         });
-        let (keybinds, keybind_warnings) =
+        let (mut keybinds, keybind_warnings) =
             storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
+
+        crate::app::strip_deleted_feature_keybinds(&mut keybinds, &bootstrap_config.features);
+
         let mut theme_warnings = Vec::new();
         let app_theme = crate::app_theme::AppThemeColors::from_config(
             &bootstrap_config.ui,
@@ -798,7 +821,7 @@ impl App {
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_all_files = bootstrap_config.list.show_all_files;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
-        list.calendar_enabled = bootstrap_config.list.calendar_enabled;
+        list.calendar_enabled = bootstrap_config.features.calendar.is_enabled();
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
@@ -978,7 +1001,11 @@ impl App {
             app.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
-        app.goals_progress = app.load_goals_progress();
+        app.goals_progress = if app.config.features.goals.is_enabled() {
+            app.load_goals_progress()
+        } else {
+            crate::goals::DailyProgress::default()
+        };
         app.list.folder_expanded.insert(String::new());
 
         if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir) {
@@ -1737,6 +1764,9 @@ impl App {
     }
 
     pub fn get_help_rows(&mut self) -> Vec<crate::ui::HelpRow> {
+        if !crate::ui::help_tab_enabled(self.help_tab, &self.config.features) {
+            return crate::ui::disabled_feature_help_rows(self.help_tab, &self.app_theme);
+        }
         if self.list.help_text_cache.is_none() {
             let rows = crate::ui::help_text_for_tab(
                 self.help_tab,
@@ -1841,6 +1871,21 @@ impl App {
     pub fn set_temporary_status_static(&mut self, message: &'static str) {
         self.status = Cow::Borrowed(message);
         self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    /// Returns `true` (and sets a status message) when the feature is disabled.
+    /// Used as a guard at every feature entry point.
+    pub fn feature_disabled(
+        &mut self,
+        enabled: bool,
+        label: &'static str,
+        flag: &'static str,
+    ) -> bool {
+        if enabled {
+            return false;
+        }
+        self.set_temporary_status(&format!("{label} disabled ([features] {flag} = false)"));
+        true
     }
 
     pub fn tick_status(&mut self) -> bool {
@@ -2453,6 +2498,9 @@ word_goal = 1200
         assert_eq!(app.mode, ViewMode::List);
         assert_eq!(app.return_mode, None);
 
+        // Backup view requires the backup feature flag.
+        app.config.features.backup = crate::config::FeatureState::Enabled;
+
         // 2. Open Backup view first time
         app.open_backup_view();
         assert_eq!(app.mode, ViewMode::Backup);
@@ -2610,5 +2658,86 @@ word_goal = 1200
         assert!(app2.list.folder_expanded.contains("a"));
         assert!(app2.list.folder_expanded.contains("a/b"));
         assert!(!app2.list.folder_expanded.contains("a/b/c"));
+    }
+}
+
+pub(crate) fn strip_deleted_feature_keybinds(
+    keybinds: &mut crate::keybinds::Keybinds,
+    features: &crate::config::FeaturesConfig,
+) {
+    if features.graph_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenGraph);
+        keybinds.graph.clear();
+    }
+    if features.draw_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenCanvas);
+        keybinds.draw.clear();
+    }
+    if features.canvas_view.is_deleted() {
+        keybinds.canvas.clear();
+    }
+    if features.outline_view.is_deleted() {
+        keybinds
+            .edit
+            .retain(|a, _| *a != crate::keybinds::EditAction::ToggleOutline);
+        keybinds.outline.clear();
+    }
+    if features.help_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::Help);
+        keybinds
+            .graph
+            .retain(|a, _| *a != crate::keybinds::GraphAction::Help);
+        keybinds
+            .draw
+            .retain(|a, _| *a != crate::keybinds::DrawAction::Help);
+        keybinds
+            .canvas
+            .retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
+        keybinds
+            .backup
+            .retain(|a, _| *a != crate::keybinds::BackupAction::Help);
+        keybinds
+            .outline
+            .retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
+        keybinds.help.clear();
+    }
+    if features.tags.is_deleted() {
+        keybinds.list.retain(|a, _| {
+            *a != crate::keybinds::ListAction::ManageTags
+                && *a != crate::keybinds::ListAction::RemoveTagsFromSelected
+        });
+    }
+    if features.trash.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenTrash);
+    }
+    if features.subnotes.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::ManageSubnotes);
+        keybinds
+            .edit
+            .retain(|a, _| *a != crate::keybinds::EditAction::ManageSubnotes);
+    }
+    if features.templates.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::NewFromTemplate);
+    }
+    if features.import.is_deleted() {
+        keybinds.edit.retain(|a, _| {
+            *a != crate::keybinds::EditAction::PasteImage
+                && *a != crate::keybinds::EditAction::InsertImageFromFile
+        });
+    }
+    if features.backup.is_deleted() {
+        keybinds.backup.clear();
     }
 }

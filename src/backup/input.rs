@@ -744,6 +744,7 @@ mod tests {
 
         let mut state = BackupState::new(
             temp_dir.path().to_path_buf(),
+            false,
             &config,
             theme,
             keybinds.clone(),
@@ -776,6 +777,7 @@ mod tests {
 
         let mut state = BackupState::new(
             temp_dir.path().to_path_buf(),
+            false,
             &config,
             theme,
             keybinds.clone(),
@@ -818,16 +820,14 @@ mod tests {
     #[test]
     fn test_backup_disabled_ignores_movement_and_clears_state() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let config = BackupConfig {
-            enabled: true,
-            ..Default::default()
-        };
+        let config = BackupConfig::default();
         let theme = AppThemeColors::default();
         let keybinds = Keybinds::default();
         let seq_matcher = crate::keybinds::KeyMatcher::new();
 
         let mut state = BackupState::new(
             temp_dir.path().to_path_buf(),
+            true,
             &config,
             theme,
             keybinds.clone(),

@@ -150,7 +150,14 @@ fn run_backup(
             return;
         }
     };
-    perform(git_lock, status, &vault_path, &config.backup, message);
+    perform(
+        git_lock,
+        status,
+        &vault_path,
+        &config.backup,
+        config.features.backup.is_enabled(),
+        message,
+    );
 }
 
 /// Pure backup body (lifted from the old `try_auto_backup_raw`), parameterized
@@ -162,9 +169,10 @@ pub(crate) fn perform(
     status: &Arc<Mutex<Option<String>>>,
     vault_path: &Path,
     backup: &BackupConfig,
+    enabled: bool,
     message: &str,
 ) {
-    if !backup.enabled {
+    if !enabled {
         return;
     }
     let result = (|| -> anyhow::Result<String> {
@@ -228,10 +236,8 @@ mod tests {
             &git_lock,
             &status,
             vault,
-            &BackupConfig {
-                enabled: true,
-                ..Default::default()
-            },
+            &BackupConfig::default(),
+            true,
             "t",
         );
 
@@ -255,10 +261,8 @@ mod tests {
             &git_lock,
             &status,
             &file_path,
-            &BackupConfig {
-                enabled: true,
-                ..Default::default()
-            },
+            &BackupConfig::default(),
+            true,
             "t",
         );
 
@@ -277,10 +281,8 @@ mod tests {
             &git_lock,
             &status,
             vault,
-            &BackupConfig {
-                enabled: false,
-                ..Default::default()
-            },
+            &BackupConfig::default(),
+            false,
             "t",
         );
 

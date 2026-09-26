@@ -264,6 +264,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::RemoveTagsFromSelected => {
+                if app.feature_disabled(app.config.features.tags.is_enabled(), "Tags", "tags") {
+                    return false;
+                }
                 app.begin_remove_tags_from_selected();
                 return false;
             }
@@ -834,7 +837,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         )),
                     ),
                 ];
-                if app.config.list.smart_folders_enabled {
+                if app.config.features.smart_folders.is_enabled() {
                     tabs.push((
                         "Smart",
                         Some(crate::ui::get_icon(
@@ -844,14 +847,16 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         )),
                     ));
                 }
-                tabs.push((
-                    "Subnotes",
-                    Some(crate::ui::get_icon(
-                        "\u{f02c}",
-                        "\u{1f3f7}",
-                        app.config.ui.icon_mode,
-                    )),
-                ));
+                if app.config.features.subnotes.is_enabled() {
+                    tabs.push((
+                        "Subnotes",
+                        Some(crate::ui::get_icon(
+                            "\u{f02c}",
+                            "\u{1f3f7}",
+                            app.config.ui.icon_mode,
+                        )),
+                    ));
+                }
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
@@ -862,16 +867,16 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     app.config.ui.tab_icons_only,
                     app.config.ui.icon_mode,
                 ) {
-                    let subnotes_idx = if app.config.list.smart_folders_enabled {
+                    let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
                         3
                     } else {
                         2
                     };
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()
-                    } else if i == 2 && app.config.list.smart_folders_enabled {
+                    } else if i == 2 && app.config.features.smart_folders.is_enabled() {
                         crate::app::VIRTUAL_SMART_PATH.to_string()
-                    } else if i == subnotes_idx {
+                    } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
                         crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
                     } else {
                         String::new()

@@ -86,7 +86,7 @@ impl Action for ShowInfoAction {
             let modified = crate::ui::format_date(summary.updated_at, &app.date_format);
 
             use crate::popups::InfoItem;
-            let items = vec![
+            let mut items = vec![
                 InfoItem::Metrics(vec![
                     ("Total words".to_string(), format!("{}", words)),
                     ("Characters".to_string(), format!("{}", chars)),
@@ -99,12 +99,17 @@ impl Action for ShowInfoAction {
                     ("Tasks".to_string(), format!("{}", task_count)),
                 ]),
                 InfoItem::Spacer,
-                InfoItem::Metrics(vec![
-                    ("Size".to_string(), format!("{:.1} KB", size_kb)),
-                    ("Modified".to_string(), modified),
-                    ("Tags".to_string(), format!("{}", summary.tags.len())),
-                    ("Links".to_string(), format!("{}", summary.links.len())),
-                ]),
+                InfoItem::Metrics({
+                    let mut size_metrics = vec![
+                        ("Size".to_string(), format!("{:.1} KB", size_kb)),
+                        ("Modified".to_string(), modified),
+                    ];
+                    if app.config.features.tags.is_enabled() {
+                        size_metrics.push(("Tags".to_string(), format!("{}", summary.tags.len())));
+                    }
+                    size_metrics.push(("Links".to_string(), format!("{}", summary.links.len())));
+                    size_metrics
+                }),
                 InfoItem::Spacer,
                 InfoItem::Text {
                     heading: "Note ID / File Path".to_string(),
@@ -121,6 +126,9 @@ impl Action for ShowInfoAction {
                     body: top_5.join(", "),
                 },
             ];
+            if !app.config.features.tags.is_enabled() {
+                items.retain(|item| !matches!(item, InfoItem::Tags(_)));
+            }
 
             app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
                 title: format!("Info: {}", note.title),
