@@ -1147,8 +1147,13 @@ mod tests {
             app.config.list.default_view,
             crate::config::NotesLayout::Tree
         );
+        assert_eq!(app.list.notes_layout, crate::config::NotesLayout::Tree);
+        
         assert!(app.config.features.tags.is_enabled());
         assert!(!app.config.features.graph_view.is_enabled());
+        // Calendar is disabled in Minimal
+        assert!(!app.config.features.calendar.is_enabled());
+        assert!(!app.list.calendar_enabled);
         // finish_setup tears down the view.
         assert!(app.setup_state.is_none());
         assert_eq!(app.mode, crate::app::ViewMode::List);

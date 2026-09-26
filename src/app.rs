@@ -789,81 +789,8 @@ impl App {
         let (mut keybinds, keybind_warnings) =
             storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
 
-        if bootstrap_config.features.graph_view.is_deleted() {
-            keybinds
-                .list
-                .retain(|a, _| *a != crate::keybinds::ListAction::OpenGraph);
-            keybinds.graph.clear();
-        }
-        if bootstrap_config.features.draw_view.is_deleted() {
-            keybinds
-                .list
-                .retain(|a, _| *a != crate::keybinds::ListAction::OpenCanvas);
-            keybinds.draw.clear();
-        }
-        if bootstrap_config.features.canvas_view.is_deleted() {
-            keybinds.canvas.clear();
-        }
-        if bootstrap_config.features.outline_view.is_deleted() {
-            keybinds
-                .edit
-                .retain(|a, _| *a != crate::keybinds::EditAction::ToggleOutline);
-            keybinds.outline.clear();
-        }
-        if bootstrap_config.features.help_view.is_deleted() {
-            keybinds
-                .list
-                .retain(|a, _| *a != crate::keybinds::ListAction::Help);
-            keybinds
-                .graph
-                .retain(|a, _| *a != crate::keybinds::GraphAction::Help);
-            keybinds
-                .draw
-                .retain(|a, _| *a != crate::keybinds::DrawAction::Help);
-            keybinds
-                .canvas
-                .retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
-            keybinds
-                .backup
-                .retain(|a, _| *a != crate::keybinds::BackupAction::Help);
-            keybinds
-                .outline
-                .retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
-            keybinds.help.clear();
-        }
-        if bootstrap_config.features.tags.is_deleted() {
-            keybinds.list.retain(|a, _| {
-                *a != crate::keybinds::ListAction::ManageTags
-                    && *a != crate::keybinds::ListAction::RemoveTagsFromSelected
-            });
-        }
-        if bootstrap_config.features.trash.is_deleted() {
-            keybinds
-                .list
-                .retain(|a, _| *a != crate::keybinds::ListAction::OpenTrash);
-        }
-        if bootstrap_config.features.subnotes.is_deleted() {
-            keybinds
-                .list
-                .retain(|a, _| *a != crate::keybinds::ListAction::ManageSubnotes);
-            keybinds
-                .edit
-                .retain(|a, _| *a != crate::keybinds::EditAction::ManageSubnotes);
-        }
-        if bootstrap_config.features.templates.is_deleted() {
-            keybinds
-                .list
-                .retain(|a, _| *a != crate::keybinds::ListAction::NewFromTemplate);
-        }
-        if bootstrap_config.features.import.is_deleted() {
-            keybinds.edit.retain(|a, _| {
-                *a != crate::keybinds::EditAction::PasteImage
-                    && *a != crate::keybinds::EditAction::InsertImageFromFile
-            });
-        }
-        if bootstrap_config.features.backup.is_deleted() {
-            keybinds.backup.clear();
-        }
+        crate::app::strip_deleted_feature_keybinds(&mut keybinds, &bootstrap_config.features);
+
 
         let mut theme_warnings = Vec::new();
         let app_theme = crate::app_theme::AppThemeColors::from_config(
@@ -2732,5 +2659,86 @@ word_goal = 1200
         assert!(app2.list.folder_expanded.contains("a"));
         assert!(app2.list.folder_expanded.contains("a/b"));
         assert!(!app2.list.folder_expanded.contains("a/b/c"));
+    }
+}
+
+pub(crate) fn strip_deleted_feature_keybinds(
+    keybinds: &mut crate::keybinds::Keybinds,
+    features: &crate::config::FeaturesConfig,
+) {
+    if features.graph_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenGraph);
+        keybinds.graph.clear();
+    }
+    if features.draw_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenCanvas);
+        keybinds.draw.clear();
+    }
+    if features.canvas_view.is_deleted() {
+        keybinds.canvas.clear();
+    }
+    if features.outline_view.is_deleted() {
+        keybinds
+            .edit
+            .retain(|a, _| *a != crate::keybinds::EditAction::ToggleOutline);
+        keybinds.outline.clear();
+    }
+    if features.help_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::Help);
+        keybinds
+            .graph
+            .retain(|a, _| *a != crate::keybinds::GraphAction::Help);
+        keybinds
+            .draw
+            .retain(|a, _| *a != crate::keybinds::DrawAction::Help);
+        keybinds
+            .canvas
+            .retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
+        keybinds
+            .backup
+            .retain(|a, _| *a != crate::keybinds::BackupAction::Help);
+        keybinds
+            .outline
+            .retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
+        keybinds.help.clear();
+    }
+    if features.tags.is_deleted() {
+        keybinds.list.retain(|a, _| {
+            *a != crate::keybinds::ListAction::ManageTags
+                && *a != crate::keybinds::ListAction::RemoveTagsFromSelected
+        });
+    }
+    if features.trash.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenTrash);
+    }
+    if features.subnotes.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::ManageSubnotes);
+        keybinds
+            .edit
+            .retain(|a, _| *a != crate::keybinds::EditAction::ManageSubnotes);
+    }
+    if features.templates.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::NewFromTemplate);
+    }
+    if features.import.is_deleted() {
+        keybinds.edit.retain(|a, _| {
+            *a != crate::keybinds::EditAction::PasteImage
+                && *a != crate::keybinds::EditAction::InsertImageFromFile
+        });
+    }
+    if features.backup.is_deleted() {
+        keybinds.backup.clear();
     }
 }

@@ -930,19 +930,36 @@ template = """
     pub fn finish_setup(&mut self) {
         let previous_config = self.config.clone();
         self.apply_setup_live();
+
+        if self.list.notes_layout != self.config.list.default_view {
+            self.list.notes_layout = self.config.list.default_view.clone();
+            if self.list.notes_layout == crate::config::NotesLayout::Grid {
+                self.list.grid_folder = String::new();
+            }
+            self.list.visual_index = 0;
+            self.refresh_visual_list();
+        }
+
         // Re-enabling a previously-Deleted feature needs its keybinds restored;
         // bootstrap strips Deleted-feature keybinds at load.
-        if previous_config.features != self.config.features {
-            let (kb, warnings) = self
-                .storage
-                .load_keybinds_with_preset(self.config.core.keybind_preset);
-            self.keybinds = kb;
-            for w in warnings {
-                self.messages
-                    .push(w, crate::app::messages::MessageSeverity::Warning);
-            }
-            self.seq_matcher.clear();
+        let (kb, warnings) = self
+            .storage
+            .load_keybinds_with_preset(self.config.core.keybind_preset);
+        self.keybinds = kb;
+        crate::app::strip_deleted_feature_keybinds(&mut self.keybinds, &self.config.features);
+        for w in warnings {
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
+        self.seq_matcher.clear();
+
+        self.list.calendar_enabled = self.config.features.calendar.is_enabled();
+        self.goals_progress = if self.config.features.goals.is_enabled() {
+            self.load_goals_progress()
+        } else {
+            crate::goals::DailyProgress::default()
+        };
+        self.refresh_visual_list();
         let (selected_path, changed_vault, confirmed_path) = {
             let Some(state) = self.setup_state.as_ref() else {
                 return;
@@ -1043,6 +1060,7 @@ template = """
             .storage
             .load_keybinds_with_preset(self.config.core.keybind_preset);
         self.keybinds = kb;
+        crate::app::strip_deleted_feature_keybinds(&mut self.keybinds, &self.config.features);
         for w in warnings {
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
