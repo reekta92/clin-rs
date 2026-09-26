@@ -9,7 +9,11 @@ impl App {
     }
 
     pub fn open_help_page_with_tab(&mut self, tab: HelpTab) {
-        if self.feature_disabled(self.config.features.help_view.is_enabled(), "Help", "help_view") {
+        if self.feature_disabled(
+            self.config.features.help_view.is_enabled(),
+            "Help",
+            "help_view",
+        ) {
             return;
         }
         if self.mode != ViewMode::Help {
@@ -56,7 +60,11 @@ impl App {
     }
 
     pub fn open_graph_view(&mut self) {
-        if self.feature_disabled(self.config.features.graph_view.is_enabled(), "Graph view", "graph_view") {
+        if self.feature_disabled(
+            self.config.features.graph_view.is_enabled(),
+            "Graph view",
+            "graph_view",
+        ) {
             return;
         }
         if self.graph_plugin.is_none() {
@@ -151,7 +159,11 @@ impl App {
     }
 
     pub fn open_draw_view(&mut self) {
-        if self.feature_disabled(self.config.features.draw_view.is_enabled(), "Draw view", "draw_view") {
+        if self.feature_disabled(
+            self.config.features.draw_view.is_enabled(),
+            "Draw view",
+            "draw_view",
+        ) {
             return;
         }
         let note_id = self.get_selected_note_id();
@@ -264,7 +276,11 @@ impl App {
     }
 
     pub fn begin_create_draw(&mut self) {
-        if self.feature_disabled(self.config.features.draw_view.is_enabled(), "Draw view", "draw_view") {
+        if self.feature_disabled(
+            self.config.features.draw_view.is_enabled(),
+            "Draw view",
+            "draw_view",
+        ) {
             return;
         }
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {

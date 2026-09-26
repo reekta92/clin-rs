@@ -366,7 +366,9 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
         "manage_subnotes_list" => app.config.features.subnotes.is_enabled(),
         "note.encrypt" | "note.decrypt" => app.config.features.encryption.is_enabled(),
         "settings.configure_smart_folders" => app.config.features.smart_folders.is_enabled(),
-        "ocr.paste" | "paste_image" | "insert_image_from_file" => app.config.features.import.is_enabled(),
+        "ocr.paste" | "paste_image" | "insert_image_from_file" => {
+            app.config.features.import.is_enabled()
+        }
         id if id.starts_with("insert.") => app.config.features.import.is_enabled(),
         "settings.toggle_graph_view" => !app.config.features.graph_view.is_deleted(),
         "settings.toggle_canvas_view" => !app.config.features.canvas_view.is_deleted(),

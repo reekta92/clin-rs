@@ -424,7 +424,11 @@ impl BackupState {
     pub fn save_settings(&mut self) {
         let mut config = ClinConfig::load().0.unwrap_or_default();
 
-        config.features.backup = if self.settings.enabled { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled };
+        config.features.backup = if self.settings.enabled {
+            crate::config::FeatureState::Enabled
+        } else {
+            crate::config::FeatureState::Disabled
+        };
         config.backup.backup_on_save = self.settings.backup_on_save;
         config.backup.backup_on_quit = self.settings.backup_on_quit;
         config.backup.auto_push = self.settings.auto_push;

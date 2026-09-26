@@ -279,7 +279,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::PasteImage => {
-                if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import") {
+                if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import")
+                {
                     return false;
                 }
                 let action = &crate::actions::ocr::PasteImageAction;
@@ -289,7 +290,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertImageFromFile => {
-                if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import") {
+                if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import")
+                {
                     return false;
                 }
                 let action = &crate::actions::ocr::InsertImageFromFileAction;

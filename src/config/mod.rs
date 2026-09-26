@@ -491,35 +491,65 @@ impl ClinConfig {
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("enabled"))
                 .and_then(|v| v.as_bool())
-                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
                 .unwrap_or(defaults.images);
             let backup = root
                 .get("backup")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("enabled"))
                 .and_then(|v| v.as_bool())
-                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
                 .unwrap_or(defaults.backup);
             let goals = root
                 .get("goals")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("enabled"))
                 .and_then(|v| v.as_bool())
-                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
                 .unwrap_or(defaults.goals);
             let calendar = root
                 .get("list")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("calendar_enabled"))
                 .and_then(|v| v.as_bool())
-                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
                 .unwrap_or(defaults.calendar);
             let smart_folders = root
                 .get("list")
                 .and_then(|s| s.as_table())
                 .and_then(|t| t.get("smart_folders_enabled"))
                 .and_then(|v| v.as_bool())
-                .map(|b| if b { FeatureState::Enabled } else { FeatureState::Disabled })
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
                 .unwrap_or(defaults.smart_folders);
 
             let mut features = toml::value::Table::new();
@@ -541,11 +571,14 @@ impl ClinConfig {
                 ("calendar", calendar),
                 ("smart_folders", smart_folders),
             ] {
-                features.insert(k.to_string(), match v {
-                    FeatureState::Enabled => toml::Value::Boolean(true),
-                    FeatureState::Disabled => toml::Value::Boolean(false),
-                    FeatureState::Deleted => toml::Value::String("deleted".to_string()),
-                });
+                features.insert(
+                    k.to_string(),
+                    match v {
+                        FeatureState::Enabled => toml::Value::Boolean(true),
+                        FeatureState::Disabled => toml::Value::Boolean(false),
+                        FeatureState::Deleted => toml::Value::String("deleted".to_string()),
+                    },
+                );
             }
 
             if let Some(t) = root.get_mut("image").and_then(|s| s.as_table_mut()) {

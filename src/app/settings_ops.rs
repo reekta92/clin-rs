@@ -89,7 +89,13 @@ impl App {
             self.set_temporary_status_static("Calendar disabled");
         }
         let val = self.list.calendar_enabled;
-        self.persist_config(|c| c.features.calendar = if val { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled });
+        self.persist_config(|c| {
+            c.features.calendar = if val {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
+        });
     }
 
     pub fn toggle_inline_info(&mut self) {
@@ -496,7 +502,13 @@ impl App {
             val,
             "Smart folders enabled",
             "Smart folders disabled",
-            |c, v| c.features.smart_folders = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled },
+            |c, v| {
+                c.features.smart_folders = if v {
+                    crate::config::FeatureState::Enabled
+                } else {
+                    crate::config::FeatureState::Disabled
+                }
+            },
         );
     }
 
@@ -782,7 +794,11 @@ impl App {
         self.refresh_visual_list();
         let val = self.config.features.goals.is_enabled();
         self.flag_status_persist(val, "Goals enabled", "Goals disabled", |c, v| {
-            c.features.goals = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.goals = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -790,7 +806,11 @@ impl App {
         self.config.features.graph_view = !self.config.features.graph_view;
         let val = self.config.features.graph_view.is_enabled();
         self.flag_status_persist(val, "Graph view enabled", "Graph view disabled", |c, v| {
-            c.features.graph_view = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.graph_view = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -801,7 +821,13 @@ impl App {
             val,
             "Canvas view enabled",
             "Canvas view disabled",
-            |c, v| c.features.canvas_view = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled },
+            |c, v| {
+                c.features.canvas_view = if v {
+                    crate::config::FeatureState::Enabled
+                } else {
+                    crate::config::FeatureState::Disabled
+                }
+            },
         );
     }
 
@@ -809,7 +835,11 @@ impl App {
         self.config.features.draw_view = !self.config.features.draw_view;
         let val = self.config.features.draw_view.is_enabled();
         self.flag_status_persist(val, "Draw view enabled", "Draw view disabled", |c, v| {
-            c.features.draw_view = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.draw_view = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -820,7 +850,13 @@ impl App {
             val,
             "Outline view enabled",
             "Outline view disabled",
-            |c, v| c.features.outline_view = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled },
+            |c, v| {
+                c.features.outline_view = if v {
+                    crate::config::FeatureState::Enabled
+                } else {
+                    crate::config::FeatureState::Disabled
+                }
+            },
         );
     }
 
@@ -828,7 +864,11 @@ impl App {
         self.config.features.help_view = !self.config.features.help_view;
         let val = self.config.features.help_view.is_enabled();
         self.flag_status_persist(val, "Help enabled", "Help disabled", |c, v| {
-            c.features.help_view = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.help_view = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -837,7 +877,11 @@ impl App {
         self.refresh_visual_list();
         let val = self.config.features.tags.is_enabled();
         self.flag_status_persist(val, "Tags enabled", "Tags disabled", |c, v| {
-            c.features.tags = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.tags = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -845,7 +889,11 @@ impl App {
         self.config.features.trash = !self.config.features.trash;
         let val = self.config.features.trash.is_enabled();
         self.flag_status_persist(val, "Trash enabled", "Trash disabled", |c, v| {
-            c.features.trash = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.trash = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -854,7 +902,11 @@ impl App {
         self.refresh_visual_list();
         let val = self.config.features.subnotes.is_enabled();
         self.flag_status_persist(val, "Subnotes enabled", "Subnotes disabled", |c, v| {
-            c.features.subnotes = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.subnotes = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -862,7 +914,11 @@ impl App {
         self.config.features.templates = !self.config.features.templates;
         let val = self.config.features.templates.is_enabled();
         self.flag_status_persist(val, "Templates enabled", "Templates disabled", |c, v| {
-            c.features.templates = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.templates = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -870,7 +926,11 @@ impl App {
         self.config.features.import = !self.config.features.import;
         let val = self.config.features.import.is_enabled();
         self.flag_status_persist(val, "Import enabled", "Import disabled", |c, v| {
-            c.features.import = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.import = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 
@@ -878,7 +938,11 @@ impl App {
         self.config.features.encryption = !self.config.features.encryption;
         let val = self.config.features.encryption.is_enabled();
         self.flag_status_persist(val, "Encryption enabled", "Encryption disabled", |c, v| {
-            c.features.encryption = if v { crate::config::FeatureState::Enabled } else { crate::config::FeatureState::Disabled }
+            c.features.encryption = if v {
+                crate::config::FeatureState::Enabled
+            } else {
+                crate::config::FeatureState::Disabled
+            }
         });
     }
 

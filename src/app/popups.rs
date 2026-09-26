@@ -6,7 +6,11 @@ use crate::templates::Template;
 
 impl App {
     pub fn open_template_popup(&mut self) {
-        if self.feature_disabled(self.config.features.templates.is_enabled(), "Templates", "templates") {
+        if self.feature_disabled(
+            self.config.features.templates.is_enabled(),
+            "Templates",
+            "templates",
+        ) {
             return;
         }
         match self.storage.list_templates() {

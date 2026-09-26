@@ -1441,7 +1441,9 @@ impl App {
             {
                 let folder_path = path.clone();
                 let is_pinned = folder_path == crate::app::VIRTUAL_PINNED_PATH;
-                if self.config.list.folder_graph_preview && self.config.features.graph_view.is_enabled() {
+                if self.config.list.folder_graph_preview
+                    && self.config.features.graph_view.is_enabled()
+                {
                     self.list.preview_content = Some(PreviewContent::FolderGraph {
                         root_path: folder_path.clone(),
                         focused_path: folder_path,

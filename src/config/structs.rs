@@ -665,7 +665,11 @@ impl<'de> serde::Deserialize<'de> for FeatureState {
             }
 
             fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
-                Ok(if v { FeatureState::Enabled } else { FeatureState::Disabled })
+                Ok(if v {
+                    FeatureState::Enabled
+                } else {
+                    FeatureState::Disabled
+                })
             }
 
             fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
