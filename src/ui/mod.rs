@@ -36,7 +36,10 @@ pub(crate) use canvas_selection::CanvasSelection;
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
-pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout, section_rects};
+pub(crate) use list_view::{
+    GridTileSpec, draw_list_view, get_preview_info, grid_dims, grid_tile_rect, list_view_layout,
+    render_grid_tile, section_rects,
+};
 pub use popups::*;
 pub use setup::draw_setup_view;
 pub use title_bar::*;
