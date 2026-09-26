@@ -9,6 +9,9 @@ impl App {
     }
 
     pub fn open_help_page_with_tab(&mut self, tab: HelpTab) {
+        if self.feature_disabled(self.config.features.help_view, "Help", "help_view") {
+            return;
+        }
         if self.mode != ViewMode::Help {
             self.return_mode = Some(self.mode);
         }
@@ -53,6 +56,9 @@ impl App {
     }
 
     pub fn open_graph_view(&mut self) {
+        if self.feature_disabled(self.config.features.graph_view, "Graph view", "graph_view") {
+            return;
+        }
         if self.graph_plugin.is_none() {
             match crate::graf_adapter::GrafPlugin::new(
                 &self.config,
@@ -81,6 +87,13 @@ impl App {
         }
     }
     pub fn open_outline_view(&mut self) {
+        if self.feature_disabled(
+            self.config.features.outline_view,
+            "Outline view",
+            "outline_view",
+        ) {
+            return;
+        }
         let note_id = self.get_selected_note_id();
         self.outline_state = if let Some(id) = note_id {
             match self.storage.load_note(&id) {
@@ -115,11 +128,15 @@ impl App {
     }
 
     pub fn open_backup_view(&mut self) {
+        if self.feature_disabled(self.config.features.backup, "Backup", "backup") {
+            return;
+        }
         let vault_path = crate::config::vault_path_or_dot(&self.config);
         let config = &self.config;
 
         self.backup_state = Some(crate::backup::state::BackupState::new(
             vault_path,
+            config.features.backup,
             &config.backup,
             self.app_theme.clone(),
             self.keybinds.clone(),
@@ -134,6 +151,9 @@ impl App {
     }
 
     pub fn open_draw_view(&mut self) {
+        if self.feature_disabled(self.config.features.draw_view, "Draw view", "draw_view") {
+            return;
+        }
         let note_id = self.get_selected_note_id();
         let state = crate::draw::app::DrawAppState::new(
             self.storage.clone(),
@@ -162,6 +182,13 @@ impl App {
     }
 
     pub fn open_canvas_view(&mut self) {
+        if self.feature_disabled(
+            self.config.features.canvas_view,
+            "Canvas view",
+            "canvas_view",
+        ) {
+            return;
+        }
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
@@ -237,6 +264,9 @@ impl App {
     }
 
     pub fn begin_create_draw(&mut self) {
+        if self.feature_disabled(self.config.features.draw_view, "Draw view", "draw_view") {
+            return;
+        }
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
             self.list.grid_folder.clone()
         } else {
@@ -265,6 +295,13 @@ impl App {
     }
 
     pub fn begin_create_canvas(&mut self) {
+        if self.feature_disabled(
+            self.config.features.canvas_view,
+            "Canvas view",
+            "canvas_view",
+        ) {
+            return;
+        }
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
             self.list.grid_folder.clone()
         } else {
@@ -293,6 +330,9 @@ impl App {
     }
 
     pub fn open_trash_view(&mut self) {
+        if self.feature_disabled(self.config.features.trash, "Trash", "trash") {
+            return;
+        }
         match self.storage.list_trash() {
             Ok(items) => {
                 if items.is_empty() {
@@ -314,5 +354,32 @@ impl App {
 
     pub fn close_trash_view(&mut self) {
         self.popups.active = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    fn make_test_storage(dir: &std::path::Path) -> crate::storage::Storage {
+        crate::storage::Storage {
+            data_dir: dir.to_path_buf(),
+            config_dir: dir.to_path_buf(),
+            notes_dir: dir.to_path_buf(),
+            templates_dir: dir.to_path_buf(),
+            key: core::array::from_fn(|_| 1),
+            skip_dir_patterns: vec![],
+            rename_on_title_change: true,
+        }
+    }
+
+    #[test]
+    fn disabled_graph_view_blocks_entry() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let storage = make_test_storage(tmp.path());
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.config.features.graph_view = false;
+        app.mode = crate::app::ViewMode::List;
+        app.open_graph_view();
+        assert_eq!(app.mode, crate::app::ViewMode::List);
+        assert!(app.status.contains("disabled"));
     }
 }

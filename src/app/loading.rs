@@ -15,7 +15,10 @@ impl App {
         self.list.list_viewport_offset = None;
         let mut visual = Vec::new();
         // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
-        let subnotes_cache = if self.subnotes_view_cache_sig
+        let subnotes_cache = if !self.config.features.subnotes {
+            self.subnotes_view_cache.clear();
+            self.subnotes_view_cache.clone()
+        } else if self.subnotes_view_cache_sig
             == self.notes.len() * 31
                 + self
                     .subnotes_view_cache
@@ -309,7 +312,7 @@ impl App {
             }
         }
         let mut computed_smart_folders = Vec::new();
-        if self.config.list.smart_folders_enabled {
+        if self.config.features.smart_folders {
             let today_matches = self.notes_in_smart_folder(&SmartFolderKind::Today);
             if !today_matches.is_empty() {
                 computed_smart_folders.push(SmartFolderData {
@@ -443,44 +446,46 @@ impl App {
             }
         }
         let subnotes_total: usize = subnotes_cache.iter().map(|(_, v)| v.len()).sum();
-        visual.push(VisualItem::Folder {
-            path: VIRTUAL_SUBNOTES_PATH.to_string(),
-            name: VIRTUAL_SUBNOTES_LABEL.to_string(),
-            depth: 0,
-            is_expanded: self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH),
-            note_count: subnotes_cache.len(),
-            recursive_count: subnotes_total,
-            stale: subnotes_cache.is_empty(),
-            is_pinned: false,
-        });
-        if self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH) {
-            for (parent_id, subs) in &subnotes_cache {
-                let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
-                let note = pidx.and_then(|i| self.notes.get(i));
-                let name = note
-                    .map(|n| n.title.clone())
-                    .unwrap_or_else(|| parent_id.clone());
-                let parent_expanded = self
-                    .list
-                    .folder_expanded
-                    .contains(&format!("subnotes:{parent_id}"));
-                visual.push(VisualItem::Folder {
-                    path: format!("subnotes:{parent_id}"),
-                    name,
-                    depth: 1,
-                    is_expanded: parent_expanded,
-                    note_count: subs.len(),
-                    recursive_count: subs.len(),
-                    stale: false,
-                    is_pinned: false,
-                });
-                if parent_expanded {
-                    for (i, _sub) in subs.iter().enumerate() {
-                        visual.push(VisualItem::Subnote {
-                            parent_id: parent_id.clone(),
-                            subnote_idx: i,
-                            depth: 2,
-                        });
+        if self.config.features.subnotes {
+            visual.push(VisualItem::Folder {
+                path: VIRTUAL_SUBNOTES_PATH.to_string(),
+                name: VIRTUAL_SUBNOTES_LABEL.to_string(),
+                depth: 0,
+                is_expanded: self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH),
+                note_count: subnotes_cache.len(),
+                recursive_count: subnotes_total,
+                stale: subnotes_cache.is_empty(),
+                is_pinned: false,
+            });
+            if self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH) {
+                for (parent_id, subs) in &subnotes_cache {
+                    let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
+                    let note = pidx.and_then(|i| self.notes.get(i));
+                    let name = note
+                        .map(|n| n.title.clone())
+                        .unwrap_or_else(|| parent_id.clone());
+                    let parent_expanded = self
+                        .list
+                        .folder_expanded
+                        .contains(&format!("subnotes:{parent_id}"));
+                    visual.push(VisualItem::Folder {
+                        path: format!("subnotes:{parent_id}"),
+                        name,
+                        depth: 1,
+                        is_expanded: parent_expanded,
+                        note_count: subs.len(),
+                        recursive_count: subs.len(),
+                        stale: false,
+                        is_pinned: false,
+                    });
+                    if parent_expanded {
+                        for (i, _sub) in subs.iter().enumerate() {
+                            visual.push(VisualItem::Subnote {
+                                parent_id: parent_id.clone(),
+                                subnote_idx: i,
+                                depth: 2,
+                            });
+                        }
                     }
                 }
             }
@@ -1011,7 +1016,7 @@ impl App {
     /// Returns indices into `self.notes` that match the given smart folder kind.
     /// Respects `smart_folders_enabled` (empty when disabled).
     pub(crate) fn notes_in_smart_folder(&self, kind: &SmartFolderKind) -> Vec<usize> {
-        if !self.config.list.smart_folders_enabled {
+        if !self.config.features.smart_folders {
             return Vec::new();
         }
         let now = crate::ui::now_unix_secs();
@@ -1436,7 +1441,7 @@ impl App {
             {
                 let folder_path = path.clone();
                 let is_pinned = folder_path == crate::app::VIRTUAL_PINNED_PATH;
-                if self.config.list.folder_graph_preview {
+                if self.config.list.folder_graph_preview && self.config.features.graph_view {
                     self.list.preview_content = Some(PreviewContent::FolderGraph {
                         root_path: folder_path.clone(),
                         focused_path: folder_path,

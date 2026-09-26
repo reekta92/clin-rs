@@ -238,6 +238,13 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::ToggleOutline => {
+                if app.feature_disabled(
+                    app.config.features.outline_view,
+                    "Outline view",
+                    "outline_view",
+                ) {
+                    return false;
+                }
                 app.toggle_outline_pane();
                 if app.editor.sidebar == EditSidebar::None && *focus == EditFocus::Sidebar {
                     *focus = EditFocus::Body;
@@ -272,6 +279,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::PasteImage => {
+                if app.feature_disabled(app.config.features.import, "Import", "import") {
+                    return false;
+                }
                 let action = &crate::actions::ocr::PasteImageAction;
                 if let Err(e) = action.execute(app, None) {
                     app.set_temporary_status(&format!("Paste image failed: {e}"));
@@ -279,6 +289,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertImageFromFile => {
+                if app.feature_disabled(app.config.features.import, "Import", "import") {
+                    return false;
+                }
                 let action = &crate::actions::ocr::InsertImageFromFileAction;
                 if let Err(e) = action.execute(app, None) {
                     app.set_temporary_status(&format!("Insert image failed: {e}"));

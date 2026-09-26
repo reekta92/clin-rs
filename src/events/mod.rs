@@ -1394,7 +1394,11 @@ impl crate::popups::ActivePopup {
                 let has_title = !popup.title_result_ids.is_empty();
                 let has_subnote = !popup.subnote_results.is_empty();
                 let query_text = popup.input.lines().join("");
-                let parsed = crate::app::parse_search_query(&query_text);
+                let parsed = crate::app::parse_search_query(
+                    &query_text,
+                    app.config.features.tags,
+                    app.config.features.subnotes,
+                );
                 let has_grep = parsed.grep_mode && parsed.subnote_text.is_none();
                 let has_results = has_title || has_grep || has_subnote;
 

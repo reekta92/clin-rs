@@ -119,6 +119,7 @@ impl SettingsField {
 impl BackupState {
     pub fn new(
         vault_path: PathBuf,
+        enabled: bool,
         config: &BackupConfig,
         theme: AppThemeColors,
         keybinds: Keybinds,
@@ -127,7 +128,7 @@ impl BackupState {
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
         let settings = BackupSettingsState {
-            enabled: config.enabled,
+            enabled,
             backup_on_save: config.backup_on_save,
             backup_on_quit: config.backup_on_quit,
             auto_push: config.auto_push,
@@ -423,7 +424,7 @@ impl BackupState {
     pub fn save_settings(&mut self) {
         let mut config = ClinConfig::load().0.unwrap_or_default();
 
-        config.backup.enabled = self.settings.enabled;
+        config.features.backup = self.settings.enabled;
         config.backup.backup_on_save = self.settings.backup_on_save;
         config.backup.backup_on_quit = self.settings.backup_on_quit;
         config.backup.auto_push = self.settings.auto_push;
@@ -453,7 +454,7 @@ impl BackupState {
 
             // Re-init git if enabled and not initialized
             let _g = self.git_lock.lock();
-            if config.backup.enabled && !GitOps::is_initialized(&self.vault_path) {
+            if config.features.backup && !GitOps::is_initialized(&self.vault_path) {
                 if let Ok(git_ops) = GitOps::init(&self.vault_path) {
                     if let Some(url) = &config.backup.remote_url {
                         let _ = git_ops.set_remote(&name_text, url);

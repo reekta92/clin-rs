@@ -675,6 +675,11 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
 }
 
 fn run_templates(action: TemplatesCmd) -> Result<()> {
+    let (config_res, _) = ClinConfig::load();
+    let config = config_res.unwrap_or_default();
+    if !config.features.templates {
+        anyhow::bail!("Templates disabled ([features] templates = false)");
+    }
     match action {
         TemplatesCmd::List => {
             let (storage, _) = Storage::init();
@@ -1076,7 +1081,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             let _terminal_guard = TerminalGuard::enter(app.mouse_enabled)?;
             let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
             let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
-            app.image_picker = if app.config.image.enabled {
+            app.image_picker = if app.config.features.images {
                 Some(
                     ratatui_image::picker::Picker::from_query_stdio()
                         .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),

@@ -294,8 +294,6 @@ impl Default for SearchConfig {
 #[serde(default)]
 pub struct BackupConfig {
     #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
     pub backup_on_save: bool,
     #[serde(default)]
     pub backup_on_quit: bool,
@@ -326,7 +324,6 @@ impl Default for NotesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ImageConfig {
-    pub enabled: bool,
     pub cache_size: usize,
     pub preview_rows: u8,
     pub attachments_subdir: String,
@@ -335,7 +332,6 @@ pub struct ImageConfig {
 impl Default for ImageConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             cache_size: 32,
             preview_rows: 8,
             attachments_subdir: "attachments".into(),
@@ -385,9 +381,6 @@ pub struct ListConfig {
     #[serde(default)]
     pub skip_dirs: Vec<String>,
     pub folders_first: bool,
-    pub calendar_enabled: bool,
-    #[serde(default)]
-    pub smart_folders_enabled: bool,
     #[serde(default)]
     pub folder_graph_preview: bool,
     #[serde(default)]
@@ -422,10 +415,8 @@ impl Default for ListConfig {
             show_all_files: false,
             skip_dirs: Vec::new(),
             folders_first: true,
-            calendar_enabled: true,
             calendar_position: CalendarPosition::default(),
             week_start: WeekStart::default(),
-            smart_folders_enabled: false,
             folder_graph_preview: false,
             pinned_folders: Vec::new(),
             preview_width_ratio: 0.43,
@@ -586,7 +577,6 @@ impl Default for CoreConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GoalsConfig {
-    pub enabled: bool,
     pub word_goal: usize,
     pub note_goal: usize,
 }
@@ -594,7 +584,6 @@ pub struct GoalsConfig {
 impl Default for GoalsConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             word_goal: 500,
             note_goal: 3,
         }
@@ -627,6 +616,52 @@ pub struct StatuslineOverride {
     pub footer_right: Option<String>,
 }
 
+/// Master feature toggles. Each flag gates one view or feature; when `false`
+/// the feature's launch cost is skipped and its entry points are hidden.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct FeaturesConfig {
+    pub graph_view: bool,
+    pub canvas_view: bool,
+    pub draw_view: bool,
+    pub outline_view: bool,
+    pub help_view: bool,
+    pub tags: bool,
+    pub trash: bool,
+    pub subnotes: bool,
+    pub templates: bool,
+    pub import: bool,
+    pub encryption: bool,
+    pub images: bool,
+    pub backup: bool,
+    pub goals: bool,
+    pub calendar: bool,
+    pub smart_folders: bool,
+}
+
+impl Default for FeaturesConfig {
+    fn default() -> Self {
+        Self {
+            graph_view: true,
+            canvas_view: true,
+            draw_view: true,
+            outline_view: true,
+            help_view: true,
+            tags: true,
+            trash: true,
+            subnotes: true,
+            templates: true,
+            import: true,
+            encryption: true,
+            images: true,
+            backup: false,
+            goals: true,
+            calendar: true,
+            smart_folders: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ClinConfig {
@@ -650,6 +685,8 @@ pub struct ClinConfig {
     pub image: ImageConfig,
     #[serde(default)]
     pub statusline: StatuslineConfig,
+    #[serde(default)]
+    pub features: FeaturesConfig,
     #[serde(skip)]
     pub accent_hint_migrated: bool,
 }

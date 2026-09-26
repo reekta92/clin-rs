@@ -295,6 +295,17 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::CycleListDensityAction),
         Box::new(settings::CycleWeekStartAction),
         Box::new(settings::ToggleGoalsAction),
+        Box::new(settings::ToggleGraphViewAction),
+        Box::new(settings::ToggleCanvasViewAction),
+        Box::new(settings::ToggleDrawViewAction),
+        Box::new(settings::ToggleOutlineViewAction),
+        Box::new(settings::ToggleHelpViewAction),
+        Box::new(settings::ToggleTagsAction),
+        Box::new(settings::ToggleTrashAction),
+        Box::new(settings::ToggleSubnotesAction),
+        Box::new(settings::ToggleTemplatesAction),
+        Box::new(settings::ToggleImportAction),
+        Box::new(settings::ToggleEncryptionAction),
         Box::new(settings::ToggleGraphPreviewAction),
         Box::new(settings::ToggleGraphShowLegendAction),
         Box::new(settings::ToggleGraphShowMinimapAction),
@@ -343,10 +354,29 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     ]
 });
 
+/// Whether a palette action is available given the current feature toggles.
+/// `true` for every action not explicitly tied to a feature.
+fn action_feature_enabled(id: &str, app: &App) -> bool {
+    match id {
+        "backup.open" => app.config.features.backup,
+        "draw.create" => app.config.features.draw_view,
+        "graph.open" => app.config.features.graph_view,
+        "create_canvas" => app.config.features.canvas_view,
+        "outline.open" => app.config.features.outline_view,
+        "manage_subnotes_list" => app.config.features.subnotes,
+        "note.encrypt" | "note.decrypt" => app.config.features.encryption,
+        "settings.configure_smart_folders" => app.config.features.smart_folders,
+        "ocr.paste" | "paste_image" | "insert_image_from_file" => app.config.features.import,
+        id if id.starts_with("insert.") => app.config.features.import,
+        _ => true,
+    }
+}
+
 pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
     let icon_mode = app.config.ui.icon_mode;
     ACTIONS
         .iter()
+        .filter(|a| action_feature_enabled(&a.id(), app))
         .map(|a| {
             let (nerd, unicode) = a.glyph();
             ActionInfo {
@@ -364,10 +394,42 @@ pub fn get_all_actions() -> &'static [Box<dyn Action>] {
     &ACTIONS
 }
 pub fn execute_action(action_id: &str, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
+    if !action_feature_enabled(action_id, app) {
+        anyhow::bail!("Action disabled: {action_id}");
+    }
     for action in get_all_actions() {
         if action.id() == action_id {
             return action.execute(app, context_note_id);
         }
     }
     anyhow::bail!("Action not found: {action_id}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_storage(dir: &std::path::Path) -> crate::storage::Storage {
+        crate::storage::Storage {
+            data_dir: dir.to_path_buf(),
+            config_dir: dir.to_path_buf(),
+            notes_dir: dir.to_path_buf(),
+            templates_dir: dir.to_path_buf(),
+            key: core::array::from_fn(|_| 1),
+            skip_dir_patterns: vec![],
+            rename_on_title_change: true,
+        }
+    }
+
+    #[test]
+    fn disabled_graph_view_hides_action_from_palette() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let storage = make_test_storage(tmp.path());
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.config.features.graph_view = false;
+        let infos = get_all_action_infos(&app);
+        assert!(!infos.iter().any(|i| i.id == "graph.open"));
+        // Toggle actions stay available so the feature can be re-enabled.
+        assert!(infos.iter().any(|i| i.id == "settings.toggle_graph_view"));
+    }
 }

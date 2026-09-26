@@ -89,7 +89,7 @@ impl App {
             self.set_temporary_status_static("Calendar disabled");
         }
         let val = self.list.calendar_enabled;
-        self.persist_config(|c| c.list.calendar_enabled = val);
+        self.persist_config(|c| c.features.calendar = val);
     }
 
     pub fn toggle_inline_info(&mut self) {
@@ -174,8 +174,11 @@ impl App {
             .sections
             .iter()
             .copied()
-            .filter(|s| {
-                !matches!(s, crate::config::NotesSection::Goals) || self.config.goals.enabled
+            .filter(|s| match s {
+                crate::config::NotesSection::Goals => self.config.features.goals,
+                crate::config::NotesSection::Graf => self.config.features.graph_view,
+                crate::config::NotesSection::Draw => self.config.features.draw_view,
+                _ => true,
             })
             .collect();
         if v.is_empty() {
@@ -486,14 +489,14 @@ impl App {
     }
 
     pub fn toggle_smart_folders(&mut self) {
-        self.config.list.smart_folders_enabled = !self.config.list.smart_folders_enabled;
+        self.config.features.smart_folders = !self.config.features.smart_folders;
         self.refresh_visual_list();
-        let val = self.config.list.smart_folders_enabled;
+        let val = self.config.features.smart_folders;
         self.flag_status_persist(
             val,
             "Smart folders enabled",
             "Smart folders disabled",
-            |c, v| c.list.smart_folders_enabled = v,
+            |c, v| c.features.smart_folders = v,
         );
     }
 
@@ -775,11 +778,107 @@ impl App {
     }
 
     pub fn toggle_goals(&mut self) {
-        self.config.goals.enabled = !self.config.goals.enabled;
+        self.config.features.goals = !self.config.features.goals;
         self.refresh_visual_list();
-        let val = self.config.goals.enabled;
+        let val = self.config.features.goals;
         self.flag_status_persist(val, "Goals enabled", "Goals disabled", |c, v| {
-            c.goals.enabled = v
+            c.features.goals = v
+        });
+    }
+
+    pub fn toggle_graph_view(&mut self) {
+        self.config.features.graph_view = !self.config.features.graph_view;
+        let val = self.config.features.graph_view;
+        self.flag_status_persist(val, "Graph view enabled", "Graph view disabled", |c, v| {
+            c.features.graph_view = v
+        });
+    }
+
+    pub fn toggle_canvas_view(&mut self) {
+        self.config.features.canvas_view = !self.config.features.canvas_view;
+        let val = self.config.features.canvas_view;
+        self.flag_status_persist(
+            val,
+            "Canvas view enabled",
+            "Canvas view disabled",
+            |c, v| c.features.canvas_view = v,
+        );
+    }
+
+    pub fn toggle_draw_view(&mut self) {
+        self.config.features.draw_view = !self.config.features.draw_view;
+        let val = self.config.features.draw_view;
+        self.flag_status_persist(val, "Draw view enabled", "Draw view disabled", |c, v| {
+            c.features.draw_view = v
+        });
+    }
+
+    pub fn toggle_outline_view(&mut self) {
+        self.config.features.outline_view = !self.config.features.outline_view;
+        let val = self.config.features.outline_view;
+        self.flag_status_persist(
+            val,
+            "Outline view enabled",
+            "Outline view disabled",
+            |c, v| c.features.outline_view = v,
+        );
+    }
+
+    pub fn toggle_help_view(&mut self) {
+        self.config.features.help_view = !self.config.features.help_view;
+        let val = self.config.features.help_view;
+        self.flag_status_persist(val, "Help enabled", "Help disabled", |c, v| {
+            c.features.help_view = v
+        });
+    }
+
+    pub fn toggle_tags(&mut self) {
+        self.config.features.tags = !self.config.features.tags;
+        self.refresh_visual_list();
+        let val = self.config.features.tags;
+        self.flag_status_persist(val, "Tags enabled", "Tags disabled", |c, v| {
+            c.features.tags = v
+        });
+    }
+
+    pub fn toggle_trash(&mut self) {
+        self.config.features.trash = !self.config.features.trash;
+        let val = self.config.features.trash;
+        self.flag_status_persist(val, "Trash enabled", "Trash disabled", |c, v| {
+            c.features.trash = v
+        });
+    }
+
+    pub fn toggle_subnotes(&mut self) {
+        self.config.features.subnotes = !self.config.features.subnotes;
+        self.refresh_visual_list();
+        let val = self.config.features.subnotes;
+        self.flag_status_persist(val, "Subnotes enabled", "Subnotes disabled", |c, v| {
+            c.features.subnotes = v
+        });
+    }
+
+    pub fn toggle_templates(&mut self) {
+        self.config.features.templates = !self.config.features.templates;
+        let val = self.config.features.templates;
+        self.flag_status_persist(val, "Templates enabled", "Templates disabled", |c, v| {
+            c.features.templates = v
+        });
+    }
+
+    pub fn toggle_import(&mut self) {
+        self.config.features.import = !self.config.features.import;
+        let val = self.config.features.import;
+        self.flag_status_persist(val, "Import enabled", "Import disabled", |c, v| {
+            c.features.import = v
+        });
+    }
+
+    pub fn toggle_encryption(&mut self) {
+        self.config.features.encryption = !self.config.features.encryption;
+        let val = self.config.features.encryption;
+        self.flag_status_persist(val, "Encryption enabled", "Encryption disabled", |c, v| {
+            c.features.encryption = v
         });
     }
 
@@ -1092,17 +1191,17 @@ mod tests {
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);
 
-        app.config.list.smart_folders_enabled = false;
+        app.config.features.smart_folders = false;
         app.toggle_smart_folders();
-        assert!(app.config.list.smart_folders_enabled);
+        assert!(app.config.features.smart_folders);
         app.toggle_smart_folders();
-        assert!(!app.config.list.smart_folders_enabled);
+        assert!(!app.config.features.smart_folders);
     }
 
     #[test]
     fn test_custom_smart_folders_rule_matching() {
         let mut app = make_app();
-        app.config.list.smart_folders_enabled = true;
+        app.config.features.smart_folders = true;
         app.list.grid_folder = crate::app::VIRTUAL_SMART_PATH.to_string();
 
         // Define custom rules

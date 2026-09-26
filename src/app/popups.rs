@@ -6,6 +6,9 @@ use crate::templates::Template;
 
 impl App {
     pub fn open_template_popup(&mut self) {
+        if self.feature_disabled(self.config.features.templates, "Templates", "templates") {
+            return;
+        }
         match self.storage.list_templates() {
             Ok(templates) => {
                 let input = crate::ui::make_popup_textarea(&self.app_theme, "Search templates...");

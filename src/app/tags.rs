@@ -20,6 +20,9 @@ impl App {
     }
 
     pub fn begin_manage_tags(&mut self) {
+        if self.feature_disabled(self.config.features.tags, "Tags", "tags") {
+            return;
+        }
         let in_select_mode = self.list.list_mode == crate::list_view::ListMode::Select;
 
         if in_select_mode && !self.list.selected_indices.is_empty() {
@@ -264,6 +267,9 @@ impl App {
     }
 
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
+        if self.feature_disabled(self.config.features.tags, "Tags", "tags") {
+            return;
+        }
         let count = self
             .storage
             .list_note_ids(self.list.show_hidden_files, false)

@@ -74,18 +74,27 @@ pub fn start_session(app: &mut App) -> SessionGuard {
         register_signal(signal_hook::consts::SIGQUIT);
     }
 
-    // Spawn the background backup worker.
-    let (tx, done_rx) = crate::backup::worker::spawn(
-        app.git_lock.clone(),
-        app.backup_status.clone(),
-        app.message_tx.clone(),
-    );
-    app.backup_tx = Some(tx);
+    // Spawn the background backup worker (only when the feature is enabled).
+    let done_rx = if app.config.features.backup {
+        let (tx, done_rx) = crate::backup::worker::spawn(
+            app.git_lock.clone(),
+            app.backup_status.clone(),
+            app.message_tx.clone(),
+        );
+        app.backup_tx = Some(tx);
+        done_rx
+    } else {
+        let (tx, done_rx) = std::sync::mpsc::channel();
+        drop(tx);
+        done_rx
+    };
 
-    // Spawn the background image decode worker.
-    let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
-    app.image_decode_tx = Some(decode_tx);
-    app.image_decode_rx = Some(decode_rx);
+    // Spawn the background image decode worker (only when the feature is enabled).
+    if app.config.features.images {
+        let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
+        app.image_decode_tx = Some(decode_tx);
+        app.image_decode_rx = Some(decode_rx);
+    }
 
     // Initialize the optional file system watcher.
     let watcher = if app.config.core.auto_refresh {
@@ -192,7 +201,7 @@ pub fn finish_session(app: &mut App, guard: SessionGuard) -> Result<()> {
 
     if signal_exit {
         drop(app.backup_tx.take());
-    } else if app.config.backup.enabled && app.config.backup.backup_on_quit {
+    } else if app.config.features.backup && app.config.backup.backup_on_quit {
         println!("Backing up…");
         let _ = app.backup_tx.as_ref().map(|tx| {
             tx.send(crate::backup::worker::BackupJob::Flush(

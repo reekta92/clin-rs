@@ -32,6 +32,47 @@ pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Optio
         .collect()
 }
 
+/// Whether a help tab's feature is enabled. Notes/Editor/About are always on.
+pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool {
+    match tab {
+        HelpTab::Graph => f.graph_view,
+        HelpTab::Draw => f.draw_view,
+        HelpTab::Canvas => f.canvas_view,
+        HelpTab::Backup => f.backup,
+        HelpTab::Templates => f.templates,
+        HelpTab::Notes | HelpTab::Editor | HelpTab::About => true,
+    }
+}
+
+fn help_tab_flag(tab: HelpTab) -> &'static str {
+    match tab {
+        HelpTab::Graph => "graph_view",
+        HelpTab::Draw => "draw_view",
+        HelpTab::Canvas => "canvas_view",
+        HelpTab::Backup => "backup",
+        HelpTab::Templates => "templates",
+        _ => "",
+    }
+}
+
+/// Placeholder help content shown for a disabled feature's tab.
+pub fn disabled_feature_help_rows(tab: HelpTab, theme: &AppThemeColors) -> Vec<HelpRow> {
+    let label = tab_display_name(tab);
+    let flag = help_tab_flag(tab);
+    vec![
+        help_heading_row("Feature disabled", theme, tab),
+        help_item_row(
+            &format!(
+                "The {label} feature is disabled ([features] {flag} = false). Enable it in config.toml to use this view."
+            ),
+            "",
+            "General",
+            tab,
+            theme,
+        ),
+    ]
+}
+
 #[derive(Clone)]
 pub struct HelpRow {
     pub row: Row<'static>,

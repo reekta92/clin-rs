@@ -7,6 +7,31 @@ Full reference of all configuration options for clin-rs.
 ## Configuration
 
 Run `clin config show` to print the active configuration file path.
+### `[features]`
+
+Master feature toggles. Setting a flag to `false` skips the feature's startup work and hides its entry points (keybinds, palette actions, help tabs, statusline tokens). Changes to `images` and `backup` require a restart (they control background worker threads); all others apply at runtime via the command palette's `settings.toggle_*` actions.
+
+Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enabled`, `[list] calendar_enabled`, `[list] smart_folders_enabled`) are migrated into this table automatically on first launch; those old keys are then ignored.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `graph_view` | `bool` | `true` | Enable the force-directed Graph view |
+| `canvas_view` | `bool` | `true` | Enable the `.canvas` view |
+| `draw_view` | `bool` | `true` | Enable the `.draw` view |
+| `outline_view` | `bool` | `true` | Enable the Outline view (overlay + editor sidebar) |
+| `help_view` | `bool` | `true` | Enable the in-app Help view |
+| `tags` | `bool` | `true` | Enable the tag manager and tag UI surfaces |
+| `trash` | `bool` | `true` | Enable the trash view/restore UI (deletes still go to trash) |
+| `subnotes` | `bool` | `true` | Enable encrypted virtual subnotes |
+| `templates` | `bool` | `true` | Enable note templates |
+| `import` | `bool` | `true` | Enable import (File/CSV/JSON/URL/Clipboard) and OCR paste |
+| `encryption` | `bool` | `true` | Enable encrypt/decrypt actions (`.clin` files stay readable) |
+| `images` | `bool` | `true` | Enable native pixel image rendering (restart required) |
+| `backup` | `bool` | `false` | Enable git backup worker and dashboard (restart required) |
+| `goals` | `bool` | `true` | Enable the daily word/note goals system |
+| `calendar` | `bool` | `true` | Show rolling-week note activity in the notes list |
+| `smart_folders` | `bool` | `false` | Enable virtual smart folders (Today, This Week, Untagged) |
+
 ### `[core]`
 
 | Option | Type | Default | Description |
@@ -45,7 +70,6 @@ Run `clin config show` to print the active configuration file path.
 | `default_sort_order` | `enum` | — | Optional initial sort order: `"ascending"` or `"descending"` |
 | `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
-| `calendar_enabled` | `bool` | `true` | Show rolling-week note activity in the notes list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
 | `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
 | `skip_dirs` | `array` | `[]` | Directory-name patterns to omit from the notes list |
@@ -55,7 +79,6 @@ Run `clin config show` to print the active configuration file path.
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
 | `week_start` | `enum` | `"sunday"` | Start day for rolling-week activity: `"sunday"` or `"monday"` |
 | `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf` |
-| `smart_folders_enabled` | `bool` | `false` | Enable virtual smart folders (Today, This Week, Untagged) |
 | `folder_graph_preview` | `bool` | `false` | Show graph preview for folders |
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
@@ -274,7 +297,6 @@ These inject pre-styled groups of cells (e.g., from tab/status systems) and rema
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `bool` | `true` | Master toggle for native pixel image rendering |
 | `max_dimension` | `u32` | `2048` | Maximum decode dimension in pixels |
 | `cache_size` | `usize` | `32` | LRU cache entry count |
 | `preview_rows` | `u8` | `8` | Rows occupied by preview images |
@@ -283,7 +305,6 @@ These inject pre-styled groups of cells (e.g., from tab/status systems) and rema
 Example:
 ```toml
 [image]
-enabled = true
 max_dimension = 2048
 cache_size = 32
 preview_rows = 8
@@ -364,7 +385,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `bool` | `false` | Enable auto-backups via git |
 | `backup_on_save` | `bool` | `false` | Perform a backup commit whenever a note is saved |
 | `backup_on_quit` | `bool` | `false` | Perform a backup commit when the app exits |
 | `auto_backup_interval` | `u64` | — | Interval in minutes for automatic background backups |
@@ -382,7 +402,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `bool` | `true` | Enable the daily word/note goals system |
 | `word_goal` | `usize` | `500` | Daily target word count (incremental additions). Set to 0 to disable |
 | `note_goal` | `usize` | `3` | Daily target note count (edited or created). Set to 0 to disable |
 ---
