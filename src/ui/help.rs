@@ -455,6 +455,11 @@ where
     for a in A::iter() {
         let m = meta_of(a);
         let key = keys_of(keybinds, a);
+        // Actions whose keybinds were cleared (e.g. a feature marked
+        // "deleted") are omitted from the help view entirely.
+        if key.is_empty() {
+            continue;
+        }
         match buckets.iter_mut().find(|(g, _)| *g == m.group) {
             Some(b) => b.1.push((key, m.description)),
             None => buckets.push((m.group, vec![(key, m.description)])),

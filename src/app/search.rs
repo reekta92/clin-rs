@@ -820,6 +820,7 @@ mod tests {
             .unwrap();
 
         let mut app = crate::app::App::new(storage).unwrap();
+        app.config.features.subnotes = crate::config::FeatureState::Enabled;
         app.list.notes_layout = crate::config::NotesLayout::Grid;
         app.refresh_subnotes_view_cache();
         app.refresh_visual_list();
