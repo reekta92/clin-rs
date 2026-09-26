@@ -791,7 +791,6 @@ impl App {
 
         crate::app::strip_deleted_feature_keybinds(&mut keybinds, &bootstrap_config.features);
 
-
         let mut theme_warnings = Vec::new();
         let app_theme = crate::app_theme::AppThemeColors::from_config(
             &bootstrap_config.ui,

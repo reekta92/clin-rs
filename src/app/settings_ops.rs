@@ -1148,7 +1148,7 @@ mod tests {
             crate::config::NotesLayout::Tree
         );
         assert_eq!(app.list.notes_layout, crate::config::NotesLayout::Tree);
-        
+
         assert!(app.config.features.tags.is_enabled());
         assert!(!app.config.features.graph_view.is_enabled());
         // Calendar is disabled in Minimal
