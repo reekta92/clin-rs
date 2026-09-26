@@ -54,8 +54,8 @@ toggle_action!(
 toggle_action!(
     ToggleCalendarAction,
     "settings.calendar",
-    "Toggle Calendar",
-    "Show or hide the month calendar in the notes list",
+    "Toggle Widget Pane",
+    "Show or hide the widget pane in the notes list",
     ActionCategory::Settings,
     "\u{f073}",
     "\u{1f4c5}",

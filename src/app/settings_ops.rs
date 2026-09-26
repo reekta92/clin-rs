@@ -84,9 +84,9 @@ impl App {
     pub fn toggle_calendar(&mut self) {
         self.list.calendar_enabled = !self.list.calendar_enabled;
         if self.list.calendar_enabled {
-            self.set_temporary_status_static("Calendar enabled");
+            self.set_temporary_status_static("Widget pane enabled");
         } else {
-            self.set_temporary_status_static("Calendar disabled");
+            self.set_temporary_status_static("Widget pane disabled");
         }
         let val = self.list.calendar_enabled;
         self.persist_config(|c| {
@@ -166,9 +166,9 @@ impl App {
                 self.config.list.calendar_position,
                 crate::config::CalendarPosition::Top
             ) {
-                "Calendar moved to top"
+                "Widget pane moved to top"
             } else {
-                "Calendar moved to bottom"
+                "Widget pane moved to bottom"
             },
         );
         self.persist_list_layout();

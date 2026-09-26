@@ -1821,7 +1821,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ("Space/click".to_string(), "cycle section"),
             ("a".to_string(), "add/remove section"),
             ("s".to_string(), "preview"),
-            ("c".to_string(), "calendar"),
+            ("c".to_string(), "widget pane"),
             ("←→ ↑↓".to_string(), "resize"),
             ("Esc".to_string(), "done"),
         ];
