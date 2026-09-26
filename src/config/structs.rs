@@ -724,10 +724,10 @@ impl Default for FeaturesConfig {
             import: FeatureState::Enabled,
             encryption: FeatureState::Enabled,
             images: FeatureState::Enabled,
-            backup: FeatureState::Disabled,
+            backup: FeatureState::Enabled,
             goals: FeatureState::Enabled,
             calendar: FeatureState::Enabled,
-            smart_folders: FeatureState::Disabled,
+            smart_folders: FeatureState::Enabled,
         }
     }
 }
