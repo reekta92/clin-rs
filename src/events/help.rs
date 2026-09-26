@@ -56,13 +56,19 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             }
             HelpAction::NextTab => {
                 let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
-                let cur_idx = tabs_data.iter().position(|(t, _, _)| *t == app.help_tab).unwrap_or(0);
+                let cur_idx = tabs_data
+                    .iter()
+                    .position(|(t, _, _)| *t == app.help_tab)
+                    .unwrap_or(0);
                 let next_idx = (cur_idx + 1) % tabs_data.len();
                 app.switch_help_tab(tabs_data[next_idx].0);
             }
             HelpAction::PrevTab => {
                 let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
-                let cur_idx = tabs_data.iter().position(|(t, _, _)| *t == app.help_tab).unwrap_or(0);
+                let cur_idx = tabs_data
+                    .iter()
+                    .position(|(t, _, _)| *t == app.help_tab)
+                    .unwrap_or(0);
                 let prev_idx = (cur_idx + tabs_data.len() - 1) % tabs_data.len();
                 app.switch_help_tab(tabs_data[prev_idx].0);
             }

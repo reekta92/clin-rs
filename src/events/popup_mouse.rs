@@ -225,11 +225,10 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                 );
                 palette.mouse_selection.begin(&mut palette.input);
             } else if mouse.row == chunks[1].y {
-                let tabs: Vec<(&str, Option<&str>)> =
-                    crate::palette::palette_tabs(app)
-                        .iter()
-                        .map(|(l, g, _)| (*l, Some(*g)))
-                        .collect();
+                let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app)
+                    .iter()
+                    .map(|(l, g, _)| (*l, Some(*g)))
+                    .collect();
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
                     chunks[1].x,

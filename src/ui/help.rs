@@ -32,13 +32,7 @@ pub fn help_tabs(
     pairs
         .into_iter()
         .filter(|(t, _, _, _)| help_tab_enabled(*t, features))
-        .map(|(t, label, nerd, uni)| {
-            (
-                t,
-                label,
-                Some(crate::ui::get_icon(nerd, uni, icon_mode)),
-            )
-        })
+        .map(|(t, label, nerd, uni)| (t, label, Some(crate::ui::get_icon(nerd, uni, icon_mode))))
         .collect()
 }
 
@@ -202,7 +196,10 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .split(area);
     let tabs_data = help_tabs(app.config.ui.icon_mode, &app.config.features);
     let tabs: Vec<(&str, Option<&str>)> = tabs_data.iter().map(|(_, l, i)| (*l, *i)).collect();
-    let selected_idx = tabs_data.iter().position(|(t, _, _)| *t == app.help_tab).unwrap_or(0);
+    let selected_idx = tabs_data
+        .iter()
+        .position(|(t, _, _)| *t == app.help_tab)
+        .unwrap_or(0);
 
     let hovered = app.mouse_pos.and_then(|(col, row)| {
         if row == chunks[0].y {
@@ -1532,7 +1529,10 @@ mod tests {
         let features = crate::config::FeaturesConfig::default();
         let tabs = help_tabs(crate::config::IconMode::Nerd, &features);
         // Using `find` so the test doesn't break if tabs are reordered or filtered.
-        let editor_tab = tabs.into_iter().find(|(t, _, _)| *t == HelpTab::Editor).unwrap();
+        let editor_tab = tabs
+            .into_iter()
+            .find(|(t, _, _)| *t == HelpTab::Editor)
+            .unwrap();
         assert_eq!(editor_tab.1, "Editor");
         assert_eq!(editor_tab.2, Some("\u{f03eb}"));
     }

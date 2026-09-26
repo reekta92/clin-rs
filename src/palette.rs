@@ -13,9 +13,7 @@ pub fn palette_tabs(
 )> {
     let icon_mode = app.config.ui.icon_mode;
     let actions = crate::actions::get_all_action_infos(app);
-    let has_cat = |cat: crate::actions::ActionCategory| {
-        actions.iter().any(|a| a.category == cat)
-    };
+    let has_cat = |cat: crate::actions::ActionCategory| actions.iter().any(|a| a.category == cat);
 
     let mut tabs = vec![(
         "All",
