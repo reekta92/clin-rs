@@ -40,6 +40,16 @@ fn suspend_for_external() {
     if let Err(e) = crossterm::terminal::disable_raw_mode() {
         eprintln!("Failed to disable raw mode: {e}");
     }
+    // Pop the kitty enhancement flags `TerminalGuard::enter` pushed so the
+    // external editor sees plain keys; `resume_from_external` re-pushes.
+    // Mirrors `TerminalGuard`'s Drop.
+    #[cfg(not(windows))]
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::PopKeyboardEnhancementFlags
+    ) {
+        eprintln!("Failed to pop keyboard enhancement flags: {e}");
+    }
     if let Err(e) = crossterm::execute!(
         std::io::stdout(),
         crossterm::terminal::LeaveAlternateScreen,
@@ -50,7 +60,7 @@ fn suspend_for_external() {
     }
 }
 
-fn resume_from_external() {
+fn resume_from_external(mouse_enabled: bool) {
     if let Err(e) = crossterm::terminal::enable_raw_mode() {
         eprintln!("Failed to enable raw mode: {e}");
     }
@@ -62,6 +72,17 @@ fn resume_from_external() {
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
     ) {
         eprintln!("Failed to restore terminal: {e}");
+    }
+    // Restore the flags popped in `suspend_for_external` — exactly what
+    // `TerminalGuard::enter` pushed for this mouse mode.
+    #[cfg(not(windows))]
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::PushKeyboardEnhancementFlags(crate::keyboard_enhancement_flags(
+            mouse_enabled,
+        ))
+    ) {
+        eprintln!("Failed to push keyboard enhancement flags: {e}");
     }
 }
 
@@ -1468,7 +1489,7 @@ impl App {
         }
         let result = command.status();
 
-        resume_from_external();
+        resume_from_external(self.mouse_enabled);
         self.needs_full_redraw = true;
         (result, program.to_string())
     }
