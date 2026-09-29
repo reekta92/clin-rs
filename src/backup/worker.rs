@@ -224,7 +224,7 @@ mod tests {
                 .expect("set user.email");
         }
         fs::write(work.path().join("note.md"), "hello").expect("write");
-        let oid = git_ops
+        git_ops
             .add_all()
             .and_then(|_| git_ops.commit("initial"))
             .expect("commit");
@@ -233,9 +233,11 @@ mod tests {
         // Modify the file so perform has something to commit and push
         fs::write(work.path().join("note.md"), "hello world").expect("write");
 
-        let mut backup = BackupConfig::default();
-        backup.enabled = true;
-        backup.auto_push = true; // remote_name stays None — the bug's trigger
+        let backup = BackupConfig {
+            enabled: true,
+            auto_push: true, // remote_name stays None — the bug's trigger
+            ..Default::default()
+        };
         let (git_lock, status) = locks();
         perform(&git_lock, &status, work.path(), &backup, "t");
         assert!(status.lock().is_none(), "status should be clean");
