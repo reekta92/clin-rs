@@ -177,10 +177,10 @@ pub(crate) fn perform(
         }
         git_ops.add_all()?;
         git_ops.commit(message)?;
-        if backup.auto_push
-            && let Some(remote) = &backup.remote_name
-        {
-            git_ops.push(remote)?;
+        if backup.auto_push {
+            // `remote_name` defaults to "origin" per docs and the Backup view
+            // (backup/state.rs) — hand-written configs omitting the key still push.
+            git_ops.push(backup.remote_name.as_deref().unwrap_or("origin"))?;
         }
         Ok(message.to_string())
     })();
@@ -205,6 +205,46 @@ mod tests {
 
     fn locks() -> (Arc<Mutex<()>>, Arc<Mutex<Option<String>>>) {
         (Arc::new(Mutex::new(())), Arc::new(Mutex::new(None)))
+    }
+    #[test]
+    fn perform_pushes_default_origin_when_remote_name_unset() {
+        // Regression for #176: auto_push with no remote_name must still push
+        // to "origin" (documented default), not silently skip.
+        let work = tempdir().expect("workdir");
+        let bare = tempdir().expect("bare");
+        let _bare_repo = git2::Repository::init_bare(bare.path()).expect("init bare");
+        let bare_url = format!("file://{}", bare.path().to_string_lossy());
+
+        let git_ops = GitOps::init(work.path()).expect("init");
+        {
+            let repo = git2::Repository::open(work.path()).expect("open repo");
+            let mut cfg = repo.config().expect("config");
+            cfg.set_str("user.name", "test").expect("set user.name");
+            cfg.set_str("user.email", "test@test.com")
+                .expect("set user.email");
+        }
+        fs::write(work.path().join("note.md"), "hello").expect("write");
+        let oid = git_ops
+            .add_all()
+            .and_then(|_| git_ops.commit("initial"))
+            .expect("commit");
+        git_ops.set_remote("origin", &bare_url).expect("set remote");
+
+        // Modify the file so perform has something to commit and push
+        fs::write(work.path().join("note.md"), "hello world").expect("write");
+
+        let mut backup = BackupConfig::default();
+        backup.enabled = true;
+        backup.auto_push = true; // remote_name stays None — the bug's trigger
+        let (git_lock, status) = locks();
+        perform(&git_lock, &status, work.path(), &backup, "t");
+        assert!(status.lock().is_none(), "status should be clean");
+        let bare_repo = git2::Repository::open(bare.path()).expect("open bare");
+        let found = bare_repo.references().expect("refs").count() > 0;
+        assert!(
+            found,
+            "auto_push must push to default origin when remote_name is unset"
+        );
     }
 
     #[test]
