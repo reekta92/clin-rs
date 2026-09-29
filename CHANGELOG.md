@@ -2,6 +2,20 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.13.1] - 2026-09-29
+
+### Fixed
+
+- Pop kitty flags on suspend and re-push on resume
+- Fallback to default 'origin' for auto_push when remote_name is absent
+
+### Miscellaneous
+
+- ROADMAP update
+
+### Styling
+
+- Fix clippy warnings in backup tests
 ## [0.13.0] - 2026-09-23
 
 ### Added
@@ -34,6 +48,10 @@ All notable changes to clin are documented in this file.
 
 - Cargo fmt
 - Cargo fmt
+
+### Release
+
+- V0.13.0
 ## [0.13.0-testing.2] - 2026-09-17
 
 ### Added
