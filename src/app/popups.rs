@@ -6,6 +6,13 @@ use crate::templates::Template;
 
 impl App {
     pub fn open_template_popup(&mut self) {
+        if self.feature_disabled(
+            self.config.features.templates.is_enabled(),
+            "Templates",
+            "templates",
+        ) {
+            return;
+        }
         match self.storage.list_templates() {
             Ok(templates) => {
                 let input = crate::ui::make_popup_textarea(&self.app_theme, "Search templates...");
@@ -887,6 +894,29 @@ template = """
                 self.config.ui.hint_bar_style = hbs;
                 visuals_changed = true;
             }
+
+            // 6. Notes layout
+            let layout = crate::setup::layout_at(state.notes_layout);
+            if self.config.list.default_view != layout {
+                self.config.list.default_view = layout;
+                visuals_changed = true;
+            }
+
+            // 7. Feature preset
+            let preset = match state.feature_preset {
+                1 => crate::setup::FeaturePreset::Expanded,
+                2 => crate::setup::FeaturePreset::Minimal,
+                3 => crate::setup::FeaturePreset::Custom,
+                _ => crate::setup::FeaturePreset::Default,
+            };
+            let new_features = if preset == crate::setup::FeaturePreset::Custom {
+                state.custom_features.clone()
+            } else {
+                crate::setup::features_for_preset(preset)
+            };
+            if self.config.features != new_features {
+                self.config.features = new_features;
+            }
         }
 
         // Preview theme/background immediately (in-memory; no disk write).
@@ -900,6 +930,36 @@ template = """
     pub fn finish_setup(&mut self) {
         let previous_config = self.config.clone();
         self.apply_setup_live();
+
+        if self.list.notes_layout != self.config.list.default_view {
+            self.list.notes_layout = self.config.list.default_view.clone();
+            if self.list.notes_layout == crate::config::NotesLayout::Grid {
+                self.list.grid_folder = String::new();
+            }
+            self.list.visual_index = 0;
+            self.refresh_visual_list();
+        }
+
+        // Re-enabling a previously-Deleted feature needs its keybinds restored;
+        // bootstrap strips Deleted-feature keybinds at load.
+        let (kb, warnings) = self
+            .storage
+            .load_keybinds_with_preset(self.config.core.keybind_preset);
+        self.keybinds = kb;
+        crate::app::strip_deleted_feature_keybinds(&mut self.keybinds, &self.config.features);
+        for w in warnings {
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
+        }
+        self.seq_matcher.clear();
+
+        self.list.calendar_enabled = self.config.features.calendar.is_enabled();
+        self.goals_progress = if self.config.features.goals.is_enabled() {
+            self.load_goals_progress()
+        } else {
+            crate::goals::DailyProgress::default()
+        };
+        self.refresh_visual_list();
         let (selected_path, changed_vault, confirmed_path) = {
             let Some(state) = self.setup_state.as_ref() else {
                 return;
@@ -1000,6 +1060,7 @@ template = """
             .storage
             .load_keybinds_with_preset(self.config.core.keybind_preset);
         self.keybinds = kb;
+        crate::app::strip_deleted_feature_keybinds(&mut self.keybinds, &self.config.features);
         for w in warnings {
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);

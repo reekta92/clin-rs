@@ -294,8 +294,6 @@ impl Default for SearchConfig {
 #[serde(default)]
 pub struct BackupConfig {
     #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
     pub backup_on_save: bool,
     #[serde(default)]
     pub backup_on_quit: bool,
@@ -326,7 +324,6 @@ impl Default for NotesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ImageConfig {
-    pub enabled: bool,
     pub cache_size: usize,
     pub preview_rows: u8,
     pub attachments_subdir: String,
@@ -335,7 +332,6 @@ pub struct ImageConfig {
 impl Default for ImageConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             cache_size: 32,
             preview_rows: 8,
             attachments_subdir: "attachments".into(),
@@ -385,9 +381,6 @@ pub struct ListConfig {
     #[serde(default)]
     pub skip_dirs: Vec<String>,
     pub folders_first: bool,
-    pub calendar_enabled: bool,
-    #[serde(default)]
-    pub smart_folders_enabled: bool,
     #[serde(default)]
     pub folder_graph_preview: bool,
     #[serde(default)]
@@ -422,10 +415,8 @@ impl Default for ListConfig {
             show_all_files: false,
             skip_dirs: Vec::new(),
             folders_first: true,
-            calendar_enabled: true,
             calendar_position: CalendarPosition::default(),
             week_start: WeekStart::default(),
-            smart_folders_enabled: false,
             folder_graph_preview: false,
             pinned_folders: Vec::new(),
             preview_width_ratio: 0.43,
@@ -586,7 +577,6 @@ impl Default for CoreConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GoalsConfig {
-    pub enabled: bool,
     pub word_goal: usize,
     pub note_goal: usize,
 }
@@ -594,7 +584,6 @@ pub struct GoalsConfig {
 impl Default for GoalsConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             word_goal: 500,
             note_goal: 3,
         }
@@ -626,6 +615,122 @@ pub struct StatuslineOverride {
     pub footer_left: Option<String>,
     pub footer_right: Option<String>,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FeatureState {
+    #[default]
+    Enabled,
+    Disabled,
+    Deleted,
+}
+
+impl FeatureState {
+    pub fn is_enabled(self) -> bool {
+        self == FeatureState::Enabled
+    }
+
+    pub fn is_deleted(self) -> bool {
+        self == FeatureState::Deleted
+    }
+}
+
+impl std::ops::Not for FeatureState {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        if self == FeatureState::Enabled {
+            FeatureState::Disabled
+        } else {
+            FeatureState::Enabled
+        }
+    }
+}
+
+impl serde::Serialize for FeatureState {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            FeatureState::Enabled => serializer.serialize_bool(true),
+            FeatureState::Disabled => serializer.serialize_bool(false),
+            FeatureState::Deleted => serializer.serialize_str("deleted"),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for FeatureState {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FeatureStateVisitor;
+        impl serde::de::Visitor<'_> for FeatureStateVisitor {
+            type Value = FeatureState;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a boolean or 'deleted'")
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(if v {
+                    FeatureState::Enabled
+                } else {
+                    FeatureState::Disabled
+                })
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v.to_lowercase().as_str() {
+                    "enabled" | "true" => Ok(FeatureState::Enabled),
+                    "disabled" | "false" => Ok(FeatureState::Disabled),
+                    "deleted" => Ok(FeatureState::Deleted),
+                    _ => Err(E::custom(format!("unknown feature state: {}", v))),
+                }
+            }
+        }
+        deserializer.deserialize_any(FeatureStateVisitor)
+    }
+}
+
+/// Master feature toggles. Each flag gates one view or feature; when `Disabled`
+/// the feature's launch cost is skipped and its entry points are hidden.
+/// When `Deleted`, the keybinds are additionally cleared.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct FeaturesConfig {
+    pub graph_view: FeatureState,
+    pub canvas_view: FeatureState,
+    pub draw_view: FeatureState,
+    pub outline_view: FeatureState,
+    pub help_view: FeatureState,
+    pub tags: FeatureState,
+    pub trash: FeatureState,
+    pub subnotes: FeatureState,
+    pub templates: FeatureState,
+    pub import: FeatureState,
+    pub encryption: FeatureState,
+    pub images: FeatureState,
+    pub backup: FeatureState,
+    pub goals: FeatureState,
+    pub calendar: FeatureState,
+    pub smart_folders: FeatureState,
+}
+
+impl Default for FeaturesConfig {
+    fn default() -> Self {
+        Self {
+            graph_view: FeatureState::Enabled,
+            canvas_view: FeatureState::Enabled,
+            draw_view: FeatureState::Enabled,
+            outline_view: FeatureState::Enabled,
+            help_view: FeatureState::Enabled,
+            tags: FeatureState::Enabled,
+            trash: FeatureState::Enabled,
+            subnotes: FeatureState::Enabled,
+            templates: FeatureState::Enabled,
+            import: FeatureState::Enabled,
+            encryption: FeatureState::Enabled,
+            images: FeatureState::Enabled,
+            backup: FeatureState::Enabled,
+            goals: FeatureState::Enabled,
+            calendar: FeatureState::Enabled,
+            smart_folders: FeatureState::Enabled,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
@@ -650,6 +755,8 @@ pub struct ClinConfig {
     pub image: ImageConfig,
     #[serde(default)]
     pub statusline: StatuslineConfig,
+    #[serde(default)]
+    pub features: FeaturesConfig,
     #[serde(skip)]
     pub accent_hint_migrated: bool,
 }

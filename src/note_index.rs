@@ -29,6 +29,7 @@ impl NoteIndex {
         folders: &[String],
         custom_rules: &[CustomSmartFolder],
         now_unix_secs: u64,
+        calendar_enabled: bool,
     ) -> Self {
         let canonical_ids: Arc<[Arc<str>]> = notes
             .iter()
@@ -80,7 +81,9 @@ impl NoteIndex {
 
             if let Some(date_time) = Local.timestamp_opt(note.updated_at as i64, 0).single() {
                 let note_date = date_time.date_naive();
-                *activity_by_day.entry(note_date).or_default() += 1;
+                if calendar_enabled {
+                    *activity_by_day.entry(note_date).or_default() += 1;
+                }
 
                 if note_date == today_date {
                     today_indices.push(i);
@@ -265,7 +268,7 @@ mod tests {
             },
         ];
         let folders = vec!["folder1".to_string(), "folder1/sub".to_string()];
-        let index = NoteIndex::build(1, &notes, &folders, &[], now);
+        let index = NoteIndex::build(1, &notes, &folders, &[], now, true);
 
         assert_eq!(index.canonical_ids.len(), 2);
         assert_eq!(index.by_id.get("folder1/a.md").copied(), Some(0));
@@ -276,5 +279,26 @@ mod tests {
             Some(1)
         );
         assert_eq!(index.notes_by_exact_tag.get("rust").unwrap(), &vec![0]);
+    }
+
+    #[test]
+    fn calendar_flag_controls_activity_map() {
+        let now = crate::ui::now_unix_secs();
+        let notes = vec![NoteSummary {
+            id: "a.md".to_string(),
+            title: "A".to_string(),
+            updated_at: now,
+            folder: String::new(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1,
+        }];
+        let with_cal = NoteIndex::build(1, &notes, &[], &[], now, true);
+        let without_cal = NoteIndex::build(1, &notes, &[], &[], now, false);
+        assert!(!with_cal.activity_by_day.is_empty());
+        assert!(without_cal.activity_by_day.is_empty());
+        // Today/week indices are computed regardless of the calendar flag.
+        assert!(!without_cal.today_indices.is_empty());
     }
 }

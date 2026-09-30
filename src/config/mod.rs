@@ -479,6 +479,126 @@ impl ClinConfig {
                 state_changed = true;
             }
         }
+        // Feature toggles migration: consolidate per-section `enabled` flags
+        // into a single `[features]` table. Runs once — only when `[features]`
+        // is absent from the parsed document.
+        if let Some(root) = value.as_table_mut()
+            && root.get("features").is_none()
+        {
+            let defaults = FeaturesConfig::default();
+            let images = root
+                .get("image")
+                .and_then(|s| s.as_table())
+                .and_then(|t| t.get("enabled"))
+                .and_then(|v| v.as_bool())
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
+                .unwrap_or(defaults.images);
+            let backup = root
+                .get("backup")
+                .and_then(|s| s.as_table())
+                .and_then(|t| t.get("enabled"))
+                .and_then(|v| v.as_bool())
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
+                .unwrap_or(defaults.backup);
+            let goals = root
+                .get("goals")
+                .and_then(|s| s.as_table())
+                .and_then(|t| t.get("enabled"))
+                .and_then(|v| v.as_bool())
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
+                .unwrap_or(defaults.goals);
+            let calendar = root
+                .get("list")
+                .and_then(|s| s.as_table())
+                .and_then(|t| t.get("calendar_enabled"))
+                .and_then(|v| v.as_bool())
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
+                .unwrap_or(defaults.calendar);
+            let smart_folders = root
+                .get("list")
+                .and_then(|s| s.as_table())
+                .and_then(|t| t.get("smart_folders_enabled"))
+                .and_then(|v| v.as_bool())
+                .map(|b| {
+                    if b {
+                        FeatureState::Enabled
+                    } else {
+                        FeatureState::Disabled
+                    }
+                })
+                .unwrap_or(defaults.smart_folders);
+
+            let mut features = toml::value::Table::new();
+            for (k, v) in [
+                ("graph_view", defaults.graph_view),
+                ("canvas_view", defaults.canvas_view),
+                ("draw_view", defaults.draw_view),
+                ("outline_view", defaults.outline_view),
+                ("help_view", defaults.help_view),
+                ("tags", defaults.tags),
+                ("trash", defaults.trash),
+                ("subnotes", defaults.subnotes),
+                ("templates", defaults.templates),
+                ("import", defaults.import),
+                ("encryption", defaults.encryption),
+                ("images", images),
+                ("backup", backup),
+                ("goals", goals),
+                ("calendar", calendar),
+                ("smart_folders", smart_folders),
+            ] {
+                features.insert(
+                    k.to_string(),
+                    match v {
+                        FeatureState::Enabled => toml::Value::Boolean(true),
+                        FeatureState::Disabled => toml::Value::Boolean(false),
+                        FeatureState::Deleted => toml::Value::String("deleted".to_string()),
+                    },
+                );
+            }
+
+            if let Some(t) = root.get_mut("image").and_then(|s| s.as_table_mut()) {
+                t.remove("enabled");
+            }
+            if let Some(t) = root.get_mut("backup").and_then(|s| s.as_table_mut()) {
+                t.remove("enabled");
+            }
+            if let Some(t) = root.get_mut("goals").and_then(|s| s.as_table_mut()) {
+                t.remove("enabled");
+            }
+            if let Some(t) = root.get_mut("list").and_then(|s| s.as_table_mut()) {
+                t.remove("calendar_enabled");
+                t.remove("smart_folders_enabled");
+            }
+
+            root.insert("features".to_string(), toml::Value::Table(features));
+            changed = true;
+        }
+
         changed = changed || state_changed;
         if changed {
             let migrated_content =
@@ -768,7 +888,7 @@ unknown_field = "ignore me"
         config.list.show_file_size = true;
         config.list.inline_info = false;
         config.list.default_view = NotesLayout::Tree;
-        config.list.calendar_enabled = false;
+        config.features.calendar = crate::config::FeatureState::Disabled;
         config.backup.auto_backup_interval = Some(60);
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -780,30 +900,58 @@ unknown_field = "ignore me"
         assert!(parsed.list.show_file_size);
         assert!(!parsed.list.inline_info);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
-        assert!(!parsed.list.calendar_enabled);
+        assert!(!parsed.features.calendar.is_enabled());
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
     }
 
     #[test]
     fn calendar_defaults_enabled_when_key_omitted() {
-        // A [list] section that omits calendar_enabled must deserialize to true
-        // (visible by default), matching #[serde(default = "default_true")].
-        // yields false for bools — the on-disk/serde path is what users hit.)
+        // A [features] section that omits calendar must deserialize to true
+        // (visible by default), matching the FeaturesConfig default.
         let cfg: ClinConfig = toml::from_str("[list]\npreview_enabled = false\n").unwrap();
-        assert!(cfg.list.calendar_enabled);
+        assert!(cfg.features.calendar.is_enabled());
 
         // Explicitly setting it false also survives a round-trip.
-        let cfg2: ClinConfig = toml::from_str("[list]\ncalendar_enabled = false\n").unwrap();
-        assert!(!cfg2.list.calendar_enabled);
+        let cfg2: ClinConfig = toml::from_str("[features]\ncalendar = false\n").unwrap();
+        assert!(!cfg2.features.calendar.is_enabled());
     }
 
     #[test]
-    fn backup_defaults_disabled_when_keys_omitted() {
-        // A [backup] section that omits the enable flags must default to off.
+    fn backup_defaults_enabled_when_keys_omitted() {
+        // A [backup] section that omits the enable flags must default to on.
         let cfg: ClinConfig = toml::from_str("[backup]\nauto_push = false\n").unwrap();
-        assert!(!cfg.backup.enabled);
+        assert!(cfg.features.backup.is_enabled());
         assert!(!cfg.backup.backup_on_save);
         assert!(!cfg.backup.backup_on_quit);
+    }
+
+    #[test]
+    fn features_migration_consolidates_legacy_enabled_flags() {
+        let _lock = ConfigTestGuard::lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_file_path = temp_dir.path().join("config.toml");
+
+        std::fs::write(
+            &config_file_path,
+            "[image]\nenabled = false\n[backup]\nenabled = true\n[goals]\nenabled = false\n[list]\ncalendar_enabled = false\nsmart_folders_enabled = true\n",
+        )
+        .unwrap();
+        set_config_path_override(config_file_path.clone());
+
+        let config = ClinConfig::load().0.unwrap();
+
+        assert!(!config.features.images.is_enabled());
+        assert!(config.features.backup.is_enabled());
+        assert!(!config.features.goals.is_enabled());
+        assert!(!config.features.calendar.is_enabled());
+        assert!(config.features.smart_folders.is_enabled());
+        // Flags without a legacy counterpart fall back to defaults.
+        assert!(config.features.tags.is_enabled());
+
+        let saved = fs::read_to_string(&config_file_path).unwrap();
+        assert!(saved.contains("[features]"));
+        assert!(saved.contains("backup = true"));
+        assert!(!saved.contains("enabled ="));
     }
 
     #[test]
@@ -975,7 +1123,7 @@ show_status_bar = false
         // The embedded default template is what a first-run user gets. It must
         // be valid ClinConfig TOML and ship with the calendar visible.
         let config: ClinConfig = toml::from_str(&merge::default_config_content()).unwrap();
-        assert!(config.list.calendar_enabled);
+        assert!(config.features.calendar.is_enabled());
         // Sanity: a few other shipped defaults still hold.
         assert!(config.list.preview_enabled);
         // [statusline] section is present but fields are commented → parsed as None.
@@ -988,12 +1136,12 @@ show_status_bar = false
     #[test]
     fn test_goals_config_deserialization() {
         let config: ClinConfig = toml::from_str(&merge::default_config_content()).unwrap();
-        assert!(config.goals.enabled);
+        assert!(config.features.goals.is_enabled());
         assert_eq!(config.goals.word_goal, 500);
         assert_eq!(config.goals.note_goal, 3);
 
         let empty_config: ClinConfig = toml::from_str("").unwrap();
-        assert!(empty_config.goals.enabled);
+        assert!(empty_config.features.goals.is_enabled());
         assert_eq!(empty_config.goals.word_goal, 500);
         assert_eq!(empty_config.goals.note_goal, 3);
     }
@@ -1026,7 +1174,7 @@ grid_color = "#222222"
 
         std::fs::write(
             &config_file_path,
-            "# Enable mouse support (clicking, scrolling, panning).\n[core]\nmouse_enabled = true\n",
+            "# Enable mouse support (clicking, scrolling, panning).\n[core]\nmouse_enabled = true\n[features]\ngraph_view = true\n",
         )
         .unwrap();
         set_config_path_override(config_file_path.clone());

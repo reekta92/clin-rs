@@ -4,71 +4,60 @@ use crate::popups::*;
 use std::time::{Duration, Instant};
 
 impl App {
-    /// In grid layout, cycle between Vault, Pinned, and Smart tabs.
+    /// In grid layout, cycle between Vault, Pinned, Smart, and Subnotes tabs.
     pub fn cycle_grid_tab(&mut self) {
         if self.list.notes_layout != crate::config::NotesLayout::Grid {
             return;
         }
-        self.list.grid_folder = if self.config.list.smart_folders_enabled {
-            if self.list.grid_folder == VIRTUAL_PINNED_PATH {
-                VIRTUAL_SMART_PATH.to_string()
-            } else if self.list.grid_folder == VIRTUAL_SMART_PATH
-                || self.list.grid_folder.starts_with('@')
-            {
-                VIRTUAL_SUBNOTES_PATH.to_string()
-            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
-                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
-            {
-                String::new()
+        let sf = self.config.features.smart_folders.is_enabled();
+        let sn = self.config.features.subnotes.is_enabled();
+        let cur = self.list.grid_folder.clone();
+        let next = if cur == VIRTUAL_PINNED_PATH {
+            if sf {
+                VIRTUAL_SMART_PATH
+            } else if sn {
+                VIRTUAL_SUBNOTES_PATH
             } else {
-                VIRTUAL_PINNED_PATH.to_string()
+                ""
             }
+        } else if sf && (cur == VIRTUAL_SMART_PATH || cur.starts_with('@')) {
+            if sn { VIRTUAL_SUBNOTES_PATH } else { "" }
+        } else if sn && (cur == VIRTUAL_SUBNOTES_PATH || Self::is_subnotes_parent_grid_path(&cur)) {
+            ""
         } else {
-            if self.list.grid_folder == VIRTUAL_PINNED_PATH {
-                VIRTUAL_SUBNOTES_PATH.to_string()
-            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
-                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
-            {
-                String::new()
-            } else {
-                VIRTUAL_PINNED_PATH.to_string()
-            }
+            VIRTUAL_PINNED_PATH
         };
+        self.list.grid_folder = next.to_string();
         self.list.visual_index = 0;
         self.refresh_visual_list();
     }
 
-    /// In grid layout, reverse-cycle between Vault, Pinned, and Smart tabs.
+    /// In grid layout, reverse-cycle between Vault, Pinned, Smart, and Subnotes tabs.
     pub fn reverse_cycle_grid_tab(&mut self) {
         if self.list.notes_layout != crate::config::NotesLayout::Grid {
             return;
         }
-        self.list.grid_folder = if self.config.list.smart_folders_enabled {
-            if self.list.grid_folder == VIRTUAL_SMART_PATH || self.list.grid_folder.starts_with('@')
-            {
-                VIRTUAL_PINNED_PATH.to_string()
-            } else if self.list.grid_folder == VIRTUAL_PINNED_PATH {
-                String::new()
-            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
-                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
-            {
-                VIRTUAL_SMART_PATH.to_string()
+        let sf = self.config.features.smart_folders.is_enabled();
+        let sn = self.config.features.subnotes.is_enabled();
+        let cur = self.list.grid_folder.clone();
+        let next = if sf && (cur == VIRTUAL_SMART_PATH || cur.starts_with('@')) {
+            VIRTUAL_PINNED_PATH
+        } else if cur == VIRTUAL_PINNED_PATH {
+            ""
+        } else if sn && (cur == VIRTUAL_SUBNOTES_PATH || Self::is_subnotes_parent_grid_path(&cur)) {
+            if sf {
+                VIRTUAL_SMART_PATH
             } else {
-                // Vault (empty) or unknown → Subnotes
-                VIRTUAL_SUBNOTES_PATH.to_string()
+                VIRTUAL_PINNED_PATH
             }
+        } else if sn {
+            VIRTUAL_SUBNOTES_PATH
+        } else if sf {
+            VIRTUAL_SMART_PATH
         } else {
-            if self.list.grid_folder == VIRTUAL_PINNED_PATH {
-                String::new()
-            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
-                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
-            {
-                VIRTUAL_PINNED_PATH.to_string()
-            } else {
-                // Vault (empty) or unknown → Subnotes
-                VIRTUAL_SUBNOTES_PATH.to_string()
-            }
+            VIRTUAL_PINNED_PATH
         };
+        self.list.grid_folder = next.to_string();
         self.list.visual_index = 0;
         self.refresh_visual_list();
     }
@@ -133,7 +122,11 @@ impl App {
             return;
         };
         let query_text = popup.input.lines().join("");
-        let parsed = parse_search_query(&query_text);
+        let parsed = parse_search_query(
+            &query_text,
+            self.config.features.tags.is_enabled(),
+            self.config.features.subnotes.is_enabled(),
+        );
         let title_query = parsed.text.trim().to_lowercase();
         let grep_query = parsed.grep_text.trim().to_lowercase();
         let subnote_text = parsed.subnote_text.clone();
@@ -729,16 +722,30 @@ mod tests {
     }
     #[test]
     fn sn_prefix_parses_and_is_exclusive_of_grep_consumption() {
-        let q1 = crate::app::parse_search_query("sn:needle");
+        let q1 = crate::app::parse_search_query("sn:needle", true, true);
         assert_eq!(q1.subnote_text.as_deref(), Some("needle"));
         assert_eq!(q1.text, "");
         assert!(!q1.grep_mode);
 
-        let q2 = crate::app::parse_search_query("g:foo sn:bar");
+        let q2 = crate::app::parse_search_query("g:foo sn:bar", true, true);
         assert_eq!(q2.subnote_text.as_deref(), Some("bar"));
         assert_eq!(q2.grep_text, "foo");
         assert!(q2.grep_mode);
         // exclusivity is enforced at consumption
+    }
+
+    #[test]
+    fn disabled_tag_token_treated_as_literal() {
+        let q = crate::app::parse_search_query("t:foo", false, true);
+        assert_eq!(q.tag_filter, None);
+        assert_eq!(q.text, "t:foo");
+    }
+
+    #[test]
+    fn disabled_subnote_token_treated_as_literal() {
+        let q = crate::app::parse_search_query("sn:needle", true, false);
+        assert_eq!(q.subnote_text, None);
+        assert_eq!(q.text, "sn:needle");
     }
 
     #[test]
@@ -759,6 +766,7 @@ mod tests {
 
         let mut app = crate::app::App::new(storage).unwrap();
         app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.refresh_subnotes_view_cache();
         app.refresh_visual_list();
 
         app.begin_search();
@@ -812,7 +820,9 @@ mod tests {
             .unwrap();
 
         let mut app = crate::app::App::new(storage).unwrap();
+        app.config.features.subnotes = crate::config::FeatureState::Enabled;
         app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.refresh_subnotes_view_cache();
         app.refresh_visual_list();
 
         app.begin_search();

@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 /// Option rows shown below the logo. The last selectable row is the Done
 /// button, so selectable indices run `0..=DONE_ROW`.
-pub const OPTION_ROWS: usize = 6;
-pub const DONE_ROW: usize = 6;
+pub const OPTION_ROWS: usize = 8;
+pub const DONE_ROW: usize = 8;
 
 pub const SETUP_THEMES: &[&str] = &[
     "default",
@@ -36,6 +36,39 @@ pub const SETUP_PRESETS: &[&str] = &["default", "helix", "vim", "emacs"];
 pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none"];
 pub const SETUP_HINT_STYLES: &[&str] = &[
     "Classic", "Sharp", "Rounded", "Slanted", "Bubbles", "Blurred", "Chips", "Brackets", "Compact",
+];
+pub const SETUP_LAYOUTS: &[&str] = &["Grid", "Tree"];
+pub const SETUP_FEATURE_PRESETS: &[&str] = &["Default", "Expanded", "Minimal", "Custom"];
+
+/// Feature preset for the setup wizard's Features row. `Custom` keeps the
+/// user's per-feature toggles; the others are fixed sets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeaturePreset {
+    Default,
+    Expanded,
+    Minimal,
+    Custom,
+}
+
+/// Display names for the 16 [`crate::config::FeaturesConfig`] fields, in field
+/// order. `get_feature`/`set_feature` index into this list.
+pub const FEATURE_NAMES: &[&str] = &[
+    "Graph View",
+    "Canvas View",
+    "Draw View",
+    "Outline View",
+    "Help View",
+    "Tags",
+    "Trash",
+    "Subnotes",
+    "Templates",
+    "Import",
+    "Encryption",
+    "Images",
+    "Backup",
+    "Goals",
+    "Calendar",
+    "Smart Folders",
 ];
 
 pub const CLIN_ASCII: &str = concat!(
@@ -73,6 +106,128 @@ pub fn hint_style_at(idx: usize) -> crate::config::HintBarStyle {
 }
 pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
     s.index()
+}
+
+pub fn layout_at(idx: usize) -> crate::config::NotesLayout {
+    match idx {
+        1 => crate::config::NotesLayout::Tree,
+        _ => crate::config::NotesLayout::Grid,
+    }
+}
+pub fn layout_index(l: &crate::config::NotesLayout) -> usize {
+    match l {
+        crate::config::NotesLayout::Tree => 1,
+        crate::config::NotesLayout::Grid => 0,
+    }
+}
+
+/// The fixed [`crate::config::FeaturesConfig`] for a preset. `Custom` is not
+/// handled here — callers use `SetupState.custom_features` directly.
+pub fn features_for_preset(preset: FeaturePreset) -> crate::config::FeaturesConfig {
+    use crate::config::FeatureState::Disabled;
+    let mut f = crate::config::FeaturesConfig::default();
+    match preset {
+        FeaturePreset::Default => {}
+        FeaturePreset::Minimal => {
+            for state in [
+                &mut f.graph_view,
+                &mut f.canvas_view,
+                &mut f.draw_view,
+                &mut f.outline_view,
+                &mut f.trash,
+                &mut f.subnotes,
+                &mut f.import,
+                &mut f.encryption,
+                &mut f.backup,
+                &mut f.goals,
+                &mut f.calendar,
+                &mut f.smart_folders,
+            ] {
+                *state = Disabled;
+            }
+        }
+        FeaturePreset::Expanded => {
+            f.graph_view = Disabled;
+            f.canvas_view = Disabled;
+            f.draw_view = Disabled;
+            f.backup = Disabled;
+        }
+        FeaturePreset::Custom => {}
+    }
+    f
+}
+
+/// Detect which preset a live config matches, else `Custom`.
+pub fn detect_preset(features: &crate::config::FeaturesConfig) -> FeaturePreset {
+    if *features == crate::config::FeaturesConfig::default() {
+        FeaturePreset::Default
+    } else if *features == features_for_preset(FeaturePreset::Expanded) {
+        FeaturePreset::Expanded
+    } else if *features == features_for_preset(FeaturePreset::Minimal) {
+        FeaturePreset::Minimal
+    } else {
+        FeaturePreset::Custom
+    }
+}
+
+/// Feature at `idx` in [`FEATURE_NAMES`] order. `idx >= 16` yields `None`.
+pub fn get_feature(
+    f: &crate::config::FeaturesConfig,
+    idx: usize,
+) -> Option<crate::config::FeatureState> {
+    Some(match idx {
+        0 => f.graph_view,
+        1 => f.canvas_view,
+        2 => f.draw_view,
+        3 => f.outline_view,
+        4 => f.help_view,
+        5 => f.tags,
+        6 => f.trash,
+        7 => f.subnotes,
+        8 => f.templates,
+        9 => f.import,
+        10 => f.encryption,
+        11 => f.images,
+        12 => f.backup,
+        13 => f.goals,
+        14 => f.calendar,
+        15 => f.smart_folders,
+        _ => return None,
+    })
+}
+
+/// Set feature at `idx` in [`FEATURE_NAMES`] order. Out-of-range is a no-op.
+pub fn set_feature(
+    f: &mut crate::config::FeaturesConfig,
+    idx: usize,
+    state: crate::config::FeatureState,
+) {
+    match idx {
+        0 => f.graph_view = state,
+        1 => f.canvas_view = state,
+        2 => f.draw_view = state,
+        3 => f.outline_view = state,
+        4 => f.help_view = state,
+        5 => f.tags = state,
+        6 => f.trash = state,
+        7 => f.subnotes = state,
+        8 => f.templates = state,
+        9 => f.import = state,
+        10 => f.encryption = state,
+        11 => f.images = state,
+        12 => f.backup = state,
+        13 => f.goals = state,
+        14 => f.calendar = state,
+        15 => f.smart_folders = state,
+        _ => {}
+    }
+}
+
+/// Feature rows visible in the Custom preview panel: total inner height minus
+/// the bottom hint line and one padding row. Shared by the input handler and
+/// `draw_preview_features` so the scroll window matches the rendered window.
+pub fn feature_visible_rows(inner_h: u16) -> usize {
+    (inner_h.saturating_sub(2) as usize).max(1)
 }
 
 /// Build the full theme list for the setup wizard: built-in baseline ordered by
@@ -120,6 +275,11 @@ pub struct SetupState {
     pub hint_bar_style: usize,
     pub icon_mode: usize,
     pub keybind_preset: usize,
+    pub notes_layout: usize,
+    pub feature_preset: usize,
+    pub custom_features: crate::config::FeaturesConfig,
+    pub feature_scroll: usize,
+    pub feature_cursor: usize,
     pub selected: usize,
     pub confirm_exit: bool,
     pub vault_path: PathBuf,
@@ -161,6 +321,16 @@ impl SetupState {
                 crate::config::KeybindPreset::Vim => 2,
                 crate::config::KeybindPreset::Emacs => 3,
             },
+            notes_layout: layout_index(&config.list.default_view),
+            feature_preset: match detect_preset(&config.features) {
+                FeaturePreset::Default => 0,
+                FeaturePreset::Expanded => 1,
+                FeaturePreset::Minimal => 2,
+                FeaturePreset::Custom => 3,
+            },
+            custom_features: config.features.clone(),
+            feature_scroll: 0,
+            feature_cursor: 0,
             selected: usize::from(vault_cli_override),
             confirm_exit: false,
             initial_vault_path: vault_path.clone(),
@@ -231,6 +401,22 @@ impl SetupState {
                 };
             }
             5 => {
+                let len = SETUP_LAYOUTS.len();
+                self.notes_layout = if forward {
+                    (self.notes_layout + 1) % len
+                } else {
+                    (self.notes_layout + len - 1) % len
+                };
+            }
+            6 => {
+                let len = SETUP_FEATURE_PRESETS.len();
+                self.feature_preset = if forward {
+                    (self.feature_preset + 1) % len
+                } else {
+                    (self.feature_preset + len - 1) % len
+                };
+            }
+            7 => {
                 let len = SETUP_PRESETS.len();
                 self.keybind_preset = if forward {
                     (self.keybind_preset + 1) % len
@@ -242,6 +428,53 @@ impl SetupState {
         }
     }
 
+    /// Whether the Features row is selected and its preset is Custom.
+    pub fn custom_features_active(&self) -> bool {
+        self.selected == 6 && self.feature_preset == 3
+    }
+
+    /// Move the Custom-mode feature cursor. Returns `false` at a boundary so
+    /// the caller can fall through to row navigation.
+    pub fn move_feature_cursor(&mut self, down: bool, visible: usize) -> bool {
+        if down {
+            if self.feature_cursor + 1 < FEATURE_NAMES.len() {
+                self.feature_cursor += 1;
+            } else {
+                return false;
+            }
+        } else if self.feature_cursor > 0 {
+            self.feature_cursor -= 1;
+        } else {
+            return false;
+        }
+        self.clamp_feature_scroll(visible);
+        true
+    }
+
+    /// Keep the cursor inside the rendered scroll window.
+    fn clamp_feature_scroll(&mut self, visible: usize) {
+        let visible = visible.max(1);
+        if self.feature_cursor < self.feature_scroll {
+            self.feature_scroll = self.feature_cursor;
+        } else if self.feature_cursor >= self.feature_scroll + visible {
+            self.feature_scroll = self.feature_cursor + 1 - visible;
+        }
+    }
+
+    /// Toggle the feature at the cursor (Enabled↔Disabled; Deleted→Enabled).
+    pub fn toggle_feature_cursor(&mut self) {
+        if let Some(state) = get_feature(&self.custom_features, self.feature_cursor) {
+            set_feature(&mut self.custom_features, self.feature_cursor, !state);
+        }
+    }
+
+    /// Select `idx` (mouse click) and toggle it, keeping it in the window.
+    pub fn toggle_feature_at(&mut self, idx: usize, visible: usize) {
+        self.feature_cursor = idx;
+        self.clamp_feature_scroll(visible);
+        self.toggle_feature_cursor();
+    }
+
     pub fn row_label(row: usize) -> &'static str {
         match row {
             0 => "Vault",
@@ -249,7 +482,9 @@ impl SetupState {
             2 => "Background",
             3 => "Hint bar",
             4 => "Icons",
-            5 => "Keybinds",
+            5 => "Layout",
+            6 => "Features",
+            7 => "Keybinds",
             _ => "",
         }
     }
@@ -275,7 +510,9 @@ impl SetupState {
             }
             3 => SETUP_HINT_STYLES[self.hint_bar_style].to_string(),
             4 => SETUP_ICON_MODES[self.icon_mode].to_string(),
-            5 => SETUP_PRESETS[self.keybind_preset].to_string(),
+            5 => SETUP_LAYOUTS[self.notes_layout].to_string(),
+            6 => SETUP_FEATURE_PRESETS[self.feature_preset].to_string(),
+            7 => SETUP_PRESETS[self.keybind_preset].to_string(),
             _ => String::new(),
         }
     }
@@ -354,8 +591,22 @@ mod tests {
         s.cycle(true);
         assert_eq!(s.icon_mode, 0);
 
-        // Keybind preset wraps.
+        // Layout wraps.
         s.selected = 5;
+        s.notes_layout = SETUP_LAYOUTS.len() - 1;
+        s.cycle(true);
+        assert_eq!(s.notes_layout, 0);
+        s.cycle(false);
+        assert_eq!(s.notes_layout, SETUP_LAYOUTS.len() - 1);
+
+        // Feature preset wraps.
+        s.selected = 6;
+        s.feature_preset = SETUP_FEATURE_PRESETS.len() - 1;
+        s.cycle(true);
+        assert_eq!(s.feature_preset, 0);
+
+        // Keybind preset wraps.
+        s.selected = 7;
         s.keybind_preset = SETUP_PRESETS.len() - 1;
         s.cycle(true);
         assert_eq!(s.keybind_preset, 0);
@@ -444,5 +695,63 @@ mod tests {
             validate_vault_path(&link.display().to_string()).unwrap(),
             link
         );
+    }
+
+    #[test]
+    fn feature_presets_roundtrip() {
+        use crate::config::FeatureState;
+        for preset in [
+            FeaturePreset::Default,
+            FeaturePreset::Expanded,
+            FeaturePreset::Minimal,
+        ] {
+            assert_eq!(detect_preset(&features_for_preset(preset)), preset);
+        }
+
+        let minimal = features_for_preset(FeaturePreset::Minimal);
+        for enabled in [
+            minimal.help_view,
+            minimal.tags,
+            minimal.templates,
+            minimal.images,
+        ] {
+            assert!(enabled.is_enabled());
+        }
+        assert!(!minimal.graph_view.is_enabled());
+        assert!(!minimal.backup.is_enabled());
+
+        let expanded = features_for_preset(FeaturePreset::Expanded);
+        for disabled in [
+            expanded.graph_view,
+            expanded.canvas_view,
+            expanded.draw_view,
+            expanded.backup,
+        ] {
+            assert!(!disabled.is_enabled());
+        }
+        assert!(expanded.outline_view.is_enabled());
+        assert!(expanded.encryption.is_enabled());
+
+        // A Deleted state never roundtrips to a preset.
+        let custom = crate::config::FeaturesConfig {
+            graph_view: FeatureState::Deleted,
+            ..crate::config::FeaturesConfig::default()
+        };
+        assert_eq!(detect_preset(&custom), FeaturePreset::Custom);
+    }
+
+    #[test]
+    fn feature_index_mapping_roundtrip() {
+        use crate::config::FeatureState;
+        let mut f = crate::config::FeaturesConfig::default();
+        assert_eq!(get_feature(&f, 0), Some(FeatureState::Enabled));
+        set_feature(&mut f, 0, FeatureState::Disabled);
+        assert!(!f.graph_view.is_enabled());
+        assert_eq!(get_feature(&f, 15), Some(FeatureState::Enabled));
+        set_feature(&mut f, 15, FeatureState::Disabled);
+        assert!(!f.smart_folders.is_enabled());
+        assert_eq!(get_feature(&f, 16), None);
+        set_feature(&mut f, 16, FeatureState::Enabled); // out-of-range no-op
+        assert!(f.help_view.is_enabled());
     }
 }

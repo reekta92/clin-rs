@@ -5,44 +5,58 @@ use ratatui_textarea::TextArea;
 
 /// (label, glyph, category-to-filter). Tab 0 = All (no filter).
 pub fn palette_tabs(
-    icon_mode: crate::config::IconMode,
+    app: &crate::app::App,
 ) -> Vec<(
     &'static str,
     &'static str,
     Option<crate::actions::ActionCategory>,
 )> {
-    vec![
-        (
-            "All",
-            crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", icon_mode),
-            None,
-        ),
-        (
+    let icon_mode = app.config.ui.icon_mode;
+    let actions = crate::actions::get_all_action_infos(app);
+    let has_cat = |cat: crate::actions::ActionCategory| actions.iter().any(|a| a.category == cat);
+
+    let mut tabs = vec![(
+        "All",
+        crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", icon_mode),
+        None,
+    )];
+
+    if has_cat(crate::actions::ActionCategory::Notes) {
+        tabs.push((
             "Notes",
             crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode),
             Some(crate::actions::ActionCategory::Notes),
-        ),
-        (
+        ));
+    }
+    if has_cat(crate::actions::ActionCategory::Import) {
+        tabs.push((
             "Import",
             crate::ui::get_icon("\u{f019}", "\u{1f4e5}", icon_mode),
             Some(crate::actions::ActionCategory::Import),
-        ),
-        (
+        ));
+    }
+    if has_cat(crate::actions::ActionCategory::Append) {
+        tabs.push((
             "Append",
             crate::ui::get_icon("\u{f067}", "\u{2795}", icon_mode),
             Some(crate::actions::ActionCategory::Append),
-        ),
-        (
+        ));
+    }
+    if has_cat(crate::actions::ActionCategory::Views) {
+        tabs.push((
             "Views",
             crate::ui::get_icon("\u{f06e}", "\u{1f441}", icon_mode),
             Some(crate::actions::ActionCategory::Views),
-        ),
-        (
+        ));
+    }
+    if has_cat(crate::actions::ActionCategory::Settings) {
+        tabs.push((
             "Settings",
             crate::ui::get_icon("\u{f013}", "\u{2699}", icon_mode),
             Some(crate::actions::ActionCategory::Settings),
-        ),
-    ]
+        ));
+    }
+    tabs
 }
 
 pub struct PaletteItem {
@@ -94,7 +108,12 @@ impl CommandPalette {
         let query = self.input.lines()[0].as_str();
         let actions = crate::actions::get_all_action_infos(app);
         let mut matched = Vec::with_capacity(actions.len());
-        let category_filter = palette_tabs(app.config.ui.icon_mode)[self.active_tab].2;
+        let tabs = palette_tabs(app);
+        // Handle active_tab being out of bounds
+        if self.active_tab >= tabs.len() {
+            self.active_tab = 0;
+        }
+        let category_filter = tabs[self.active_tab].2;
         if query.is_empty() {
             for action in actions {
                 if category_filter.is_some_and(|cat| action.category != cat) {
@@ -143,15 +162,14 @@ impl CommandPalette {
         }
         match key.code {
             KeyCode::Tab => {
-                self.active_tab =
-                    (self.active_tab + 1) % palette_tabs(app.config.ui.icon_mode).len();
+                let len = palette_tabs(app).len();
+                self.active_tab = (self.active_tab + 1) % len;
                 self.refresh_items(app);
             }
             KeyCode::BackTab => {
+                let len = palette_tabs(app).len();
                 if self.active_tab == 0 {
-                    self.active_tab = palette_tabs(app.config.ui.icon_mode)
-                        .len()
-                        .saturating_sub(1);
+                    self.active_tab = len.saturating_sub(1);
                 } else {
                     self.active_tab -= 1;
                 }

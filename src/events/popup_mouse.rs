@@ -225,11 +225,10 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                 );
                 palette.mouse_selection.begin(&mut palette.input);
             } else if mouse.row == chunks[1].y {
-                let tabs: Vec<(&str, Option<&str>)> =
-                    crate::palette::palette_tabs(app.config.ui.icon_mode)
-                        .iter()
-                        .map(|(l, g, _)| (*l, Some(*g)))
-                        .collect();
+                let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app)
+                    .iter()
+                    .map(|(l, g, _)| (*l, Some(*g)))
+                    .collect();
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
                     chunks[1].x,
@@ -348,7 +347,7 @@ fn handle_search_popup_scrollbar(
 ) -> bool {
     if let Some(meta) = popup.last_scroll {
         let query_text = popup.input.lines().join("");
-        let parsed = crate::app::parse_search_query(&query_text);
+        let parsed = crate::app::parse_search_query(&query_text, true, true);
         let has_grep = parsed.grep_mode;
         let total_items = if has_grep {
             popup.total_grep_rows()
@@ -869,7 +868,11 @@ impl crate::popups::ActivePopup {
                     return true;
                 }
                 let query_text = p.input.lines().join("");
-                let parsed = crate::app::parse_search_query(&query_text);
+                let parsed = crate::app::parse_search_query(
+                    &query_text,
+                    app.config.features.tags.is_enabled(),
+                    app.config.features.subnotes.is_enabled(),
+                );
                 let has_filter = parsed.folder_filter.is_some()
                     || parsed.pinned_only
                     || parsed.tag_filter.is_some()
