@@ -2244,7 +2244,7 @@ mod tests {
         let mut warnings = Vec::new();
         migrate_legacy_default_vault_at(&old, &new, &mut warnings);
         assert!(!new.exists());
-        assert!(warnings.is_empty());
+        assert_eq!(warnings.len(), 0);
         // Destination already exists → never touched.
         std::fs::write(old.join("notes/a.md"), "a").unwrap();
         std::fs::create_dir_all(&new).unwrap();
@@ -2252,7 +2252,7 @@ mod tests {
         migrate_legacy_default_vault_at(&old, &new, &mut warnings);
         assert!(new.join("existing.md").is_file());
         assert!(!new.join("a.md").exists());
-        assert!(warnings.is_empty());
+        assert_eq!(warnings.len(), 0);
     }
 
     #[test]
@@ -2682,7 +2682,7 @@ mod tests {
         // 3. Deletion / Cleanup
         storage.set_subnotes(plain_id, &[])?;
         let retrieved_deleted = storage.get_subnotes(plain_id)?;
-        assert!(retrieved_deleted.is_empty());
+        assert_eq!(retrieved_deleted.len(), 0);
 
         let notes_with3 = storage.get_notes_with_subnotes()?;
         assert!(!notes_with3.contains(plain_id));
@@ -2691,7 +2691,7 @@ mod tests {
         // Delete all
         storage.set_subnotes(encrypted_id, &[])?;
         let retrieved_deleted_enc = storage.get_subnotes(encrypted_id)?;
-        assert!(retrieved_deleted_enc.is_empty());
+        assert_eq!(retrieved_deleted_enc.len(), 0);
 
         // The file should be completely deleted when empty
         assert!(!db_path.exists());
@@ -2729,10 +2729,10 @@ mod tests {
 
         // Retrieve subnotes - should return empty vec instead of panicking
         let retrieved = storage.get_subnotes("some_note.md")?;
-        assert!(retrieved.is_empty());
+        assert_eq!(retrieved.len(), 0);
 
         let notes_with = storage.get_notes_with_subnotes()?;
-        assert!(notes_with.is_empty());
+        assert_eq!(notes_with.len(), 0);
 
         Ok(())
     }
@@ -2818,9 +2818,9 @@ mod tests {
         let summary = result.unwrap();
         assert_eq!(summary.title, "doc");
         assert_eq!(summary.id, "doc.pdf");
-        assert!(summary.tags.is_empty());
+        assert_eq!(summary.tags.len(), 0);
         assert!(!summary.pinned);
-        assert!(summary.links.is_empty());
+        assert_eq!(summary.links.len(), 0);
         assert!(summary.size_bytes > 0);
 
         Ok(())

@@ -65,7 +65,7 @@ mod tests {
         s.add("a".to_string());
         s.select_only("b".to_string());
         assert_eq!(s.primary.as_deref(), Some("b"));
-        assert!(s.extra.is_empty());
+        assert_eq!(s.extra.len(), 0);
     }
 
     #[test]
@@ -74,7 +74,8 @@ mod tests {
         s.select_only("a".to_string());
         s.add("b".to_string());
         s.clear();
-        assert!(s.is_empty());
+        let empty = s.is_empty();
+        assert!(empty);
     }
 
     #[test]
@@ -84,7 +85,7 @@ mod tests {
         s.add("b".to_string());
         s.clear_set();
         assert_eq!(s.primary.as_deref(), Some("a"));
-        assert!(s.extra.is_empty());
+        assert_eq!(s.extra.len(), 0);
     }
 
     #[test]
@@ -122,7 +123,8 @@ mod tests {
     #[test]
     fn count_and_is_empty() {
         let mut s = CanvasSelection::new();
-        assert!(s.is_empty());
+        let empty = s.is_empty();
+        assert!(empty);
         assert_eq!(s.count(), 0);
         s.select_only("a".to_string());
         assert_eq!(s.count(), 1);

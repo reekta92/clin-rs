@@ -2299,7 +2299,7 @@ mod tests {
             crossterm::event::Event::Key(key(KeyCode::Enter, KeyModifiers::NONE)),
             Rect::default(),
         );
-        assert!(app.storage.load_note(&note_id).unwrap().tags.is_empty());
+        assert_eq!(app.storage.load_note(&note_id).unwrap().tags.len(), 0);
     }
 
     fn remove_tags_popup() -> crate::popups::RemoveTagsPopup {

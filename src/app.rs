@@ -2058,7 +2058,7 @@ mod tests {
         app.editor.external_editor_enabled = false;
         // Initially no words written and no notes modified
         assert_eq!(app.goals_progress.words_written, 0);
-        assert!(app.goals_progress.notes_modified.is_empty());
+        assert_eq!(app.goals_progress.notes_modified.len(), 0);
 
         // Create a new blank note and edit it
         app.start_blank_note_with_title(String::new(), "Test Note".to_string());

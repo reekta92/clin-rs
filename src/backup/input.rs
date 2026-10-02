@@ -842,8 +842,8 @@ mod tests {
         state.settings.enabled = false;
         state.refresh_git_info();
 
-        assert!(state.selectable_files.is_empty());
-        assert!(state.diff_lines.is_empty());
+        assert_eq!(state.selectable_files.len(), 0);
+        assert_eq!(state.diff_lines.len(), 0);
         assert!(state.status.is_none());
 
         let clin_config = crate::config::ClinConfig::default();

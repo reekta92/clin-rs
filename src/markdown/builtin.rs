@@ -561,15 +561,21 @@ impl Ctx<'_, '_> {
                     if let Some(clip) = self.cell_clip {
                         let available = clip.saturating_sub(self.col);
                         if available == 0 {
+                            return;
+                        }
+                        if remaining_run.len() > available {
+                            let chunk_len = available.saturating_sub(1);
+                            if chunk_len > 0 {
+                                self.push_str_raw(&remaining_run[..chunk_len], st);
+                            }
                             if !self.cell_ellipsis {
                                 self.push_raw('…', st);
                                 self.cell_ellipsis = true;
                             }
                             return;
                         }
-                        let chunk_len = remaining_run.len().min(available);
-                        self.push_str_raw(&remaining_run[..chunk_len], st);
-                        remaining_run = &remaining_run[chunk_len..];
+                        self.push_str_raw(remaining_run, st);
+                        remaining_run = "";
                     } else {
                         let available = self.cols.saturating_sub(self.col);
                         if available == 0 {
@@ -1400,7 +1406,7 @@ fn render_table<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, tbl: &NodeTabl
             ctx.push('─', border_st, margin);
         }
         if ci + 1 < num_cols {
-            ctx.push('┼', border_st, margin);
+            ctx.push_str("─┼─", border_st, margin);
         }
     }
 
@@ -2286,7 +2292,7 @@ mod tests {
                 .chars()
                 .enumerate()
                 .filter(|&(_, c)| {
-                    c == '┃'
+                    c == '│'
                         || c == '┼'
                         || c == '┬'
                         || c == '┴'
@@ -2589,7 +2595,7 @@ mod tests {
         let lines = render_test(md, 22, true, false);
 
         let is_border = |c: char| -> bool {
-            matches!(c, '┃' | '┼' | '┬' | '┴' | '┌' | '┐' | '├' | '┤' | '└' | '┘')
+            matches!(c, '│' | '┼' | '┬' | '┴' | '┌' | '┐' | '├' | '┤' | '└' | '┘')
         };
 
         // Collect border character visual positions per row
@@ -2645,7 +2651,7 @@ mod tests {
         let md = "| 姓名 | 城市 |\n|---|---|\n| 张三 | 北京 |\n";
         let lines = render_test(md, 40, true, false);
         let is_border = |c: char| -> bool {
-            matches!(c, '┃' | '┼' | '┬' | '┴' | '┌' | '┐' | '├' | '┤' | '└' | '┘')
+            matches!(c, '│' | '┼' | '┬' | '┴' | '┌' | '┐' | '├' | '┤' | '└' | '┘')
         };
         let mut border_positions: Vec<Vec<usize>> = Vec::new();
         for line in &lines {

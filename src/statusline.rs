@@ -2220,7 +2220,7 @@ mod tests {
 
         // ext_badge_spans
         let badge_spans = crate::ui::ext_badge_spans(true, &theme, None);
-        assert!(!badge_spans.is_empty());
+        assert_ne!(badge_spans.len(), 0);
     }
     #[test]
     fn list_header_relative_time_boundaries() {
