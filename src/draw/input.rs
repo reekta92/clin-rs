@@ -1354,7 +1354,7 @@ mod tests {
         assert!(state.is_panning);
         assert_eq!(state.viewport.x, -20.0);
         assert_eq!(state.viewport.y, 10.0);
-        assert!(state.undo_stack.is_empty());
+        assert_eq!(state.undo_stack.len(), 0);
 
         handle_event(
             mouse(MouseEventKind::Up(MouseButton::Left), 30, 25),
@@ -1582,7 +1582,7 @@ mod tests {
         .unwrap();
 
         assert!(state.data.item(&id).is_none());
-        assert!(state.selection.is_empty());
+        let empty = state.selection.is_empty(); assert!(empty);
         assert_eq!(state.active_tool, DrawTool::Cursor);
         assert_eq!(state.undo_stack.len(), 1);
     }

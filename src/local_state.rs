@@ -276,7 +276,7 @@ mod tests {
         let state = LocalState::load(&state_path(&tmp)).unwrap();
         assert_eq!(state.version, 1);
         assert!(state.storage_migration.is_none());
-        assert!(state.vaults.is_empty());
+        assert_eq!(state.vaults.len(), 0);
     }
 
     #[test]

@@ -762,7 +762,7 @@ mod tests {
 
         let (summaries, _, _) =
             load_persisted_note_cache(&storage, &cache_path, digest, false, false);
-        assert!(summaries.is_empty());
+        assert_eq!(summaries.len(), 0);
     }
 
     #[test]

@@ -725,7 +725,7 @@ mod tests {
             Some(crate::popups::ActivePopup::Search(p)) => p,
             _ => panic!("search popup missing"),
         };
-        assert!(popup.grep_results.is_empty());
+        assert_eq!(popup.grep_results.len(), 0);
     }
     #[test]
     fn sn_prefix_parses_and_is_exclusive_of_grep_consumption() {
@@ -823,7 +823,7 @@ mod tests {
 
         if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
             assert_eq!(popup.subnote_results.len(), 1);
-            assert!(popup.title_result_ids.is_empty());
+            assert_eq!(popup.title_result_ids.len(), 0);
             assert!(app.unsent_search_request.is_none());
             popup.focus = crate::popups::SearchFocus::Results;
         } else {

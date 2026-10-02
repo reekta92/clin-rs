@@ -81,7 +81,7 @@ mod tests {
     fn test_parse_no_frontmatter() {
         let content = "Just some text";
         let (fm, remaining) = parse(content);
-        assert!(fm.tags.is_empty());
+        assert_eq!(fm.tags.len(), 0);
         assert_eq!(remaining, "Just some text");
     }
 
