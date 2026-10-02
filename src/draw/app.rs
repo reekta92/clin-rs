@@ -537,7 +537,8 @@ mod tests {
         });
         assert!(state.undo().unwrap());
         assert_eq!(state.redo_stack.len(), 1);
-        let empty = state.selection.is_empty(); assert!(empty);
+        let empty = state.selection.is_empty();
+        assert!(empty);
         assert!(state.hovered.is_none());
         assert!(state.current_stroke.is_none());
 
@@ -643,7 +644,10 @@ mod tests {
                 ("Erase", Some('e')),
             ]
         );
-        assert_eq!(draw_menu_specs(&DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, false).len(), 0);
+        assert_eq!(
+            draw_menu_specs(&DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, false).len(),
+            0
+        );
         assert_eq!(
             labels(DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, true),
             vec![("Paste", Some('v'))]

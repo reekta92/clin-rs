@@ -74,7 +74,8 @@ mod tests {
         s.select_only("a".to_string());
         s.add("b".to_string());
         s.clear();
-        let empty = s.is_empty(); assert!(empty);
+        let empty = s.is_empty();
+        assert!(empty);
     }
 
     #[test]
@@ -122,7 +123,8 @@ mod tests {
     #[test]
     fn count_and_is_empty() {
         let mut s = CanvasSelection::new();
-        let empty = s.is_empty(); assert!(empty);
+        let empty = s.is_empty();
+        assert!(empty);
         assert_eq!(s.count(), 0);
         s.select_only("a".to_string());
         assert_eq!(s.count(), 1);

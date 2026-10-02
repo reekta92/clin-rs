@@ -1582,7 +1582,8 @@ mod tests {
         .unwrap();
 
         assert!(state.data.item(&id).is_none());
-        let empty = state.selection.is_empty(); assert!(empty);
+        let empty = state.selection.is_empty();
+        assert!(empty);
         assert_eq!(state.active_tool, DrawTool::Cursor);
         assert_eq!(state.undo_stack.len(), 1);
     }
