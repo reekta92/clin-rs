@@ -2,6 +2,20 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.13.2] - 2026-10-02
+
+### Fixed
+
+- Align table delimiter row and fix cell truncation
+
+### Miscellaneous
+
+- Fix remaining negated assert_is_empty lints
+- Fix clippy assert_is_empty and update yoke-derive to resolve cargo deny
+
+### Styling
+
+- Cargo fmt
 ## [0.13.1] - 2026-09-29
 
 ### Fixed
@@ -16,6 +30,10 @@ All notable changes to clin are documented in this file.
 ### Styling
 
 - Fix clippy warnings in backup tests
+
+### Release
+
+- V0.13.1
 ## [0.13.0] - 2026-09-23
 
 ### Added
