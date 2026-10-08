@@ -101,8 +101,9 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::Find, &["Ctrl+f"]),
     (EditAction::GoToLine, &["Ctrl+g"]),
     (EditAction::InsertDate, &["Ctrl+;"]),
-    (EditAction::ToggleOutline, &["Ctrl+o"]),
-    (EditAction::ToggleLinks, &["Ctrl+b"]),
+    (EditAction::ToggleOutline, &["Ctrl+b Ctrl+o"]),
+    (EditAction::ToggleLinks, &["Ctrl+b Ctrl+l"]),
+    (EditAction::ToggleProperties, &["Ctrl+b Ctrl+p"]),
     (EditAction::PreviewLink, &["Alt+l"]),
     (EditAction::CycleAlignment, &["F9"]),
 ];
