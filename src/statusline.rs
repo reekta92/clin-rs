@@ -108,10 +108,49 @@ pub(crate) fn compact_list_tags(tags: &[String]) -> String {
     out
 }
 
+fn char_col_to_byte_offset(line: &str, col: usize) -> usize {
+    line.char_indices()
+        .nth(col)
+        .map_or(line.len(), |(offset, _)| offset)
+}
+
+fn selected_counts(document: &crate::editor_document::EditorDocument) -> Option<(usize, usize)> {
+    let (start, end) = document.selection_range()?;
+    if start == end {
+        return None;
+    }
+
+    let mut words = 0;
+    let mut chars = end.row - start.row;
+    for row in start.row..=end.row {
+        let line = &document.lines()[row];
+        let start_col = if row == start.row { start.col } else { 0 };
+        let end_col = if row == end.row {
+            end.col
+        } else {
+            line.chars().count()
+        };
+        let start_byte = if row == start.row {
+            char_col_to_byte_offset(line, start_col)
+        } else {
+            0
+        };
+        let end_byte = if row == end.row {
+            char_col_to_byte_offset(line, end_col)
+        } else {
+            line.len()
+        };
+        words += crate::goals::count_words(&line[start_byte..end_byte]);
+        chars += end_col - start_col;
+    }
+    Some((words, chars))
+}
+
 #[derive(Default)]
 pub(crate) struct EditMemo {
     pub(crate) counts: Option<(usize, usize)>,
     pub(crate) content: Option<String>,
+    selected_counts: std::cell::OnceCell<Option<(usize, usize)>>,
 }
 impl EditMemo {
     pub(crate) fn counts(&mut self, app: &crate::app::App) -> (usize, usize) {
@@ -123,9 +162,14 @@ impl EditMemo {
             (words, chars)
         })
     }
-    pub(crate) fn content(&mut self, app: &crate::app::App) -> &str {
+    pub(crate) fn content<'a>(&'a mut self, app: &'a crate::app::App) -> &'a str {
         self.content
             .get_or_insert_with(|| app.editor.body.lines().join("\n"))
+    }
+    fn selected_counts(&self, app: &crate::app::App) -> Option<(usize, usize)> {
+        *self
+            .selected_counts
+            .get_or_init(|| selected_counts(&app.editor.body))
     }
 }
 pub struct StatuslineContext<'a> {
@@ -796,10 +840,11 @@ impl StatuslineContext<'_> {
             ),
 
             // Edit view
-            "word_count" | "line_count" | "char_count" | "cursor_line" | "cursor_col"
-            | "modified" | "reading_time" | "header_count" | "task_count" | "has_tasks"
-            | "has_frontmatter" | "words_added" | "editing_id" | "editing_template"
-            | "line_numbers" | "editor_preview" | "ext_editor" | "ext_editor_enabled" => {
+            "word_count" | "word_count_display" | "line_count" | "char_count"
+            | "char_count_display" | "cursor_line" | "cursor_col" | "modified" | "reading_time"
+            | "header_count" | "task_count" | "has_tasks" | "has_frontmatter" | "words_added"
+            | "editing_id" | "editing_template" | "line_numbers" | "editor_preview"
+            | "ext_editor" | "ext_editor_enabled" => {
                 let app = match self.app {
                     Some(a) => a,
                     None => return Some("".into()),
@@ -815,6 +860,21 @@ impl StatuslineContext<'_> {
 
                 let val = match name {
                     "word_count" => self.edit_memo.borrow_mut().counts(app).0.to_string(),
+                    "word_count_display" | "char_count_display" => {
+                        let mut memo = self.edit_memo.borrow_mut();
+                        let counts = memo.counts(app);
+                        let selected = memo.selected_counts(app);
+                        let (total, selected) = if name == "word_count_display" {
+                            (counts.0, selected.map(|counts| counts.0))
+                        } else {
+                            (counts.1, selected.map(|counts| counts.1))
+                        };
+                        if let Some(selected) = selected {
+                            format!("({selected}) {total}")
+                        } else {
+                            total.to_string()
+                        }
+                    }
                     "line_count" => app.editor.body.lines().len().to_string(),
                     "char_count" => self.edit_memo.borrow_mut().counts(app).1.to_string(),
                     "cursor_line" => (app.editor.body.cursor().row + 1).to_string(),
@@ -1922,7 +1982,7 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
                 ViewMode::List => "{sort}  {detail}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),
                 ViewMode::Help => "Page {help_page}/{help_total_pages}".into(),
-                ViewMode::Edit => "{word_count}w {char_count}c {cursor_line}:{cursor_col}".into(),
+                ViewMode::Edit => "{word_count_display}w {char_count_display}c {cursor_line}:{cursor_col}".into(),
                 _ => "".into(),
             }
         }
@@ -2276,5 +2336,48 @@ mod tests {
             assert_eq!(list_relative_age_at(now - elapsed, now), expected);
         }
         assert_eq!(list_relative_age_at(now + 1, now), "just now");
+    }
+    #[test]
+    fn selected_count_boundaries() {
+        use crate::editor_document::EditorDocument;
+        use ratatui_textarea::CursorMove;
+
+        let source = "αβ café\t東京\n\none\u{a0}two 😀";
+        for (start, end, expected) in [
+            ((0, 1), (0, 7), (2, 6)),
+            ((0, 7), (0, 1), (2, 6)),
+            ((0, 3), (2, 3), (3, 12)),
+            ((0, 3), (2, 0), (2, 9)),
+            ((0, 7), (0, 8), (0, 1)),
+            ((0, 10), (1, 0), (0, 1)),
+            ((2, 8), (2, 9), (1, 1)),
+        ] {
+            let mut document = EditorDocument::from_text(source);
+            document.move_cursor(CursorMove::Jump(start.0, start.1));
+            document.start_selection();
+            document.move_cursor(CursorMove::Jump(end.0, end.1));
+            assert_eq!(
+                selected_counts(&document),
+                Some(expected),
+                "{start:?} → {end:?}"
+            );
+        }
+
+        let mut document = EditorDocument::from_text(source);
+        assert_eq!(selected_counts(&document), None);
+        document.start_selection();
+        assert_eq!(selected_counts(&document), None);
+        document.select_all();
+        assert_eq!(selected_counts(&document), Some((6, 21)));
+        document.cancel_selection();
+        assert_eq!(selected_counts(&document), None);
+
+        let mut document = EditorDocument::from_text("e\u{301}");
+        document.select_all();
+        assert_eq!(selected_counts(&document), Some((1, 2)));
+
+        let mut document = EditorDocument::from_text("");
+        document.select_all();
+        assert_eq!(selected_counts(&document), None);
     }
 }

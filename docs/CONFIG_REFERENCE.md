@@ -223,9 +223,11 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{prev_note}`, `{next_note}`: Filenames of the previous and next notes in visual order
 
 ##### Editor (`Editor` view)
-- `{word_count}`: Current word count
+- `{word_count}`: Current document total word count (remains total only, even if text is selected)
+- `{word_count_display}`: Document total word count, or `(selected) total` if text is selected
 - `{line_count}`: Total lines in the editor
-- `{char_count}`: Character count
+- `{char_count}`: Document total character count, including whitespace and line breaks (Unicode scalars, not bytes; remains total only)
+- `{char_count_display}`: Document total character count, or `(selected) total` if text is selected; uses the same character-count rules as `{char_count}`
 - `{cursor_line}`: 1-based cursor line row
 - `{cursor_col}`: 1-based cursor column
 - `{modified}`: `on`/`off` depending on unsaved changes
@@ -238,6 +240,14 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{editing_id}`: Note ID being edited
 - `{editing_template}`: `on`/`off` if editing a template
 - `{line_numbers}`, `{editor_preview}`, `{ext_editor}`, `{ext_editor_enabled}`: Editor configuration/process states
+
+The default editor header uses both selection-aware counts. Custom headers can opt in:
+
+```toml
+[statusline.edit]
+header_right = "{word_count_display}w {char_count_display}c {cursor_line}:{cursor_col}"
+```
+
 
 ##### Graph View (`Graph` view)
 - `{node_count}`, `{edge_count}`: Graph nodes and edges
