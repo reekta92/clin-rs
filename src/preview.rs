@@ -14,8 +14,22 @@ pub fn draw_preview_pane(
     content: Option<&PreviewContent>,
     hide_encrypted: bool,
     scroll_offset: u16,
-    icon_mode: crate::config::IconMode,
+    config: &crate::config::ClinConfig,
 ) {
+    let icon_mode = config.ui.icon_mode;
+    let mut actual_content = content;
+    if let Some(c) = actual_content {
+        match c {
+            PreviewContent::DrawGrid { .. } if !config.features.draw_view.is_enabled() => {
+                actual_content = None;
+            }
+            PreviewContent::CanvasGrid { .. } if !config.features.canvas_view.is_enabled() => {
+                actual_content = None;
+            }
+            _ => {}
+        }
+    }
+
     if hide_encrypted {
         let lock_lines = vec![
             Line::from(vec![
@@ -48,7 +62,7 @@ pub fn draw_preview_pane(
             );
         frame.render_widget(lock_para, rect);
     } else {
-        match content {
+        match actual_content {
             Some(PreviewContent::Markdown(renderer)) if renderer.document().is_some() => {
                 if renderer.is_content_empty() {
                     let placeholder = Paragraph::new(Line::from(vec![Span::styled(

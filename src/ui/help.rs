@@ -15,21 +15,66 @@ use strum::IntoEnumIterator;
 ///
 /// Help-view tab (label, glyph) pairs, in `HelpTab` order.
 /// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
-pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Option<&'static str>)> {
-    let pairs: [(&'static str, &'static str, &'static str); 8] = [
-        ("Notes", "\u{f02d}", "\u{1f4d8}"),     // book
-        ("Editor", "\u{f03eb}", "\u{270f}"),    // pencil
-        ("Graph", "\u{f1e0}", "\u{1f5c2}"),     // share-alt / stacked
-        ("Draw", "\u{f1fc}", "\u{1f3a8}"),      // paint-brush / palette
-        ("Canvas", "\u{f0b2}", "\u{1f4cc}"),    // thumbtack / pushpin
-        ("Backup", "\u{f1d3}", "\u{1f4be}"),    // git / floppy
-        ("Templates", "\u{f15b}", "\u{1f4c4}"), // file / page
-        ("About", "\u{f05a}", "\u{2139}"),      // info-circle
+pub fn help_tabs(
+    icon_mode: crate::config::IconMode,
+    features: &crate::config::FeaturesConfig,
+) -> Vec<(HelpTab, &'static str, Option<&'static str>)> {
+    let pairs = [
+        (HelpTab::Notes, "Notes", "\u{f02d}", "\u{1f4d8}"),
+        (HelpTab::Editor, "Editor", "\u{f03eb}", "\u{270f}"),
+        (HelpTab::Graph, "Graph", "\u{f1e0}", "\u{1f5c2}"),
+        (HelpTab::Draw, "Draw", "\u{f1fc}", "\u{1f3a8}"),
+        (HelpTab::Canvas, "Canvas", "\u{f0b2}", "\u{1f4cc}"),
+        (HelpTab::Backup, "Backup", "\u{f1d3}", "\u{1f4be}"),
+        (HelpTab::Templates, "Templates", "\u{f15b}", "\u{1f4c4}"),
+        (HelpTab::About, "About", "\u{f05a}", "\u{2139}"),
     ];
     pairs
-        .iter()
-        .map(|&(label, nerd, uni)| (label, Some(crate::ui::get_icon(nerd, uni, icon_mode))))
+        .into_iter()
+        .filter(|(t, _, _, _)| help_tab_enabled(*t, features))
+        .map(|(t, label, nerd, uni)| (t, label, Some(crate::ui::get_icon(nerd, uni, icon_mode))))
         .collect()
+}
+
+/// Whether a help tab's feature is enabled. Notes/Editor/About are always on.
+pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool {
+    match tab {
+        HelpTab::Graph => f.graph_view.is_enabled(),
+        HelpTab::Draw => f.draw_view.is_enabled(),
+        HelpTab::Canvas => f.canvas_view.is_enabled(),
+        HelpTab::Backup => f.backup.is_enabled(),
+        HelpTab::Templates => f.templates.is_enabled(),
+        HelpTab::Notes | HelpTab::Editor | HelpTab::About => true,
+    }
+}
+
+fn help_tab_flag(tab: HelpTab) -> &'static str {
+    match tab {
+        HelpTab::Graph => "graph_view",
+        HelpTab::Draw => "draw_view",
+        HelpTab::Canvas => "canvas_view",
+        HelpTab::Backup => "backup",
+        HelpTab::Templates => "templates",
+        _ => "",
+    }
+}
+
+/// Placeholder help content shown for a disabled feature's tab.
+pub fn disabled_feature_help_rows(tab: HelpTab, theme: &AppThemeColors) -> Vec<HelpRow> {
+    let label = tab_display_name(tab);
+    let flag = help_tab_flag(tab);
+    vec![
+        help_heading_row("Feature disabled", theme, tab),
+        help_item_row(
+            &format!(
+                "The {label} feature is disabled ([features] {flag} = false). Enable it in config.toml to use this view."
+            ),
+            "",
+            "General",
+            tab,
+            theme,
+        ),
+    ]
 }
 
 #[derive(Clone)]
@@ -149,8 +194,13 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             Constraint::Length(1),
         ])
         .split(area);
+    let tabs_data = help_tabs(app.config.ui.icon_mode, &app.config.features);
+    let tabs: Vec<(&str, Option<&str>)> = tabs_data.iter().map(|(_, l, i)| (*l, *i)).collect();
+    let selected_idx = tabs_data
+        .iter()
+        .position(|(t, _, _)| *t == app.help_tab)
+        .unwrap_or(0);
 
-    let tabs: Vec<(&str, Option<&str>)> = help_tabs(app.config.ui.icon_mode);
     let hovered = app.mouse_pos.and_then(|(col, row)| {
         if row == chunks[0].y {
             let region = crate::ui::title_bar_tabs_region(chunks[0], "Help");
@@ -169,7 +219,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     });
     let tab_spans = build_tab_spans(
         &tabs,
-        app.help_tab.index(),
+        selected_idx,
         hovered,
         &app.app_theme,
         app.config.ui.tab_icons_only,
@@ -405,6 +455,11 @@ where
     for a in A::iter() {
         let m = meta_of(a);
         let key = keys_of(keybinds, a);
+        // Actions whose keybinds were cleared (e.g. a feature marked
+        // "deleted") are omitted from the help view entirely.
+        if key.is_empty() {
+            continue;
+        }
         match buckets.iter_mut().find(|(g, _)| *g == m.group) {
             Some(b) => b.1.push((key, m.description)),
             None => buckets.push((m.group, vec![(key, m.description)])),
@@ -1476,8 +1531,15 @@ mod tests {
 
     #[test]
     fn editor_help_tab_uses_pencil_glyph() {
-        let tabs = help_tabs(crate::config::IconMode::Nerd);
-        assert_eq!(tabs[1], ("Editor", Some("\u{f03eb}")));
+        let features = crate::config::FeaturesConfig::default();
+        let tabs = help_tabs(crate::config::IconMode::Nerd, &features);
+        // Using `find` so the test doesn't break if tabs are reordered or filtered.
+        let editor_tab = tabs
+            .into_iter()
+            .find(|(t, _, _)| *t == HelpTab::Editor)
+            .unwrap();
+        assert_eq!(editor_tab.1, "Editor");
+        assert_eq!(editor_tab.2, Some("\u{f03eb}"));
     }
 
     #[test]

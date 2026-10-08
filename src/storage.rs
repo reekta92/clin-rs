@@ -306,7 +306,10 @@ impl Storage {
         let notes_dir = data_dir.clone();
         let templates_dir = data_dir.join(".clin").join("templates");
 
-        fs::create_dir_all(&templates_dir).context("failed to create .clin/templates directory")?;
+        if bootstrap.features.templates.is_enabled() {
+            fs::create_dir_all(&templates_dir)
+                .context("failed to create .clin/templates directory")?;
+        }
         // --- Key migration to AppPaths canonical location ---
         let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
         let target_key_path = app_paths.key_path(); // <data_local_dir>/key.bin
@@ -1489,12 +1492,16 @@ impl Storage {
             not(target_os = "android")
         )
     ))]
-    pub fn list_trash(&self) -> Result<Vec<trash::TrashItem>> {
+    pub fn list_trash(
+        &self,
+        features: &crate::config::FeaturesConfig,
+    ) -> Result<Vec<trash::TrashItem>> {
         let items =
             trash::os_limited::list().map_err(|e| anyhow::anyhow!("failed to list trash: {e}"))?;
         let vault_items: Vec<trash::TrashItem> = items
             .into_iter()
             .filter(|item| item.original_parent.starts_with(&self.notes_dir))
+            .filter(|item| features.file_view_enabled(std::path::Path::new(&item.name)))
             .collect();
         Ok(vault_items)
     }
@@ -1508,7 +1515,10 @@ impl Storage {
             not(target_os = "android")
         )
     )))]
-    pub fn list_trash(&self) -> Result<Vec<trash::TrashItem>> {
+    pub fn list_trash(
+        &self,
+        _features: &crate::config::FeaturesConfig,
+    ) -> Result<Vec<trash::TrashItem>> {
         anyhow::bail!("Trash management is not supported on this platform")
     }
 

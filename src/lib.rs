@@ -193,7 +193,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let (storage, _) = Storage::init();
             let storage = storage?;
             let app = App::new(storage)?;
-            for (index, note) in app.notes.iter().enumerate() {
+            for (index, (_, note)) in app.visible_notes().enumerate() {
                 println!(
                     "{} {}",
                     console::dim(&format!("{}.", index + 1)),
@@ -279,10 +279,9 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let storage = storage?;
             let app = App::new(storage)?;
             let id = app
-                .notes
-                .iter()
-                .find(|n| n.title.eq_ignore_ascii_case(title.trim()))
-                .map(|n| n.id.clone());
+                .visible_notes()
+                .find(|(_, n)| n.title.eq_ignore_ascii_case(title.trim()))
+                .map(|(_, n)| n.id.clone());
             match id {
                 Some(id) => match app.storage.load_note(&id) {
                     Ok(note) => {
@@ -334,7 +333,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let app = App::new(storage)?;
             let matcher = SkimMatcherV2::default();
             let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
-            for note in &app.notes {
+            for (_, note) in app.visible_notes() {
                 let mut best: Option<i64> = matcher.fuzzy_match(&note.title, &query);
                 // content match (substring) as a fallback when the title does not match
                 if best.is_none()
@@ -675,6 +674,11 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
 }
 
 fn run_templates(action: TemplatesCmd) -> Result<()> {
+    let (config_res, _) = ClinConfig::load();
+    let config = config_res.unwrap_or_default();
+    if !config.features.templates.is_enabled() {
+        anyhow::bail!("Templates disabled ([features] templates = false)");
+    }
     match action {
         TemplatesCmd::List => {
             let (storage, _) = Storage::init();
@@ -1086,7 +1090,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             let _terminal_guard = TerminalGuard::enter(app.mouse_enabled)?;
             let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
             let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
-            app.image_picker = if app.config.image.enabled {
+            app.image_picker = if app.config.features.images.is_enabled() {
                 Some(
                     ratatui_image::picker::Picker::from_query_stdio()
                         .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
@@ -1629,7 +1633,7 @@ where
                         // generic dispatch resumes.
                         ViewMode::Edit => false,
                         ViewMode::Setup => {
-                            crate::events::handle_setup_keys(app, key);
+                            crate::events::handle_setup_keys(app, key, area);
                             false
                         }
                         ViewMode::Graph

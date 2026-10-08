@@ -2,6 +2,13 @@
 
 All notable changes to clin are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Migrate the default-origin backup regression test to feature-based enablement when merging main.
+- Fix strict Clippy failures in graph previews, feature-toggle tests, and keybinding helper placement.
+
 ## [0.13.2] - 2026-10-02
 
 ### Fixed

@@ -80,7 +80,7 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
         ListAction::TogglePreviewFullscreen => meta("Display", "Toggle preview fullscreen"),
         ListAction::ToggleWrap => meta("Display", "Toggle word wrap (editor and preview)"),
         ListAction::PreviewPageUp => meta("Display", "Page preview up"),
-        ListAction::ToggleCalendar => meta("Display", "Toggle calendar"),
+        ListAction::ToggleCalendar => meta("Display", "Toggle widget pane"),
         ListAction::OpenCommandPalette => meta("Display", "Open command palette"),
         ListAction::OpenGraph => meta("Display", "Open graph view"),
         ListAction::OpenCanvas => meta("Display", "Open canvas view"),

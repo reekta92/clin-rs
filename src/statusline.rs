@@ -512,16 +512,33 @@ impl StatuslineContext<'_> {
                 Some(count.to_string().into())
             }
             "tag_count" => {
-                let count = self.app.map(|a| a.collect_live_tags().len()).unwrap_or(0);
+                let count = self
+                    .app
+                    .map(|a| {
+                        if a.config.features.tags.is_enabled() {
+                            a.collect_live_tags().len()
+                        } else {
+                            0
+                        }
+                    })
+                    .unwrap_or(0);
                 Some(count.to_string().into())
             }
-            "note_count" => Some(
-                self.app
-                    .map(|a| a.notes.len())
-                    .unwrap_or(0)
-                    .to_string()
-                    .into(),
-            ),
+            "note_count" => {
+                let count = self
+                    .app
+                    .map(|a| {
+                        if let Some(idx) = &a.note_index
+                            && idx.revision == a.notes_revision
+                        {
+                            idx.by_id.len()
+                        } else {
+                            a.visible_notes().count()
+                        }
+                    })
+                    .unwrap_or(0);
+                Some(count.to_string().into())
+            }
             "visual_index" => Some(
                 self.app
                     .map(|a| a.list.visual_index + 1)
@@ -569,8 +586,11 @@ impl StatuslineContext<'_> {
                     .app
                     .map(|a| {
                         if let Some(crate::popups::ActivePopup::Search(popup)) = &a.popups.active {
-                            let parsed =
-                                crate::app::parse_search_query(&popup.input.lines().join(""));
+                            let parsed = crate::app::parse_search_query(
+                                &popup.input.lines().join(""),
+                                a.config.features.tags.is_enabled(),
+                                a.config.features.subnotes.is_enabled(),
+                            );
                             if parsed.grep_mode { "on" } else { "off" }
                         } else {
                             "off"
@@ -584,8 +604,11 @@ impl StatuslineContext<'_> {
                     .app
                     .map(|a| {
                         if let Some(crate::popups::ActivePopup::Search(popup)) = &a.popups.active {
-                            let parsed =
-                                crate::app::parse_search_query(&popup.input.lines().join(""));
+                            let parsed = crate::app::parse_search_query(
+                                &popup.input.lines().join(""),
+                                a.config.features.tags.is_enabled(),
+                                a.config.features.subnotes.is_enabled(),
+                            );
                             parsed
                                 .tag_filter
                                 .as_ref()
@@ -603,8 +626,11 @@ impl StatuslineContext<'_> {
                     .app
                     .map(|a| {
                         if let Some(crate::popups::ActivePopup::Search(popup)) = &a.popups.active {
-                            let parsed =
-                                crate::app::parse_search_query(&popup.input.lines().join(""));
+                            let parsed = crate::app::parse_search_query(
+                                &popup.input.lines().join(""),
+                                a.config.features.tags.is_enabled(),
+                                a.config.features.subnotes.is_enabled(),
+                            );
                             parsed.folder_filter.clone().unwrap_or_default()
                         } else {
                             "".to_string()
@@ -616,7 +642,15 @@ impl StatuslineContext<'_> {
             "pinned_count" => {
                 let count = self
                     .app
-                    .map(|a| a.notes.iter().filter(|n| n.pinned).count())
+                    .map(|a| {
+                        if let Some(idx) = &a.note_index
+                            && idx.revision == a.notes_revision
+                        {
+                            idx.pinned_indices.len()
+                        } else {
+                            a.visible_notes().filter(|(_, n)| n.pinned).count()
+                        }
+                    })
                     .unwrap_or(0);
                 Some(count.to_string().into())
             }
@@ -708,6 +742,7 @@ impl StatuslineContext<'_> {
             }
             "tags" => Some(
                 self.note
+                    .filter(|_| self.app.is_none_or(|a| a.config.features.tags.is_enabled()))
                     .map(|note| {
                         if self.view == ViewMode::List {
                             compact_list_tags(&note.tags)
@@ -719,7 +754,8 @@ impl StatuslineContext<'_> {
                     .into(),
             ),
             "has_tags" => {
-                let has = self.note.map(|n| !n.tags.is_empty()).unwrap_or(false);
+                let has = self.app.is_none_or(|a| a.config.features.tags.is_enabled())
+                    && self.note.map(|n| !n.tags.is_empty()).unwrap_or(false);
                 Some((if has { "on" } else { "off" }).into())
             }
             "note_pinned" => {

@@ -150,7 +150,14 @@ fn run_backup(
             return;
         }
     };
-    perform(git_lock, status, &vault_path, &config.backup, message);
+    perform(
+        git_lock,
+        status,
+        &vault_path,
+        &config.backup,
+        config.features.backup.is_enabled(),
+        message,
+    );
 }
 
 /// Pure backup body (lifted from the old `try_auto_backup_raw`), parameterized
@@ -162,9 +169,10 @@ pub(crate) fn perform(
     status: &Arc<Mutex<Option<String>>>,
     vault_path: &Path,
     backup: &BackupConfig,
+    enabled: bool,
     message: &str,
 ) {
-    if !backup.enabled {
+    if !enabled {
         return;
     }
     let result = (|| -> anyhow::Result<String> {
@@ -234,18 +242,22 @@ mod tests {
         fs::write(work.path().join("note.md"), "hello world").expect("write");
 
         let backup = BackupConfig {
-            enabled: true,
             auto_push: true, // remote_name stays None — the bug's trigger
             ..Default::default()
         };
         let (git_lock, status) = locks();
-        perform(&git_lock, &status, work.path(), &backup, "t");
+        perform(&git_lock, &status, work.path(), &backup, true, "t");
         assert!(status.lock().is_none(), "status should be clean");
         let bare_repo = git2::Repository::open(bare.path()).expect("open bare");
-        let found = bare_repo.references().expect("refs").count() > 0;
-        assert!(
-            found,
-            "auto_push must push to default origin when remote_name is unset"
+        let work_repo = git2::Repository::open(work.path()).expect("open work repo");
+        let head = work_repo.head().expect("work HEAD");
+        let pushed = bare_repo
+            .find_reference(head.name().expect("branch name"))
+            .expect("pushed branch");
+        assert_eq!(
+            pushed.target(),
+            head.target(),
+            "auto_push must push latest commit to default origin when remote_name is unset"
         );
     }
 
@@ -270,10 +282,8 @@ mod tests {
             &git_lock,
             &status,
             vault,
-            &BackupConfig {
-                enabled: true,
-                ..Default::default()
-            },
+            &BackupConfig::default(),
+            true,
             "t",
         );
 
@@ -297,10 +307,8 @@ mod tests {
             &git_lock,
             &status,
             &file_path,
-            &BackupConfig {
-                enabled: true,
-                ..Default::default()
-            },
+            &BackupConfig::default(),
+            true,
             "t",
         );
 
@@ -319,10 +327,8 @@ mod tests {
             &git_lock,
             &status,
             vault,
-            &BackupConfig {
-                enabled: false,
-                ..Default::default()
-            },
+            &BackupConfig::default(),
+            false,
             "t",
         );
 

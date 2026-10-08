@@ -203,9 +203,13 @@ pub fn clin_theme(
     t
 }
 
-pub fn note_specs(summaries: &[crate::storage::NoteSummary]) -> Vec<NodeSpec> {
+pub fn note_specs(
+    summaries: &[crate::storage::NoteSummary],
+    features: &crate::config::FeaturesConfig,
+) -> Vec<NodeSpec> {
     summaries
         .iter()
+        .filter(|n| features.file_view_enabled(&n.id))
         .map(|n| NodeSpec {
             id: n.id.clone(),
             title: n.title.clone(),
@@ -308,7 +312,8 @@ impl GrafPlugin {
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> anyhow::Result<Self> {
         let settings = clin_settings(config);
-        let graph_state = GraphState::from_specs(&note_specs(&summaries), &settings)?;
+        let graph_state =
+            GraphState::from_specs(&note_specs(&summaries, &config.features), &settings)?;
         let state = Arc::new(RwLock::new(graph_state));
         let graph_kill_tx = graf::start_physics(state.clone(), &settings);
 
@@ -371,6 +376,12 @@ impl GrafPlugin {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
+        self.graph_state = None;
+        self.search_popup = None;
+        self.preview_content = None;
+        self.preview_note_id = None;
+        self.preview_request_key = None;
+
         let mut settings = self.settings_for(config);
         if self.focus_note_ids.is_some() {
             // Focus (local/group) subsets must render every selected node,
@@ -390,12 +401,13 @@ impl GrafPlugin {
             }
             None => &self.notes,
         };
-        if let Ok(graph_state) = GraphState::from_specs(&note_specs(notes), &settings) {
+        if let Ok(graph_state) =
+            GraphState::from_specs(&note_specs(notes, &config.features), &settings)
+        {
             let state = Arc::new(RwLock::new(graph_state));
             let graph_kill_tx = graf::start_physics(state.clone(), &settings);
             self.graph_state = Some(state);
             self.graph_kill_tx = graph_kill_tx;
-            self.search_popup = None;
         }
     }
 
@@ -497,6 +509,15 @@ impl GrafPlugin {
             self.preview_request_key = None;
             return;
         }
+        if let Some(key) = &new_key
+            && !config.features.file_view_enabled(&key.note_id)
+        {
+            self.preview_content = None;
+            self.preview_note_id = None;
+            self.preview_request_key = None;
+            self.pending_markdown_resize = None;
+            return;
+        }
 
         if new_key != self.preview_request_key {
             let Some(key) = new_key else {
@@ -514,6 +535,14 @@ impl GrafPlugin {
             self.preview_content = None;
             return;
         };
+
+        if !config.features.file_view_enabled(&key.note_id) {
+            self.preview_content = None;
+            self.preview_note_id = None;
+            self.preview_request_key = None;
+            self.pending_markdown_resize = None;
+            return;
+        }
 
         let is_draw = key.note_id.ends_with(".draw");
         let is_canvas = key.note_id.ends_with(".canvas");
@@ -1766,7 +1795,7 @@ fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafPlugin, confi
         state.preview_content.as_ref(),
         hide_encrypted,
         0,
-        config.ui.icon_mode,
+        config,
     );
 }
 

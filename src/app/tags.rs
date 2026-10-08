@@ -9,7 +9,7 @@ fn is_tag_supported(ext: &str) -> bool {
 impl App {
     pub fn collect_live_tags(&self) -> Vec<String> {
         let mut tags: HashSet<String> = HashSet::new();
-        for note in &self.notes {
+        for (_, note) in self.visible_notes() {
             for tag in &note.tags {
                 tags.insert(tag.clone());
             }
@@ -20,6 +20,9 @@ impl App {
     }
 
     pub fn begin_manage_tags(&mut self) {
+        if self.feature_disabled(self.config.features.tags.is_enabled(), "Tags", "tags") {
+            return;
+        }
         let in_select_mode = self.list.list_mode == crate::list_view::ListMode::Select;
 
         if in_select_mode && !self.list.selected_indices.is_empty() {
@@ -264,6 +267,9 @@ impl App {
     }
 
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
+        if self.feature_disabled(self.config.features.tags.is_enabled(), "Tags", "tags") {
+            return;
+        }
         let count = self
             .storage
             .list_note_ids(self.list.show_hidden_files, false)

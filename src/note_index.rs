@@ -29,18 +29,25 @@ impl NoteIndex {
         folders: &[String],
         custom_rules: &[CustomSmartFolder],
         now_unix_secs: u64,
+        features: &crate::config::FeaturesConfig,
     ) -> Self {
-        let canonical_ids: Arc<[Arc<str>]> = notes
+        let visible_notes: Vec<(usize, &NoteSummary)> = notes
             .iter()
-            .map(|n| Arc::from(n.id.as_str()))
+            .enumerate()
+            .filter(|(_, n)| features.file_view_enabled(&n.id))
+            .collect();
+
+        let canonical_ids: Arc<[Arc<str>]> = visible_notes
+            .iter()
+            .map(|(_, n)| Arc::from(n.id.as_str()))
             .collect::<Vec<_>>()
             .into_boxed_slice()
             .into();
 
-        let mut by_id = HashMap::with_capacity(notes.len());
+        let mut by_id = HashMap::with_capacity(visible_notes.len());
 
-        for (i, (id_arc, _)) in canonical_ids.iter().zip(notes.iter()).enumerate() {
-            by_id.insert(id_arc.clone(), i);
+        for ((idx, _), id_arc) in visible_notes.iter().zip(canonical_ids.iter()) {
+            by_id.insert(id_arc.clone(), *idx);
         }
 
         let mut notes_by_folder: HashMap<String, Vec<usize>> = HashMap::new();
@@ -60,7 +67,8 @@ impl NoteIndex {
         let days_since_mon = now_local.weekday().num_days_from_monday() as i64;
         let mon_date = today_date - chrono::Duration::days(days_since_mon);
 
-        for (i, note) in notes.iter().enumerate() {
+        for (i, note) in &visible_notes {
+            let i = *i;
             notes_by_folder
                 .entry(note.folder.clone())
                 .or_default()
@@ -80,7 +88,9 @@ impl NoteIndex {
 
             if let Some(date_time) = Local.timestamp_opt(note.updated_at as i64, 0).single() {
                 let note_date = date_time.date_naive();
-                *activity_by_day.entry(note_date).or_default() += 1;
+                if features.calendar.is_enabled() {
+                    *activity_by_day.entry(note_date).or_default() += 1;
+                }
 
                 if note_date == today_date {
                     today_indices.push(i);
@@ -124,7 +134,7 @@ impl NoteIndex {
         }
 
         let mut recursive_note_counts: HashMap<String, usize> = HashMap::new();
-        for note in notes {
+        for (_, note) in &visible_notes {
             let mut current = note.folder.as_str();
             loop {
                 *recursive_note_counts
@@ -265,7 +275,14 @@ mod tests {
             },
         ];
         let folders = vec!["folder1".to_string(), "folder1/sub".to_string()];
-        let index = NoteIndex::build(1, &notes, &folders, &[], now);
+        let index = NoteIndex::build(
+            1,
+            &notes,
+            &folders,
+            &[],
+            now,
+            &crate::config::FeaturesConfig::default(),
+        );
 
         assert_eq!(index.canonical_ids.len(), 2);
         assert_eq!(index.by_id.get("folder1/a.md").copied(), Some(0));
@@ -276,5 +293,48 @@ mod tests {
             Some(1)
         );
         assert_eq!(index.notes_by_exact_tag.get("rust").unwrap(), &vec![0]);
+    }
+
+    #[test]
+    fn calendar_flag_controls_activity_map() {
+        let now = 1_700_000_000;
+        let notes = vec![NoteSummary {
+            id: "a.md".to_string(),
+            title: "A".to_string(),
+            updated_at: now,
+            folder: String::new(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1,
+        }];
+        let with_cal = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[],
+            now,
+            &crate::config::FeaturesConfig::default(),
+        );
+        let without_cal = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[],
+            now,
+            &crate::config::FeaturesConfig {
+                calendar: crate::config::FeatureState::Disabled,
+                ..Default::default()
+            },
+        );
+        let today = Local
+            .timestamp_opt(now as i64, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(with_cal.activity_by_day, HashMap::from([(today, 1)]));
+        assert!(without_cal.activity_by_day.is_empty());
+        // Today/week indices are computed regardless of the calendar flag.
+        assert_eq!(without_cal.today_indices, vec![0]);
     }
 }

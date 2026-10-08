@@ -4,16 +4,17 @@ use crate::app::App;
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use crate::setup::{CLIN_ASCII, LOGO_CURSOR_ASCII, OPTION_ROWS, SetupState};
+use crate::ui::{GridTileSpec, grid_dims, grid_tile_rect, render_grid_tile};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Padding, Paragraph, Wrap},
 };
 
-const COL_HEIGHT: u16 = 18;
-/// Vertical column: logo (5), gap, options (6), gap, hint (2), Done (3).
+const COL_HEIGHT: u16 = 20;
+/// Vertical column: logo (5), gap, options (8), gap, hint (2), Done (3).
 const COL_WIDTH: u16 = 44;
 const VALUE_WIDTH: usize = 18;
 const PREVIEW_WIDTH: u16 = 50;
@@ -95,6 +96,19 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
         hint: v_chunks[4],
         done: v_chunks[5],
         preview: preview_col,
+    }
+}
+
+/// Content rect for the Features preview block: `preview` minus the block's
+/// `Borders::ALL` (2) and `Padding::new(1, 1, 1, 0)` (1 top). Must match the
+/// block used by `draw_preview_features`; the mouse handler reuses it for
+/// hit-testing.
+pub(crate) fn features_preview_inner(area: Rect) -> Rect {
+    Rect {
+        x: area.x.saturating_add(2),
+        y: area.y.saturating_add(2),
+        width: area.width.saturating_sub(4),
+        height: area.height.saturating_sub(3),
     }
 }
 
@@ -330,9 +344,328 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             1 | 2 => draw_preview_markdown(frame, area, theme, icon_mode, state),
             3 => draw_preview_hint_bar(frame, area, theme),
             4 => draw_preview_icons(frame, area, theme, icon_mode),
-            5 => draw_preview_keybinds(frame, area, theme, keybinds),
+            5 => draw_preview_layout(frame, area, theme, icon_mode, state),
+            6 => draw_preview_features(frame, area, theme, state),
+            7 => draw_preview_keybinds(frame, area, theme, keybinds),
             _ => draw_preview_overview(frame, area, theme, state),
         }
+    }
+
+    fn draw_preview_layout(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        icon_mode: crate::config::IconMode,
+        state: &SetupState,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(
+                " Layout ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .padding(Padding::new(1, 1, 1, 0));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.width < 4 || inner.height < 1 {
+            return;
+        }
+
+        if state.notes_layout == 0 {
+            // Grid: exactly the notes-view grid — same tile geometry and the
+            // same tile renderer, plus the vault breadcrumb it shows on top.
+            let buf = frame.buffer_mut();
+            let vault_icon = crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", icon_mode);
+            buf.set_string(
+                inner.x,
+                inner.y + 1,
+                format!(" {vault_icon} Vault"),
+                Style::default()
+                    .fg(theme.folder)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+            let folder = crate::ui::get_char('\u{f07b}', '\u{1f4c1}', icon_mode);
+            let note = crate::ui::get_char('\u{f15c}', '\u{1f4c4}', icon_mode);
+            let samples = [
+                GridTileSpec {
+                    icon_char: folder,
+                    text_label: "F",
+                    glyph_color: theme.folder,
+                    raw_name: "Documents",
+                    is_selected: true,
+                    in_selection: false,
+                    is_hovered: false,
+                    has_tags: false,
+                    is_pinned_folder: true,
+                },
+                GridTileSpec {
+                    icon_char: note,
+                    text_label: "MD",
+                    glyph_color: theme.text,
+                    raw_name: "Ideas",
+                    is_selected: false,
+                    in_selection: false,
+                    is_hovered: false,
+                    has_tags: true,
+                    is_pinned_folder: false,
+                },
+                GridTileSpec {
+                    icon_char: note,
+                    text_label: "MD",
+                    glyph_color: theme.text,
+                    raw_name: "TODO",
+                    is_selected: false,
+                    in_selection: false,
+                    is_hovered: false,
+                    has_tags: false,
+                    is_pinned_folder: false,
+                },
+                GridTileSpec {
+                    icon_char: note,
+                    text_label: "MD",
+                    glyph_color: theme.text,
+                    raw_name: "Recipe",
+                    is_selected: false,
+                    in_selection: false,
+                    is_hovered: false,
+                    has_tags: false,
+                    is_pinned_folder: false,
+                },
+                GridTileSpec {
+                    icon_char: note,
+                    text_label: "MD",
+                    glyph_color: theme.text,
+                    raw_name: "Journal",
+                    is_selected: false,
+                    in_selection: false,
+                    is_hovered: false,
+                    has_tags: false,
+                    is_pinned_folder: false,
+                },
+                GridTileSpec {
+                    icon_char: note,
+                    text_label: "MD",
+                    glyph_color: theme.text,
+                    raw_name: "Project",
+                    is_selected: false,
+                    in_selection: false,
+                    is_hovered: false,
+                    has_tags: false,
+                    is_pinned_folder: false,
+                },
+            ];
+
+            let (cols, rows) = grid_dims(inner);
+            for (i, spec) in samples.iter().copied().enumerate() {
+                let (c, r) = (i % cols, i / cols);
+                if r >= rows {
+                    break;
+                }
+                render_grid_tile(buf, grid_tile_rect(inner, c, r), spec, theme, icon_mode);
+            }
+        } else {
+            // Tree: the same List the notes view renders (see
+            // `App::format_visual_item`): caret + folder icon with BOLD
+            // folder color and an inline-info count, notes indented two
+            // spaces with a file icon + title + date/tags, Create new at the
+            // bottom, and the cursor row highlighted exactly like the real
+            // list widget.
+            fn tree_folder(
+                theme: &AppThemeColors,
+                icon_mode: crate::config::IconMode,
+                name: &str,
+                count: usize,
+            ) -> Line<'static> {
+                let text = if icon_mode == crate::config::IconMode::None {
+                    format!("{name} ({count})")
+                } else {
+                    let caret = crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode);
+                    let glyph = crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", icon_mode);
+                    format!("{caret} {glyph} {name} ({count})")
+                };
+                Line::from(Span::styled(
+                    text,
+                    Style::default()
+                        .fg(theme.folder)
+                        .add_modifier(Modifier::BOLD),
+                ))
+            }
+
+            fn tree_note(
+                theme: &AppThemeColors,
+                icon_mode: crate::config::IconMode,
+                title: &str,
+                tag: Option<&str>,
+            ) -> Line<'static> {
+                let mut spans = vec![Span::raw("  ")]; // depth-0 note indent
+                let icon = crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode);
+                if !icon.is_empty() {
+                    spans.push(Span::styled(
+                        format!("{icon} "),
+                        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                    ));
+                }
+                spans.push(Span::raw(title.to_string()));
+                if let Some(tag) = tag {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled(
+                        format!("[{tag}]"),
+                        Style::default().fg(theme.tag),
+                    ));
+                }
+                spans.push(Span::raw(" "));
+                spans.push(Span::styled(
+                    "(2026-09-27)",
+                    Style::default().fg(theme.muted),
+                ));
+                Line::from(spans)
+            }
+
+            fn tree_create(
+                theme: &AppThemeColors,
+                icon_mode: crate::config::IconMode,
+            ) -> Line<'static> {
+                let icon = crate::ui::get_icon("\u{f067}", "\u{2795}", icon_mode);
+                let text = if icon.is_empty() {
+                    "Create new...".to_string()
+                } else {
+                    format!(" {icon} Create new...")
+                };
+                Line::from(Span::styled(text, Style::default().fg(theme.success)))
+            }
+
+            let mut items = vec![
+                ListItem::new(tree_folder(theme, icon_mode, "Documents", 3)),
+                ListItem::new(tree_note(theme, icon_mode, "Meeting notes.md", None)),
+                ListItem::new(tree_note(theme, icon_mode, "Ideas.md", Some("ideas"))),
+                ListItem::new(tree_note(theme, icon_mode, "TODO.md", None)),
+                ListItem::new(tree_folder(theme, icon_mode, "Personal", 2)),
+                ListItem::new(tree_note(theme, icon_mode, "Recipe.md", None)),
+                ListItem::new(tree_note(theme, icon_mode, "Journal.md", None)),
+                ListItem::new(tree_create(theme, icon_mode)),
+            ];
+            // Cursor on the first row, styled like the real list's cursor.
+            let cursor_style = Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD);
+            items[0] = items[0].clone().style(cursor_style);
+
+            let mut rel_state = ListState::default();
+            rel_state.select(Some(0));
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .style(theme.bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1)),
+                )
+                .highlight_style(
+                    Style::default()
+                        .fg(theme.highlight_fg)
+                        .add_modifier(Modifier::BOLD),
+                );
+            frame.render_stateful_widget(list, inner, &mut rel_state);
+        }
+    }
+
+    fn draw_preview_features(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        state: &SetupState,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(
+                " Features ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .padding(Padding::new(1, 1, 1, 0));
+        frame.render_widget(block, area);
+        let inner = features_preview_inner(area);
+        if inner.width < 2 || inner.height < 1 {
+            return;
+        }
+
+        let is_custom = state.feature_preset == 3;
+        let preset = match state.feature_preset {
+            1 => crate::setup::FeaturePreset::Expanded,
+            2 => crate::setup::FeaturePreset::Minimal,
+            _ => crate::setup::FeaturePreset::Default,
+        };
+        let cfg = if is_custom {
+            state.custom_features.clone()
+        } else {
+            crate::setup::features_for_preset(preset)
+        };
+
+        let mut lines: Vec<Line> = Vec::new();
+        if !is_custom {
+            let desc = match state.feature_preset {
+                1 => "Most features, no graph/canvas/draw/backup",
+                2 => "Core features only",
+                _ => "All features enabled",
+            };
+            lines.push(Line::from(Span::styled(
+                desc,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )));
+        }
+
+        let visible = crate::setup::feature_visible_rows(inner.height);
+        let start = if is_custom { state.feature_scroll } else { 0 };
+        let end = if is_custom {
+            (start + visible).min(crate::setup::FEATURE_NAMES.len())
+        } else {
+            crate::setup::FEATURE_NAMES.len()
+        };
+        for i in start..end {
+            let enabled = crate::setup::get_feature(&cfg, i).is_some_and(|s| s.is_enabled());
+            let mark = if enabled { "✓" } else { "✗" };
+            let mark_fg = if enabled { theme.accent } else { theme.muted };
+            let highlight = is_custom && i == state.feature_cursor;
+            let name_style = if highlight {
+                Style::default()
+                    .fg(theme.highlight_fg)
+                    .bg(theme.highlight_bg)
+            } else {
+                Style::default().fg(theme.text)
+            };
+            let mark_bg = if highlight {
+                theme.highlight_bg
+            } else {
+                Color::Reset
+            };
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!(" {mark} "),
+                    Style::default().fg(mark_fg).bg(mark_bg),
+                ),
+                Span::styled(crate::setup::FEATURE_NAMES[i], name_style),
+            ]));
+        }
+
+        if is_custom {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "↑/↓ select feature, Enter toggles, ←/→ change preset",
+                Style::default()
+                    .fg(theme.muted)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+        }
+
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 
     fn draw_preview_markdown(
@@ -747,5 +1080,80 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn setup_view_renders_new_rows() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().unwrap();
+        let (data_dir, config_dir, notes_dir, templates_dir) = (
+            temp.path().join("data"),
+            temp.path().join("config"),
+            temp.path().join("notes"),
+            temp.path().join("templates"),
+        );
+        for d in [&data_dir, &config_dir, &notes_dir, &templates_dir] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: true,
+        };
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.setup_state = Some(crate::setup::SetupState::from_config(
+            &app.config,
+            &crate::app_theme::AppThemeColors::default(),
+            std::path::PathBuf::from("/vault"),
+            false,
+        ));
+
+        fn render(app: &mut crate::app::App) -> String {
+            let backend = TestBackend::new(120, 40);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|frame| draw_setup_view(frame, app)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            let mut text = String::new();
+            for y in 0..buf.area.height {
+                for x in 0..buf.area.width {
+                    text.push_str(buf.cell((x, y)).unwrap().symbol());
+                }
+            }
+            text
+        }
+
+        let text = render(&mut app);
+        assert!(text.contains("Layout"));
+        assert!(text.contains("Features"));
+
+        let state = app.setup_state.as_mut().unwrap();
+        state.selected = 5;
+        state.notes_layout = 1;
+        let text = render(&mut app);
+        // Tree preview: real list items — folder count, note indent + icon,
+        // inline-info tag/date, Create-new row.
+        assert!(text.contains("Documents (3)"));
+        assert!(text.contains("Meeting notes.md"));
+        assert!(text.contains("[ideas]"));
+        assert!(text.contains("(2026-09-27)"));
+        assert!(text.contains("Create new..."));
+
+        // Grid preview: real grid tiles — truncated name, plain tile border.
+        let state = app.setup_state.as_mut().unwrap();
+        state.notes_layout = 0;
+        let text = render(&mut app);
+        assert!(text.contains("Documen"));
+        assert!(text.contains('┌'));
+
+        let state = app.setup_state.as_mut().unwrap();
+        state.selected = 6;
+        state.feature_preset = 3;
+        let text = render(&mut app);
+        assert!(text.contains("Graph View"));
+        assert!(text.contains("Enter toggles"));
     }
 }

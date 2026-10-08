@@ -112,7 +112,7 @@ impl App {
 
         match self.storage.restore_trash_items(vec![item]) {
             Ok(_) => {
-                if let Ok(items) = self.storage.list_trash() {
+                if let Ok(items) = self.storage.list_trash(&self.config.features) {
                     if items.is_empty() {
                         self.popups.active = None;
                         self.set_temporary_status_static("Note restored, trash is now empty");
@@ -148,7 +148,7 @@ impl App {
         match self.storage.purge_trash_items(vec![item]) {
             Ok(()) => {
                 if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut self.popups.active
-                    && let Ok(items) = self.storage.list_trash()
+                    && let Ok(items) = self.storage.list_trash(&self.config.features)
                 {
                     if items.is_empty() {
                         self.popups.active = None;
