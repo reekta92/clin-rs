@@ -203,7 +203,10 @@ pub fn clin_theme(
     t
 }
 
-pub fn note_specs(summaries: &[crate::storage::NoteSummary], features: &crate::config::FeaturesConfig) -> Vec<NodeSpec> {
+pub fn note_specs(
+    summaries: &[crate::storage::NoteSummary],
+    features: &crate::config::FeaturesConfig,
+) -> Vec<NodeSpec> {
     summaries
         .iter()
         .filter(|n| features.file_view_enabled(&n.id))
@@ -309,7 +312,8 @@ impl GrafPlugin {
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> anyhow::Result<Self> {
         let settings = clin_settings(config);
-        let graph_state = GraphState::from_specs(&note_specs(&summaries, &config.features), &settings)?;
+        let graph_state =
+            GraphState::from_specs(&note_specs(&summaries, &config.features), &settings)?;
         let state = Arc::new(RwLock::new(graph_state));
         let graph_kill_tx = graf::start_physics(state.clone(), &settings);
 
@@ -377,7 +381,7 @@ impl GrafPlugin {
         self.preview_content = None;
         self.preview_note_id = None;
         self.preview_request_key = None;
-        
+
         let mut settings = self.settings_for(config);
         if self.focus_note_ids.is_some() {
             // Focus (local/group) subsets must render every selected node,
@@ -397,7 +401,9 @@ impl GrafPlugin {
             }
             None => &self.notes,
         };
-        if let Ok(graph_state) = GraphState::from_specs(&note_specs(notes, &config.features), &settings) {
+        if let Ok(graph_state) =
+            GraphState::from_specs(&note_specs(notes, &config.features), &settings)
+        {
             let state = Arc::new(RwLock::new(graph_state));
             let graph_kill_tx = graf::start_physics(state.clone(), &settings);
             self.graph_state = Some(state);

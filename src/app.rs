@@ -475,9 +475,10 @@ fn preview_render_cols(pane_width: u16, wrap: bool) -> u16 {
 
 impl App {
     pub fn visible_notes(&self) -> impl Iterator<Item = (usize, &crate::storage::NoteSummary)> {
-        self.notes.iter().enumerate().filter(move |(_, n)| {
-            self.config.features.file_view_enabled(&n.id)
-        })
+        self.notes
+            .iter()
+            .enumerate()
+            .filter(move |(_, n)| self.config.features.file_view_enabled(&n.id))
     }
     pub fn desired_list_preview_width(&self) -> u16 {
         preview_render_cols(self.list.last_preview_pane_width, self.preview_wrap)

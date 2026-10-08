@@ -626,17 +626,21 @@ impl App {
         }
 
         // 3. Search and Trash popups.
-        self.search_query_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.search_query_generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.unsent_search_request = None;
         self.search_debounce_deadline = None;
         self.search_status = None;
-        
-        let has_trash_view = matches!(self.popups.active, Some(crate::popups::ActivePopup::TrashView(_)));
+
+        let has_trash_view = matches!(
+            self.popups.active,
+            Some(crate::popups::ActivePopup::TrashView(_))
+        );
         if has_trash_view {
             self.close_trash_view();
             self.open_trash_view();
         }
-        
+
         if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
             popup.title_result_ids.clear();
             popup.grep_results.clear();

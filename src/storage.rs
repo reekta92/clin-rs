@@ -1492,7 +1492,10 @@ impl Storage {
             not(target_os = "android")
         )
     ))]
-    pub fn list_trash(&self, features: &crate::config::FeaturesConfig) -> Result<Vec<trash::TrashItem>> {
+    pub fn list_trash(
+        &self,
+        features: &crate::config::FeaturesConfig,
+    ) -> Result<Vec<trash::TrashItem>> {
         let items =
             trash::os_limited::list().map_err(|e| anyhow::anyhow!("failed to list trash: {e}"))?;
         let vault_items: Vec<trash::TrashItem> = items
@@ -1512,7 +1515,10 @@ impl Storage {
             not(target_os = "android")
         )
     )))]
-    pub fn list_trash(&self, _features: &crate::config::FeaturesConfig) -> Result<Vec<trash::TrashItem>> {
+    pub fn list_trash(
+        &self,
+        _features: &crate::config::FeaturesConfig,
+    ) -> Result<Vec<trash::TrashItem>> {
         anyhow::bail!("Trash management is not supported on this platform")
     }
 

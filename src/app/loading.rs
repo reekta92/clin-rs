@@ -1844,7 +1844,8 @@ mod tests {
         std::fs::write(
             config_dir.join("config.toml"),
             toml::to_string_pretty(&cfg).unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
         crate::config::set_config_path_override(config_dir.join("config.toml"));
 
         let storage = crate::storage::Storage {
@@ -1988,13 +1989,13 @@ mod tests {
     fn feature_view_files_visibility_and_refresh() {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (td, mut app) = make_app();
-        
+
         let notes_dir = &app.storage.notes_dir;
         std::fs::write(notes_dir.join("a.md"), "# Plain").unwrap();
         std::fs::write(notes_dir.join("b.canvas"), "canvas").unwrap();
         std::fs::write(notes_dir.join("c.draw"), "draw").unwrap();
         std::fs::write(notes_dir.join("b.pinstar"), "pinstar").unwrap();
-        
+
         let load = crate::app::catalog::load_notes_blocking(
             &app.storage,
             &app.notes_worker_pool,
@@ -2005,7 +2006,7 @@ mod tests {
         app.notes = load.summaries;
         app.catalog_folders = load.folders;
         app.sort_notes();
-        
+
         // 1. Enabled
         app.config.features.canvas_view = crate::config::FeatureState::Enabled;
         app.config.features.draw_view = crate::config::FeatureState::Enabled;
@@ -2013,7 +2014,7 @@ mod tests {
         let mut visible: Vec<_> = app.visible_notes().map(|(_, n)| n.id.as_str()).collect();
         visible.sort();
         assert_eq!(visible, vec!["a.md", "b.canvas", "b.pinstar", "c.draw"]);
-        
+
         // 2. Disabled/Deleted
         app.config.features.canvas_view = crate::config::FeatureState::Disabled;
         app.config.features.draw_view = crate::config::FeatureState::Deleted;
@@ -2021,7 +2022,7 @@ mod tests {
         let mut visible: Vec<_> = app.visible_notes().map(|(_, n)| n.id.as_str()).collect();
         visible.sort();
         assert_eq!(visible, vec!["a.md"]);
-        
+
         // Re-enable via toggle
         app.toggle_canvas_view();
         let mut visible: Vec<_> = app.visible_notes().map(|(_, n)| n.id.as_str()).collect();
@@ -2031,14 +2032,17 @@ mod tests {
         // Stale index check
         app.notes_revision += 1; // Stale index
         let st = crate::statusline::StatuslineContext::for_view(&app, crate::app::ViewMode::List);
-        assert_eq!(st.resolve("note_count"), Some(std::borrow::Cow::Owned("3".to_string())));
+        assert_eq!(
+            st.resolve("note_count"),
+            Some(std::borrow::Cow::Owned("3".to_string()))
+        );
     }
 
     #[test]
     fn feature_view_files_snapshot_cache_transitions() {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (td, mut app) = make_app();
-        
+
         let draw_data = r#"{"version":2,"width":500,"height":500,"elements":[]}"#;
         std::fs::write(app.storage.notes_dir.join("a.draw"), draw_data).unwrap();
         let load = crate::app::catalog::load_notes_blocking(
@@ -2052,12 +2056,15 @@ mod tests {
         app.sort_notes();
         app.refresh_visual_list();
         app.list.preview_enabled = true;
-        
+
         // Warm cache
         app.list.visual_index = 0;
         app.update_preview();
-        assert!(matches!(app.list.preview_content, Some(crate::list_view::PreviewContent::DrawGrid{..})));
-        
+        assert!(matches!(
+            app.list.preview_content,
+            Some(crate::list_view::PreviewContent::DrawGrid { .. })
+        ));
+
         // Disable
         app.config.features.draw_view = crate::config::FeatureState::Disabled;
         app.update_preview();

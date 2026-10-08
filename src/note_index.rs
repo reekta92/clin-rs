@@ -275,7 +275,14 @@ mod tests {
             },
         ];
         let folders = vec!["folder1".to_string(), "folder1/sub".to_string()];
-        let index = NoteIndex::build(1, &notes, &folders, &[], now, &crate::config::FeaturesConfig::default());
+        let index = NoteIndex::build(
+            1,
+            &notes,
+            &folders,
+            &[],
+            now,
+            &crate::config::FeaturesConfig::default(),
+        );
 
         assert_eq!(index.canonical_ids.len(), 2);
         assert_eq!(index.by_id.get("folder1/a.md").copied(), Some(0));
@@ -301,8 +308,25 @@ mod tests {
             links: vec![],
             size_bytes: 1,
         }];
-        let with_cal = NoteIndex::build(1, &notes, &[], &[], now, &crate::config::FeaturesConfig::default());
-        let without_cal = NoteIndex::build(1, &notes, &[], &[], now, &crate::config::FeaturesConfig { calendar: crate::config::FeatureState::Disabled, ..Default::default() });
+        let with_cal = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[],
+            now,
+            &crate::config::FeaturesConfig::default(),
+        );
+        let without_cal = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[],
+            now,
+            &crate::config::FeaturesConfig {
+                calendar: crate::config::FeatureState::Disabled,
+                ..Default::default()
+            },
+        );
         assert!(!with_cal.activity_by_day.is_empty());
         assert!(without_cal.activity_by_day.is_empty());
         // Today/week indices are computed regardless of the calendar flag.
