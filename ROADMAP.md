@@ -87,9 +87,12 @@ Make the `clin-rs` project a modular platform that only provides main functional
 
 #### Notes View
 - [ ] **Notebook files** — a text file type where you can embed interactable drawings(via `draw`), schemes(via `pinstar`) etc. At it's core it's a markdown file with a special property, so it will be compatible with other `.md` editors.
+- [ ] **Custom template vars** — allow for creating custom template variables for creating templates
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
+- [ ] **Properties edit** — allow for editing the frontmatter of the files directly from the editor, design is considered to be similar to Obsidian's properties pane/section
+- [ ] **Dynamic metrics** — make the metrics like word count dynamic according to the selection
 
 #### Graph View
 - [ ] **Date/time linking** — categorize nodes by note date
@@ -117,6 +120,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
 - [ ] **Interactive calendar** — for managing tasks/assigning tasks to dates
+- [ ] **Integration** — allow for integration and sync for third party calendar apps or system calendar app
 
 #### Project Management View
 - [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.
