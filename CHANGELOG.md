@@ -4,10 +4,16 @@ All notable changes to clin are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Native typed frontmatter properties in the built-in editor, with add/edit/delete dialogs, mouse support, property-only autosave, and encrypted draft recovery. `Ctrl+t` cycles Body → Properties → Title; the collapsed section stays hidden, and the expanded section uses preview background with top padding.
+
 ### Fixed
 
 - Migrate the default-origin backup regression test to feature-based enablement when merging main.
 - Fix strict Clippy failures in graph previews, feature-toggle tests, and keybinding helper placement.
+- Preserve untouched YAML frontmatter comments, quoting, order, flow collections, nested values, block scalars, and LF/CRLF formatting across note writers.
+- Prevent text-alignment changes from embedding a second frontmatter header; reject unsafe structured writes without changing the source or deleting its recovery draft.
 
 ## [0.13.2] - 2026-10-02
 

@@ -3,8 +3,8 @@
 ## Overview
 
 A modal built-in editor with find popup, soft-wrap, sidebars with wikilink
-previews, and external-editor handoff. `Esc` saves once when returning to
-notes list.
+previews, typed frontmatter properties, and external-editor handoff. `Esc`
+saves once when returning to notes list.
 
 **Source:** `src/editor.rs` (state), `src/editor_document.rs` (body buffer,
 revision, snapshot, and change contract), `src/editor_session.rs` (in-process
@@ -25,6 +25,46 @@ Body mutations schedule Markdown preview from `EditorDocument::revision()`.
 `clamp(2 × EWMA, 150 ms, 750 ms)`. Title edits only redraw title chrome; they
 never schedule body preview work. Initial open and explicit preview toggles
 remain immediate.
+
+## Frontmatter Properties
+
+For `.md` and `.txt` notes, `Ctrl+t` (the remappable `cycle_focus` action)
+cycles **Body → Properties → Title → Body**. Focusing Properties expands
+the section above the body. It starts collapsed, with no label or reserved
+space; expanded, it shares the preview background and has one blank top row.
+Sidebars and Markdown preview keep their full height. Fullscreen preview exits
+when focusing Properties. The command palette also offers **Toggle Properties**.
+
+In Properties, arrows or `j`/`k` select rows, Home/End and PageUp/PageDown
+navigate, `a` or **+ Add property** opens creation, Enter edits a selected
+custom field, and Delete asks for confirmation. Space or the section heading
+collapses it; Esc returns focus to Body without leaving the editor. Mouse
+click selects, double-click edits, and the wheel scrolls only the section.
+
+The dialog offers **String, Number, Boolean, Null, and YAML**. String treats
+`001`, `true`, and date-like text as text. Use YAML for sequences, nested
+mappings, aliases, or tagged values. Existing names are read-only; new names
+must be nonempty, single-line, and unique. Tab/Shift+Tab move between controls,
+arrows select the type or toggle a Boolean, Ctrl+Enter or Apply commits, and
+Esc cancels. Enter inserts a newline in String/YAML values. Validation errors
+stay in the dialog without changing the note.
+
+`title`, `updated_at`, `tags`, `pinned`, `links`, `original_ext`, and `text_align`
+are read-only **managed** rows; use the existing note controls for them.
+Templates, canvas, drawings, and encrypted files opened as text do not offer
+properties. Encrypted notes keep the normal decrypt-first flow.
+
+Property-only edits use the same two-second autosave and recovery draft as
+body edits. Reverting a property to its original semantic value drops its
+pending change. Saving uses the current disk header, preserving unrelated
+fields plus their comments, quotes, order, collection style, and line endings.
+Malformed YAML, duplicate keys, non-mapping headers, invalid managed types,
+or edits that leave dangling aliases block writing rather than rewrite data.
+Unsupported structured headers show an error; inspect or repair them with an
+external editor. Failed saves keep pending edits and their recovery draft.
+Managed-field emission and filename-renaming policies remain unchanged. For
+filename-based wikilinks, set `[notes] rename_on_title_change = false` to keep
+existing file IDs when changing a title.
 
 ## Modes
 
@@ -81,7 +121,7 @@ while older text above and all text below the current paragraph are dimmed.
 
 ## Sidebars + Wikilink Previews
 
-The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. Cycle focus with `Tab` to reach sidebars.
+The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. Click a sidebar row to focus it; `Ctrl+t` cycles the Body, Properties, and Title fields.
 
 ## External Editor
 

@@ -63,14 +63,7 @@ pub(crate) fn render_editor_widget(
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
 
-    let outer_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // header
-            Constraint::Min(0),    // body
-            Constraint::Length(1), // hint bar
-        ])
-        .split(area);
+    let outer_chunks = crate::events::edit_view_outer_areas(area);
 
     let preview_info = get_preview_info(app);
     let note = crate::statusline::active_note(app, ViewMode::Edit);
@@ -267,6 +260,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         app.editor.sidebar,
         app.preview_position,
         app.zen_padding(),
+        app.properties_layout_rows(),
     );
 
     if app.preview_fullscreen {
@@ -285,6 +279,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let splitter_area = layout.splitter;
 
     let editor_container = layout.body;
+    if let Some(properties) = layout.properties {
+        crate::properties::draw_section(frame, app, focus, properties);
+    }
 
     app.editor.last_body_width = editor_container.width;
     app.editor.last_body_height = editor_container.height;
@@ -566,6 +563,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.render_widget(hint_line, hint_area);
         }
     }
+    crate::properties::draw_dialog(frame, app);
 }
 fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
     let theme = &app.app_theme;

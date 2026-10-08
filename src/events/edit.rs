@@ -100,6 +100,31 @@ fn search_match_stats(
 }
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
+    if app.handle_properties_dialog_key(key) {
+        return false;
+    }
+    if *focus == EditFocus::Properties && key.code == KeyCode::Esc {
+        *focus = EditFocus::Body;
+        return false;
+    }
+    if *focus == EditFocus::Properties
+        && key.modifiers == KeyModifiers::NONE
+        && matches!(
+            key.code,
+            KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Home
+                | KeyCode::End
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+                | KeyCode::Enter
+                | KeyCode::Delete
+                | KeyCode::Char('a' | 'j' | 'k' | ' ')
+        )
+    {
+        app.handle_properties_list_key(key, focus);
+        return false;
+    }
     // --- Go-to-line input popup ---
     if app.editor.go_to_line_input.is_some() {
         app.seq_matcher.clear();
@@ -204,17 +229,26 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         .resolve_edit(&mut app.seq_matcher, key, seq, counts)
     {
         crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
+            EditAction::ToggleProperties => {
+                app.toggle_properties();
+                if let Some(requested) = app.editor.properties.focus_request.take() {
+                    *focus = requested;
+                }
+                return false;
+            }
             EditAction::CycleFocus => {
                 *focus = match *focus {
-                    EditFocus::Title => EditFocus::Body,
-                    EditFocus::Body => {
-                        if app.editor.sidebar != EditSidebar::None {
-                            EditFocus::Sidebar
-                        } else {
-                            EditFocus::Title
+                    EditFocus::Body if app.properties_available() => {
+                        if app.preview_fullscreen {
+                            app.toggle_preview_fullscreen();
                         }
+                        app.editor.properties.expanded = true;
+                        EditFocus::Properties
                     }
-                    EditFocus::Sidebar => EditFocus::Title,
+                    EditFocus::Body | EditFocus::Properties | EditFocus::Sidebar => {
+                        EditFocus::Title
+                    }
+                    EditFocus::Title => EditFocus::Body,
                 };
                 return false;
             }
@@ -309,6 +343,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertDate => {
+                if *focus == EditFocus::Properties {
+                    return false;
+                }
                 let s = chrono::Local::now()
                     .format(&app.config.editor.date_format)
                     .to_string();
@@ -319,7 +356,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.body.insert_str(&s);
                     }
-                    EditFocus::Sidebar => {
+                    EditFocus::Sidebar | EditFocus::Properties => {
                         // no-op
                     }
                 }
@@ -339,6 +376,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertTab => {
+                if *focus == EditFocus::Properties {
+                    return false;
+                }
                 match *focus {
                     EditFocus::Title => {
                         let _ = app.editor.title_editor.insert_str("\t");
@@ -346,7 +386,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.body.insert_str("\t");
                     }
-                    EditFocus::Sidebar => {
+                    EditFocus::Sidebar | EditFocus::Properties => {
                         // no-op
                     }
                 }
@@ -377,6 +417,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     }
 
     match *focus {
+        EditFocus::Properties => {
+            app.handle_properties_list_key(key, focus);
+            return false;
+        }
         EditFocus::Sidebar => {
             app.seq_matcher.clear();
             if app
@@ -459,6 +503,9 @@ pub(crate) fn handle_edit_mouse(
     focus: &mut EditFocus,
     mouse_selection: &mut MouseTextSelection,
 ) {
+    if crate::properties::handle_dialog_mouse(app, mouse_event) {
+        return;
+    }
     if let Some(popup) = &mut app.editor.find_popup {
         if let Some(action) = crate::ui::quick_search::handle_quick_search_mouse(
             popup,
@@ -515,7 +562,7 @@ pub(crate) fn handle_edit_mouse(
         return;
     }
 
-    let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
+    let (title_inner, body_inner, sidebar_inner, properties_area) = edit_view_input_areas(
         terminal_area,
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
@@ -525,7 +572,14 @@ pub(crate) fn handle_edit_mouse(
         app.preview_position,
         app.editor.header_title_rect,
         app.zen_padding(),
+        app.properties_layout_rows(),
     );
+    if let Some(area) = properties_area
+        && crate::properties::handle_list_mouse(app, mouse_event, area, focus)
+    {
+        mouse_selection.active = false;
+        return;
+    }
 
     let md_area = if app.preview_fullscreen {
         let chunks = Layout::default()
@@ -543,6 +597,7 @@ pub(crate) fn handle_edit_mouse(
             app.editor.sidebar,
             app.preview_position,
             app.zen_padding(),
+            app.properties_layout_rows(),
         )
     } else {
         None
@@ -676,13 +731,8 @@ pub(crate) fn handle_edit_mouse(
                 if align != crate::config::TextAlignment::Left
                     && wrap_mode != ratatui_textarea::WrapMode::None
                 {
-                    let gutter: u16 = if app.editor_show_line_numbers() {
-                        app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
-                    } else {
-                        0
-                    };
-                    let text_left = body_inner.x + gutter;
-                    let text_width = body_inner.width.saturating_sub(gutter);
+                    let text_left = body_inner.x;
+                    let text_width = body_inner.width;
                     let screen_row = mouse_event.row.saturating_sub(body_inner.y);
                     let rel_col = mouse_event.column.saturating_sub(text_left);
                     let tab_len = app.editor.body.textarea().tab_length();
@@ -733,13 +783,8 @@ pub(crate) fn handle_edit_mouse(
                     if align != crate::config::TextAlignment::Left
                         && wrap_mode != ratatui_textarea::WrapMode::None
                     {
-                        let gutter: u16 = if app.editor_show_line_numbers() {
-                            app.editor.body.lines().len().max(1).to_string().len() as u16 + 2
-                        } else {
-                            0
-                        };
-                        let text_left = body_inner.x + gutter;
-                        let text_width = body_inner.width.saturating_sub(gutter);
+                        let text_left = body_inner.x;
+                        let text_width = body_inner.width;
                         let screen_row = mouse_event.row.saturating_sub(body_inner.y);
                         let rel_col = mouse_event.column.saturating_sub(text_left);
                         let tab_len = app.editor.body.textarea().tab_length();

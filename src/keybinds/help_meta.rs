@@ -105,7 +105,7 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
 
 pub fn edit_action_meta(a: EditAction) -> HelpMeta {
     match a {
-        EditAction::CycleFocus => meta("Navigation", "Cycle focus (Title, Content)"),
+        EditAction::CycleFocus => meta("Navigation", "Cycle focus (Body, Properties, Title)"),
         EditAction::InsertTab => meta("Editing", "Insert tab character"),
         EditAction::Back => meta("Navigation", "Return to notes (auto-saves)"),
         EditAction::Copy => meta("Editing", "Copy"),
@@ -127,6 +127,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::PreviewPageDown => meta("Preview", "Page preview down"),
         EditAction::ToggleOutline => meta("Panels", "Toggle outline pane"),
         EditAction::ToggleLinks => meta("Panels", "Toggle links pane"),
+        EditAction::ToggleProperties => meta("Panels", "Toggle frontmatter properties"),
         EditAction::PreviewLink => meta("Panels", "Preview linked note under cursor"),
         EditAction::GoToLine => meta("Editor", "Go to line number"),
         EditAction::PasteImage => meta("Editing", "Paste image from clipboard"),

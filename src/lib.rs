@@ -57,6 +57,7 @@ pub mod perf_tests;
 pub mod pinstar_adapter;
 pub mod popups;
 pub mod preview;
+pub(crate) mod properties;
 pub mod session;
 pub mod setup;
 pub mod snapshot;

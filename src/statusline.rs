@@ -909,7 +909,8 @@ impl StatuslineContext<'_> {
                             } else {
                                 false
                             };
-                            *cache = Some((now, is_mod));
+                            *cache =
+                                Some((now, is_mod || !app.editor.properties.pending.is_empty()));
                         }
                         (if cache.unwrap().1 { "on" } else { "off" }).to_string()
                     }

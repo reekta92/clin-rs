@@ -36,6 +36,14 @@ where
         dirty |= app.poll_editor_renderers();
         dirty |= app.poll_editor_image_results();
         dirty |= app.tick_autosave();
+        if let Some(requested) = app.editor.properties.focus_request.take() {
+            focus = requested;
+            dirty = true;
+        }
+        if app.preview_fullscreen && focus == EditFocus::Properties {
+            focus = EditFocus::Body;
+            dirty = true;
+        }
 
         if dirty {
             if !(pre_draw_hook)(app) {
@@ -73,13 +81,17 @@ where
         for event in coalesce_editor_events(pending) {
             let body_rev_before = app.editor.body.revision();
             let title_before = crate::events::get_title_text(&app.editor.title_editor).into_owned();
+            let properties_before = app.editor.properties.revision;
 
             dirty |= dispatch_editor_event(terminal, app, event, &mut focus, &mut mouse_selection)?;
 
             let body_rev_after = app.editor.body.revision();
             let title_after = crate::events::get_title_text(&app.editor.title_editor).into_owned();
 
-            if body_rev_before != body_rev_after || title_before != title_after {
+            if body_rev_before != body_rev_after
+                || title_before != title_after
+                || properties_before != app.editor.properties.revision
+            {
                 if body_rev_before != body_rev_after
                     && let Some(change) = app.editor.body.take_change()
                 {
@@ -139,6 +151,7 @@ where
 {
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
+    app.editor.properties.focused = *focus == EditFocus::Properties;
     match event {
         // All-keys keyboard mode reports bare modifier presses and text-less
         // IME events (key code 0); drop them before any handler sees them.
@@ -154,12 +167,17 @@ where
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
+            if crate::events::handle_global_popups_and_palette(app, Event::Key(key), area)
+                || app.handle_properties_dialog_key(key)
+            {
+                return Ok(true);
+            }
             // Ctrl+C copies when a text selection is active; otherwise it
             // force-quits (terminals always deliver the plain key).
             let has_selection = match *focus {
                 EditFocus::Title => app.editor.title_editor.has_selection(),
                 EditFocus::Body => app.editor.body.has_selection(),
-                EditFocus::Sidebar => false,
+                EditFocus::Sidebar | EditFocus::Properties => false,
             };
             if has_selection {
                 let notice = if *focus == EditFocus::Title {
@@ -256,5 +274,114 @@ mod tests {
         .expect("session");
         assert_eq!(app.mode, ViewMode::List);
         assert_eq!(draws, 1);
+    }
+
+    #[test]
+    fn editor_session_properties_commit_cancel_autosave_and_failure() {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let dir = tempdir().unwrap();
+        crate::config::set_config_path_override(dir.path().join("config.toml"));
+        let storage = crate::storage::Storage {
+            data_dir: dir.path().into(),
+            config_dir: dir.path().into(),
+            notes_dir: dir.path().into(),
+            templates_dir: dir.path().join("templates"),
+            key: [0; 32],
+            skip_dir_patterns: vec![],
+            rename_on_title_change: false,
+        };
+        std::fs::write(
+            dir.path().join("note.md"),
+            "---\nstatus: open # keep\n---\nbody",
+        )
+        .unwrap();
+        let mut app = App::new(storage).unwrap();
+        app.load_and_open_note("note.md", None);
+        app.editor.properties.expanded = true;
+        app.editor.properties.focus_request = Some(EditFocus::Properties);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let send = move |code, modifiers| {
+            sender
+                .send(Event::Key(KeyEvent::new(code, modifiers)))
+                .unwrap()
+        };
+        // Cancel existing value, then commit property-only change; reject reserved name.
+        // Text entry uses actual key path, not direct state mutation.
+        let input = std::thread::spawn(move || {
+            send(KeyCode::Enter, KeyModifiers::NONE);
+            send(KeyCode::Char('a'), KeyModifiers::CONTROL);
+            for c in "cancelled".chars() {
+                send(KeyCode::Char(c), KeyModifiers::NONE);
+            }
+            send(KeyCode::Esc, KeyModifiers::NONE);
+            send(KeyCode::Enter, KeyModifiers::NONE);
+            send(KeyCode::Char('a'), KeyModifiers::CONTROL);
+            for c in "answered".chars() {
+                send(KeyCode::Char(c), KeyModifiers::NONE);
+            }
+            send(KeyCode::Enter, KeyModifiers::CONTROL);
+            send(KeyCode::Char('a'), KeyModifiers::NONE);
+            for c in "title".chars() {
+                send(KeyCode::Char(c), KeyModifiers::NONE);
+            }
+            send(KeyCode::Enter, KeyModifiers::CONTROL);
+            // Let invalid dialog render while autosave runs independently.
+            std::thread::sleep(Duration::from_millis(2300));
+            send(KeyCode::Esc, KeyModifiers::NONE);
+            send(KeyCode::Esc, KeyModifiers::NONE);
+            send(KeyCode::Esc, KeyModifiers::NONE);
+        });
+        let mut events = crate::event_source::EventSource::channel(receiver);
+        let mut terminal = ratatui::Terminal::new(TestBackend::new(100, 30)).unwrap();
+        let mut saw_dirty = false;
+        let mut saw_saved = false;
+        let mut rejected_reserved = false;
+        run_editor_session(&mut terminal, &mut app, &mut events, &mut |app| {
+            saw_dirty |= app.editor.autosave_status == crate::editor::AutosaveStatus::Unsaved;
+            saw_saved |= app.editor.autosave_status == crate::editor::AutosaveStatus::RecentlySaved;
+            if let Some(crate::properties::PropertiesDialog::Edit(dialog)) =
+                &app.editor.properties.dialog
+            {
+                rejected_reserved |= dialog
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("Managed by Clin"));
+            }
+            false
+        })
+        .unwrap();
+        input.join().unwrap();
+        assert!(saw_dirty && saw_saved && rejected_reserved);
+        assert_eq!(app.mode, ViewMode::List);
+        assert_eq!(app.storage.load_note("note.md").unwrap().content, "body");
+        let header = app.storage.load_frontmatter("note.md").unwrap().unwrap();
+        assert_eq!(
+            crate::frontmatter::checked_parse(&header).unwrap().extra["status"].as_str(),
+            Some("answered")
+        );
+        assert!(header.contains("status: answered # keep"));
+        app.load_and_open_note("note.md", None);
+        app.editor
+            .properties
+            .commit(
+                crate::frontmatter::FrontmatterEdit {
+                    key_yaml: "status".into(),
+                    value_yaml: Some("failed".into()),
+                },
+                false,
+            )
+            .unwrap();
+        app.write_draft();
+        std::fs::write(dir.path().join("note.md"), "---\nx: 1\nx: 2\n---\nbody").unwrap();
+        app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+        app.editor.autosave_timer = Some(std::time::Instant::now());
+        assert!(app.tick_autosave());
+        assert_eq!(
+            app.editor.autosave_status,
+            crate::editor::AutosaveStatus::Unsaved
+        );
+        assert!(app.editor.autosave_timer.is_none());
+        assert!(!app.editor.properties.pending.is_empty());
+        assert!(app.storage.editor_draft_path().exists());
     }
 }

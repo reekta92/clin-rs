@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditFocus {
     Title,
+    Properties,
     Body,
     Sidebar,
 }
@@ -90,6 +91,7 @@ pub struct NoteEditor {
     pub template_edit_path: Option<PathBuf>,
     pub title_editor: TextArea<'static>,
     pub(crate) body: EditorDocument,
+    pub(crate) properties: crate::properties::PropertiesState,
     pub external_editor_enabled: bool,
     pub external_editor: Option<String>,
     pub editor_preview_enabled: bool,
@@ -164,6 +166,7 @@ impl Default for NoteEditor {
             template_edit_path: None,
             title_editor: TextArea::default(),
             body: EditorDocument::default(),
+            properties: crate::properties::PropertiesState::default(),
             external_editor_enabled: false,
             external_editor: None,
             editor_preview_enabled: false,

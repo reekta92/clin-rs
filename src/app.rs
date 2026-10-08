@@ -1668,9 +1668,10 @@ impl App {
                 if let Some(timer) = self.editor.autosave_timer
                     && now >= timer
                 {
-                    let _ = self.autosave();
-                    self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
-                    self.editor.last_saved_time = Some(std::time::Instant::now());
+                    if self.autosave().is_ok() {
+                        self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                        self.editor.last_saved_time = Some(std::time::Instant::now());
+                    }
                     self.editor.autosave_timer = None;
                     dirty = true;
                 }
@@ -1696,7 +1697,14 @@ impl App {
             let title = crate::events::get_title_text(&self.editor.title_editor)
                 .trim()
                 .to_string();
-            let _ = self.storage.write_editor_draft(id, &title, &content);
+            if let Err(error) = self.storage.write_editor_draft(
+                id,
+                &title,
+                &content,
+                &self.editor.properties.pending,
+            ) {
+                self.set_temporary_status(&format!("Draft save failed: {error}"));
+            }
         }
     }
 
@@ -1760,9 +1768,19 @@ impl App {
             updated_at,
             tags,
         };
-        match self.storage.save_note(&id, &note) {
+        match self
+            .storage
+            .save_note_with_properties(&id, &note, &self.editor.properties.pending)
+        {
             Ok(saved_id) => {
                 self.editor.editing_id = Some(saved_id.clone());
+                let refresh = self.storage.load_frontmatter(&saved_id);
+                if let Err(error) = self.editor.properties.refresh(refresh, true) {
+                    self.set_temporary_status(&format!(
+                        "Note saved; properties refresh failed: {error}"
+                    ));
+                }
+                *self.editor.modified_status_cache.borrow_mut() = None;
                 self.enqueue_backup(format!("auto: {}", note.title));
 
                 let current_words = crate::goals::count_words(&note.content);
@@ -1792,6 +1810,7 @@ impl App {
                 Ok(())
             }
             Err(e) => {
+                self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
                 let text = format!("Autosave failed for '{id}': {e}");
                 self.set_temporary_status(&text);
                 self.messages

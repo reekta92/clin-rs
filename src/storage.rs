@@ -114,48 +114,12 @@ pub struct Storage {
 }
 
 pub(crate) fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
-    if !bytes.starts_with(b"---\n") && !bytes.starts_with(b"---\r\n") {
-        return (None, bytes);
-    }
-
-    let end_marker = b"\n---";
-    if let Some(end_idx) = bytes[3..]
-        .windows(end_marker.len())
-        .position(|w| w == end_marker)
+    if let Ok((Some(header), payload)) = frontmatter::split_header(bytes)
+        && let Ok(fm) = frontmatter::checked_parse(header)
     {
-        let fm_bytes = &bytes[3..3 + end_idx];
-        let remaining_start = 3 + end_idx + end_marker.len();
-        let mut content_start = remaining_start;
-
-        if bytes[remaining_start..].starts_with(b"\r\n") {
-            content_start += 2;
-        } else if bytes[remaining_start..].starts_with(b"\n") {
-            content_start += 1;
-        }
-
-        if let Ok(fm_str) = std::str::from_utf8(fm_bytes)
-            && let Ok(fm) = serde_yaml_ng::from_str::<frontmatter::Frontmatter>(fm_str)
-        {
-            return (Some(fm), &bytes[content_start..]);
-        }
+        return (Some(fm), payload);
     }
-
     (None, bytes)
-}
-
-fn existing_extra_frontmatter(path: &std::path::Path) -> serde_yaml_ng::Mapping {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| split_frontmatter_payload(&bytes).0)
-        .map(|fm| fm.extra)
-        .unwrap_or_default()
-}
-
-fn existing_text_align(path: &std::path::Path) -> Option<crate::config::TextAlignment> {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| split_frontmatter_payload(&bytes).0)
-        .and_then(|fm| fm.text_align)
 }
 
 /// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
@@ -551,6 +515,16 @@ impl Storage {
 
         let note = self.load_note(id)?;
         let old_path = self.note_path(id);
+        let source = fs::read(&old_path).context("failed to read source note")?;
+        let source_header = if ext == "canvas" || ext == "draw" {
+            None
+        } else {
+            frontmatter::split_header(&source)?.0
+        };
+        let existing = source_header
+            .map(frontmatter::checked_parse)
+            .transpose()?
+            .unwrap_or_default();
 
         let folder = if let Some(idx) = id.rfind('/') {
             &id[..idx]
@@ -578,10 +552,7 @@ impl Storage {
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_string());
-        let existing_pinned = self
-            .load_note_summary(id)
-            .map(|s| s.pinned)
-            .unwrap_or(false);
+        let existing_pinned = existing.pinned;
         let fm = frontmatter::Frontmatter {
             title: Some(note.title.clone()),
             updated_at: Some(note.updated_at),
@@ -589,13 +560,13 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
-            text_align: existing_text_align(&old_path),
-            extra: existing_extra_frontmatter(&old_path),
+            text_align: existing.text_align,
+            extra: existing.extra,
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
         let encrypted = self.encrypt(&bytes)?;
-        let fm_string = frontmatter::serialize(&fm, "");
+        let fm_string = frontmatter::serialize(&fm, source_header, "")?;
         let mut final_output = fm_string.into_bytes();
         final_output.extend_from_slice(&encrypted);
 
@@ -619,6 +590,11 @@ impl Storage {
         let old_path = self.note_path(id);
         let clin_content = fs::read(&old_path).context("failed to read encrypted note")?;
         let (fm_opt, _) = split_frontmatter_payload(&clin_content);
+        let source_header = frontmatter::split_header(&clin_content)?.0;
+        let existing = source_header
+            .map(frontmatter::checked_parse)
+            .transpose()?
+            .unwrap_or_default();
         let orig_ext = fm_opt
             .and_then(|fm| fm.original_ext)
             .unwrap_or_else(|| "md".to_string());
@@ -646,10 +622,7 @@ impl Storage {
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).context("failed to create note directory")?;
         }
-        let existing_pinned = self
-            .load_note_summary(id)
-            .map(|s| s.pinned)
-            .unwrap_or(false);
+        let existing_pinned = existing.pinned;
 
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
         if is_raw {
@@ -663,10 +636,10 @@ impl Storage {
                 pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
-                text_align: existing_text_align(&old_path),
-                extra: existing_extra_frontmatter(&old_path),
+                text_align: existing.text_align,
+                extra: existing.extra,
             };
-            let final_content = frontmatter::serialize(&fm, &note.content);
+            let final_content = frontmatter::serialize(&fm, source_header, &note.content)?;
             crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
                 .context("failed to write decrypted note")?;
         }
@@ -1260,15 +1233,53 @@ impl Storage {
             })
         }
     }
+    pub fn load_frontmatter(&self, id: &str) -> Result<Option<String>> {
+        let bytes = match fs::read(self.note_path(id)) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error).context("failed to read frontmatter"),
+        };
+        Ok(frontmatter::split_header(&bytes)?.0.map(str::to_owned))
+    }
+
+    pub fn set_text_alignment(
+        &self,
+        id: &str,
+        alignment: crate::config::TextAlignment,
+    ) -> Result<()> {
+        let path = self.note_path(id);
+        let bytes = fs::read(&path).context("failed to read note alignment")?;
+        let (header, payload) = frontmatter::split_header(&bytes)?;
+        let header = frontmatter::apply_edits(
+            header.unwrap_or("---\n---\n"),
+            &[frontmatter::FrontmatterEdit {
+                key_yaml: "text_align".into(),
+                value_yaml: Some(serde_yaml_ng::to_string(&alignment)?),
+            }],
+        )?;
+        let mut output = header.into_bytes();
+        output.extend_from_slice(payload);
+        crate::fsutil::atomic_write(&path, &output).context("failed to write note alignment")
+    }
     pub fn editor_draft_path(&self) -> PathBuf {
         self.data_dir.join(".clin").join("editor_draft.bin")
     }
 
-    pub fn write_editor_draft(&mut self, id: &str, title: &str, content: &str) -> Result<()> {
+    pub fn write_editor_draft(
+        &mut self,
+        id: &str,
+        title: &str,
+        content: &str,
+        edits: &[frontmatter::FrontmatterEdit],
+    ) -> Result<()> {
         self.ensure_key()?;
         let draft = (id.to_string(), title.to_string(), content.to_string());
-        let bytes = bincode::serde::encode_to_vec(&draft, bincode::config::standard())
+        let mut bytes = bincode::serde::encode_to_vec(&draft, bincode::config::standard())
             .context("failed to encode draft")?;
+        bytes.extend(
+            bincode::serde::encode_to_vec(edits, bincode::config::standard())
+                .context("failed to encode property draft")?,
+        );
         let encrypted = self.encrypt(&bytes)?;
         let path = self.editor_draft_path();
         if let Some(parent) = path.parent() {
@@ -1287,42 +1298,118 @@ impl Storage {
         if !path.exists() {
             return Ok(());
         }
-        let encrypted = match fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(_) => return Ok(()),
-        };
+        let encrypted = fs::read(&path).context("failed to read editor draft")?;
         self.ensure_key()?;
-        if let Ok(decrypted) = self.decrypt(&encrypted)
-            && let Ok((draft, _)) = bincode::serde::decode_from_slice::<(String, String, String), _>(
-                &decrypted,
-                bincode::config::standard(),
-            )
-        {
-            let mut note = self.load_note(&draft.0).unwrap_or_else(|_| Note {
+        let decrypted = self
+            .decrypt(&encrypted)
+            .context("failed to decrypt editor draft")?;
+        let (draft, used) = bincode::serde::decode_from_slice::<(String, String, String), _>(
+            &decrypted,
+            bincode::config::standard(),
+        )
+        .context("failed to decode editor draft")?;
+        let edits = if used == decrypted.len() {
+            Vec::new()
+        } else {
+            let (edits, suffix_used) =
+                bincode::serde::decode_from_slice::<Vec<frontmatter::FrontmatterEdit>, _>(
+                    &decrypted[used..],
+                    bincode::config::standard(),
+                )
+                .context("failed to decode property draft")?;
+            anyhow::ensure!(
+                used + suffix_used == decrypted.len(),
+                "Unexpected trailing property draft bytes"
+            );
+            edits
+        };
+        let existing = match self.load_note(&draft.0) {
+            Ok(note) => Some(note),
+            Err(_) if !self.note_path(&draft.0).exists() => None,
+            Err(error) => return Err(error).context("failed to load draft target"),
+        };
+        let changed = existing
+            .as_ref()
+            .is_none_or(|note| note.title != draft.1 || note.content != draft.2)
+            || !edits.is_empty();
+        if changed {
+            let mut note = existing.unwrap_or_else(|| Note {
                 title: draft.1.clone(),
                 content: String::new(),
-                updated_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
+                updated_at: 0,
                 tags: vec![],
             });
-            if note.title != draft.1 || note.content != draft.2 {
-                note.title = draft.1;
-                note.content = draft.2;
-                note.updated_at = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let _ = self.save_note(&draft.0, &note);
-            }
+            note.title = draft.1;
+            note.content = draft.2;
+            note.updated_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            self.save_note_with_properties(&draft.0, &note, &edits)?;
         }
         self.delete_editor_draft();
         Ok(())
     }
     pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
+        self.save_note_inner(id, note, &[])
+    }
+
+    pub fn save_note_with_properties(
+        &mut self,
+        id: &str,
+        note: &Note,
+        edits: &[frontmatter::FrontmatterEdit],
+    ) -> Result<String> {
+        self.save_note_inner(id, note, edits)
+    }
+
+    fn save_note_inner(
+        &mut self,
+        id: &str,
+        note: &Note,
+        edits: &[frontmatter::FrontmatterEdit],
+    ) -> Result<String> {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let source = match fs::read(&old_path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error).context("failed to read source note"),
+        };
+        let raw = old_ext == "canvas" || old_ext == "draw";
+        anyhow::ensure!(
+            !raw || edits.is_empty(),
+            "Properties are available for notes"
+        );
+        let source_header = if raw {
+            None
+        } else {
+            source
+                .as_deref()
+                .map(frontmatter::split_header)
+                .transpose()?
+                .and_then(|(header, _)| header)
+        };
+        for edit in edits {
+            let key: serde_yaml_ng::Value = serde_yaml_ng::from_str(&edit.key_yaml)?;
+            anyhow::ensure!(
+                !frontmatter::is_managed_key(&key),
+                "Managed by Clin; use existing note controls"
+            );
+        }
+        let edited_header = if edits.is_empty() {
+            None
+        } else {
+            Some(frontmatter::apply_edits(
+                source_header.unwrap_or("---\n---\n"),
+                edits,
+            )?)
+        };
+        let source_header = edited_header.as_deref().or(source_header);
+        let existing = source_header
+            .map(frontmatter::checked_parse)
+            .transpose()?
+            .unwrap_or_default();
 
         let target_ext = if old_ext == "clin"
             || old_ext == "txt"
@@ -1343,10 +1430,7 @@ impl Storage {
         } else {
             id.to_string()
         };
-        let existing_pinned = self
-            .load_note_summary(id)
-            .map(|s| s.pinned)
-            .unwrap_or(false);
+        let existing_pinned = existing.pinned;
         let links = extract_wikilinks(&note.content);
         let fm = frontmatter::Frontmatter {
             title: Some(note.title.clone()),
@@ -1355,8 +1439,8 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(links),
             original_ext: None,
-            text_align: existing_text_align(&old_path),
-            extra: existing_extra_frontmatter(&old_path),
+            text_align: existing.text_align,
+            extra: existing.extra,
         };
 
         let target_path = self.note_path(&target_id);
@@ -1369,7 +1453,7 @@ impl Storage {
                 .context("failed to encode note")?;
             let encrypted = self.encrypt(&bytes)?;
 
-            let fm_string = frontmatter::serialize(&fm, "");
+            let fm_string = frontmatter::serialize(&fm, source_header, "")?;
             let mut final_output = fm_string.into_bytes();
             final_output.extend_from_slice(&encrypted);
 
@@ -1379,7 +1463,7 @@ impl Storage {
             crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
                 .context("failed to write note")?;
         } else {
-            let final_content = frontmatter::serialize(&fm, &note.content);
+            let final_content = frontmatter::serialize(&fm, source_header, &note.content)?;
             crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
                 .context("failed to write plain note")?;
         }
@@ -1587,12 +1671,13 @@ impl Storage {
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
             let (fm_opt, payload) = split_frontmatter_payload(&file_content);
+            let source_header = frontmatter::split_header(&file_content)?.0;
             let mut fm = fm_opt.unwrap_or_default();
             fm.pinned = !fm.pinned;
             let new_pinned = fm.pinned;
 
             let plain = self.decrypt(payload)?;
-            let fm_string = frontmatter::serialize(&fm, "");
+            let fm_string = frontmatter::serialize(&fm, source_header, "")?;
             let mut final_output = fm_string.into_bytes();
 
             let encrypted = self.encrypt(plain.as_slice())?;
@@ -1603,10 +1688,11 @@ impl Storage {
         } else {
             let content = fs::read_to_string(&path).context("failed to read note")?;
             let (mut fm, body) = frontmatter::parse(&content);
+            let source_header = frontmatter::split_header(content.as_bytes())?.0;
             fm.pinned = !fm.pinned;
             let new_pinned = fm.pinned;
 
-            let new_content = frontmatter::serialize(&fm, body);
+            let new_content = frontmatter::serialize(&fm, source_header, body)?;
             crate::fsutil::atomic_write(&path, new_content.as_bytes())
                 .context("failed to write note")?;
             Ok(new_pinned)
@@ -2406,25 +2492,184 @@ mod tests {
             rename_on_title_change: true,
         };
 
-        let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
-        let path = notes_dir.join("obsidian.md");
-        fs::write(&path, content)?;
+        for newline in ["\n", "\r\n"] {
+            let content = "---\n# identity\nid: \"001\" # keep\ntitle: original\nstatus: open # state\n\nsources: [\"[[CL-02]]\", 'book']\ndetails:\n  score: 0.9\n  verified: true\nsummary: |-\n  First\n  Second\nconfidence: high\n---\nbody".replace('\n', newline);
+            let path = notes_dir.join("obsidian.md");
+            fs::write(&path, &content)?;
+            let mut note = storage.load_note("obsidian.md")?;
+            note.content = "edited body".to_string();
+            let saved_id = storage.save_note("obsidian.md", &note)?;
+            let saved = fs::read_to_string(storage.note_path(&saved_id))?;
+            let original_header = frontmatter::split_header(content.as_bytes())?.0.unwrap();
+            assert!(
+                saved.starts_with(
+                    original_header
+                        .strip_suffix(&format!("---{newline}"))
+                        .unwrap()
+                )
+            );
+            assert_eq!(storage.load_note(&saved_id)?.content, "edited body");
+            let edits = [
+                frontmatter::FrontmatterEdit {
+                    key_yaml: "status".into(),
+                    value_yaml: Some("answered".into()),
+                },
+                frontmatter::FrontmatterEdit {
+                    key_yaml: "reviewed".into(),
+                    value_yaml: Some("true".into()),
+                },
+                frontmatter::FrontmatterEdit {
+                    key_yaml: "confidence".into(),
+                    value_yaml: None,
+                },
+            ];
+            let edited_id = storage.save_note_with_properties(&saved_id, &note, &edits)?;
+            let edited = fs::read_to_string(storage.note_path(&edited_id))?;
+            for fragment in [
+                "# identity\nid: \"001\" # keep\n",
+                "\nsources: [\"[[CL-02]]\", 'book']\ndetails:\n  score: 0.9\n  verified: true\nsummary: |-\n  First\n  Second\n",
+            ] {
+                assert!(
+                    edited.contains(&fragment.replace('\n', newline)),
+                    "{edited}"
+                );
+            }
+            let fm = frontmatter::checked_parse(&storage.load_frontmatter(&edited_id)?.unwrap())?;
+            assert_eq!(fm.extra["status"].as_str(), Some("answered"));
+            assert_eq!(fm.extra["reviewed"].as_bool(), Some(true));
+            assert!(!fm.extra.contains_key("confidence"));
+            assert_eq!(storage.load_note(&edited_id)?.content, "edited body");
+            fs::remove_file(storage.note_path(&edited_id))?;
+        }
 
-        let mut note = storage.load_note("obsidian.md")?;
-        note.content = "edited body".to_string();
-        let saved_id = storage.save_note("obsidian.md", &note)?;
-        let saved_path = storage.note_path(&saved_id);
+        Ok(())
+    }
 
-        let saved = fs::read_to_string(&saved_path)?;
-        assert!(saved.contains("type: knowledge_concept"));
-        assert!(saved.contains("confidence: 0.9"));
-        assert!(saved.contains("sources:"));
+    #[test]
+    fn properties_storage_writers_and_draft_recovery() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir()?;
+        crate::config::set_config_path_override(temp.path().join("config.toml"));
+        let mut storage = Storage {
+            data_dir: temp.path().into(),
+            config_dir: temp.path().into(),
+            notes_dir: temp.path().into(),
+            templates_dir: temp.path().join("templates"),
+            key: [0; 32],
+            skip_dir_patterns: vec![],
+            rename_on_title_change: false,
+        };
+        let protected = "# identity\nid: \"001\" # keep\nsources: [one, 'two']\nnested:\n  score: 0.9\nsummary: |-\n  first\n  second\n";
+        fs::write(
+            storage.note_path("note.md"),
+            format!("---\n{protected}status: open\n---\nbody"),
+        )?;
+        let edits = [frontmatter::FrontmatterEdit {
+            key_yaml: "status".into(),
+            value_yaml: Some("answered".into()),
+        }];
+        let note = storage.load_note("note.md")?;
+        storage.write_editor_draft("note.md", &note.title, &note.content, &edits)?;
+        // A draft created before an external frontmatter edit must retain that edit.
+        fs::write(
+            storage.note_path("note.md"),
+            format!("---\n{protected}status: open\nexternal: 'keep me' # concurrent\n---\nbody"),
+        )?;
+        storage.recover_editor_draft()?;
+        assert!(!storage.editor_draft_path().exists());
+        assert_eq!(frontmatter::checked_parse(&storage.load_frontmatter("note.md")?.unwrap())?.extra["status"].as_str(), Some("answered"));
         assert!(
-            saved.contains("- '[[kimball-dwt]]'")
-                || saved.contains("- \"[[kimball-dwt]]\"")
-                || saved.contains("- [[kimball-dwt]]")
+            storage
+                .load_frontmatter("note.md")?
+                .unwrap()
+                .contains("external: 'keep me' # concurrent")
         );
-
+        storage.toggle_pin("note.md")?;
+        storage.set_text_alignment("note.md", crate::config::TextAlignment::Center)?;
+        assert_eq!(storage.load_note("note.md")?.content, "body");
+        let duplicate = storage.duplicate_note("note.md", "")?;
+        assert!(
+            storage
+                .load_frontmatter(&duplicate)?
+                .unwrap()
+                .contains(protected)
+        );
+        let renamed = storage.rename_note("note.md", "renamed")?;
+        assert!(
+            storage
+                .load_frontmatter(&renamed)?
+                .unwrap()
+                .contains(protected)
+        );
+        let encrypted = storage.encrypt_note(&renamed)?;
+        assert!(
+            storage
+                .load_frontmatter(&encrypted)?
+                .unwrap()
+                .contains(protected)
+        );
+        let reviewed = [frontmatter::FrontmatterEdit {
+            key_yaml: "reviewed".into(),
+            value_yaml: Some("true".into()),
+        }];
+        storage.save_note_with_properties(
+            &encrypted,
+            &storage.load_note(&encrypted)?,
+            &reviewed,
+        )?;
+        assert_eq!(frontmatter::checked_parse(&storage.load_frontmatter(&encrypted)?.unwrap())?.extra["reviewed"].as_bool(), Some(true));
+        let bytes = fs::read(storage.note_path(&encrypted))?;
+        let (_, payload) = frontmatter::split_header(&bytes)?;
+        let decoded = storage.decrypt(payload)?;
+        let (decoded_note, consumed) =
+            bincode::serde::decode_from_slice::<Note, _>(&decoded, bincode::config::standard())?;
+        assert_eq!(consumed, decoded.len());
+        assert_eq!(decoded_note.content, "body");
+        storage.set_text_alignment(&encrypted, crate::config::TextAlignment::Right)?;
+        let aligned = fs::read(storage.note_path(&encrypted))?;
+        assert_eq!(frontmatter::split_header(&aligned)?.1, payload);
+        let plain = storage.decrypt_note(&encrypted)?;
+        assert!(
+            storage
+                .load_frontmatter(&plain)?
+                .unwrap()
+                .contains(protected)
+        );
+        assert_eq!(storage.load_note(&plain)?.content, "body");
+        // Legacy three-field draft prefix remains recoverable.
+        let draft = (plain.clone(), "legacy".to_string(), "old draft".to_string());
+        let bytes = bincode::serde::encode_to_vec(&draft, bincode::config::standard())?;
+        fs::write(storage.editor_draft_path(), storage.encrypt(&bytes)?)?;
+        storage.recover_editor_draft()?;
+        assert_eq!(storage.load_note(&plain)?.content, "old draft");
+        // Corrupt suffix and rejected saves must not delete recoverable data.
+        let mut corrupt = bytes.clone();
+        corrupt.push(255);
+        fs::write(storage.editor_draft_path(), storage.encrypt(&corrupt)?)?;
+        assert!(storage.recover_editor_draft().is_err());
+        assert!(storage.editor_draft_path().exists());
+        let reserved = [frontmatter::FrontmatterEdit {
+            key_yaml: "title".into(),
+            value_yaml: Some("bad".into()),
+        }];
+        storage.write_editor_draft(&plain, "legacy", "old draft", &reserved)?;
+        let original = fs::read(storage.note_path(&plain))?;
+        assert!(storage.recover_editor_draft().is_err());
+        assert!(storage.editor_draft_path().exists());
+        assert_eq!(fs::read(storage.note_path(&plain))?, original);
+        for invalid in [
+            "---\nx: 1\nx: 2\n---\nbody",
+            "---\nx: [\n---\nbody",
+            "---\n[one]\n---\nbody",
+            "---\nx: 1\nbody",
+        ] {
+            fs::write(storage.note_path("invalid.md"), invalid)?;
+            assert!(storage.save_note("invalid.md", &note).is_err());
+            assert_eq!(
+                fs::read_to_string(storage.note_path("invalid.md"))?,
+                invalid
+            );
+        }
         Ok(())
     }
 

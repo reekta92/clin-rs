@@ -27,6 +27,25 @@ impl Action for InsertDateAction {
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        if app.mode == crate::app::ViewMode::Edit
+            && (app.editor.properties.focused || app.editor.properties.dialog.is_some())
+        {
+            if let Some(crate::properties::PropertiesDialog::Edit(input)) =
+                &mut app.editor.properties.dialog
+                && input.control == 2
+                && matches!(
+                    input.kind,
+                    crate::properties::PropertyType::String | crate::properties::PropertyType::Yaml
+                )
+            {
+                input.value.insert_str(
+                    chrono::Local::now()
+                        .format(&app.config.editor.date_format)
+                        .to_string(),
+                );
+            }
+            return Ok(());
+        }
         let s = chrono::Local::now()
             .format(&app.config.editor.date_format)
             .to_string();

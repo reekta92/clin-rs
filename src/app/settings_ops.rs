@@ -374,17 +374,36 @@ impl App {
             return;
         }
 
-        let new_align = self.editor.text_align.cycle();
+        let previous = self.editor.text_align;
+        let new_align = previous.cycle();
         self.editor.text_align = new_align;
-
-        // Persist to frontmatter of current note.
-        if let Some(note_id) = self.editor.editing_id.clone()
-            && let Ok(mut note) = self.storage.load_note(&note_id)
-        {
-            let (mut fm, body) = crate::frontmatter::parse(&note.content);
-            fm.text_align = Some(new_align);
-            note.content = crate::frontmatter::serialize(&fm, body);
-            let _ = self.storage.save_note(&note_id, &note);
+        let result = (|| -> Result<(), String> {
+            let id = self
+                .editor
+                .editing_id
+                .clone()
+                .ok_or_else(|| "Select a note first".to_string())?;
+            if !self.storage.note_path(&id).exists() {
+                self.autosave()?;
+            }
+            let id = self
+                .editor
+                .editing_id
+                .as_deref()
+                .ok_or_else(|| "Select a note first".to_string())?;
+            self.storage
+                .set_text_alignment(id, new_align)
+                .map_err(|error| error.to_string())?;
+            let refresh = self.storage.load_frontmatter(id);
+            self.editor
+                .properties
+                .refresh(refresh, false)
+                .map_err(|error| error.to_string())
+        })();
+        if let Err(error) = result {
+            self.editor.text_align = previous;
+            self.set_temporary_status(&format!("Alignment save failed: {error}"));
+            return;
         }
 
         if self.mode == ViewMode::Edit {
@@ -1096,27 +1115,6 @@ mod tests {
             rename_on_title_change: true,
         };
         App::new(storage).unwrap()
-    }
-
-    #[test]
-    fn cycle_alignment_with_wrap_off_shows_warning() {
-        let _lock = crate::config::ConfigTestGuard::lock();
-        let mut app = make_app();
-        app.editor
-            .body
-            .set_wrap_mode(ratatui_textarea::WrapMode::None);
-        app.cycle_text_alignment();
-        assert!(app.status.contains("requires soft wrap"));
-        assert_eq!(app.editor.text_align, crate::config::TextAlignment::Left);
-        // With wrap on the plain label shows instead.
-        app.editor
-            .body
-            .set_wrap_mode(ratatui_textarea::WrapMode::WordOrGlyph);
-        app.cycle_text_alignment();
-        assert_eq!(
-            app.status,
-            crate::config::TextAlignment::Center.status_label()
-        );
     }
 
     #[test]

@@ -48,7 +48,7 @@ pub trait Action: Send + Sync {
 
 ## Registration
 
-Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. The current registry contains 65 actions. Add an action there after implementing `Action`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
+Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. Add an action there after implementing `Action`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
 
 Action metadata is cached separately:
 
@@ -79,13 +79,19 @@ Actions are grouped by category:
 | Category | Shipped actions |
 |---|---|
 | **General** | Insert date, OCR paste, paste image, insert image from file, rasterize |
-| **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info |
+| **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info, Toggle Properties |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note |
 | **Views** | Graph, draw, canvas, backup, setup wizard, vault switcher |
 | **Settings** | Theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
 File-format conversion can require external tools; URL import requires `curl`. CSV and JSON conversions are handled in Rust.
+
+**Toggle Properties** (`properties.toggle`) opens the selected Markdown/text
+note in the built-in editor and expands Properties, ignoring external-editor
+preference. In Edit it toggles the current section. Other file types report
+that properties are available for notes; encrypted notes retain decrypt-first
+opening.
 
 ## Execution
 

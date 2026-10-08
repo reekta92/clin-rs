@@ -417,8 +417,20 @@ impl App {
                 ));
             }
             self.editor.body = body;
-            let (fm, _) = crate::frontmatter::parse(&note.content);
-            self.editor.text_align = fm.text_align.unwrap_or(self.config.editor.text_align);
+            self.editor.template_edit_path = None;
+            self.editor.properties =
+                crate::properties::PropertiesState::load(self.storage.load_frontmatter(note_id));
+            self.editor.text_align = self
+                .editor
+                .properties
+                .baseline
+                .as_deref()
+                .and_then(|header| crate::frontmatter::checked_parse(header).ok())
+                .and_then(|fm| fm.text_align)
+                .unwrap_or(self.config.editor.text_align);
+            self.editor.autosave_status = crate::editor::AutosaveStatus::Saved;
+            self.editor.autosave_timer = None;
+            *self.editor.modified_status_cache.borrow_mut() = None;
             self.apply_editor_prefs();
             self.rebuild_outline();
             self.editor.links = self.compute_links();
@@ -648,6 +660,7 @@ impl App {
         self.mode = ViewMode::Edit;
 
         self.editor.editing_id = Some(id);
+        self.editor.properties = crate::properties::PropertiesState::default();
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &title,
@@ -717,6 +730,7 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
+        self.editor.properties = crate::properties::PropertiesState::default();
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &editor_title,
@@ -732,6 +746,7 @@ impl App {
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
+            self.editor.properties = crate::properties::PropertiesState::default();
             if self.editor.template_edit_path.is_some() {
                 self.refresh_template_popup();
             }
@@ -772,6 +787,7 @@ impl App {
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
+        self.editor.properties = crate::properties::PropertiesState::default();
         if self.editor.template_edit_path.is_some() {
             self.refresh_template_popup();
         }

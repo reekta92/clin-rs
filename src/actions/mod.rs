@@ -231,6 +231,16 @@ simple_action!(
     "\u{1f4dd}",
     open_subnotes_popup
 );
+simple_action!(
+    TogglePropertiesAction,
+    "properties.toggle",
+    "Toggle Properties",
+    "Edit note frontmatter properties in the built-in editor",
+    ActionCategory::Notes,
+    "",
+    "",
+    toggle_properties
+);
 
 pub struct ActionInfo {
     pub id: String,
@@ -247,6 +257,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(decrypt::DecryptNoteAction),
         Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
+        Box::new(TogglePropertiesAction),
         Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
         Box::new(outline::OpenOutlineAction),

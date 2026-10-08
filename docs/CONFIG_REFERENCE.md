@@ -561,7 +561,7 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 |---|---|---|
 | `back` | `Esc` | Return to notes (auto-saves) |
 | `save` | `Ctrl+s` | Save |
-| `cycle_focus` | `Ctrl+t` | Cycle focus (Title, Content) |
+| `cycle_focus` | `Ctrl+t` | Cycle focus (Body → Properties → Title); expands Properties when focused |
 | `insert_tab` | `Tab` | Insert tab character |
 | `select_all` | `Ctrl+a`, `Ctrl+Shift+a` | Select all |
 | `copy` | `Ctrl+Shift+c`, `Ctrl+Insert`, `Ctrl+c` | Copy |
@@ -585,6 +585,7 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | `insert_date` | `Ctrl+;` | Insert date/time |
 | `toggle_outline` | `Ctrl+o` | Toggle outline pane |
 | `toggle_links` | `Ctrl+b` | Toggle links pane |
+| `toggle_properties` | Unbound | Toggle the note properties section; also available in the command palette |
 | `preview_link` | `Alt+l` | Preview linked note under cursor |
 
 ### Help Actions (`[help]`)
