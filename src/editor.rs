@@ -18,6 +18,7 @@ pub enum EditSidebar {
     None,
     Outline,
     Links,
+    Properties,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

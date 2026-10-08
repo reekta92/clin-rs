@@ -105,7 +105,7 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
 
 pub fn edit_action_meta(a: EditAction) -> HelpMeta {
     match a {
-        EditAction::CycleFocus => meta("Navigation", "Cycle focus (Body, Properties, Title)"),
+        EditAction::CycleFocus => meta("Navigation", "Cycle focus (Body, sidebar, Title)"),
         EditAction::InsertTab => meta("Editing", "Insert tab character"),
         EditAction::Back => meta("Navigation", "Return to notes (auto-saves)"),
         EditAction::Copy => meta("Editing", "Copy"),

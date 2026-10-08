@@ -75,7 +75,6 @@ pub(crate) struct PropertyRow {
     pub(crate) value_yaml: String,
     pub(crate) value: Value,
     pub(crate) kind: PropertyType,
-    pub(crate) managed: bool,
 }
 impl PropertyRow {
     pub(crate) fn name(&self) -> &str {
@@ -145,7 +144,6 @@ pub(crate) struct PropertiesState {
     pub(crate) rows: Vec<PropertyRow>,
     pub(crate) selected: usize,
     pub(crate) scroll: usize,
-    pub(crate) expanded: bool,
     pub(crate) focused: bool,
     pub(crate) pending: Vec<FrontmatterEdit>,
     pub(crate) revision: u64,
@@ -188,6 +186,9 @@ impl PropertiesState {
                     .to_string();
                 let key: Value =
                     serde_yaml_ng::from_str(&key_yaml).context("Unsupported property key")?;
+                if frontmatter::is_managed_key(&key) {
+                    continue;
+                }
                 let value = semantic
                     .get(&key)
                     .context("Unsupported property syntax")?
@@ -206,7 +207,6 @@ impl PropertiesState {
                     kind = PropertyType::Yaml;
                 }
                 rows.push(PropertyRow {
-                    managed: frontmatter::is_managed_key(&key),
                     key_yaml,
                     key,
                     value_yaml,
@@ -316,7 +316,6 @@ impl PropertiesState {
             .rows
             .get(self.selected)
             .context("Select a property first")?;
-        ensure!(!row.managed, "Managed by Clin; use existing note controls");
         if delete {
             self.dialog = Some(PropertiesDialog::Delete {
                 key_yaml: row.key_yaml.clone(),
@@ -413,13 +412,14 @@ impl App {
         if self.preview_fullscreen {
             self.toggle_preview_fullscreen();
         }
-        let state = &mut self.editor.properties;
-        state.expanded = !state.expanded;
-        state.focus_request = Some(if state.expanded {
-            EditFocus::Properties
-        } else {
-            EditFocus::Body
-        });
+        self.set_sidebar(crate::editor::EditSidebar::Properties);
+        self.editor.properties.focus_request = Some(
+            if self.editor.sidebar == crate::editor::EditSidebar::Properties {
+                EditFocus::Properties
+            } else {
+                EditFocus::Body
+            },
+        );
     }
     pub(crate) fn properties_available(&self) -> bool {
         self.editor.template_edit_path.is_none()
@@ -429,10 +429,6 @@ impl App {
                     .and_then(|extension| extension.to_str());
                 matches!(ext, None | Some("md" | "txt"))
             })
-    }
-    pub(crate) fn properties_layout_rows(&self) -> Option<usize> {
-        (self.properties_available() && self.editor.properties.expanded)
-            .then_some(self.editor.properties.rows.len() + 1)
     }
     fn property_committed(&mut self) {
         self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
@@ -583,88 +579,89 @@ impl App {
                     self.set_temporary_status(&error.to_string());
                 }
             }
-            KeyCode::Char(' ') => {
-                state.expanded = false;
+            KeyCode::Char(' ') | KeyCode::Esc => {
+                self.editor.sidebar = crate::editor::EditSidebar::None;
                 *focus = EditFocus::Body;
             }
-            KeyCode::Esc => *focus = EditFocus::Body,
             _ => {}
         }
     }
 }
 
-pub(crate) fn draw_section(
+pub(crate) fn draw_sidebar(
     frame: &mut ratatui::Frame,
     app: &mut App,
     focus: EditFocus,
     area: Rect,
 ) {
     use ratatui::{
+        layout::{Constraint, Layout},
         style::{Modifier, Style},
-        widgets::{Block, Paragraph},
+        widgets::{Block, Paragraph, Wrap},
     };
-    if area.height < 2 {
-        return;
-    }
     let theme = &app.app_theme;
     let state = &mut app.editor.properties;
     let background = theme.preview_bg_style();
     frame.render_widget(Block::default().style(background), area);
-    let marker = "▾";
-    let header = if let Some(error) = &state.error {
-        format!("{marker} Properties — {error}")
-    } else {
-        format!(
-            "{marker} Properties ({})  {}",
-            state.rows.len(),
-            if focus == EditFocus::Properties {
-                "a add · Enter edit · Delete remove · Space collapse"
-            } else {
-                ""
-            }
-        )
-    };
-    let style = if state.error.is_some() {
-        background.fg(ratatui::style::Color::Red)
-    } else if focus == EditFocus::Properties {
-        background.fg(theme.accent).add_modifier(Modifier::BOLD)
-    } else {
-        background.fg(theme.muted)
-    };
-    frame.render_widget(
-        Paragraph::new(header).style(style),
-        Rect::new(area.x, area.y + 1, area.width, 1),
+    let chunks = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .split(area);
+    let title = format!("  PROPERTIES ({})", state.rows.len());
+    let style = background
+        .fg(if focus == EditFocus::Properties {
+            theme.accent
+        } else {
+            theme.heading
+        })
+        .add_modifier(Modifier::BOLD);
+    frame.render_widget(Paragraph::new(title).style(style), chunks[1]);
+    let list = Rect::new(
+        chunks[3].x.saturating_add(2),
+        chunks[3].y,
+        chunks[3].width.saturating_sub(2),
+        chunks[3].height,
     );
-    state.visible_rows = area.height.saturating_sub(2) as usize;
+    app.editor.sidebar_list_rect = list;
+    state.visible_rows = list.height as usize;
     state.scroll = state
         .scroll
         .min((state.rows.len() + 1).saturating_sub(state.visible_rows.max(1)));
+    if let Some(error) = &state.error {
+        frame.render_widget(
+            Paragraph::new(error.as_str())
+                .style(background.fg(theme.destructive))
+                .wrap(Wrap { trim: false }),
+            list,
+        );
+        return;
+    }
     for (visible, index) in (state.scroll..=state.rows.len())
         .take(state.visible_rows)
         .enumerate()
     {
         let text = if let Some(row) = state.rows.get(index) {
-            format!(
-                "  {}: {}  [{}]{}",
-                row.name(),
-                row.summary(),
-                row.kind.label(),
-                if row.managed { " (managed)" } else { "" }
-            )
+            format!("{}: {}  [{}]", row.name(), row.summary(), row.kind.label())
         } else {
-            "  + Add property".into()
+            "+ Add property".into()
         };
+        let rect = Rect::new(list.x, list.y + visible as u16, list.width, 1);
         let style = if index == state.selected && focus == EditFocus::Properties {
             Style::default()
                 .fg(theme.highlight_fg)
                 .bg(theme.highlight_bg)
+        } else if app
+            .mouse_pos
+            .is_some_and(|(x, y)| crate::events::contains_cell(rect, x, y))
+        {
+            theme.hover_style()
         } else {
             background
         };
-        frame.render_widget(
-            Paragraph::new(text).style(style),
-            Rect::new(area.x, area.y + 2 + visible as u16, area.width, 1),
-        );
+        frame.render_widget(Paragraph::new(text).style(style), rect);
     }
 }
 
@@ -895,9 +892,9 @@ pub(crate) fn handle_list_mouse(
                 *focus = requested;
             }
         }
-        MouseEventKind::Down(MouseButton::Left) if mouse.row >= area.y + 2 => {
+        MouseEventKind::Down(MouseButton::Left) if mouse.row >= area.y + 3 => {
             *focus = EditFocus::Properties;
-            let index = state.scroll + (mouse.row - area.y - 2) as usize;
+            let index = state.scroll + (mouse.row - area.y - 3) as usize;
             if index <= state.rows.len() {
                 let double = state.last_click.is_some_and(|(previous, time)| {
                     previous == index && time.elapsed().as_millis() < 500
@@ -906,10 +903,7 @@ pub(crate) fn handle_list_mouse(
                 state.last_click = Some((index, std::time::Instant::now()));
                 if index == state.rows.len() {
                     state.begin_add(&app.app_theme);
-                } else if double
-                    && !state.rows[index].managed
-                    && let Err(error) = state.begin_edit(&app.app_theme, false)
-                {
+                } else if double && let Err(error) = state.begin_edit(&app.app_theme, false) {
                     app.set_temporary_status(&error.to_string());
                 }
             }
@@ -978,7 +972,7 @@ mod tests {
     }
 
     #[test]
-    fn properties_focus_geometry_background_and_mouse() {
+    fn properties_sidebar_focus_layout_and_input() {
         use crate::app::EditSidebar;
         use crate::config::PreviewPosition;
         use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -994,150 +988,152 @@ mod tests {
             skip_dir_patterns: vec![],
             rename_on_title_change: false,
         };
-        std::fs::write(
-            dir.path().join("note.md"),
-            "---\nstatus: open\n---\nbody text",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("note.md"),
+            "---\ntitle: Note\nupdated_at: 42\ntags: [one]\npinned: true\nlinks: [other]\noriginal_ext: md\ntext_align: left\nstatus: open\ndetails: {score: 2}\n---\nbody text").unwrap();
         let mut app = App::new(storage).unwrap();
         app.load_and_open_note("note.md", None);
+        assert_eq!(
+            app.editor
+                .properties
+                .rows
+                .iter()
+                .map(PropertyRow::name)
+                .collect::<Vec<_>>(),
+            ["status", "details"]
+        );
         let area = Rect::new(0, 0, 100, 30);
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
-        assert!(app.properties_layout_rows().is_none());
+        let cycle = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL);
         for expected in [EditFocus::Properties, EditFocus::Title, EditFocus::Body] {
-            crate::events::handle_edit_keys(
-                &mut app,
-                KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
-                &mut focus,
-            );
+            crate::events::handle_edit_keys(&mut app, cycle, &mut focus);
             assert_eq!(focus, expected);
+            assert_eq!(
+                app.editor.sidebar == EditSidebar::Properties,
+                expected == EditFocus::Properties
+            );
         }
-        assert!(app.editor.properties.expanded);
-        assert_eq!(app.editor.body.lines(), &["body text"]);
         app.app_theme.bg = Some(ratatui::style::Color::Rgb(40, 50, 60));
         for preview in [false, true] {
             for position in [PreviewPosition::Right, PreviewPosition::Left] {
-                for sidebar in [EditSidebar::None, EditSidebar::Outline, EditSidebar::Links] {
-                    app.editor.editor_preview_enabled = preview;
-                    app.preview_position = position;
-                    app.editor.sidebar = sidebar;
-                    let body_area = crate::events::edit_view_outer_areas(area)[1];
-                    let plain = crate::events::compute_edit_layout(
-                        body_area, false, preview, sidebar, position, 0, None,
-                    );
-                    let expanded = crate::events::compute_edit_layout(
-                        body_area,
-                        false,
-                        preview,
-                        sidebar,
-                        position,
-                        0,
-                        app.properties_layout_rows(),
-                    );
-                    assert_eq!(plain.preview, expanded.preview);
-                    assert_eq!(plain.sidebar, expanded.sidebar);
-                    let properties = expanded.properties.unwrap();
-                    assert_eq!(properties.x, expanded.body.x);
-                    assert_eq!(properties.width, expanded.body.width);
-                    assert_eq!(properties.bottom(), expanded.body.y);
-                    let mut terminal =
-                        ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30))
-                            .unwrap();
-                    terminal
-                        .draw(|frame| crate::ui::draw_ui(frame, &mut app, focus))
-                        .unwrap();
-                    let buffer = terminal.backend().buffer();
-                    for x in properties.x..properties.right() {
-                        let cell = &buffer[(x, properties.y)];
-                        assert_eq!(cell.symbol(), " ");
-                        assert_eq!(cell.bg, app.app_theme.preview_bg().unwrap());
-                    }
+                app.preview_position = position;
+                app.editor.editor_preview_enabled = preview;
+                crate::events::handle_edit_keys(&mut app, cycle, &mut focus);
+                assert_eq!(focus, EditFocus::Properties);
+                assert!(!app.editor.editor_preview_enabled);
+                let body_area = crate::events::edit_view_outer_areas(area)[1];
+                let layout = crate::events::compute_edit_layout(
+                    body_area,
+                    false,
+                    app.editor.editor_preview_enabled,
+                    app.editor.sidebar,
+                    position,
+                    0,
+                );
+                let sidebar = layout.sidebar.unwrap();
+                assert_eq!(sidebar.y, body_area.y);
+                assert_eq!(sidebar.height, body_area.height);
+                assert_eq!(layout.body.y, body_area.y);
+                assert_eq!(layout.body.height, body_area.height);
+                assert!(layout.preview.is_none());
+                match position {
+                    PreviewPosition::Left => assert!(sidebar.right() <= layout.body.x),
+                    PreviewPosition::Right => assert!(sidebar.x >= layout.body.right()),
+                }
+                let mut terminal =
+                    ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
+                terminal
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, focus))
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                for x in sidebar.x..sidebar.right() {
+                    assert_eq!(buffer[(x, sidebar.y)].symbol(), " ");
                     assert_eq!(
-                        buffer[(properties.x, properties.y + 1)].bg,
+                        buffer[(x, sidebar.y)].bg,
                         app.app_theme.preview_bg().unwrap()
                     );
-                    let click = MouseEvent {
-                        kind: MouseEventKind::Down(MouseButton::Left),
-                        column: properties.x + 2,
-                        row: properties.y + 2,
-                        modifiers: KeyModifiers::NONE,
-                    };
-                    crate::events::handle_edit_mouse(
-                        &mut app,
-                        click,
-                        area,
-                        &mut focus,
-                        &mut selection,
-                    );
-                    assert_eq!(focus, EditFocus::Properties);
-                    assert_eq!(app.editor.properties.selected, 0);
-                    // Cancel any double-click dialog before clicking body.
-                    app.editor.properties.dialog = None;
-                    app.editor.text_align = crate::config::TextAlignment::Left;
-                    let (_, body, _, _) = crate::events::edit_view_input_areas(
-                        area,
-                        false,
-                        preview,
-                        app.editor.body.lines().len(),
-                        app.editor_show_line_numbers(),
-                        sidebar,
-                        position,
-                        app.editor.header_title_rect,
-                        0,
-                        app.properties_layout_rows(),
-                    );
-                    crate::events::handle_edit_mouse(
-                        &mut app,
-                        MouseEvent {
-                            column: body.x + 5,
-                            row: body.y,
-                            ..click
-                        },
-                        area,
-                        &mut focus,
-                        &mut selection,
-                    );
-                    assert_eq!(focus, EditFocus::Body);
-                    assert_eq!(
-                        app.editor.body.cursor(),
-                        crate::editor_document::TextPosition { row: 0, col: 5 }
-                    );
                 }
+                let list = app.editor.sidebar_list_rect;
+                let click = MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: list.x,
+                    row: list.y + 1,
+                    modifiers: KeyModifiers::NONE,
+                };
+                crate::events::handle_edit_mouse(&mut app, click, area, &mut focus, &mut selection);
+                assert_eq!(focus, EditFocus::Properties);
+                assert_eq!(app.editor.properties.selected, 1);
+                let (_, body, _) = crate::events::edit_view_input_areas(
+                    area,
+                    false,
+                    false,
+                    app.editor.body.lines().len(),
+                    app.editor_show_line_numbers(),
+                    app.editor.sidebar,
+                    position,
+                    app.editor.header_title_rect,
+                    0,
+                );
+                crate::events::handle_edit_mouse(
+                    &mut app,
+                    MouseEvent {
+                        column: body.x + 5,
+                        row: body.y,
+                        ..click
+                    },
+                    area,
+                    &mut focus,
+                    &mut selection,
+                );
+                assert_eq!(focus, EditFocus::Body);
+                assert_eq!(app.editor.sidebar, EditSidebar::None);
+                assert_eq!(
+                    app.editor.body.cursor(),
+                    crate::editor_document::TextPosition { row: 0, col: 5 }
+                );
             }
         }
-        for height in 0..12 {
+        app.toggle_outline_pane();
+        crate::events::handle_edit_keys(&mut app, cycle, &mut focus);
+        assert_eq!(focus, EditFocus::Sidebar);
+        crate::events::handle_edit_keys(&mut app, cycle, &mut focus);
+        assert_eq!(focus, EditFocus::Title);
+        app.toggle_properties();
+        assert_eq!(app.editor.sidebar, EditSidebar::Properties);
+        app.editor.properties.focus_request = None;
+        for (width, height) in [(8, 0), (8, 4), (40, 10)] {
             let layout = crate::events::compute_edit_layout(
-                Rect::new(0, 0, 8, height),
+                Rect::new(0, 0, width, height),
                 false,
                 false,
-                EditSidebar::None,
+                EditSidebar::Properties,
                 PreviewPosition::Right,
                 0,
-                Some(50),
             );
-            assert!(layout.properties.unwrap().height <= 8);
-            assert!(layout.body.height >= height.min(3));
+            assert_eq!(layout.body.height, height);
+            assert_eq!(layout.sidebar.unwrap().height, height);
         }
         let fullscreen = crate::events::compute_edit_layout(
             area,
             true,
             true,
-            EditSidebar::None,
+            EditSidebar::Properties,
             PreviewPosition::Right,
             0,
-            Some(50),
         );
-        assert!(fullscreen.properties.is_none());
-        app.editor.sidebar = EditSidebar::None;
-        focus = EditFocus::Properties;
+        assert!(fullscreen.sidebar.is_none());
+        app.preview_fullscreen = true;
+        focus = EditFocus::Body;
+        crate::events::handle_edit_keys(&mut app, cycle, &mut focus);
+        assert!(!app.preview_fullscreen);
+        assert_eq!(focus, EditFocus::Properties);
+        assert_eq!(app.editor.sidebar, EditSidebar::Properties);
         crate::events::handle_edit_keys(
             &mut app,
-            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::Char(';'), KeyModifiers::CONTROL),
             &mut focus,
         );
-        assert_eq!(focus, EditFocus::Body);
-        assert!(app.properties_layout_rows().is_none());
+        assert_eq!(app.editor.body.lines(), &["body text"]);
         app.config.editor.date_format = "DATE".into();
         app.editor.properties.focused = true;
         crate::actions::execute_action("editor.insert_date", &mut app, None).unwrap();
@@ -1160,6 +1156,13 @@ mod tests {
         }
         app.handle_properties_dialog_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(app.editor.properties.pending.is_empty());
+        crate::events::handle_edit_keys(
+            &mut app,
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            &mut focus,
+        );
+        assert_eq!(focus, EditFocus::Body);
+        assert_eq!(app.editor.sidebar, EditSidebar::None);
         assert_eq!(app.editor.body.lines(), &["body text"]);
     }
 }

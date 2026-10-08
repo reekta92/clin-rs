@@ -440,29 +440,12 @@ pub struct EditLayout {
     pub title: Rect,
     /// Editor body container (before gutter offset, for rendering).
     pub body: Rect,
-    pub properties: Option<Rect>,
     /// Preview pane rect (outer, for rendering the snapshot widget).
     pub preview: Option<Rect>,
     /// Sidebar pane rect.
     pub sidebar: Option<Rect>,
     /// Vertical splitter line rect between main pane and sidebar/preview.
     pub splitter: Option<Rect>,
-}
-
-impl EditLayout {
-    fn with_properties(mut self, rows: Option<usize>) -> Self {
-        if let Some(rows) = rows {
-            let height = if self.body.height < 5 {
-                0
-            } else {
-                (2 + rows.min(6) as u16).min(self.body.height - 3)
-            };
-            self.properties = Some(Rect::new(self.body.x, self.body.y, self.body.width, height));
-            self.body.y = self.body.y.saturating_add(height);
-            self.body.height = self.body.height.saturating_sub(height);
-        }
-        self
-    }
 }
 
 pub(crate) fn edit_view_outer_areas(area: Rect) -> [Rect; 3] {
@@ -477,8 +460,7 @@ pub(crate) fn edit_view_outer_areas(area: Rect) -> [Rect; 3] {
 
 /// Single source of truth for edit-view layout.
 ///
-/// First splits editor/sidebar/preview horizontally, then reserves properties
-/// above the editor body only. Sidebar and preview keep full available height.
+/// Splits editor and sidebar/preview horizontally; every pane keeps full height.
 ///
 /// Preview ratio: `Percentage(50)` per user decision (the correct ratio;
 /// the old inline render code used `Ratio(43,100)`, causing the hit‑test
@@ -490,7 +472,6 @@ pub fn compute_edit_layout(
     sidebar: EditSidebar,
     preview_position: PreviewPosition,
     zen_padding: u16,
-    properties_rows: Option<usize>,
 ) -> EditLayout {
     let editor_area = if zen_padding > 0 {
         let w = body_area.width;
@@ -512,7 +493,6 @@ pub fn compute_edit_layout(
         return EditLayout {
             title,
             body: editor_area,
-            properties: None,
             preview: Some(editor_area),
             sidebar: None,
             splitter: None,
@@ -546,12 +526,10 @@ pub fn compute_edit_layout(
         return EditLayout {
             title,
             body: cols[main_idx],
-            properties: None,
             preview: None,
             sidebar: Some(cols[sb_idx]),
             splitter: Some(cols[1]),
-        }
-        .with_properties(properties_rows);
+        };
     }
 
     if preview_enabled {
@@ -584,24 +562,20 @@ pub fn compute_edit_layout(
         return EditLayout {
             title,
             body: cols[main_idx],
-            properties: None,
             preview: Some(cols[p_idx]),
             sidebar: None,
             splitter: Some(cols[1]),
-        }
-        .with_properties(properties_rows);
+        };
     }
 
     // Plain editor — no sidebar, no preview, no fullscreen
     EditLayout {
         title,
         body: editor_area,
-        properties: None,
         preview: None,
         sidebar: None,
         splitter: None,
     }
-    .with_properties(properties_rows)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -615,8 +589,7 @@ pub fn edit_view_input_areas(
     sidebar_position: crate::config::PreviewPosition,
     header_title_rect: Rect,
     zen_padding: u16,
-    properties_rows: Option<usize>,
-) -> (Rect, Rect, Option<Rect>, Option<Rect>) {
+) -> (Rect, Rect, Option<Rect>) {
     let body_area = edit_view_outer_areas(area)[1];
 
     let layout = compute_edit_layout(
@@ -626,7 +599,6 @@ pub fn edit_view_input_areas(
         sidebar,
         sidebar_position,
         zen_padding,
-        properties_rows,
     );
     // Apply gutter offset to the body rect for mouse hit-testing.
     // In fullscreen (READ) mode the preview has no editor gutter.
@@ -645,12 +617,7 @@ pub fn edit_view_input_areas(
         layout.body.height.saturating_sub(1),
     );
 
-    (
-        header_title_rect,
-        body_inner,
-        layout.sidebar,
-        layout.properties,
-    )
+    (header_title_rect, body_inner, layout.sidebar)
 }
 
 pub fn edit_view_md_preview_area(
@@ -658,7 +625,6 @@ pub fn edit_view_md_preview_area(
     sidebar: crate::editor::EditSidebar,
     preview_position: crate::config::PreviewPosition,
     zen_padding: u16,
-    properties_rows: Option<usize>,
 ) -> Option<Rect> {
     let body_area = edit_view_outer_areas(area)[1];
 
@@ -669,7 +635,6 @@ pub fn edit_view_md_preview_area(
         sidebar,
         preview_position,
         zen_padding,
-        properties_rows,
     );
     layout.preview.map(|r| {
         Rect::new(
@@ -2390,7 +2355,6 @@ mod tests {
             EditSidebar::None,
             PreviewPosition::Right,
             0,
-            None,
         );
         let zen = compute_edit_layout(
             area,
@@ -2399,7 +2363,6 @@ mod tests {
             EditSidebar::None,
             PreviewPosition::Right,
             15,
-            None,
         );
         assert_eq!(plain.body, area);
         assert_eq!(zen.body, Rect::new(15, 0, 70, 40));
@@ -2411,7 +2374,6 @@ mod tests {
             EditSidebar::None,
             PreviewPosition::Right,
             15,
-            None,
         );
         assert_eq!(narrow.body, Rect::new(0, 0, 20, 40));
     }
@@ -2459,7 +2421,7 @@ mod tests {
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
 
-        let (_, _, sidebar_inner, _) = crate::events::edit_view_input_areas(
+        let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
             terminal_area,
             false,
             false,
@@ -2469,7 +2431,6 @@ mod tests {
             crate::config::PreviewPosition::Right,
             Rect::default(),
             0,
-            None,
         );
         let sb = sidebar_inner.unwrap();
         app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
@@ -2555,7 +2516,7 @@ mod tests {
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
 
-        let (_, _, sidebar_inner, _) = crate::events::edit_view_input_areas(
+        let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
             terminal_area,
             false,
             false,
@@ -2565,7 +2526,6 @@ mod tests {
             crate::config::PreviewPosition::Right,
             Rect::default(),
             0,
-            None,
         );
         let sb = sidebar_inner.unwrap();
         app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
@@ -2639,7 +2599,7 @@ mod tests {
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
 
-        let (_, body_inner, _, _) = crate::events::edit_view_input_areas(
+        let (_, body_inner, _) = crate::events::edit_view_input_areas(
             terminal_area,
             false,
             app.editor.editor_preview_enabled,
@@ -2649,7 +2609,6 @@ mod tests {
             app.preview_position,
             app.editor.header_title_rect,
             0,
-            app.properties_layout_rows(),
         );
 
         // Put cursor at the start

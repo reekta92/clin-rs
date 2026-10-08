@@ -260,7 +260,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         app.editor.sidebar,
         app.preview_position,
         app.zen_padding(),
-        app.properties_layout_rows(),
     );
 
     if app.preview_fullscreen {
@@ -279,9 +278,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let splitter_area = layout.splitter;
 
     let editor_container = layout.body;
-    if let Some(properties) = layout.properties {
-        crate::properties::draw_section(frame, app, focus, properties);
-    }
 
     app.editor.last_body_width = editor_container.width;
     app.editor.last_body_height = editor_container.height;
@@ -566,6 +562,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     crate::properties::draw_dialog(frame, app);
 }
 fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+    if app.editor.sidebar == EditSidebar::Properties {
+        crate::properties::draw_sidebar(frame, app, focus, area);
+        return;
+    }
     let theme = &app.app_theme;
 
     // Fill the background of the sidebar area
@@ -630,7 +630,7 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
                 .collect();
             (title, items)
         }
-        EditSidebar::None => return,
+        EditSidebar::None | EditSidebar::Properties => return,
     };
 
     let title_widget = Paragraph::new(title).style(title_style);
@@ -640,7 +640,7 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
         let empty_msg = match app.editor.sidebar {
             EditSidebar::Outline => "  No headers",
             EditSidebar::Links => "  No links",
-            EditSidebar::None => "",
+            EditSidebar::None | EditSidebar::Properties => "",
         };
         let p = Paragraph::new(empty_msg).style(Style::default().fg(theme.muted));
         frame.render_widget(p, sb_chunks[3]);

@@ -40,6 +40,16 @@ where
             focus = requested;
             dirty = true;
         }
+        if focus == EditFocus::Properties
+            && app.editor.sidebar != crate::editor::EditSidebar::Properties
+        {
+            focus = if app.editor.sidebar == crate::editor::EditSidebar::None {
+                EditFocus::Body
+            } else {
+                EditFocus::Sidebar
+            };
+            dirty = true;
+        }
         if app.preview_fullscreen && focus == EditFocus::Properties {
             focus = EditFocus::Body;
             dirty = true;
@@ -151,6 +161,15 @@ where
 {
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
+    if *focus == EditFocus::Properties
+        && app.editor.sidebar != crate::editor::EditSidebar::Properties
+    {
+        *focus = if app.editor.sidebar == crate::editor::EditSidebar::None {
+            EditFocus::Body
+        } else {
+            EditFocus::Sidebar
+        };
+    }
     app.editor.properties.focused = *focus == EditFocus::Properties;
     match event {
         // All-keys keyboard mode reports bare modifier presses and text-less
@@ -297,7 +316,7 @@ mod tests {
         .unwrap();
         let mut app = App::new(storage).unwrap();
         app.load_and_open_note("note.md", None);
-        app.editor.properties.expanded = true;
+        app.editor.sidebar = crate::editor::EditSidebar::Properties;
         app.editor.properties.focus_request = Some(EditFocus::Properties);
         let (sender, receiver) = std::sync::mpsc::channel();
         let send = move |code, modifiers| {

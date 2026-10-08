@@ -6,7 +6,7 @@ All notable changes to clin are documented in this file.
 
 ### Added
 
-- Native typed frontmatter properties in the built-in editor, with add/edit/delete dialogs, mouse support, property-only autosave, and encrypted draft recovery. `Ctrl+t` cycles Body → Properties → Title; the collapsed section stays hidden, and the expanded section uses preview background with top padding.
+- Native typed frontmatter properties in the built-in editor, with add/edit/delete dialogs, mouse support, property-only autosave, and encrypted draft recovery. Properties uses the same full-height sidebar layout as Outline and Links, with preview background and left/right placement. Managed fields are hidden. `Ctrl+t` opens Properties when no other sidebar is active and cycles Body → sidebar → Title; Properties closes when focus leaves it.
 
 ### Fixed
 

@@ -88,8 +88,8 @@ Actions are grouped by category:
 File-format conversion can require external tools; URL import requires `curl`. CSV and JSON conversions are handled in Rust.
 
 **Toggle Properties** (`properties.toggle`) opens the selected Markdown/text
-note in the built-in editor and expands Properties, ignoring external-editor
-preference. In Edit it toggles the current section. Other file types report
+note in the built-in editor and opens the Properties sidebar, ignoring
+external-editor preference. In Edit it toggles that sidebar. Other file types report
 that properties are available for notes; encrypted notes retain decrypt-first
 opening.
 

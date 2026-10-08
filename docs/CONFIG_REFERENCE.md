@@ -561,7 +561,7 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 |---|---|---|
 | `back` | `Esc` | Return to notes (auto-saves) |
 | `save` | `Ctrl+s` | Save |
-| `cycle_focus` | `Ctrl+t` | Cycle focus (Body → Properties → Title); expands Properties when focused |
+| `cycle_focus` | `Ctrl+t` | Cycle Body → sidebar → Title; opens Properties when no sidebar is active |
 | `insert_tab` | `Tab` | Insert tab character |
 | `select_all` | `Ctrl+a`, `Ctrl+Shift+a` | Select all |
 | `copy` | `Ctrl+Shift+c`, `Ctrl+Insert`, `Ctrl+c` | Copy |
@@ -583,9 +583,9 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | `find` | `Ctrl+f` | Find in document |
 | `go_to_line` | `Ctrl+g` | Go to line number |
 | `insert_date` | `Ctrl+;` | Insert date/time |
-| `toggle_outline` | `Ctrl+o` | Toggle outline pane |
-| `toggle_links` | `Ctrl+b` | Toggle links pane |
-| `toggle_properties` | Unbound | Toggle the note properties section; also available in the command palette |
+| `toggle_outline` | `Ctrl+b Ctrl+o` | Toggle outline pane |
+| `toggle_links` | `Ctrl+b Ctrl+l` | Toggle links pane |
+| `toggle_properties` | `Ctrl+b Ctrl+p` | Toggle the note properties sidebar; also available in the command palette |
 | `preview_link` | `Alt+l` | Preview linked note under cursor |
 
 ### Help Actions (`[help]`)

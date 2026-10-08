@@ -103,6 +103,9 @@ impl App {
         self.editor.editing_id = None;
         self.editor.template_edit_path = Some(path.to_path_buf());
         self.editor.properties = crate::properties::PropertiesState::default();
+        if self.editor.sidebar == EditSidebar::Properties {
+            self.editor.sidebar = EditSidebar::None;
+        }
         self.editor.title_editor = make_title_editor(
             &format!(
                 "Template: {}",

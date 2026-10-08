@@ -8,17 +8,21 @@ impl App {
             EditSidebar::None => 0,
             EditSidebar::Outline => self.editor.outline_nodes.len(),
             EditSidebar::Links => self.editor.links.len(),
+            EditSidebar::Properties => self.editor.properties.rows.len() + 1,
         }
     }
 
     /// Common sidebar toggle: if `target` is already active, disable it;
     /// otherwise enable it, disable preview, rebuild data, and reset selection.
-    fn set_sidebar(&mut self, target: EditSidebar) {
+    pub(crate) fn set_sidebar(&mut self, target: EditSidebar) {
         if self.editor.sidebar == target {
             self.editor.sidebar = EditSidebar::None;
             match target {
                 EditSidebar::Outline => self.set_temporary_status_static("Outline pane disabled"),
                 EditSidebar::Links => self.set_temporary_status_static("Links pane disabled"),
+                EditSidebar::Properties => {
+                    self.set_temporary_status_static("Properties pane disabled")
+                }
                 EditSidebar::None => {}
             }
         } else {
@@ -33,6 +37,12 @@ impl App {
                 EditSidebar::Links => {
                     self.editor.links = self.compute_links();
                     self.set_temporary_status_static("Links pane enabled");
+                }
+                EditSidebar::Properties => {
+                    self.editor.properties.selected = 0;
+                    self.editor.properties.scroll = 0;
+                    self.editor.properties.last_click = None;
+                    self.set_temporary_status_static("Properties pane enabled");
                 }
                 EditSidebar::None => {}
             }
@@ -156,6 +166,16 @@ impl App {
                 } else {
                     false
                 }
+            }
+            EditSidebar::Properties => {
+                self.handle_properties_list_key(
+                    crossterm::event::KeyEvent::new(
+                        crossterm::event::KeyCode::Enter,
+                        crossterm::event::KeyModifiers::NONE,
+                    ),
+                    focus,
+                );
+                false
             }
             EditSidebar::None => false,
         }

@@ -104,6 +104,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
     if *focus == EditFocus::Properties && key.code == KeyCode::Esc {
+        app.editor.sidebar = EditSidebar::None;
         *focus = EditFocus::Body;
         return false;
     }
@@ -237,17 +238,36 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::CycleFocus => {
+                if app.preview_fullscreen
+                    && *focus == EditFocus::Body
+                    && app.properties_available()
+                    && matches!(
+                        app.editor.sidebar,
+                        EditSidebar::None | EditSidebar::Properties
+                    )
+                {
+                    app.toggle_preview_fullscreen();
+                }
                 *focus = match *focus {
-                    EditFocus::Body if app.properties_available() => {
-                        if app.preview_fullscreen {
-                            app.toggle_preview_fullscreen();
-                        }
-                        app.editor.properties.expanded = true;
+                    EditFocus::Body
+                        if app.properties_available()
+                            && app.editor.sidebar == EditSidebar::None =>
+                    {
+                        app.toggle_properties();
+                        app.editor.properties.focus_request = None;
                         EditFocus::Properties
                     }
-                    EditFocus::Body | EditFocus::Properties | EditFocus::Sidebar => {
+                    EditFocus::Body if app.editor.sidebar == EditSidebar::Properties => {
+                        EditFocus::Properties
+                    }
+                    EditFocus::Body if app.editor.sidebar != EditSidebar::None => {
+                        EditFocus::Sidebar
+                    }
+                    EditFocus::Properties => {
+                        app.editor.sidebar = EditSidebar::None;
                         EditFocus::Title
                     }
+                    EditFocus::Body | EditFocus::Sidebar => EditFocus::Title,
                     EditFocus::Title => EditFocus::Body,
                 };
                 return false;
@@ -343,7 +363,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertDate => {
-                if *focus == EditFocus::Properties {
+                if matches!(*focus, EditFocus::Properties | EditFocus::Sidebar) {
                     return false;
                 }
                 let s = chrono::Local::now()
@@ -561,8 +581,7 @@ pub(crate) fn handle_edit_mouse(
         }
         return;
     }
-
-    let (title_inner, body_inner, sidebar_inner, properties_area) = edit_view_input_areas(
+    let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
         terminal_area,
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
@@ -572,9 +591,9 @@ pub(crate) fn handle_edit_mouse(
         app.preview_position,
         app.editor.header_title_rect,
         app.zen_padding(),
-        app.properties_layout_rows(),
     );
-    if let Some(area) = properties_area
+    if app.editor.sidebar == EditSidebar::Properties
+        && let Some(area) = sidebar_inner
         && crate::properties::handle_list_mouse(app, mouse_event, area, focus)
     {
         mouse_selection.active = false;
@@ -597,7 +616,6 @@ pub(crate) fn handle_edit_mouse(
             app.editor.sidebar,
             app.preview_position,
             app.zen_padding(),
-            app.properties_layout_rows(),
         )
     } else {
         None
@@ -725,6 +743,9 @@ pub(crate) fn handle_edit_mouse(
             }
             app.editor.last_sidebar_click = None;
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
+                if app.editor.sidebar == EditSidebar::Properties {
+                    app.editor.sidebar = EditSidebar::None;
+                }
                 *focus = EditFocus::Body;
                 let align = app.editor.text_align;
                 let wrap_mode = app.editor.body.textarea().wrap_mode();
@@ -762,6 +783,9 @@ pub(crate) fn handle_edit_mouse(
                 }
                 mouse_selection.begin(&mut app.editor.body);
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
+                if app.editor.sidebar == EditSidebar::Properties {
+                    app.editor.sidebar = EditSidebar::None;
+                }
                 *focus = EditFocus::Title;
                 move_textarea_cursor_to_mouse(
                     &mut app.editor.title_editor,

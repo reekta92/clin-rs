@@ -420,6 +420,9 @@ impl App {
             self.editor.template_edit_path = None;
             self.editor.properties =
                 crate::properties::PropertiesState::load(self.storage.load_frontmatter(note_id));
+            if self.editor.sidebar == EditSidebar::Properties {
+                self.editor.sidebar = EditSidebar::None;
+            }
             self.editor.text_align = self
                 .editor
                 .properties
@@ -661,6 +664,9 @@ impl App {
 
         self.editor.editing_id = Some(id);
         self.editor.properties = crate::properties::PropertiesState::default();
+        if self.editor.sidebar == EditSidebar::Properties {
+            self.editor.sidebar = EditSidebar::None;
+        }
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &title,
@@ -731,6 +737,9 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
         self.editor.properties = crate::properties::PropertiesState::default();
+        if self.editor.sidebar == EditSidebar::Properties {
+            self.editor.sidebar = EditSidebar::None;
+        }
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &editor_title,
@@ -747,6 +756,9 @@ impl App {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
             self.editor.properties = crate::properties::PropertiesState::default();
+            if self.editor.sidebar == EditSidebar::Properties {
+                self.editor.sidebar = EditSidebar::None;
+            }
             if self.editor.template_edit_path.is_some() {
                 self.refresh_template_popup();
             }
@@ -788,6 +800,9 @@ impl App {
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
         self.editor.properties = crate::properties::PropertiesState::default();
+        if self.editor.sidebar == EditSidebar::Properties {
+            self.editor.sidebar = EditSidebar::None;
+        }
         if self.editor.template_edit_path.is_some() {
             self.refresh_template_popup();
         }

@@ -29,17 +29,20 @@ remain immediate.
 ## Frontmatter Properties
 
 For `.md` and `.txt` notes, `Ctrl+t` (the remappable `cycle_focus` action)
-cycles **Body → Properties → Title → Body**. Focusing Properties expands
-the section above the body. It starts collapsed, with no label or reserved
-space; expanded, it shares the preview background and has one blank top row.
-Sidebars and Markdown preview keep their full height. Fullscreen preview exits
-when focusing Properties. The command palette also offers **Toggle Properties**.
+cycles **Body → Properties → Title → Body** when no other sidebar is open.
+If Outline or Links is already open, it cycles through that sidebar instead.
+Properties uses the same full-height side pane, left/right placement, divider,
+and padded heading as Outline and Links. Opening it replaces the other sidebar
+and disables Markdown preview, using the preview-pane background. There is no
+properties section above the body. Fullscreen preview exits when focusing
+Properties. The command palette also offers **Toggle Properties**.
 
 In Properties, arrows or `j`/`k` select rows, Home/End and PageUp/PageDown
 navigate, `a` or **+ Add property** opens creation, Enter edits a selected
 custom field, and Delete asks for confirmation. Space or the section heading
-collapses it; Esc returns focus to Body without leaving the editor. Mouse
-click selects, double-click edits, and the wheel scrolls only the section.
+closes it; Esc returns focus to Body without leaving the editor. The pane also
+closes when focus moves to Title or the body. Mouse click selects, double-click
+edits, and the wheel scrolls only the sidebar.
 
 The dialog offers **String, Number, Boolean, Null, and YAML**. String treats
 `001`, `true`, and date-like text as text. Use YAML for sequences, nested
@@ -50,7 +53,8 @@ Esc cancels. Enter inserts a newline in String/YAML values. Validation errors
 stay in the dialog without changing the note.
 
 `title`, `updated_at`, `tags`, `pinned`, `links`, `original_ext`, and `text_align`
-are read-only **managed** rows; use the existing note controls for them.
+are hidden from the list; use the existing note controls for them. These
+managed fields cannot be changed through the properties editor.
 Templates, canvas, drawings, and encrypted files opened as text do not offer
 properties. Encrypted notes keep the normal decrypt-first flow.
 
@@ -121,7 +125,7 @@ while older text above and all text below the current paragraph are dimmed.
 
 ## Sidebars + Wikilink Previews
 
-The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. Click a sidebar row to focus it; `Ctrl+t` cycles the Body, Properties, and Title fields.
+The `EditSidebar` on `NoteEditor` displays Outline, Links, or Properties alongside the editor. `[[wikilink]]` targets and back-references are resolved in Links. Click a sidebar row to focus it; `Ctrl+t` cycles Body, the active sidebar, and Title.
 
 ## External Editor
 
