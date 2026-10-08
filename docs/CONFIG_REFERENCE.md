@@ -223,7 +223,8 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{prev_note}`, `{next_note}`: Filenames of the previous and next notes in visual order
 
 ##### Editor (`Editor` view)
-- `{word_count}`: Current word count
+- `{word_count}`: Current document total word count (remains total only, even if text is selected)
+- `{word_count_display}`: Document total word count, or `(selected) total` if text is selected (custom override example: `header_right = "{word_count_display}w {char_count}c {cursor_line}:{cursor_col}"`)
 - `{line_count}`: Total lines in the editor
 - `{char_count}`: Character count
 - `{cursor_line}`: 1-based cursor line row
