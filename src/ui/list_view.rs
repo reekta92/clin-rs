@@ -2507,7 +2507,7 @@ mod tests {
         draw_grid(&mut terminal, &mut app);
         assert!(app.list.last_scroll.is_none());
         assert_eq!(app.list.grid_scroll, 0);
-        assert!(app.list.grid_tiles.is_empty());
+        assert_eq!(app.list.grid_tiles.len(), 0);
     }
 
     #[test]
@@ -2795,7 +2795,7 @@ mod tests {
     fn section_rects_zero_active() {
         let r = Rect::new(0, 0, 100, 10);
         let rects = section_rects(r, &[]);
-        assert!(rects.is_empty());
+        assert_eq!(rects.len(), 0);
     }
 
     #[test]

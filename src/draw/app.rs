@@ -519,7 +519,7 @@ mod tests {
         let (_temp, mut state) = test_state();
         let unchanged = state.data.clone();
         assert!(!state.commit_data_change(unchanged).unwrap());
-        assert!(state.undo_stack.is_empty());
+        assert_eq!(state.undo_stack.len(), 0);
 
         for index in 1..=21 {
             let previous = state.data.clone();
@@ -537,14 +537,15 @@ mod tests {
         });
         assert!(state.undo().unwrap());
         assert_eq!(state.redo_stack.len(), 1);
-        assert!(state.selection.is_empty());
+        let empty = state.selection.is_empty();
+        assert!(empty);
         assert!(state.hovered.is_none());
         assert!(state.current_stroke.is_none());
 
         let previous = state.data.clone();
         state.data.height = 777.0;
         assert!(state.commit_data_change(previous).unwrap());
-        assert!(state.redo_stack.is_empty());
+        assert_eq!(state.redo_stack.len(), 0);
 
         let saved = std::fs::read_to_string(state.storage.note_path("history.draw")).unwrap();
         assert_eq!(
@@ -643,7 +644,10 @@ mod tests {
                 ("Erase", Some('e')),
             ]
         );
-        assert!(draw_menu_specs(&DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, false).is_empty());
+        assert_eq!(
+            draw_menu_specs(&DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, false).len(),
+            0
+        );
         assert_eq!(
             labels(DrawMenuTarget::Empty { x: 0.0, y: 0.0 }, true),
             vec![("Paste", Some('v'))]

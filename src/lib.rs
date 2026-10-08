@@ -985,6 +985,20 @@ fn perform_orderly_catalog_shutdown(app: &mut App) {
         .catalog_cmd_tx
         .try_send(crate::app::catalog::CatalogCommand::Shutdown);
 }
+/// Kitty-protocol enhancement flags clin runs with for a given mouse mode.
+/// Shared by `TerminalGuard::enter` and `app::resume_from_external` so the
+/// pushed set on resume matches the one the guard pushed at session start.
+#[cfg(not(windows))]
+pub(crate) fn keyboard_enhancement_flags(mouse_enabled: bool) -> KeyboardEnhancementFlags {
+    if mouse_enabled {
+        KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+            | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+    } else {
+        KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+    }
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -1009,18 +1023,14 @@ impl TerminalGuard {
                 EnterAlternateScreen,
                 EnableMouseCapture,
                 EnableBracketedPaste,
-                PushKeyboardEnhancementFlags(
-                    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
-                        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-                )
+                PushKeyboardEnhancementFlags(keyboard_enhancement_flags(mouse_enabled))
             )
         } else {
             execute!(
                 stdout,
                 EnterAlternateScreen,
                 EnableBracketedPaste,
-                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+                PushKeyboardEnhancementFlags(keyboard_enhancement_flags(mouse_enabled))
             )
         };
         if let Err(e) = entered {
@@ -1728,6 +1738,21 @@ pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn keyboard_enhancement_flags_by_mouse_mode() {
+        assert_eq!(
+            keyboard_enhancement_flags(true),
+            crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | crossterm::event::KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                | crossterm::event::KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+        );
+        assert_eq!(
+            keyboard_enhancement_flags(false),
+            crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        );
+    }
 
     #[test]
     fn list_dirty_draws_only_on_change() {

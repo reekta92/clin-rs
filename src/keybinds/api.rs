@@ -454,18 +454,18 @@ mod tests {
     #[test]
     fn test_default_keybinds() {
         let keybinds = Keybinds::default();
-        assert!(!keybinds.list.is_empty());
-        assert!(!keybinds.edit.is_empty());
-        assert!(!keybinds.help.is_empty());
-        assert!(!keybinds.draw.is_empty());
-        assert!(!keybinds.canvas.is_empty());
-        assert!(!keybinds.backup.is_empty());
-        assert!(!keybinds.outline.is_empty());
+        assert_ne!(keybinds.list.len(), 0);
+        assert_ne!(keybinds.edit.len(), 0);
+        assert_ne!(keybinds.help.len(), 0);
+        assert_ne!(keybinds.draw.len(), 0);
+        assert_ne!(keybinds.canvas.len(), 0);
+        assert_ne!(keybinds.backup.len(), 0);
+        assert_ne!(keybinds.outline.len(), 0);
 
         let toml = keybinds.to_toml();
-        assert!(!toml.draw.is_empty());
-        assert!(!toml.canvas.is_empty());
-        assert!(!toml.outline.is_empty());
+        assert_ne!(toml.draw.len(), 0);
+        assert_ne!(toml.canvas.len(), 0);
+        assert_ne!(toml.outline.len(), 0);
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("keybinds.toml");
         keybinds.save(&path).unwrap();

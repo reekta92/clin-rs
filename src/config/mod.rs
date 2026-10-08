@@ -1349,7 +1349,7 @@ sections = ["draw", "draw", "graf"]
     #[test]
     fn skip_dirs_defaults_empty_and_roundtrips() {
         let config: ClinConfig = toml::from_str("[list]\n").unwrap();
-        assert!(config.list.skip_dirs.is_empty());
+        assert_eq!(config.list.skip_dirs.len(), 0);
         let toml_str = "[list]\nskip_dirs = [\"attachments\", \"assets\"]\n";
         let parsed: ClinConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(parsed.list.skip_dirs, vec!["attachments", "assets"]);

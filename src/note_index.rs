@@ -275,7 +275,14 @@ mod tests {
             },
         ];
         let folders = vec!["folder1".to_string(), "folder1/sub".to_string()];
-        let index = NoteIndex::build(1, &notes, &folders, &[], now, &crate::config::FeaturesConfig::default());
+        let index = NoteIndex::build(
+            1,
+            &notes,
+            &folders,
+            &[],
+            now,
+            &crate::config::FeaturesConfig::default(),
+        );
 
         assert_eq!(index.canonical_ids.len(), 2);
         assert_eq!(index.by_id.get("folder1/a.md").copied(), Some(0));
@@ -290,7 +297,7 @@ mod tests {
 
     #[test]
     fn calendar_flag_controls_activity_map() {
-        let now = crate::ui::now_unix_secs();
+        let now = 1_700_000_000;
         let notes = vec![NoteSummary {
             id: "a.md".to_string(),
             title: "A".to_string(),
@@ -301,11 +308,33 @@ mod tests {
             links: vec![],
             size_bytes: 1,
         }];
-        let with_cal = NoteIndex::build(1, &notes, &[], &[], now, &crate::config::FeaturesConfig::default());
-        let without_cal = NoteIndex::build(1, &notes, &[], &[], now, &crate::config::FeaturesConfig { calendar: crate::config::FeatureState::Disabled, ..Default::default() });
-        assert!(!with_cal.activity_by_day.is_empty());
+        let with_cal = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[],
+            now,
+            &crate::config::FeaturesConfig::default(),
+        );
+        let without_cal = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[],
+            now,
+            &crate::config::FeaturesConfig {
+                calendar: crate::config::FeatureState::Disabled,
+                ..Default::default()
+            },
+        );
+        let today = Local
+            .timestamp_opt(now as i64, 0)
+            .single()
+            .unwrap()
+            .date_naive();
+        assert_eq!(with_cal.activity_by_day, HashMap::from([(today, 1)]));
         assert!(without_cal.activity_by_day.is_empty());
         // Today/week indices are computed regardless of the calendar flag.
-        assert!(!without_cal.today_indices.is_empty());
+        assert_eq!(without_cal.today_indices, vec![0]);
     }
 }

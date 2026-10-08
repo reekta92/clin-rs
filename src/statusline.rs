@@ -525,15 +525,18 @@ impl StatuslineContext<'_> {
                 Some(count.to_string().into())
             }
             "note_count" => {
-                let count = self.app.map(|a| {
-                    if let Some(idx) = &a.note_index
-                        && idx.revision == a.notes_revision
-                    {
-                        idx.by_id.len()
-                    } else {
-                        a.visible_notes().count()
-                    }
-                }).unwrap_or(0);
+                let count = self
+                    .app
+                    .map(|a| {
+                        if let Some(idx) = &a.note_index
+                            && idx.revision == a.notes_revision
+                        {
+                            idx.by_id.len()
+                        } else {
+                            a.visible_notes().count()
+                        }
+                    })
+                    .unwrap_or(0);
                 Some(count.to_string().into())
             }
             "visual_index" => Some(
@@ -637,15 +640,18 @@ impl StatuslineContext<'_> {
                 Some(f.into())
             }
             "pinned_count" => {
-                let count = self.app.map(|a| {
-                    if let Some(idx) = &a.note_index
-                        && idx.revision == a.notes_revision
-                    {
-                        idx.pinned_indices.len()
-                    } else {
-                        a.visible_notes().filter(|(_, n)| n.pinned).count()
-                    }
-                }).unwrap_or(0);
+                let count = self
+                    .app
+                    .map(|a| {
+                        if let Some(idx) = &a.note_index
+                            && idx.revision == a.notes_revision
+                        {
+                            idx.pinned_indices.len()
+                        } else {
+                            a.visible_notes().filter(|(_, n)| n.pinned).count()
+                        }
+                    })
+                    .unwrap_or(0);
                 Some(count.to_string().into())
             }
             "pinned_on_top" => Some(
@@ -2250,7 +2256,7 @@ mod tests {
 
         // ext_badge_spans
         let badge_spans = crate::ui::ext_badge_spans(true, &theme, None);
-        assert!(!badge_spans.is_empty());
+        assert_ne!(badge_spans.len(), 0);
     }
     #[test]
     fn list_header_relative_time_boundaries() {

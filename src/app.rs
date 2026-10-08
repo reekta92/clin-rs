@@ -40,6 +40,16 @@ fn suspend_for_external() {
     if let Err(e) = crossterm::terminal::disable_raw_mode() {
         eprintln!("Failed to disable raw mode: {e}");
     }
+    // Pop the kitty enhancement flags `TerminalGuard::enter` pushed so the
+    // external editor sees plain keys; `resume_from_external` re-pushes.
+    // Mirrors `TerminalGuard`'s Drop.
+    #[cfg(not(windows))]
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::PopKeyboardEnhancementFlags
+    ) {
+        eprintln!("Failed to pop keyboard enhancement flags: {e}");
+    }
     if let Err(e) = crossterm::execute!(
         std::io::stdout(),
         crossterm::terminal::LeaveAlternateScreen,
@@ -50,7 +60,7 @@ fn suspend_for_external() {
     }
 }
 
-fn resume_from_external() {
+fn resume_from_external(mouse_enabled: bool) {
     if let Err(e) = crossterm::terminal::enable_raw_mode() {
         eprintln!("Failed to enable raw mode: {e}");
     }
@@ -62,6 +72,17 @@ fn resume_from_external() {
         crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
     ) {
         eprintln!("Failed to restore terminal: {e}");
+    }
+    // Restore the flags popped in `suspend_for_external` — exactly what
+    // `TerminalGuard::enter` pushed for this mouse mode.
+    #[cfg(not(windows))]
+    if let Err(e) = crossterm::execute!(
+        std::io::stdout(),
+        crossterm::event::PushKeyboardEnhancementFlags(crate::keyboard_enhancement_flags(
+            mouse_enabled,
+        ))
+    ) {
+        eprintln!("Failed to push keyboard enhancement flags: {e}");
     }
 }
 
@@ -475,9 +496,10 @@ fn preview_render_cols(pane_width: u16, wrap: bool) -> u16 {
 
 impl App {
     pub fn visible_notes(&self) -> impl Iterator<Item = (usize, &crate::storage::NoteSummary)> {
-        self.notes.iter().enumerate().filter(move |(_, n)| {
-            self.config.features.file_view_enabled(&n.id)
-        })
+        self.notes
+            .iter()
+            .enumerate()
+            .filter(move |(_, n)| self.config.features.file_view_enabled(&n.id))
     }
     pub fn desired_list_preview_width(&self) -> u16 {
         preview_render_cols(self.list.last_preview_pane_width, self.preview_wrap)
@@ -1511,7 +1533,7 @@ impl App {
         }
         let result = command.status();
 
-        resume_from_external();
+        resume_from_external(self.mouse_enabled);
         self.needs_full_redraw = true;
         (result, program.to_string())
     }
@@ -1916,6 +1938,86 @@ impl App {
     }
 }
 
+pub(crate) fn strip_deleted_feature_keybinds(
+    keybinds: &mut crate::keybinds::Keybinds,
+    features: &crate::config::FeaturesConfig,
+) {
+    if features.graph_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenGraph);
+        keybinds.graph.clear();
+    }
+    if features.draw_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenCanvas);
+        keybinds.draw.clear();
+    }
+    if features.canvas_view.is_deleted() {
+        keybinds.canvas.clear();
+    }
+    if features.outline_view.is_deleted() {
+        keybinds
+            .edit
+            .retain(|a, _| *a != crate::keybinds::EditAction::ToggleOutline);
+        keybinds.outline.clear();
+    }
+    if features.help_view.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::Help);
+        keybinds
+            .graph
+            .retain(|a, _| *a != crate::keybinds::GraphAction::Help);
+        keybinds
+            .draw
+            .retain(|a, _| *a != crate::keybinds::DrawAction::Help);
+        keybinds
+            .canvas
+            .retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
+        keybinds
+            .backup
+            .retain(|a, _| *a != crate::keybinds::BackupAction::Help);
+        keybinds
+            .outline
+            .retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
+        keybinds.help.clear();
+    }
+    if features.tags.is_deleted() {
+        keybinds.list.retain(|a, _| {
+            *a != crate::keybinds::ListAction::ManageTags
+                && *a != crate::keybinds::ListAction::RemoveTagsFromSelected
+        });
+    }
+    if features.trash.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::OpenTrash);
+    }
+    if features.subnotes.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::ManageSubnotes);
+        keybinds
+            .edit
+            .retain(|a, _| *a != crate::keybinds::EditAction::ManageSubnotes);
+    }
+    if features.templates.is_deleted() {
+        keybinds
+            .list
+            .retain(|a, _| *a != crate::keybinds::ListAction::NewFromTemplate);
+    }
+    if features.import.is_deleted() {
+        keybinds.edit.retain(|a, _| {
+            *a != crate::keybinds::EditAction::PasteImage
+                && *a != crate::keybinds::EditAction::InsertImageFromFile
+        });
+    }
+    if features.backup.is_deleted() {
+        keybinds.backup.clear();
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2098,7 +2200,7 @@ mod tests {
         app.editor.external_editor_enabled = false;
         // Initially no words written and no notes modified
         assert_eq!(app.goals_progress.words_written, 0);
-        assert!(app.goals_progress.notes_modified.is_empty());
+        assert_eq!(app.goals_progress.notes_modified.len(), 0);
 
         // Create a new blank note and edit it
         app.start_blank_note_with_title(String::new(), "Test Note".to_string());
@@ -2674,86 +2776,5 @@ word_goal = 1200
         assert!(app2.list.folder_expanded.contains("a"));
         assert!(app2.list.folder_expanded.contains("a/b"));
         assert!(!app2.list.folder_expanded.contains("a/b/c"));
-    }
-}
-
-pub(crate) fn strip_deleted_feature_keybinds(
-    keybinds: &mut crate::keybinds::Keybinds,
-    features: &crate::config::FeaturesConfig,
-) {
-    if features.graph_view.is_deleted() {
-        keybinds
-            .list
-            .retain(|a, _| *a != crate::keybinds::ListAction::OpenGraph);
-        keybinds.graph.clear();
-    }
-    if features.draw_view.is_deleted() {
-        keybinds
-            .list
-            .retain(|a, _| *a != crate::keybinds::ListAction::OpenCanvas);
-        keybinds.draw.clear();
-    }
-    if features.canvas_view.is_deleted() {
-        keybinds.canvas.clear();
-    }
-    if features.outline_view.is_deleted() {
-        keybinds
-            .edit
-            .retain(|a, _| *a != crate::keybinds::EditAction::ToggleOutline);
-        keybinds.outline.clear();
-    }
-    if features.help_view.is_deleted() {
-        keybinds
-            .list
-            .retain(|a, _| *a != crate::keybinds::ListAction::Help);
-        keybinds
-            .graph
-            .retain(|a, _| *a != crate::keybinds::GraphAction::Help);
-        keybinds
-            .draw
-            .retain(|a, _| *a != crate::keybinds::DrawAction::Help);
-        keybinds
-            .canvas
-            .retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
-        keybinds
-            .backup
-            .retain(|a, _| *a != crate::keybinds::BackupAction::Help);
-        keybinds
-            .outline
-            .retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
-        keybinds.help.clear();
-    }
-    if features.tags.is_deleted() {
-        keybinds.list.retain(|a, _| {
-            *a != crate::keybinds::ListAction::ManageTags
-                && *a != crate::keybinds::ListAction::RemoveTagsFromSelected
-        });
-    }
-    if features.trash.is_deleted() {
-        keybinds
-            .list
-            .retain(|a, _| *a != crate::keybinds::ListAction::OpenTrash);
-    }
-    if features.subnotes.is_deleted() {
-        keybinds
-            .list
-            .retain(|a, _| *a != crate::keybinds::ListAction::ManageSubnotes);
-        keybinds
-            .edit
-            .retain(|a, _| *a != crate::keybinds::EditAction::ManageSubnotes);
-    }
-    if features.templates.is_deleted() {
-        keybinds
-            .list
-            .retain(|a, _| *a != crate::keybinds::ListAction::NewFromTemplate);
-    }
-    if features.import.is_deleted() {
-        keybinds.edit.retain(|a, _| {
-            *a != crate::keybinds::EditAction::PasteImage
-                && *a != crate::keybinds::EditAction::InsertImageFromFile
-        });
-    }
-    if features.backup.is_deleted() {
-        keybinds.backup.clear();
     }
 }

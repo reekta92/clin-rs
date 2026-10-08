@@ -282,18 +282,18 @@ fn list_folder_preview_builds_and_settles() {
 
 #[test]
 fn feature_view_files_graph_preview_same_key() {
-    let td = tempfile::tempdir().unwrap();
+    let td = tempfile::tempdir().expect("e2e fixture");
     let dir = td.path().to_path_buf();
     let notes_dir = dir.join("notes");
     let config_dir = dir.join(".clin");
-    std::fs::create_dir_all(&notes_dir).unwrap();
-    std::fs::create_dir_all(&config_dir).unwrap();
-    
-    std::fs::write(notes_dir.join("plain.md"), "plain text").unwrap();
+    std::fs::create_dir_all(&notes_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&config_dir).expect("e2e fixture");
+
+    std::fs::write(notes_dir.join("plain.md"), "plain text").expect("e2e fixture");
     let canvas_data = r#"{"nodes":[{"type":"text","id":"a","x":0,"y":0,"width":100,"height":100,"text":""}],"edges":[]}"#;
-    std::fs::write(notes_dir.join("canvas.canvas"), canvas_data).unwrap();
+    std::fs::write(notes_dir.join("canvas.canvas"), canvas_data).expect("e2e fixture");
     let draw_data = r#"{"version":2,"width":500,"height":500,"elements":[]}"#;
-    std::fs::write(notes_dir.join("draw.draw"), draw_data).unwrap();
+    std::fs::write(notes_dir.join("draw.draw"), draw_data).expect("e2e fixture");
 
     let storage = clin::storage::Storage {
         data_dir: dir.join("data"),
@@ -304,13 +304,13 @@ fn feature_view_files_graph_preview_same_key() {
         skip_dir_patterns: Vec::new(),
         rename_on_title_change: true,
     };
-    std::fs::create_dir_all(&storage.data_dir).unwrap();
-    std::fs::create_dir_all(&storage.templates_dir).unwrap();
-    
+    std::fs::create_dir_all(&storage.data_dir).expect("e2e fixture");
+    std::fs::create_dir_all(&storage.templates_dir).expect("e2e fixture");
+
     let mut config = clin::config::ClinConfig::default();
     config.graf.filter.show_orphan = true;
     config.graf.preview_enabled = true;
-    
+
     let notes = vec![
         clin::storage::NoteSummary {
             id: "plain.md".into(),
@@ -343,20 +343,42 @@ fn feature_view_files_graph_preview_same_key() {
             size_bytes: 0,
         },
     ];
-    let mut plugin = GrafPlugin::new(&config, storage, notes.clone(), vec![], Keybinds::default(), clin::keybinds::KeyMatcher::new()).unwrap();
+    let mut plugin = GrafPlugin::new(
+        &config,
+        storage,
+        notes.clone(),
+        vec![],
+        Keybinds::default(),
+        clin::keybinds::KeyMatcher::new(),
+    )
+    .expect("e2e fixture");
     plugin.last_preview_pane_width = 80;
     plugin.last_preview_pane_height = 24;
 
     // Wait for layout so nodes exist
     std::thread::sleep(std::time::Duration::from_millis(50));
-    let plain_idx = notes.iter().position(|n| n.id == "plain.md").unwrap();
-    let canvas_idx = notes.iter().position(|n| n.id == "canvas.canvas").unwrap();
-    let draw_idx = notes.iter().position(|n| n.id == "draw.draw").unwrap();
+    let canvas_idx = notes
+        .iter()
+        .position(|n| n.id == "canvas.canvas")
+        .expect("canvas note");
+    let draw_idx = notes
+        .iter()
+        .position(|n| n.id == "draw.draw")
+        .expect("draw note");
 
     // 1. Select Draw, warm preview
-    plugin.graph_state.as_ref().unwrap().write().selection.select_only(fdg_sim::petgraph::graph::NodeIndex::new(draw_idx));
+    plugin
+        .graph_state
+        .as_ref()
+        .expect("graph state")
+        .write()
+        .selection
+        .select_only(fdg_sim::petgraph::graph::NodeIndex::new(draw_idx));
     plugin.sync_preview(&config);
-    assert!(matches!(plugin.preview_content, Some(clin::list_view::PreviewContent::DrawGrid {..})));
+    assert!(matches!(
+        plugin.preview_content,
+        Some(clin::list_view::PreviewContent::DrawGrid { .. })
+    ));
 
     // Disable Draw
     config.features.draw_view = clin::config::FeatureState::Disabled;
@@ -366,12 +388,24 @@ fn feature_view_files_graph_preview_same_key() {
     // Re-enable Draw -> returns without reselection
     config.features.draw_view = clin::config::FeatureState::Enabled;
     plugin.sync_preview(&config);
-    assert!(matches!(plugin.preview_content, Some(clin::list_view::PreviewContent::DrawGrid {..})));
+    assert!(matches!(
+        plugin.preview_content,
+        Some(clin::list_view::PreviewContent::DrawGrid { .. })
+    ));
 
     // 2. Select Canvas, warm preview
-    plugin.graph_state.as_ref().unwrap().write().selection.select_only(fdg_sim::petgraph::graph::NodeIndex::new(canvas_idx));
+    plugin
+        .graph_state
+        .as_ref()
+        .expect("graph state")
+        .write()
+        .selection
+        .select_only(fdg_sim::petgraph::graph::NodeIndex::new(canvas_idx));
     plugin.sync_preview(&config);
-    assert!(matches!(plugin.preview_content, Some(clin::list_view::PreviewContent::CanvasGrid {..})));
+    assert!(matches!(
+        plugin.preview_content,
+        Some(clin::list_view::PreviewContent::CanvasGrid { .. })
+    ));
 
     // Deleted Canvas
     config.features.canvas_view = clin::config::FeatureState::Deleted;
@@ -381,7 +415,10 @@ fn feature_view_files_graph_preview_same_key() {
     // Re-enable Canvas -> returns without reselection
     config.features.canvas_view = clin::config::FeatureState::Enabled;
     plugin.sync_preview(&config);
-    assert!(matches!(plugin.preview_content, Some(clin::list_view::PreviewContent::CanvasGrid {..})));
+    assert!(matches!(
+        plugin.preview_content,
+        Some(clin::list_view::PreviewContent::CanvasGrid { .. })
+    ));
 
     // 3. Rebuild graph with flags disabled
     config.features.draw_view = clin::config::FeatureState::Disabled;
@@ -389,9 +426,10 @@ fn feature_view_files_graph_preview_same_key() {
     plugin.refresh_simulation(&config);
     std::thread::sleep(std::time::Duration::from_millis(50));
     {
-        let guard = plugin.graph_state.as_ref().unwrap().read();
+        let guard = plugin.graph_state.as_ref().expect("graph state").read();
         let graph = guard.simulation.get_graph();
-        let remaining_ids: std::collections::HashSet<_> = graph.node_weights().map(|n| n.data.id.clone()).collect();
+        let remaining_ids: std::collections::HashSet<_> =
+            graph.node_weights().map(|n| n.data.id.clone()).collect();
         assert_eq!(remaining_ids.len(), 1);
         assert!(remaining_ids.contains("plain.md"));
     }
@@ -399,7 +437,18 @@ fn feature_view_files_graph_preview_same_key() {
     // 4. All-view-owned nodes hidden case
     plugin.notes.retain(|n| n.id != "plain.md"); // only view-owned nodes left in source
     plugin.refresh_simulation(&config); // error rebuild since nothing is visible
-    assert!(plugin.graph_state.is_none() || plugin.graph_state.as_ref().unwrap().read().simulation.get_graph().node_count() == 0);
+    assert!(
+        plugin.graph_state.is_none()
+            || plugin
+                .graph_state
+                .as_ref()
+                .expect("graph state")
+                .read()
+                .simulation
+                .get_graph()
+                .node_count()
+                == 0
+    );
     assert!(plugin.preview_content.is_none());
 
     // Explicitly shut down physics

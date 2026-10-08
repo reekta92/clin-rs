@@ -223,7 +223,7 @@ impl App {
             }
         };
         let id = self.resolve_wikilink_target(&target);
-        
+
         // Reuse an already-rendered preview for the same valid target.
         if id.is_some()
             && self.editor.link_preview_target.as_deref() == Some(&target)
