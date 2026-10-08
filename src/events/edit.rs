@@ -245,9 +245,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                         app.editor.properties.expanded = true;
                         EditFocus::Properties
                     }
-                    EditFocus::Body | EditFocus::Sidebar => EditFocus::Title,
-                    EditFocus::Properties => {
-                        app.editor.properties.expanded = false;
+                    EditFocus::Body | EditFocus::Properties | EditFocus::Sidebar => {
                         EditFocus::Title
                     }
                     EditFocus::Title => EditFocus::Body,

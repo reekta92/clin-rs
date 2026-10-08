@@ -215,7 +215,6 @@ impl PropertiesState {
                 });
             }
         }
-        rows.retain(|row| !row.managed);
         self.rows = rows;
         self.selected = self.selected.min(self.rows.len()); // Add row follows entries.
         self.scroll = self.scroll.min(self.rows.len());
@@ -1014,13 +1013,7 @@ mod tests {
             );
             assert_eq!(focus, expected);
         }
-        assert!(!app.editor.properties.expanded);
-        crate::events::handle_edit_keys(
-            &mut app,
-            KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL),
-            &mut focus,
-        );
-        assert_eq!(focus, EditFocus::Properties);
+        assert!(app.editor.properties.expanded);
         assert_eq!(app.editor.body.lines(), &["body text"]);
         app.app_theme.bg = Some(ratatui::style::Color::Rgb(40, 50, 60));
         for preview in [false, true] {
