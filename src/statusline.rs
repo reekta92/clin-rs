@@ -847,10 +847,11 @@ impl StatuslineContext<'_> {
             ),
 
             // Edit view
-            "word_count" | "word_count_display" | "line_count" | "char_count" | "cursor_line" | "cursor_col"
-            | "modified" | "reading_time" | "header_count" | "task_count" | "has_tasks"
-            | "has_frontmatter" | "words_added" | "editing_id" | "editing_template"
-            | "line_numbers" | "editor_preview" | "ext_editor" | "ext_editor_enabled" => {
+            "word_count" | "word_count_display" | "line_count" | "char_count" | "cursor_line"
+            | "cursor_col" | "modified" | "reading_time" | "header_count" | "task_count"
+            | "has_tasks" | "has_frontmatter" | "words_added" | "editing_id"
+            | "editing_template" | "line_numbers" | "editor_preview" | "ext_editor"
+            | "ext_editor_enabled" => {
                 let app = match self.app {
                     Some(a) => a,
                     None => return Some("".into()),

@@ -3433,7 +3433,8 @@ mod markdown_highlight_tests {
         let mut app = crate::app::App::new(storage(temp.path())).expect("app");
         app.mode = crate::app::ViewMode::Edit;
         app.config.statusline = crate::config::StatuslineConfig::default();
-        app.editor.body = crate::editor_document::EditorDocument::from_text("one two three\nfour five");
+        app.editor.body =
+            crate::editor_document::EditorDocument::from_text("one two three\nfour five");
         app.editor.sidebar = crate::app::EditSidebar::None;
         app.zen_mode = false;
         app.status = "Ready".into();
@@ -3443,16 +3444,29 @@ mod markdown_highlight_tests {
 
         // Render and check 5w
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
-        
+
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("5w"), "Header did not contain '5w': {}", header_text);
-        assert!(!header_text.contains(") 5w"), "Header contained parentheses without selection");
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("5w"),
+            "Header did not contain '5w': {}",
+            header_text
+        );
+        assert!(
+            !header_text.contains(") 5w"),
+            "Header contained parentheses without selection"
+        );
 
         // Move cursor and shift-right 6 times -> "(2) 5w"
-        app.editor.body.move_cursor(ratatui_textarea::CursorMove::Top);
+        app.editor
+            .body
+            .move_cursor(ratatui_textarea::CursorMove::Top);
         let rev_before = app.editor.body.revision();
         let mut focus = crate::app::EditFocus::Body;
         for _ in 0..6 {
@@ -3462,14 +3476,26 @@ mod markdown_highlight_tests {
             );
             crate::events::handle_edit_keys(&mut app, key, &mut focus);
         }
-        assert_eq!(app.editor.body.revision(), rev_before, "Content revision should not change");
+        assert_eq!(
+            app.editor.body.revision(),
+            rev_before,
+            "Content revision should not change"
+        );
 
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("(2) 5w"), "Header did not contain '(2) 5w': {}", header_text);
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("(2) 5w"),
+            "Header did not contain '(2) 5w': {}",
+            header_text
+        );
 
         // Shift-right 1 time
         let key = crossterm::event::KeyEvent::new(
@@ -3478,11 +3504,19 @@ mod markdown_highlight_tests {
         );
         crate::events::handle_edit_keys(&mut app, key, &mut focus);
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("(2) 5w"), "Header did not contain '(2) 5w': {}", header_text);
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("(2) 5w"),
+            "Header did not contain '(2) 5w': {}",
+            header_text
+        );
 
         // Shift-right 4 more times -> "(3) 5w"
         for _ in 0..4 {
@@ -3493,11 +3527,19 @@ mod markdown_highlight_tests {
             crate::events::handle_edit_keys(&mut app, key, &mut focus);
         }
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("(3) 5w"), "Header did not contain '(3) 5w': {}", header_text);
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("(3) 5w"),
+            "Header did not contain '(3) 5w': {}",
+            header_text
+        );
 
         // Plain right -> 5w
         let key = crossterm::event::KeyEvent::new(
@@ -3506,40 +3548,77 @@ mod markdown_highlight_tests {
         );
         crate::events::handle_edit_keys(&mut app, key, &mut focus);
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("5w"), "Header did not contain '5w': {}", header_text);
-        assert!(!header_text.contains(") 5w"), "Header contained parentheses without selection");
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("5w"),
+            "Header did not contain '5w': {}",
+            header_text
+        );
+        assert!(
+            !header_text.contains(") 5w"),
+            "Header contained parentheses without selection"
+        );
 
         // Replace selection -> 4w
-        app.editor.body.move_cursor(ratatui_textarea::CursorMove::Top);
+        app.editor
+            .body
+            .move_cursor(ratatui_textarea::CursorMove::Top);
         app.editor.body.start_selection();
-        app.editor.body.move_cursor(ratatui_textarea::CursorMove::Jump(0, 7)); // "one two"
+        app.editor
+            .body
+            .move_cursor(ratatui_textarea::CursorMove::Jump(0, 7)); // "one two"
         app.editor.body.insert_str("solo");
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("4w"), "Header did not contain '4w': {}", header_text);
-        assert!(!header_text.contains(") 4w"), "Header contained parentheses without selection");
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("4w"),
+            "Header did not contain '4w': {}",
+            header_text
+        );
+        assert!(
+            !header_text.contains(") 4w"),
+            "Header contained parentheses without selection"
+        );
 
         // Test StatuslineContext isolation and variables directly
         app.editor.body.cancel_selection();
-        app.editor.body.move_cursor(ratatui_textarea::CursorMove::Top);
+        app.editor
+            .body
+            .move_cursor(ratatui_textarea::CursorMove::Top);
         app.editor.body.start_selection();
-        app.editor.body.move_cursor(ratatui_textarea::CursorMove::Jump(0, 4)); // "solo"
-        
+        app.editor
+            .body
+            .move_cursor(ratatui_textarea::CursorMove::Jump(0, 4)); // "solo"
+
         let ctx = crate::statusline::StatuslineContext::for_view(&app, crate::app::ViewMode::Edit);
         assert_eq!(ctx.resolve("word_count").as_deref(), Some("4"));
         assert_eq!(ctx.resolve("word_count_display").as_deref(), Some("(1) 4"));
-        
-        let ctx_overlay = crate::statusline::StatuslineContext::for_overlay(&app.config, crate::app::ViewMode::Edit);
-        assert_eq!(ctx_overlay.resolve("word_count_display").as_deref(), Some(""));
-        
-        let ctx_list = crate::statusline::StatuslineContext::for_view(&app, crate::app::ViewMode::List);
+
+        let ctx_overlay = crate::statusline::StatuslineContext::for_overlay(
+            &app.config,
+            crate::app::ViewMode::Edit,
+        );
+        assert_eq!(
+            ctx_overlay.resolve("word_count_display").as_deref(),
+            Some("")
+        );
+
+        let ctx_list =
+            crate::statusline::StatuslineContext::for_view(&app, crate::app::ViewMode::List);
         assert_eq!(ctx_list.resolve("word_count_display").as_deref(), Some(""));
 
         // Test custom template overrides
@@ -3548,11 +3627,19 @@ mod markdown_highlight_tests {
             ..Default::default()
         });
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("4w"), "Header did not contain '4w': {}", header_text);
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("4w"),
+            "Header did not contain '4w': {}",
+            header_text
+        );
         assert!(!header_text.contains("(1) 4w"), "Header contained '(1) 4w'");
 
         app.config.statusline.edit = Some(crate::config::StatuslineOverride {
@@ -3560,20 +3647,36 @@ mod markdown_highlight_tests {
             ..Default::default()
         });
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("(1) 4w"), "Header did not contain '(1) 4w': {}", header_text);
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("(1) 4w"),
+            "Header did not contain '(1) 4w': {}",
+            header_text
+        );
 
         // Verify Sharp style maintains variable continuity
         app.config.statusline.edit = None;
         app.app_theme.hint_bar_style = crate::config::HintBarStyle::Sharp;
         terminal
-            .draw(|frame| crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body))
+            .draw(|frame| {
+                crate::ui::edit_view::draw_edit_view(frame, &mut app, crate::app::EditFocus::Body)
+            })
             .unwrap();
         let buf = terminal.backend().buffer();
-        let header_text = (0..120).map(|col| buf.cell((col, 0)).unwrap().symbol()).collect::<String>();
-        assert!(header_text.contains("(1) 4w"), "Header did not contain '(1) 4w': {}", header_text);
+        let header_text = (0..120)
+            .map(|col| buf.cell((col, 0)).unwrap().symbol())
+            .collect::<String>();
+        assert!(
+            header_text.contains("(1) 4w"),
+            "Header did not contain '(1) 4w': {}",
+            header_text
+        );
     }
 }
