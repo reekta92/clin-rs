@@ -76,7 +76,7 @@ impl App {
         let mut forward_notes = Vec::new();
         for target in forward_targets {
             if let Some(id) = self.resolve_wikilink_target(&target)
-                && let Some(n) = self.notes.iter().find(|n| n.id == id)
+                && let Some((_, n)) = self.visible_notes().find(|(_, n)| n.id == id)
                 && !forward_notes.iter().any(|(f_id, _)| f_id == &n.id)
             {
                 forward_notes.push((n.id.clone(), n.title.clone()));
@@ -90,7 +90,7 @@ impl App {
         };
         let cur_title = crate::events::get_title_text(&self.editor.title_editor).to_lowercase();
         let mut incoming_notes = Vec::new();
-        for n in &self.notes {
+        for (_, n) in self.visible_notes() {
             if n.id == cur_id {
                 continue;
             }
@@ -196,10 +196,9 @@ impl App {
     /// fallback exact id). Mirrors graf/graph.rs:78-97 + the backlinks matcher.
     fn resolve_wikilink_target(&self, target: &str) -> Option<String> {
         let lower = target.to_lowercase();
-        self.notes
-            .iter()
-            .find(|n| n.title.to_lowercase() == lower || n.id == target)
-            .map(|n| n.id.clone())
+        self.visible_notes()
+            .find(|(_, n)| n.title.to_lowercase() == lower || n.id == target)
+            .map(|(_, n)| n.id.clone())
     }
 
     /// Open (or close if already open) the linked-note preview for the wikilink
@@ -223,14 +222,16 @@ impl App {
                 return;
             }
         };
-        // Reuse an already-rendered preview for the same target.
-        if self.editor.link_preview_target.as_deref() == Some(&target)
+        let id = self.resolve_wikilink_target(&target);
+        
+        // Reuse an already-rendered preview for the same valid target.
+        if id.is_some()
+            && self.editor.link_preview_target.as_deref() == Some(&target)
             && self.editor.link_preview_renderer.is_some()
         {
             self.editor.link_preview = true;
             return;
         }
-        let id = self.resolve_wikilink_target(&target);
         let (content, error) = match &id {
             Some(id) => match self.storage.load_note(id) {
                 Ok(note) => (Some(note.content), None),

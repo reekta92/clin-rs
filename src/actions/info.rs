@@ -145,7 +145,7 @@ impl Action for ShowInfoAction {
             let mut latest_title = String::new();
 
             let prefix = format!("{}/", folder_path);
-            for summary in &app.notes {
+            for (_, summary) in app.visible_notes() {
                 if summary.folder == folder_path || summary.folder.starts_with(&prefix) {
                     total_notes += 1;
                     total_size += summary.size_bytes;

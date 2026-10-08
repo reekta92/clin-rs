@@ -524,13 +524,18 @@ impl StatuslineContext<'_> {
                     .unwrap_or(0);
                 Some(count.to_string().into())
             }
-            "note_count" => Some(
-                self.app
-                    .map(|a| a.notes.len())
-                    .unwrap_or(0)
-                    .to_string()
-                    .into(),
-            ),
+            "note_count" => {
+                let count = self.app.map(|a| {
+                    if let Some(idx) = &a.note_index
+                        && idx.revision == a.notes_revision
+                    {
+                        idx.by_id.len()
+                    } else {
+                        a.visible_notes().count()
+                    }
+                }).unwrap_or(0);
+                Some(count.to_string().into())
+            }
             "visual_index" => Some(
                 self.app
                     .map(|a| a.list.visual_index + 1)
@@ -632,10 +637,15 @@ impl StatuslineContext<'_> {
                 Some(f.into())
             }
             "pinned_count" => {
-                let count = self
-                    .app
-                    .map(|a| a.notes.iter().filter(|n| n.pinned).count())
-                    .unwrap_or(0);
+                let count = self.app.map(|a| {
+                    if let Some(idx) = &a.note_index
+                        && idx.revision == a.notes_revision
+                    {
+                        idx.pinned_indices.len()
+                    } else {
+                        a.visible_notes().filter(|(_, n)| n.pinned).count()
+                    }
+                }).unwrap_or(0);
                 Some(count.to_string().into())
             }
             "pinned_on_top" => Some(

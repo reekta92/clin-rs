@@ -259,6 +259,9 @@ fn draw_strip_draw(
     bottom_border: bool,
     strip_rect: Rect,
 ) {
+    if !app.config.features.draw_view.is_enabled() {
+        return;
+    }
     use ratatui::widgets::{Block, Borders};
 
     // Strip-wide border so that a single centered section still gets a
@@ -1657,7 +1660,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 content,
                 hide_encrypted,
                 app.list.snapshot_scroll_offset,
-                app.config.ui.icon_mode,
+                &app.config,
             );
         }
 

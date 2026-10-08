@@ -166,26 +166,25 @@ impl App {
                 self.refresh_subnotes_view_cache();
                 self.subnotes_view_cache
                     .iter()
+                    .filter(|(parent_id, _)| self.config.features.file_view_enabled(parent_id))
                     .flat_map(|(parent_id, subs)| {
                         let parent_title = self
-                            .notes
-                            .iter()
-                            .find(|n| n.id == *parent_id)
-                            .map(|n| n.title.clone())
+                            .visible_notes()
+                            .find(|(_, n)| n.id == *parent_id)
+                            .map(|(_, n)| n.title.clone())
                             .or_else(|| {
                                 let stem = std::path::Path::new(parent_id)
                                     .file_stem()
                                     .and_then(|s| s.to_str())
                                     .unwrap_or(parent_id);
-                                self.notes
-                                    .iter()
-                                    .find(|n| {
+                                self.visible_notes()
+                                    .find(|(_, n)| {
                                         std::path::Path::new(&n.id)
                                             .file_stem()
                                             .and_then(|s| s.to_str())
                                             == Some(stem)
                                     })
-                                    .map(|n| n.title.clone())
+                                    .map(|(_, n)| n.title.clone())
                             });
                         subs.iter().enumerate().filter_map({
                             let parent_id = parent_id.clone();
@@ -236,7 +235,7 @@ impl App {
         let mut candidate_ids: Vec<Arc<str>> = Vec::new();
         let mut title_result_ids: Vec<Arc<str>> = Vec::new();
 
-        for note in &self.notes {
+        for (_, note) in self.visible_notes() {
             if parsed.pinned_only && !note.pinned {
                 continue;
             }

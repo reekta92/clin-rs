@@ -349,7 +349,7 @@ impl App {
         if self.feature_disabled(self.config.features.trash.is_enabled(), "Trash", "trash") {
             return;
         }
-        match self.storage.list_trash() {
+        match self.storage.list_trash(&self.config.features) {
             Ok(items) => {
                 if items.is_empty() {
                     self.set_temporary_status_static("Trash is empty");

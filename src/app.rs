@@ -474,6 +474,11 @@ fn preview_render_cols(pane_width: u16, wrap: bool) -> u16 {
 }
 
 impl App {
+    pub fn visible_notes(&self) -> impl Iterator<Item = (usize, &crate::storage::NoteSummary)> {
+        self.notes.iter().enumerate().filter(move |(_, n)| {
+            self.config.features.file_view_enabled(&n.id)
+        })
+    }
     pub fn desired_list_preview_width(&self) -> u16 {
         preview_render_cols(self.list.last_preview_pane_width, self.preview_wrap)
     }
@@ -495,7 +500,7 @@ impl App {
             &self.catalog_folders,
             custom_rules,
             now,
-            self.config.features.calendar.is_enabled(),
+            &self.config.features,
         );
         self.note_index = Some(index);
     }
@@ -1052,6 +1057,10 @@ impl App {
         Ok(app)
     }
     pub fn reload_config(&mut self) {
+        let old_availability = (
+            self.config.features.canvas_view.is_enabled(),
+            self.config.features.draw_view.is_enabled(),
+        );
         let (config_res, load_warnings) = crate::config::ClinConfig::load();
         self.config = match config_res {
             Ok(c) => c,
@@ -1076,6 +1085,13 @@ impl App {
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
+        let new_availability = (
+            self.config.features.canvas_view.is_enabled(),
+            self.config.features.draw_view.is_enabled(),
+        );
+        if old_availability != new_availability {
+            self.refresh_view_file_features();
+        }
     }
 
     pub fn check_and_reload_config(&mut self) {

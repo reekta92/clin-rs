@@ -31,34 +31,37 @@ impl App {
             self.refresh_subnotes_view_cache();
             self.subnotes_view_cache.clone()
         };
+        let subnotes_cache: Vec<_> = subnotes_cache
+            .into_iter()
+            .filter(|(pid, _)| self.config.features.file_view_enabled(pid))
+            .collect();
         // Map parent_id -> summary_idx for title/icon/action lookup. Try exact id
         // first; fall back to matching by file stem so subnotes attached before
         // the id-migration fix still resolve after a title or folder change.
         let subnote_parent_idx: std::collections::HashMap<&str, usize> = subnotes_cache
             .iter()
             .filter_map(|(pid, _)| {
-                if let Some(i) = self.notes.iter().position(|n| n.id == *pid) {
+                if let Some((i, _)) = self.visible_notes().find(|(_, n)| n.id == *pid) {
                     return Some((pid.as_str(), i));
                 }
                 let pid_stem = std::path::Path::new(pid)
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or(pid);
-                self.notes
-                    .iter()
-                    .position(|n| {
+                self.visible_notes()
+                    .find(|(_, n)| {
                         std::path::Path::new(&n.id)
                             .file_stem()
                             .and_then(|s| s.to_str())
                             == Some(pid_stem)
                     })
-                    .map(|i| (pid.as_str(), i))
+                    .map(|(i, _)| (pid.as_str(), i))
             })
             .collect();
 
         let mut by_folder: HashMap<&str, Vec<(usize, &NoteSummary)>> = HashMap::new();
         let mut pinned_notes: Vec<(usize, &NoteSummary)> = Vec::new();
-        for (i, note) in self.notes.iter().enumerate() {
+        for (i, note) in self.visible_notes() {
             by_folder
                 .entry(note.folder.as_str())
                 .or_default()
@@ -351,7 +354,7 @@ impl App {
             }
 
             let mut tag_set: std::collections::HashSet<String> = std::collections::HashSet::new();
-            for note in &self.notes {
+            for (_, note) in self.visible_notes() {
                 for tag in &note.tags {
                     tag_set.insert(tag.clone());
                 }
@@ -816,11 +819,13 @@ impl App {
             }
 
             self.list.visual_list = visual;
+            self.clamp_visual_index();
             self.request_preview_update();
             return;
         }
 
         self.list.visual_list = visual;
+        self.clamp_visual_index();
         self.request_preview_update();
     }
 
@@ -1022,30 +1027,22 @@ impl App {
         let now = crate::ui::now_unix_secs();
         match kind {
             SmartFolderKind::Today => self
-                .notes
-                .iter()
-                .enumerate()
+                .visible_notes()
                 .filter(|(_, n)| now.saturating_sub(n.updated_at) < 86_400)
                 .map(|(i, _)| i)
                 .collect(),
             SmartFolderKind::ThisWeek => self
-                .notes
-                .iter()
-                .enumerate()
+                .visible_notes()
                 .filter(|(_, n)| now.saturating_sub(n.updated_at) < 604_800)
                 .map(|(i, _)| i)
                 .collect(),
             SmartFolderKind::Untagged => self
-                .notes
-                .iter()
-                .enumerate()
+                .visible_notes()
                 .filter(|(_, n)| n.tags.is_empty())
                 .map(|(i, _)| i)
                 .collect(),
             SmartFolderKind::Tag(tag) => self
-                .notes
-                .iter()
-                .enumerate()
+                .visible_notes()
                 .filter(|(_, n)| n.tags.contains(tag))
                 .map(|(i, _)| i)
                 .collect(),
@@ -1059,9 +1056,7 @@ impl App {
                 let Some(rule) = rule else {
                     return Vec::new();
                 };
-                self.notes
-                    .iter()
-                    .enumerate()
+                self.visible_notes()
                     .filter(|(_, n)| {
                         for t in &rule.tags {
                             if !n.tags.contains(t) {
@@ -1102,8 +1097,8 @@ impl App {
         use crate::list_view::FolderGraphNode;
         if focused_path == crate::app::VIRTUAL_PINNED_PATH {
             let children: Vec<FolderGraphNode> = self
-                .notes
-                .iter()
+                .visible_notes()
+                .map(|(_, n)| n)
                 .filter(|n| n.pinned)
                 .map(|n| FolderGraphNode {
                     label: n.title.clone(),
@@ -1168,8 +1163,8 @@ impl App {
             })
             .collect();
         let notes: Vec<FolderGraphNode> = self
-            .notes
-            .iter()
+            .visible_notes()
+            .map(|(_, n)| n)
             .filter(|n| n.folder == focused_path)
             .map(|n| FolderGraphNode {
                 label: n.title.clone(),
@@ -1224,7 +1219,17 @@ impl App {
                 let is_canvas = *is_canvas;
                 let id = &self.notes[summary_idx].id;
                 let is_clin = id.ends_with(".clin");
-
+                if !self.config.features.file_view_enabled(id) {
+                    self.list.preview_content = None;
+                    self.list.preview_content_width = None;
+                    self.list.preview_content_height = None;
+                    self.list.preview_content_scale = None;
+                    self.list.preview_content_offset_x = None;
+                    self.list.preview_content_offset_y = None;
+                    self.list.preview_content_index = Some(self.list.visual_index);
+                    self.list.pending_markdown_resize = None;
+                    return;
+                }
                 if self.preview_encryption && is_clin {
                     self.list.preview_content = None;
                     self.list.preview_content_index = Some(self.list.visual_index);
@@ -1475,7 +1480,7 @@ impl App {
                 }
 
                 let mut notes = Vec::new();
-                for note in &self.notes {
+                for (_, note) in self.visible_notes() {
                     let matches = if is_pinned {
                         note.pinned
                     } else {
@@ -1824,7 +1829,7 @@ impl App {
 mod tests {
     use super::*;
 
-    fn make_app() -> App {
+    fn make_app() -> (tempfile::TempDir, App) {
         let temp_dir = tempfile::tempdir().unwrap();
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1835,6 +1840,13 @@ mod tests {
         std::fs::create_dir_all(&notes_dir).unwrap();
         std::fs::create_dir_all(&templates_dir).unwrap();
 
+        let cfg = crate::config::ClinConfig::default();
+        std::fs::write(
+            config_dir.join("config.toml"),
+            toml::to_string_pretty(&cfg).unwrap(),
+        ).unwrap();
+        crate::config::set_config_path_override(config_dir.join("config.toml"));
+
         let storage = crate::storage::Storage {
             data_dir,
             config_dir,
@@ -1844,13 +1856,13 @@ mod tests {
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };
-        App::new(storage).unwrap()
+        (temp_dir, App::new(storage).unwrap())
     }
 
     #[test]
     fn folder_graph_children_real_folder() {
         let _lock = crate::config::ConfigTestGuard::lock();
-        let mut app = make_app();
+        let (_td, mut app) = make_app();
 
         // Create folder structure: docs/ with a.md, b.md; docs/sub/ with c.md
         let docs_dir = app.storage.notes_dir.join("docs");
@@ -1900,7 +1912,7 @@ mod tests {
     #[test]
     fn test_request_editor_preview_update_sets_change_timestamp() {
         let _lock = crate::config::ConfigTestGuard::lock();
-        let mut app = make_app();
+        let (_td, mut app) = make_app();
 
         assert!(app.editor.last_editor_change.is_none());
 
@@ -1915,7 +1927,7 @@ mod tests {
     #[test]
     fn preview_resize_debounce_rerenders_list_and_editor() {
         let _lock = crate::config::ConfigTestGuard::lock();
-        let mut app = make_app();
+        let (_td, mut app) = make_app();
         std::fs::create_dir_all(&app.storage.notes_dir).unwrap();
         std::fs::write(
             app.storage.notes_dir.join("preview.md"),
@@ -1951,7 +1963,7 @@ mod tests {
         );
         assert!(app.list.pending_markdown_resize.is_none());
 
-        let mut app = make_app();
+        let (_td2, mut app) = make_app();
         app.editor.editor_preview_enabled = true;
         app.editor.body = crate::editor_document::EditorDocument::from_text("# Preview\n\nBody");
         app.editor.last_preview_pane_width = 80;
@@ -1970,5 +1982,85 @@ mod tests {
             Some(app.desired_editor_preview_width())
         );
         assert!(app.editor.pending_markdown_resize.is_none());
+    }
+
+    #[test]
+    fn feature_view_files_visibility_and_refresh() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (td, mut app) = make_app();
+        
+        let notes_dir = &app.storage.notes_dir;
+        std::fs::write(notes_dir.join("a.md"), "# Plain").unwrap();
+        std::fs::write(notes_dir.join("b.canvas"), "canvas").unwrap();
+        std::fs::write(notes_dir.join("c.draw"), "draw").unwrap();
+        std::fs::write(notes_dir.join("b.pinstar"), "pinstar").unwrap();
+        
+        let load = crate::app::catalog::load_notes_blocking(
+            &app.storage,
+            &app.notes_worker_pool,
+            false,
+            true, // include_all_files
+        )
+        .unwrap();
+        app.notes = load.summaries;
+        app.catalog_folders = load.folders;
+        app.sort_notes();
+        
+        // 1. Enabled
+        app.config.features.canvas_view = crate::config::FeatureState::Enabled;
+        app.config.features.draw_view = crate::config::FeatureState::Enabled;
+        app.refresh_view_file_features();
+        let mut visible: Vec<_> = app.visible_notes().map(|(_, n)| n.id.as_str()).collect();
+        visible.sort();
+        assert_eq!(visible, vec!["a.md", "b.canvas", "b.pinstar", "c.draw"]);
+        
+        // 2. Disabled/Deleted
+        app.config.features.canvas_view = crate::config::FeatureState::Disabled;
+        app.config.features.draw_view = crate::config::FeatureState::Deleted;
+        app.refresh_view_file_features();
+        let mut visible: Vec<_> = app.visible_notes().map(|(_, n)| n.id.as_str()).collect();
+        visible.sort();
+        assert_eq!(visible, vec!["a.md"]);
+        
+        // Re-enable via toggle
+        app.toggle_canvas_view();
+        let mut visible: Vec<_> = app.visible_notes().map(|(_, n)| n.id.as_str()).collect();
+        visible.sort();
+        assert_eq!(visible, vec!["a.md", "b.canvas", "b.pinstar"]);
+
+        // Stale index check
+        app.notes_revision += 1; // Stale index
+        let st = crate::statusline::StatuslineContext::for_view(&app, crate::app::ViewMode::List);
+        assert_eq!(st.resolve("note_count"), Some(std::borrow::Cow::Owned("3".to_string())));
+    }
+
+    #[test]
+    fn feature_view_files_snapshot_cache_transitions() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (td, mut app) = make_app();
+        
+        let draw_data = r#"{"version":2,"width":500,"height":500,"elements":[]}"#;
+        std::fs::write(app.storage.notes_dir.join("a.draw"), draw_data).unwrap();
+        let load = crate::app::catalog::load_notes_blocking(
+            &app.storage,
+            &app.notes_worker_pool,
+            false,
+            false,
+        )
+        .unwrap();
+        app.notes = load.summaries;
+        app.sort_notes();
+        app.refresh_visual_list();
+        app.list.preview_enabled = true;
+        
+        // Warm cache
+        app.list.visual_index = 0;
+        app.update_preview();
+        assert!(matches!(app.list.preview_content, Some(crate::list_view::PreviewContent::DrawGrid{..})));
+        
+        // Disable
+        app.config.features.draw_view = crate::config::FeatureState::Disabled;
+        app.update_preview();
+        assert!(app.list.preview_content.is_none());
     }
 }

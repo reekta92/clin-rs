@@ -959,7 +959,7 @@ template = """
         } else {
             crate::goals::DailyProgress::default()
         };
-        self.refresh_visual_list();
+        self.refresh_view_file_features();
         let (selected_path, changed_vault, confirmed_path) = {
             let Some(state) = self.setup_state.as_ref() else {
                 return;
@@ -1051,9 +1051,17 @@ template = """
 
     /// Discard wizard mutations: reload config + keybinds from disk, close wizard.
     pub fn abort_setup(&mut self) {
+        let old_availability = (
+            self.config.features.canvas_view.is_enabled(),
+            self.config.features.draw_view.is_enabled(),
+        );
         if let Ok(fresh) = crate::config::ClinConfig::load().0 {
             self.config = fresh;
         }
+        let new_availability = (
+            self.config.features.canvas_view.is_enabled(),
+            self.config.features.draw_view.is_enabled(),
+        );
         // Rebuild keybinds for the (now disk-truth) preset; clear any stale
         // in-flight sequence buffered against the old binding set.
         let (kb, warnings) = self
@@ -1073,5 +1081,8 @@ template = """
             .return_mode
             .take()
             .unwrap_or(crate::app::ViewMode::List);
+        if old_availability != new_availability {
+            self.refresh_view_file_features();
+        }
     }
 }

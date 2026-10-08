@@ -9,7 +9,7 @@ fn is_tag_supported(ext: &str) -> bool {
 impl App {
     pub fn collect_live_tags(&self) -> Vec<String> {
         let mut tags: HashSet<String> = HashSet::new();
-        for note in &self.notes {
+        for (_, note) in self.visible_notes() {
             for tag in &note.tags {
                 tags.insert(tag.clone());
             }

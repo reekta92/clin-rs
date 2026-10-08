@@ -193,7 +193,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let (storage, _) = Storage::init();
             let storage = storage?;
             let app = App::new(storage)?;
-            for (index, note) in app.notes.iter().enumerate() {
+            for (index, (_, note)) in app.visible_notes().enumerate() {
                 println!(
                     "{} {}",
                     console::dim(&format!("{}.", index + 1)),
@@ -279,10 +279,9 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let storage = storage?;
             let app = App::new(storage)?;
             let id = app
-                .notes
-                .iter()
-                .find(|n| n.title.eq_ignore_ascii_case(title.trim()))
-                .map(|n| n.id.clone());
+                .visible_notes()
+                .find(|(_, n)| n.title.eq_ignore_ascii_case(title.trim()))
+                .map(|(_, n)| n.id.clone());
             match id {
                 Some(id) => match app.storage.load_note(&id) {
                     Ok(note) => {
@@ -334,7 +333,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let app = App::new(storage)?;
             let matcher = SkimMatcherV2::default();
             let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
-            for note in &app.notes {
+            for (_, note) in app.visible_notes() {
                 let mut best: Option<i64> = matcher.fuzzy_match(&note.title, &query);
                 // content match (substring) as a fallback when the title does not match
                 if best.is_none()

@@ -586,10 +586,11 @@ impl App {
             return false;
         }
 
-        if let Some(index) = self
-            .notes
-            .iter()
-            .position(|note| note.title.eq_ignore_ascii_case(query))
+        let found = self
+            .visible_notes()
+            .find(|(_, note)| note.title.eq_ignore_ascii_case(query))
+            .map(|(i, _)| i);
+        if let Some(index) = found
             && let Some(v_idx) = self.list.visual_list.iter().position(|v| match v {
                 VisualItem::Note { summary_idx, .. } => *summary_idx == index,
                 _ => false,

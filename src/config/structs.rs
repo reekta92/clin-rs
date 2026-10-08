@@ -731,6 +731,16 @@ impl Default for FeaturesConfig {
         }
     }
 }
+impl FeaturesConfig {
+    pub fn file_view_enabled(&self, path: impl AsRef<std::path::Path>) -> bool {
+        let ext = path.as_ref().extension().and_then(|e| e.to_str());
+        match ext {
+            Some("draw") => self.draw_view.is_enabled(),
+            Some("canvas") | Some("pinstar") => self.canvas_view.is_enabled(),
+            _ => true,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]

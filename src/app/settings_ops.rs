@@ -589,14 +589,92 @@ impl App {
         }
         &mut self.goals_progress
     }
+    pub(crate) fn refresh_view_file_features(&mut self) {
+        // 1. Clear positional multi-selection, drag, and grid_tiles; clear list preview content, index, cached geometry, pending resize, reset snapshot scroll.
+        self.list.selected_indices.clear();
+        self.list.note_drag = None;
+        self.list.drag_hover = None;
+        self.list.grid_tiles.clear();
+        self.list.preview_content = None;
+        self.list.preview_content_index = None;
+        self.list.preview_content_width = None;
+        self.list.preview_content_height = None;
+        self.list.preview_content_scale = None;
+        self.list.preview_content_offset_x = None;
+        self.list.preview_content_offset_y = None;
+        self.list.pending_markdown_resize = None;
+        self.list.snapshot_scroll_offset = 0;
 
+        // 2. Clear draw/graph previews and link preview.
+        self.draw_preview = None;
+        self.graph_preview = None;
+        self.graph_preview_sig = 0;
+        self.graph_preview_steps = 0;
+        self.editor.link_preview = false;
+        self.editor.link_preview_renderer = None;
+        self.editor.link_preview_target = None;
+        self.editor.link_preview_error = None;
+        if self.editor.sidebar == crate::editor::EditSidebar::Links {
+            self.editor.links = self.compute_links();
+            let len = self.editor.links.len();
+            if len > 0 {
+                self.editor.sidebar_selected = self.editor.sidebar_selected.min(len - 1);
+            } else {
+                self.editor.sidebar_selected = 0;
+            }
+            self.editor.sidebar_scroll_offset = 0;
+        }
+
+        // 3. Search and Trash popups.
+        self.search_query_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.unsent_search_request = None;
+        self.search_debounce_deadline = None;
+        self.search_status = None;
+        
+        let has_trash_view = matches!(self.popups.active, Some(crate::popups::ActivePopup::TrashView(_)));
+        if has_trash_view {
+            self.close_trash_view();
+            self.open_trash_view();
+        }
+        
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
+            popup.title_result_ids.clear();
+            popup.grep_results.clear();
+            popup.grep_row_offsets.clear();
+            popup.grep_expanded.clear();
+            popup.subnote_results.clear();
+            popup.title_selected = 0;
+            popup.grep_selected = 0;
+            popup.subnote_selected = 0;
+            popup.globally_truncated = false;
+            popup.read_errors = 0;
+            self.update_search();
+        }
+
+        // 4. Index and Graph plugin.
+        self.notes_revision += 1;
+        self.rebuild_note_index();
+        if let Some(plugin) = &mut self.graph_plugin {
+            plugin.notes.clone_from(&self.notes);
+            plugin.refresh_simulation(&self.config);
+            plugin.sync_preview(&self.config);
+        }
+
+        // 5. Visual list and redraw.
+        self.refresh_visual_list();
+        self.needs_full_redraw = true;
+    }
     pub fn ensure_draw_preview(&mut self) {
+        if !self.config.features.draw_view.is_enabled() {
+            self.draw_preview = None;
+            return;
+        }
         let target = self
             .get_selected_note_id()
             .filter(|id| id.ends_with(".draw"))
             .or_else(|| {
-                self.notes
-                    .iter()
+                self.visible_notes()
+                    .map(|(_, n)| n)
                     .filter(|n| n.id.ends_with(".draw"))
                     .max_by_key(|n| n.updated_at)
                     .map(|n| n.id.clone())
@@ -634,7 +712,7 @@ impl App {
         if self.graph_preview.is_some() && self.graph_preview_sig == sig {
             return;
         }
-        let specs = crate::graf_adapter::note_specs(&self.notes);
+        let specs = crate::graf_adapter::note_specs(&self.notes, &self.config.features);
         let settings = crate::graf_adapter::clin_settings(&self.config);
         match graf::GraphState::from_specs(&specs, &settings) {
             Ok(mut gs) => {
@@ -817,6 +895,7 @@ impl App {
     pub fn toggle_canvas_view(&mut self) {
         self.config.features.canvas_view = !self.config.features.canvas_view;
         let val = self.config.features.canvas_view.is_enabled();
+        self.refresh_view_file_features();
         self.flag_status_persist(
             val,
             "Canvas view enabled",
@@ -834,6 +913,7 @@ impl App {
     pub fn toggle_draw_view(&mut self) {
         self.config.features.draw_view = !self.config.features.draw_view;
         let val = self.config.features.draw_view.is_enabled();
+        self.refresh_view_file_features();
         self.flag_status_persist(val, "Draw view enabled", "Draw view disabled", |c, v| {
             c.features.draw_view = if v {
                 crate::config::FeatureState::Enabled
