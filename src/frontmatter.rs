@@ -172,7 +172,12 @@ pub fn apply_edits(header: &str, edits: &[FrontmatterEdit]) -> Result<String> {
     let (opening, yaml, closing) = framing(header)?;
     let mut file = YamlFile::from_str(yaml)?;
     let mut touched = Vec::with_capacity(edits.len());
-    for edit in edits {
+    let mut skip_next = false;
+    for (index, edit) in edits.iter().enumerate() {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
         let before = opening.ends_with("\r\n").then(|| file.to_string());
         let document = file.ensure_document();
         let mapping = document
@@ -180,6 +185,24 @@ pub fn apply_edits(header: &str, edits: &[FrontmatterEdit]) -> Result<String> {
             .context("Frontmatter must be a YAML mapping")?;
         let key = fragment(&edit.key_yaml)?;
         let semantic_key = semantic_document(&edit.key_yaml)?;
+        // Adjacent remove/add of the same value is a key rename, retaining its CST.
+        if edit.value_yaml.is_none()
+            && let Some(next) = edits.get(index + 1)
+            && let Some(value) = &next.value_yaml
+            && let Some(entry) = mapping.find_entry_by_key(&key)
+            && entry
+                .value_node()
+                .is_some_and(|node| node.to_string().trim() == value.trim())
+        {
+            let new_key = fragment(&next.key_yaml)?;
+            if !mapping.contains_key(&new_key) {
+                ensure!(mapping.rename_key(&key, &new_key), "Property rename failed");
+                touched.push(semantic_key);
+                touched.push(semantic_document(&next.key_yaml)?);
+                skip_next = true;
+                continue;
+            }
+        }
         match &edit.value_yaml {
             Some(value) => {
                 let value_node = fragment(value)?;
@@ -241,6 +264,33 @@ pub fn apply_edits(header: &str, edits: &[FrontmatterEdit]) -> Result<String> {
     let candidate = format!("{opening}{updated}{closing}");
     validate_header(&candidate)?;
     Ok(candidate)
+}
+
+pub fn rename_key(header: &str, old: &str, new: &str) -> Result<String> {
+    crate::property_model::validate_key(old)?;
+    crate::property_model::validate_key(new)?;
+    let semantic = validate_header(header)?;
+    ensure!(
+        semantic.contains_key(Value::String(old.into())),
+        "Property does not exist"
+    );
+    ensure!(
+        old == new || !semantic.contains_key(Value::String(new.into())),
+        "Property already exists"
+    );
+    if old == new {
+        return Ok(header.into());
+    }
+    let (opening, yaml, closing) = framing(header)?;
+    let file = YamlFile::from_str(yaml)?;
+    let mapping = file
+        .document()
+        .and_then(|document| document.as_mapping())
+        .context("Expected property mapping")?;
+    ensure!(mapping.rename_key(old, new), "Property rename failed");
+    let result = format!("{opening}{}{closing}", file);
+    validate_header(&result)?;
+    Ok(result)
 }
 
 pub fn parse(content: &str) -> (Frontmatter, &str) {

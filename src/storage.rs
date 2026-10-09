@@ -48,6 +48,8 @@ pub struct NoteSummary {
     pub pinned: bool,
     pub links: Vec<String>,
     pub size_bytes: u64,
+    pub properties: crate::property_model::PropertyMap,
+    pub property_links: Vec<String>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FileStamp {
@@ -817,6 +819,27 @@ impl Storage {
         }
         Some(self.notes_dir.join(normalized))
     }
+    pub(crate) fn property_note_path(&self, id: &str) -> Result<PathBuf> {
+        let path = self
+            .validate_path_within_notes_dir(id)
+            .context("Note target must stay inside vault")?;
+        let root = self
+            .notes_dir
+            .canonicalize()
+            .context("Failed to resolve vault")?;
+        let ancestor = path
+            .ancestors()
+            .find(|ancestor| fs::symlink_metadata(ancestor).is_ok())
+            .context("Missing note parent")?;
+        let canonical = ancestor
+            .canonicalize()
+            .context("Failed to resolve note path")?;
+        anyhow::ensure!(
+            canonical.starts_with(root),
+            "Note target must stay inside vault"
+        );
+        Ok(path)
+    }
 
     pub fn list_note_ids(
         &self,
@@ -1076,6 +1099,8 @@ impl Storage {
                     pinned: fm_val.pinned,
                     links: fm_val.links.clone().unwrap_or_default(),
                     size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+                    properties: crate::property_model::properties_from_mapping(&fm_val.extra),
+                    property_links: Vec::new(),
                 });
             }
 
@@ -1084,6 +1109,10 @@ impl Storage {
                 bincode::serde::decode_from_slice(plain.as_slice(), bincode::config::standard())
                     .context("failed to decode note")?;
 
+            let properties = fm
+                .as_ref()
+                .map(|fm| crate::property_model::properties_from_mapping(&fm.extra))
+                .unwrap_or_default();
             let (tags, pinned, links) = fm
                 .map(|f| (f.tags, f.pinned, f.links.unwrap_or_default()))
                 .unwrap_or_else(|| (note.tags.clone(), false, extract_wikilinks(&note.content)));
@@ -1097,6 +1126,8 @@ impl Storage {
                 pinned,
                 links,
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+                properties,
+                property_links: Vec::new(),
             })
         } else if crate::storage::is_image_ext(ext) {
             let updated_at = fs::metadata(&path)
@@ -1117,6 +1148,8 @@ impl Storage {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+                properties: Default::default(),
+                property_links: Vec::new(),
             })
         } else if ext != "md" && ext != "txt" {
             let updated_at = fs::metadata(&path)
@@ -1137,11 +1170,14 @@ impl Storage {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+                properties: Default::default(),
+                property_links: Vec::new(),
             })
         } else {
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("load_note_summary read failed for {}", path.display()))?;
             let (fm, plain_content) = frontmatter::parse(&content);
+            let properties = crate::property_model::properties_from_mapping(&fm.extra);
 
             let title = if let Some(t) = fm.title {
                 t
@@ -1173,6 +1209,8 @@ impl Storage {
                 pinned: fm.pinned,
                 links,
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+                properties,
+                property_links: Vec::new(),
             })
         }
     }
@@ -1260,6 +1298,80 @@ impl Storage {
         let mut output = header.into_bytes();
         output.extend_from_slice(payload);
         crate::fsutil::atomic_write(&path, &output).context("failed to write note alignment")
+    }
+    pub fn update_properties(
+        &self,
+        id: &str,
+        edits: &[frontmatter::FrontmatterEdit],
+    ) -> Result<()> {
+        let path = self.property_note_path(id)?;
+        anyhow::ensure!(
+            matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("md" | "txt" | "clin")
+            ),
+            "Properties are available for notes"
+        );
+        for edit in edits {
+            let key: serde_yaml_ng::Value = serde_yaml_ng::from_str(&edit.key_yaml)?;
+            anyhow::ensure!(
+                !frontmatter::is_managed_key(&key),
+                "Managed by Clin; use existing note controls"
+            );
+        }
+        let bytes = fs::read(&path).context("Failed to read property target")?;
+        let (header, payload) = frontmatter::split_header(&bytes)?;
+        let header = frontmatter::apply_edits(header.unwrap_or("---\n---\n"), edits)?;
+        let mut output = header.into_bytes();
+        output.extend_from_slice(payload);
+        if output != bytes {
+            crate::fsutil::atomic_write(&path, &output).context("Failed to write properties")?;
+        }
+        Ok(())
+    }
+    pub fn rename_property_key(&self, id: &str, old: &str, new: &str) -> Result<()> {
+        let path = self.property_note_path(id)?;
+        anyhow::ensure!(
+            matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("md" | "txt" | "clin")
+            ),
+            "Properties are available for notes"
+        );
+        let bytes = fs::read(&path)?;
+        let (header, payload) = frontmatter::split_header(&bytes)?;
+        let header = frontmatter::rename_key(header.context("Property does not exist")?, old, new)?;
+        let mut output = header.into_bytes();
+        output.extend_from_slice(payload);
+        crate::fsutil::atomic_write(&path, &output)
+    }
+    pub(crate) fn replace_property_header(
+        &self,
+        id: &str,
+        expected: Option<&str>,
+        header: &str,
+    ) -> Result<()> {
+        let path = self.property_note_path(id)?;
+        anyhow::ensure!(
+            matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("md" | "txt" | "clin")
+            ),
+            "Properties are available for notes"
+        );
+        frontmatter::validate_header(header)?;
+        let bytes = fs::read(&path)?;
+        let (actual, payload) = frontmatter::split_header(&bytes)?;
+        if actual == Some(header) {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            actual == expected,
+            "Properties changed since preview; inspect and retry"
+        );
+        let mut output = header.as_bytes().to_vec();
+        output.extend_from_slice(payload);
+        crate::fsutil::atomic_write(&path, &output)
     }
     pub fn editor_draft_path(&self) -> PathBuf {
         self.data_dir.join(".clin").join("editor_draft.bin")
@@ -1351,7 +1463,7 @@ impl Storage {
         Ok(())
     }
     pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
-        self.save_note_inner(id, note, &[])
+        self.save_note_inner(id, note, &[], None)
     }
 
     pub fn save_note_with_properties(
@@ -1360,7 +1472,23 @@ impl Storage {
         note: &Note,
         edits: &[frontmatter::FrontmatterEdit],
     ) -> Result<String> {
-        self.save_note_inner(id, note, edits)
+        self.save_note_inner(id, note, edits, None)
+    }
+    pub fn create_note_with_header(
+        &mut self,
+        id: &str,
+        note: &Note,
+        header: Option<&str>,
+    ) -> Result<String> {
+        self.property_note_path(id)?;
+        anyhow::ensure!(
+            !self.note_path(id).exists(),
+            "New note target already exists"
+        );
+        if let Some(header) = header {
+            frontmatter::validate_header(header)?;
+        }
+        self.save_note_inner(id, note, &[], header)
     }
 
     fn save_note_inner(
@@ -1368,6 +1496,7 @@ impl Storage {
         id: &str,
         note: &Note,
         edits: &[frontmatter::FrontmatterEdit],
+        initial_header: Option<&str>,
     ) -> Result<String> {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -1389,7 +1518,8 @@ impl Storage {
                 .map(frontmatter::split_header)
                 .transpose()?
                 .and_then(|(header, _)| header)
-        };
+        }
+        .or(initial_header);
         for edit in edits {
             let key: serde_yaml_ng::Value = serde_yaml_ng::from_str(&edit.key_yaml)?;
             anyhow::ensure!(

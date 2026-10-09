@@ -167,6 +167,8 @@ toggle_action!(
             (SortField::Modified, SortOrder::Ascending) => "Modified (oldest)",
             (SortField::Title, SortOrder::Ascending) => "Title (A-Z)",
             (SortField::Title, SortOrder::Descending) => "Title (Z-A)",
+            (SortField::Property, SortOrder::Ascending) => "Property (ascending)",
+            (SortField::Property, SortOrder::Descending) => "Property (descending)",
         }
     }
 );

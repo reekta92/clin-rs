@@ -432,6 +432,10 @@ pub struct App {
     pub config_errors: Vec<String>,
     pub canvas_state: Option<crate::pinstar_adapter::PinstarPlugin>,
     pub config: crate::config::ClinConfig,
+    pub property_definitions: crate::property_model::PropertyDefinitions,
+    pub property_definitions_error: Option<String>,
+    pub(crate) property_definitions_stamp: Option<crate::storage::FileStamp>,
+    pub(crate) property_manager: Option<crate::property_management::PropertyManager>,
     pub catalog_cmd_tx: std::sync::mpsc::SyncSender<crate::app::catalog::CatalogCommand>,
     pub catalog_event_rx: std::sync::mpsc::Receiver<crate::app::catalog::CatalogEvent>,
     pub catalog_generation: Arc<AtomicU64>,
@@ -523,6 +527,8 @@ impl App {
             custom_rules,
             now,
             &self.config.features,
+            &self.property_definitions,
+            self.config.list.calendar_date_property.as_deref(),
         );
         self.note_index = Some(index);
     }
@@ -697,6 +703,10 @@ impl App {
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
+            property_definitions: crate::property_model::PropertyDefinitions::default(),
+            property_definitions_error: None,
+            property_definitions_stamp: None,
+            property_manager: None,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
             catalog_generation,
@@ -788,7 +798,7 @@ impl App {
             app.expand_folders_to_depth(d);
         }
 
-        app.rebuild_note_index();
+        app.reload_property_definitions();
         app.list.pending_preview_update = true;
         app.sort_notes();
         app.refresh_visual_list();
@@ -971,6 +981,10 @@ impl App {
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
+            property_definitions: crate::property_model::PropertyDefinitions::default(),
+            property_definitions_error: None,
+            property_definitions_stamp: None,
+            property_manager: None,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
             catalog_generation,
@@ -1073,7 +1087,7 @@ impl App {
                 );
             }
         }
-        app.rebuild_note_index();
+        app.reload_property_definitions();
         app.sort_notes();
         app.refresh_visual_list();
         Ok(app)
@@ -1114,9 +1128,22 @@ impl App {
         if old_availability != new_availability {
             self.refresh_view_file_features();
         }
+        self.config_errors = self.config.validate();
+        self.notes_revision = self.notes_revision.wrapping_add(1);
+        self.sort_notes();
+        self.rebuild_note_index();
+        self.graph_preview = None;
+        self.refresh_visual_list();
+        if matches!(
+            self.popups.active,
+            Some(crate::popups::ActivePopup::Search(_))
+        ) {
+            self.update_search();
+        }
     }
 
     pub fn check_and_reload_config(&mut self) {
+        self.check_property_definitions();
         if let Ok(config_path) = crate::config::ClinConfig::config_path()
             && let Ok(metadata) = std::fs::metadata(&config_path)
             && let Ok(mtime) = metadata.modified()

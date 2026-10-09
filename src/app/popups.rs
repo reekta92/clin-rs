@@ -473,6 +473,19 @@ template = """
                 self.list.sort_order = SortOrder::Descending;
             }
             (SortField::Title, SortOrder::Descending) => {
+                if self.config.list.property_sort_key.is_some() {
+                    self.list.sort_field = SortField::Property;
+                    self.list.sort_order = SortOrder::Ascending;
+                } else {
+                    self.list.sort_field = SortField::Modified;
+                    self.list.sort_order = SortOrder::Descending;
+                }
+            }
+            (SortField::Property, SortOrder::Ascending) => {
+                self.list.sort_field = SortField::Property;
+                self.list.sort_order = SortOrder::Descending;
+            }
+            (SortField::Property, SortOrder::Descending) => {
                 self.list.sort_field = SortField::Modified;
                 self.list.sort_order = SortOrder::Descending;
             }
@@ -527,6 +540,8 @@ template = """
             (SortField::Title, SortOrder::Descending) => 1,
             (SortField::Modified, SortOrder::Descending) => 2,
             (SortField::Modified, SortOrder::Ascending) => 3,
+            (SortField::Property, SortOrder::Ascending) => 4,
+            (SortField::Property, SortOrder::Descending) => 5,
         };
         self.popups.active = Some(crate::popups::ActivePopup::Sort(
             crate::popups::SelectionPopup {
@@ -554,6 +569,14 @@ template = """
                 3 => {
                     self.list.sort_field = SortField::Modified;
                     self.list.sort_order = SortOrder::Ascending;
+                }
+                4 => {
+                    self.list.sort_field = SortField::Property;
+                    self.list.sort_order = SortOrder::Ascending;
+                }
+                5 => {
+                    self.list.sort_field = SortField::Property;
+                    self.list.sort_order = SortOrder::Descending;
                 }
                 _ => {}
             }

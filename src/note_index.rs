@@ -1,7 +1,8 @@
 use crate::config::structs::CustomSmartFolder;
+use crate::property_model::PropertyDefinitions;
 use crate::storage::NoteSummary;
-use chrono::{Datelike, Local, NaiveDate, TimeZone};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use chrono::{Local, NaiveDate, TimeZone};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 pub struct NoteIndex {
@@ -30,6 +31,8 @@ impl NoteIndex {
         custom_rules: &[CustomSmartFolder],
         now_unix_secs: u64,
         features: &crate::config::FeaturesConfig,
+        definitions: &PropertyDefinitions,
+        calendar_date_property: Option<&str>,
     ) -> Self {
         let visible_notes: Vec<(usize, &NoteSummary)> = notes
             .iter()
@@ -57,16 +60,6 @@ impl NoteIndex {
         let mut today_indices = Vec::new();
         let mut this_week_indices = Vec::new();
         let mut activity_by_day: HashMap<NaiveDate, usize> = HashMap::new();
-
-        let now_local = Local
-            .timestamp_opt(now_unix_secs as i64, 0)
-            .single()
-            .unwrap_or_else(Local::now);
-
-        let today_date = now_local.date_naive();
-        let days_since_mon = now_local.weekday().num_days_from_monday() as i64;
-        let mon_date = today_date - chrono::Duration::days(days_since_mon);
-
         for (i, note) in &visible_notes {
             let i = *i;
             notes_by_folder
@@ -86,18 +79,25 @@ impl NoteIndex {
                 }
             }
 
-            if let Some(date_time) = Local.timestamp_opt(note.updated_at as i64, 0).single() {
-                let note_date = date_time.date_naive();
-                if features.calendar.is_enabled() {
-                    *activity_by_day.entry(note_date).or_default() += 1;
+            if features.calendar.is_enabled() {
+                let note_date = if let Some(key) = calendar_date_property {
+                    definitions.date_value(key, &note.properties)
+                } else {
+                    Local
+                        .timestamp_opt(note.updated_at as i64, 0)
+                        .single()
+                        .map(|dt| dt.date_naive())
+                };
+                if let Some(date) = note_date {
+                    *activity_by_day.entry(date).or_default() += 1;
                 }
+            }
 
-                if note_date == today_date {
-                    today_indices.push(i);
-                }
-                if note_date >= mon_date {
-                    this_week_indices.push(i);
-                }
+            if now_unix_secs.saturating_sub(note.updated_at) < 86_400 {
+                today_indices.push(i);
+            }
+            if now_unix_secs.saturating_sub(note.updated_at) < 604_800 {
+                this_week_indices.push(i);
             }
         }
 
@@ -152,76 +152,26 @@ impl NoteIndex {
         }
 
         let mut min_membership_expiry: Option<u64> = None;
-        let day_secs = 86400u64;
-
-        // Custom smart folders
         let mut custom_smart_folder_indices = HashMap::new();
         for rule in custom_rules {
-            let mut candidate_set: Option<HashSet<usize>> = None;
-
-            if !rule.tags.is_empty() {
-                let mut smallest_posting: Option<&Vec<usize>> = None;
-                for tag in &rule.tags {
-                    let posting = notes_by_exact_tag.get(tag);
-                    match (smallest_posting, posting) {
-                        (None, p) => smallest_posting = p,
-                        (Some(cur), Some(p)) if p.len() < cur.len() => smallest_posting = Some(p),
-                        _ => {}
-                    }
-                }
-                if let Some(posting) = smallest_posting {
-                    candidate_set = Some(posting.iter().copied().collect());
-                } else {
-                    candidate_set = Some(HashSet::new());
-                }
-            }
-
             let mut matched = Vec::new();
-            let indices_to_check: Vec<usize> = match candidate_set {
-                Some(set) => (0..notes.len()).filter(|i| set.contains(i)).collect(),
-                None => (0..notes.len()).collect(),
-            };
-
-            for i in indices_to_check {
-                let note = &notes[i];
-
-                if !rule.tags.is_empty() && !rule.tags.iter().all(|t| note.tags.contains(t)) {
-                    continue;
-                }
-
-                if let Some(ref title_query) = rule.title_contains
-                    && !note
-                        .title
-                        .to_lowercase()
-                        .contains(&title_query.to_lowercase())
-                {
-                    continue;
-                }
-
-                if let Some(ref folder_prefix) = rule.folder_prefix
-                    && !note.folder.starts_with(folder_prefix)
-                {
-                    continue;
-                }
-
-                if let Some(days) = rule.updated_within_days {
-                    let cutoff = now_unix_secs.saturating_sub(days * day_secs);
-                    if note.updated_at < cutoff {
-                        continue;
-                    }
-                    let expiry = note.updated_at + (days * day_secs);
-                    if expiry > now_unix_secs {
-                        min_membership_expiry = Some(
-                            min_membership_expiry
-                                .map(|m| m.min(expiry))
-                                .unwrap_or(expiry),
-                        );
+            for (i, note) in &visible_notes {
+                if crate::property_query::custom_folder_matches(
+                    rule,
+                    note,
+                    definitions,
+                    now_unix_secs,
+                ) {
+                    matched.push(*i);
+                    if let Some(days) = rule.updated_within_days {
+                        let expiry = note.updated_at.saturating_add(days.saturating_mul(86_400));
+                        if expiry > now_unix_secs {
+                            min_membership_expiry =
+                                Some(min_membership_expiry.map_or(expiry, |m| m.min(expiry)));
+                        }
                     }
                 }
-
-                matched.push(i);
             }
-
             custom_smart_folder_indices.insert(rule.name.clone(), matched);
         }
 
@@ -262,6 +212,8 @@ mod tests {
                 pinned: true,
                 links: vec![],
                 size_bytes: 10,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
             NoteSummary {
                 id: "folder1/sub/b.md".to_string(),
@@ -272,6 +224,8 @@ mod tests {
                 pinned: false,
                 links: vec![],
                 size_bytes: 20,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
         ];
         let folders = vec!["folder1".to_string(), "folder1/sub".to_string()];
@@ -282,8 +236,9 @@ mod tests {
             &[],
             now,
             &crate::config::FeaturesConfig::default(),
+            &PropertyDefinitions::default(),
+            None,
         );
-
         assert_eq!(index.canonical_ids.len(), 2);
         assert_eq!(index.by_id.get("folder1/a.md").copied(), Some(0));
         assert_eq!(index.pinned_indices, vec![0]);
@@ -307,6 +262,8 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 1,
+            properties: Default::default(),
+            property_links: Vec::new(),
         }];
         let with_cal = NoteIndex::build(
             1,
@@ -315,6 +272,8 @@ mod tests {
             &[],
             now,
             &crate::config::FeaturesConfig::default(),
+            &PropertyDefinitions::default(),
+            None,
         );
         let without_cal = NoteIndex::build(
             1,
@@ -326,6 +285,8 @@ mod tests {
                 calendar: crate::config::FeatureState::Disabled,
                 ..Default::default()
             },
+            &PropertyDefinitions::default(),
+            None,
         );
         let today = Local
             .timestamp_opt(now as i64, 0)
@@ -336,5 +297,71 @@ mod tests {
         assert!(without_cal.activity_by_day.is_empty());
         // Today/week indices are computed regardless of the calendar flag.
         assert_eq!(without_cal.today_indices, vec![0]);
+    }
+
+    #[test]
+    fn calendar_custom_date_property_and_custom_smart_folder() {
+        let now = 1_700_000_000;
+        let mut props = std::collections::BTreeMap::new();
+        props.insert(
+            "due".to_string(),
+            crate::property_model::PropertyValue::String("2025-01-15".to_string()),
+        );
+        props.insert(
+            "status".to_string(),
+            crate::property_model::PropertyValue::String("done".to_string()),
+        );
+        let notes = vec![NoteSummary {
+            id: "task.md".to_string(),
+            title: "Task".to_string(),
+            updated_at: now,
+            folder: String::new(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1,
+            properties: props,
+            property_links: Vec::new(),
+        }];
+        let custom_rule = CustomSmartFolder {
+            name: "Done Tasks".to_string(),
+            tags: vec![],
+            title_contains: None,
+            folder_prefix: None,
+            updated_within_days: None,
+            all: vec![
+                crate::property_query::PropertyPredicate::new(
+                    "status".into(),
+                    crate::property_query::PropertyOperator::Eq,
+                    Some(toml::Value::String("done".into())),
+                )
+                .unwrap(),
+            ],
+            any: None,
+        };
+        let mut definitions = PropertyDefinitions::default();
+        definitions.properties.insert(
+            "due".into(),
+            crate::property_model::PropertyDefinition {
+                kind: crate::property_model::PropertyKind::Date,
+                ..Default::default()
+            },
+        );
+        let index = NoteIndex::build(
+            1,
+            &notes,
+            &[],
+            &[custom_rule],
+            now,
+            &crate::config::FeaturesConfig::default(),
+            &definitions,
+            Some("due"),
+        );
+        let expected_date = NaiveDate::from_ymd_opt(2025, 1, 15).unwrap();
+        assert_eq!(index.activity_by_day, HashMap::from([(expected_date, 1)]));
+        assert_eq!(
+            index.custom_smart_folder_indices.get("Done Tasks"),
+            Some(&vec![0])
+        );
     }
 }

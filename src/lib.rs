@@ -58,6 +58,11 @@ pub mod pinstar_adapter;
 pub mod popups;
 pub mod preview;
 pub(crate) mod properties;
+pub(crate) mod property_cli;
+pub(crate) mod property_management;
+pub mod property_model;
+pub(crate) mod property_presentation;
+pub mod property_query;
 pub mod session;
 pub mod setup;
 pub mod snapshot;
@@ -78,11 +83,9 @@ use clap::{CommandFactory, FromArgMatches};
 
 use std::fs;
 use std::io::{self, Write};
-use std::process;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use uuid::Uuid;
 
 pub(crate) static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> =
     LazyLock::new(|| Arc::new(AtomicBool::new(false)));
@@ -191,14 +194,12 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
 fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
-            let (storage, _) = Storage::init();
-            let storage = storage?;
-            let app = App::new(storage)?;
+            let app = crate::property_cli::ready_app()?;
             for (index, (_, note)) in app.visible_notes().enumerate() {
                 println!(
                     "{} {}",
                     console::dim(&format!("{}.", index + 1)),
-                    note.title
+                    crate::fsutil::sanitize_for_terminal(&note.title)
                 );
             }
             Ok(())
@@ -208,166 +209,188 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             body,
             no_tui,
             title,
+            properties,
         } => {
-            let (storage, _) = Storage::init();
-            let storage = storage?;
-            let mut app = App::new(storage)?;
-
-            let final_title = title.unwrap_or_else(|| "New Note".to_string());
-
-            let (content, tags) = if let Some(tmpl_name) = template {
-                if let Ok(templates) = app.storage.list_templates() {
-                    if let Some(template_summary) =
-                        templates.into_iter().find(|t| t.name == tmpl_name)
-                    {
-                        if let Ok(template_data) =
-                            app.storage.load_template(&template_summary.filename)
-                        {
-                            (template_data.content.template.clone(), Vec::new())
-                        } else {
-                            eprintln!(
-                                "{}",
-                                console::error(&format!(
-                                    "Failed to load template data: {tmpl_name}"
-                                ))
-                            );
-                            process::exit(1);
-                        }
-                    } else {
-                        eprintln!(
-                            "{}",
-                            console::error(&format!("Template not found: {tmpl_name}"))
-                        );
-                        process::exit(1);
-                    }
-                } else {
-                    (String::new(), Vec::new())
-                }
-            } else {
-                (String::new(), Vec::new())
-            };
-            // --body overrides template content when both are given.
-            // Capture presence before `body` is moved by the `if let` below.
+            let mut app = crate::property_cli::ready_app()?;
             let has_body = body.is_some();
-            let content = if let Some(b) = body { b } else { content };
-
-            let id = Uuid::new_v4().simple().to_string();
-            let note = Note {
-                title: final_title.clone(),
-                content,
-                updated_at: crate::ui::now_unix_secs(),
-                tags,
-            };
-
-            let saved_id = app.storage.save_note(&id, &note)?;
-
+            let (id, title) = crate::property_cli::create(
+                &mut app,
+                template.as_deref(),
+                title,
+                body,
+                &properties,
+                "New Note",
+            )?;
             if no_tui || has_body {
                 println!(
                     "{}",
-                    console::success(&format!("Created note: {}", console::bold(&final_title)))
+                    console::success(&format!(
+                        "Created note: {}",
+                        crate::fsutil::sanitize_for_terminal(&title)
+                    ))
                 );
                 return Ok(());
             }
-
-            app.editor.editing_id = Some(saved_id.clone());
-            app.refresh_note_single(None, &saved_id);
-            app.load_and_open_note(&saved_id, None);
+            app.refresh_note_single(None, &id);
+            app.load_and_open_note(&id, None);
+            app.sync_property_editor();
             run_tui_session(&mut app)
         }
         NotesCmd::Open { title } => launch_tui(Some(title), false),
         NotesCmd::Cat { title } => {
-            let (storage, _) = Storage::init();
-            let storage = storage?;
-            let app = App::new(storage)?;
-            let id = app
-                .visible_notes()
-                .find(|(_, n)| n.title.eq_ignore_ascii_case(title.trim()))
-                .map(|(_, n)| n.id.clone());
-            match id {
-                Some(id) => match app.storage.load_note(&id) {
-                    Ok(note) => {
-                        println!("{}", note.content);
-                        Ok(())
-                    }
-                    Err(e) => {
-                        eprintln!("{}", console::error(&format!("Failed to load note: {e}")));
-                        process::exit(1);
-                    }
-                },
-                None => {
-                    eprintln!(
-                        "{}",
-                        console::error(&format!("No note found with title: {title}"))
-                    );
-                    process::exit(1);
-                }
-            }
+            let app = crate::property_cli::ready_app()?;
+            let id = crate::property_cli::resolve_note(&app, &title)?;
+            println!("{}", app.storage.load_note(&id)?.content);
+            Ok(())
         }
-        NotesCmd::Quick { content, title } => {
-            let (storage, _) = Storage::init();
-            let mut storage = storage?;
-
-            let id = Uuid::new_v4().simple().to_string();
-            let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
-            let note = Note {
-                title: final_title.clone(),
-                content,
-                updated_at: crate::ui::now_unix_secs(),
-                tags: Vec::new(),
-            };
-
-            let _saved_id = storage.save_note(&id, &note)?;
-
+        NotesCmd::Quick {
+            content,
+            title,
+            properties,
+        } => {
+            let mut app = crate::property_cli::ready_app()?;
+            let (_, title) = crate::property_cli::create(
+                &mut app,
+                None,
+                title,
+                Some(content),
+                &properties,
+                "Quick Note",
+            )?;
             println!(
                 "{}",
-                console::success(&format!("Created note: {}", console::bold(&final_title)))
+                console::success(&format!(
+                    "Created note: {}",
+                    crate::fsutil::sanitize_for_terminal(&title)
+                ))
             );
-
             Ok(())
         }
         NotesCmd::Search { query } => {
-            use fuzzy_matcher::FuzzyMatcher;
-            use fuzzy_matcher::skim::SkimMatcherV2;
-
-            let (storage, _) = Storage::init();
-            let storage = storage?;
-            let app = App::new(storage)?;
+            use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
+            let mut app = crate::property_cli::ready_app()?;
+            let (text, properties) = crate::property_query::extract_property_filters(&query)?;
+            let parsed = crate::app::parse_search_query(
+                &text,
+                app.config.features.tags.is_enabled(),
+                app.config.features.subnotes.is_enabled(),
+            );
             let matcher = SkimMatcherV2::default();
-            let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
-            for (_, note) in app.visible_notes() {
-                let mut best: Option<i64> = matcher.fuzzy_match(&note.title, &query);
-                // content match (substring) as a fallback when the title does not match
-                if best.is_none()
-                    && let Ok(full) = app.storage.load_note(&note.id)
-                    && full.content.contains(&query)
-                {
-                    best = Some(0); // content hit, low rank
+            let metadata_matches =
+                |note: &crate::storage::NoteSummary,
+                 definitions: &crate::property_model::PropertyDefinitions| {
+                    properties
+                        .iter()
+                        .all(|predicate| predicate.matches(&note.properties, definitions))
+                        && (!parsed.pinned_only || note.pinned)
+                        && parsed.folder_filter.as_ref().is_none_or(|folder| {
+                            if folder.is_empty() {
+                                note.folder.is_empty()
+                            } else {
+                                note.folder.starts_with(folder)
+                            }
+                        })
+                        && parsed.tag_filter.as_ref().is_none_or(|tags| {
+                            tags.iter().all(|tag| {
+                                note.tags.iter().any(|value| value.to_lowercase() == *tag)
+                            })
+                        })
+                };
+            if let Some(query) = &parsed.subnote_text {
+                app.refresh_subnotes_view_cache();
+                let query = query.trim().to_lowercase();
+                if query.is_empty() {
+                    return Ok(());
                 }
-                if let Some(score) = best {
-                    hits.push((score, note.title.clone(), note.folder.clone()));
+                for (parent_id, subnotes) in &app.subnotes_view_cache {
+                    let stem = std::path::Path::new(parent_id).file_stem();
+                    let parent = app
+                        .visible_notes()
+                        .find(|(_, note)| &note.id == parent_id)
+                        .or_else(|| {
+                            app.visible_notes().find(|(_, note)| {
+                                std::path::Path::new(&note.id).file_stem() == stem
+                            })
+                        });
+                    let Some((_, parent)) = parent else {
+                        continue;
+                    };
+                    if !metadata_matches(parent, &app.property_definitions) {
+                        continue;
+                    }
+                    for subnote in subnotes.iter().filter(|subnote| {
+                        subnote.title.to_lowercase().contains(&query)
+                            || subnote.content.to_lowercase().contains(&query)
+                    }) {
+                        println!(
+                            "{} / {}",
+                            crate::fsutil::sanitize_for_terminal(&parent.title),
+                            crate::fsutil::sanitize_for_terminal(&subnote.title)
+                        );
+                    }
+                }
+                return Ok(());
+            }
+            let grep_query = parsed.grep_text.to_lowercase();
+            let mut hits = Vec::new();
+            for (_, note) in app.visible_notes() {
+                if !metadata_matches(note, &app.property_definitions) {
+                    continue;
+                }
+                let mut score = if parsed.text.is_empty() {
+                    Some(0)
+                } else {
+                    matcher.fuzzy_match(&note.title, &parsed.text)
+                };
+                if parsed.grep_mode && score.is_none() {
+                    continue;
+                }
+                if parsed.grep_mode || score.is_none() {
+                    let body = app.storage.load_note(&note.id)?;
+                    if parsed.grep_mode
+                        && !body
+                            .content
+                            .lines()
+                            .any(|line| line.trim().to_lowercase().contains(&grep_query))
+                    {
+                        continue;
+                    }
+                    if score.is_none() && !parsed.grep_mode && body.content.contains(&parsed.text) {
+                        score = Some(0);
+                    }
+                }
+                if let Some(score) = score {
+                    hits.push((score, note.title.as_str(), note.folder.as_str()));
                 }
             }
-            hits.sort_by_key(|b| std::cmp::Reverse(b.0));
+            hits.sort_by_key(|hit| std::cmp::Reverse(hit.0));
             if hits.is_empty() {
                 println!(
                     "{}",
-                    console::info(&format!("No notes matched \"{query}\"."))
+                    console::info(&format!(
+                        "No notes matched \"{}\".",
+                        crate::fsutil::sanitize_for_terminal(&query)
+                    ))
                 );
-            } else {
-                for (_, title, folder) in hits {
-                    if folder.is_empty() {
-                        println!("{}", console::bold(&title));
-                    } else {
-                        println!(
-                            "{}  {}",
-                            console::bold(&title),
-                            console::dim(&format!("[{folder}]"))
-                        );
-                    }
+            }
+            for (_, title, folder) in hits {
+                let title = crate::fsutil::sanitize_for_terminal(title);
+                if folder.is_empty() {
+                    println!("{}", console::bold(&title));
+                } else {
+                    println!(
+                        "{}  {}",
+                        console::bold(&title),
+                        console::dim(&format!(
+                            "[{}]",
+                            crate::fsutil::sanitize_for_terminal(folder)
+                        ))
+                    );
                 }
             }
             Ok(())
         }
+        NotesCmd::Properties { action } => crate::property_cli::run(action),
     }
 }
 
@@ -1296,6 +1319,12 @@ where
     let mut prev_mode = app.mode;
 
     while !app.should_quit {
+        let revision_before_reload = app.notes_revision;
+        app.check_and_reload_config();
+        if app.notes_revision != revision_before_reload {
+            list_dirty = true;
+            graph_dirty = true;
+        }
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;
@@ -1556,6 +1585,9 @@ fn dispatch_event<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
+    if app.handle_property_manager_event(ev.clone()) {
+        return Ok(());
+    }
     match ev {
         // All-keys keyboard mode reports bare modifier presses and text-less
         // IME events (key code 0); drop them before any handler sees them.

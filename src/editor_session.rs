@@ -31,6 +31,9 @@ where
             break;
         }
 
+        let revision_before_reload = app.notes_revision;
+        app.check_and_reload_config();
+        dirty |= app.notes_revision != revision_before_reload;
         dirty |= app.messages.tick_expirations();
         dirty |= app.tick_status();
         dirty |= app.poll_editor_renderers();
@@ -159,6 +162,9 @@ fn dispatch_editor_event<B: ratatui::backend::Backend>(
 where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
+    if app.handle_property_manager_event(event.clone()) {
+        return Ok(true);
+    }
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
     if *focus == EditFocus::Properties

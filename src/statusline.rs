@@ -28,6 +28,7 @@ pub(crate) enum ListHeaderField {
     Age,
     Size,
     Count,
+    Properties,
 }
 
 #[derive(Clone, Default)]
@@ -290,7 +291,33 @@ pub fn active_note(app: &App, view: ViewMode) -> Option<&NoteSummary> {
 }
 
 impl StatuslineContext<'_> {
+    fn note_word_goal_target(&self) -> Option<usize> {
+        if self.view == ViewMode::Edit {
+            return self.app.and_then(crate::app::App::note_word_goal);
+        }
+        let key = self.config.goals.note_word_goal_property.as_deref()?;
+        self.note
+            .and_then(|note| note.properties.get(key))
+            .and_then(|value| value.word_goal())
+            .filter(|target| *target > 0)
+    }
+
     pub fn resolve(&self, name: &str) -> Option<Cow<'static, str>> {
+        if let Some(key) = name.strip_prefix("prop:") {
+            let raw = if self.view == ViewMode::Edit {
+                self.app
+                    .and_then(|app| app.current_property_value(key))
+                    .map(crate::property_model::PropertyValue::display)
+            } else {
+                self.note
+                    .and_then(|n| n.properties.get(key))
+                    .map(crate::property_model::PropertyValue::display)
+            };
+            let val = raw.unwrap_or_default();
+            let sanitized = crate::fsutil::sanitize_for_terminal(&val).into_owned();
+            return Some(sanitized.into());
+        }
+
         match name {
             // Global / App
             "view" => {
@@ -428,6 +455,20 @@ impl StatuslineContext<'_> {
                     .into(),
             ),
             "goal_target" => Some(self.config.goals.word_goal.to_string().into()),
+            "note_goal_target" => Some(
+                self.note_word_goal_target()
+                    .map_or_else(|| "".into(), |t| t.to_string().into()),
+            ),
+            "note_goal_progress" => Some(self.note_word_goal_target().map_or_else(
+                || "disabled".into(),
+                |t| {
+                    let words = self
+                        .app
+                        .map(|a| self.edit_memo.borrow_mut().counts(a).0)
+                        .unwrap_or(0);
+                    format!("{words}/{t}").into()
+                },
+            )),
             "goal_notes" => Some(
                 self.app
                     .map(|a| a.goals_progress.notes_modified.len().to_string())
@@ -497,11 +538,25 @@ impl StatuslineContext<'_> {
                                     let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
                                     format!("{prefix}{arrow}")
                                 }
+                                crate::list_view::SortField::Property => {
+                                    let prefix = if app.config.ui.icon_mode == IconMode::None {
+                                        "P"
+                                    } else {
+                                        crate::ui::get_icon(
+                                            "\u{f02b}",
+                                            "\u{1f3f7}",
+                                            app.config.ui.icon_mode,
+                                        )
+                                    };
+                                    let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                                    format!("{prefix}{arrow}")
+                                }
                             }
                         } else {
                             let field = match app.list.sort_field {
                                 crate::list_view::SortField::Title => "Title",
                                 crate::list_view::SortField::Modified => "Modified",
+                                crate::list_view::SortField::Property => "Property",
                             };
                             let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
                             format!("{field} {arrow}")
@@ -956,12 +1011,12 @@ impl StatuslineContext<'_> {
                             .count();
                         (if count > 0 { "on" } else { "off" }).to_string()
                     }
-                    "has_frontmatter" => {
-                        let mut memo = self.edit_memo.borrow_mut();
-                        let content = memo.content(app);
-                        let has = content.starts_with("---\n");
-                        (if has { "on" } else { "off" }).to_string()
-                    }
+                    "has_frontmatter" => (if app.editor.properties.current.is_some() {
+                        "on"
+                    } else {
+                        "off"
+                    })
+                    .to_string(),
                     "words_added" => {
                         let wc = self.edit_memo.borrow_mut().counts(app).0;
                         let added = wc as isize - app.editor.initial_word_count as isize;
@@ -2006,6 +2061,9 @@ pub(crate) fn render_header_left<'a>(
 }
 
 fn field_for_list_variable(name: &str) -> Option<ListHeaderField> {
+    if name.starts_with("prop:") {
+        return Some(ListHeaderField::Properties);
+    }
     match name {
         "tags" => Some(ListHeaderField::Tags),
         "sort" => Some(ListHeaderField::Sort),
@@ -2087,6 +2145,7 @@ pub(crate) fn render_header_right<'a>(
 
         let candidates: &[ListHeaderField] = if ctx.note.is_some() {
             &[
+                ListHeaderField::Properties,
                 ListHeaderField::Size,
                 ListHeaderField::Age,
                 ListHeaderField::Sort,
@@ -2380,5 +2439,63 @@ mod tests {
         let mut document = EditorDocument::from_text("");
         document.select_all();
         assert_eq!(selected_counts(&document), None);
+    }
+    #[test]
+    fn property_token_boundaries() {
+        let mut config = ClinConfig::default();
+        config.goals.note_word_goal_property = Some("target_words".into());
+        let mut ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+
+        // Missing note
+        assert_eq!(ctx.resolve("prop:status").as_deref(), Some(""));
+        assert_eq!(ctx.resolve("note_goal_target").as_deref(), Some(""));
+        assert_eq!(
+            ctx.resolve("note_goal_progress").as_deref(),
+            Some("disabled")
+        );
+
+        // Note with property
+        let mut note = NoteSummary {
+            id: "1".into(),
+            title: "T".into(),
+            updated_at: 0,
+            folder: "".into(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes: 0,
+            properties: [
+                (
+                    "status".to_string(),
+                    crate::property_model::PropertyValue::String("active\x07".into()),
+                ),
+                (
+                    "target_words".to_string(),
+                    crate::property_model::PropertyValue::Integer(500),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            property_links: vec![],
+        };
+        ctx.note = Some(&note);
+
+        assert_eq!(ctx.resolve("prop:status").as_deref(), Some("active"));
+        assert_eq!(ctx.resolve("prop:missing").as_deref(), Some(""));
+        assert_eq!(ctx.resolve("note_goal_target").as_deref(), Some("500"));
+        assert_eq!(ctx.resolve("note_goal_progress").as_deref(), Some("0/500"));
+
+        // Zero target
+        note.properties.insert(
+            "target_words".into(),
+            crate::property_model::PropertyValue::Integer(0),
+        );
+        let mut ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+        ctx.note = Some(&note);
+        assert_eq!(ctx.resolve("note_goal_target").as_deref(), Some(""));
+        assert_eq!(
+            ctx.resolve("note_goal_progress").as_deref(),
+            Some("disabled")
+        );
     }
 }

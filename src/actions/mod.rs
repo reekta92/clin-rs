@@ -5,6 +5,7 @@ pub mod info;
 pub mod insert_date;
 pub mod ocr;
 pub mod outline;
+pub mod properties;
 pub mod rasterize;
 
 pub mod settings;
@@ -258,6 +259,12 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
         Box::new(TogglePropertiesAction),
+        Box::new(properties::ManagePropertyDefinitionsAction),
+        Box::new(properties::BulkEditPropertiesAction),
+        Box::new(properties::RenamePropertyAction),
+        Box::new(properties::RenamePropertyAcrossVaultAction),
+        Box::new(properties::ResumePropertyBatchAction),
+        Box::new(properties::ApplyPropertyDefaultsAction),
         Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
         Box::new(outline::OpenOutlineAction),

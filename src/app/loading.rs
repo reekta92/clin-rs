@@ -819,12 +819,14 @@ impl App {
             }
 
             self.list.visual_list = visual;
+            self.apply_property_grouping();
             self.clamp_visual_index();
             self.request_preview_update();
             return;
         }
 
         self.list.visual_list = visual;
+        self.apply_property_grouping();
         self.clamp_visual_index();
         self.request_preview_update();
     }
@@ -1021,6 +1023,14 @@ impl App {
     /// Returns indices into `self.notes` that match the given smart folder kind.
     /// Respects `smart_folders_enabled` (empty when disabled).
     pub(crate) fn notes_in_smart_folder(&self, kind: &SmartFolderKind) -> Vec<usize> {
+        if let SmartFolderKind::Custom(name) = kind
+            && let Some(ids) = self.property_group_members(name)
+        {
+            return ids
+                .iter()
+                .filter_map(|id| self.notes.iter().position(|note| &note.id == id))
+                .collect();
+        }
         if !self.config.features.smart_folders.is_enabled() {
             return Vec::new();
         }
@@ -1047,6 +1057,13 @@ impl App {
                 .map(|(i, _)| i)
                 .collect(),
             SmartFolderKind::Custom(name) => {
+                if let Some(index) = &self.note_index
+                    && index.revision == self.notes_revision
+                {
+                    if let Some(indices) = index.custom_smart_folder_indices.get(name) {
+                        return indices.clone();
+                    }
+                }
                 let rule = self
                     .config
                     .list
@@ -1058,28 +1075,12 @@ impl App {
                 };
                 self.visible_notes()
                     .filter(|(_, n)| {
-                        for t in &rule.tags {
-                            if !n.tags.contains(t) {
-                                return false;
-                            }
-                        }
-                        if let Some(txt) = &rule.title_contains
-                            && !n.title.to_lowercase().contains(&txt.to_lowercase())
-                        {
-                            return false;
-                        }
-                        if let Some(prefix) = &rule.folder_prefix
-                            && !n.folder.starts_with(prefix)
-                        {
-                            return false;
-                        }
-                        if let Some(days) = rule.updated_within_days {
-                            let diff = now.saturating_sub(n.updated_at);
-                            if diff >= days * 86_400 {
-                                return false;
-                            }
-                        }
-                        true
+                        crate::property_query::custom_folder_matches(
+                            rule,
+                            n,
+                            &self.property_definitions,
+                            now,
+                        )
                     })
                     .map(|(i, _)| i)
                     .collect()
@@ -1738,10 +1739,10 @@ impl App {
                             if !rule.tags.is_empty() {
                                 conds.push(format!("Tags: {}", rule.tags.join(", ")));
                             }
-                            if let Some(ref ti) = rule.title_contains {
+                            if let Some(ti) = &rule.title_contains {
                                 conds.push(format!("Title contains: \"{ti}\""));
                             }
-                            if let Some(ref fp) = rule.folder_prefix {
+                            if let Some(fp) = &rule.folder_prefix {
                                 conds.push(format!("Folder prefix: {fp}"));
                             }
                             if let Some(days) = rule.updated_within_days {
@@ -1750,6 +1751,14 @@ impl App {
                                     days,
                                     if days == 1 { "day" } else { "days" }
                                 ));
+                            }
+                            for predicate in &rule.all {
+                                conds.push(predicate.description());
+                            }
+                            if let Some(any) = &rule.any {
+                                for predicate in any {
+                                    conds.push(predicate.description());
+                                }
                             }
                         }
                         if conds.is_empty() {

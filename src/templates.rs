@@ -13,6 +13,8 @@ pub struct Template {
     pub title: TitleConfig,
 
     pub content: ContentConfig,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub properties: std::collections::BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -31,6 +33,9 @@ pub struct ContentConfig {
 pub struct RenderedTemplate {
     pub title: Option<String>,
     pub content: String,
+    pub properties: Vec<crate::frontmatter::FrontmatterEdit>,
+    pub header: Option<String>,
+    pub tags: Vec<String>,
 }
 
 impl Template {
@@ -51,21 +56,117 @@ impl Template {
         Ok(())
     }
 
-    pub fn render(&self) -> RenderedTemplate {
+    pub fn render(
+        &self,
+        definitions: &crate::property_model::PropertyDefinitions,
+        overrides: &[crate::frontmatter::FrontmatterEdit],
+    ) -> Result<RenderedTemplate> {
         let vars = TemplateVariables::now();
-
-        let title = self.title.template.as_ref().map(|t| vars.substitute(t));
-
-        let content = vars.substitute(&self.content.template);
-
-        RenderedTemplate { title, content }
+        let source = vars.substitute(&self.content.template);
+        let (source_header, body) = crate::frontmatter::split_header(source.as_bytes())?;
+        let body = std::str::from_utf8(body)?;
+        let source_mapping = source_header
+            .map(crate::frontmatter::validate_header)
+            .transpose()?
+            .unwrap_or_default();
+        let mut edits = definitions.defaults()?;
+        edits.retain(|edit| {
+            serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&edit.key_yaml)
+                .is_ok_and(|key| !source_mapping.contains_key(&key))
+        });
+        for (key, value) in &self.properties {
+            let mut value = crate::property_model::toml_to_yaml(value)?;
+            substitute_property_dates(&mut value, &vars);
+            anyhow::ensure!(
+                !serde_yaml_ng::to_string(&value)?.contains("{prop:"),
+                "Property placeholders belong in title/body, not property values"
+            );
+            let edit = crate::property_model::property_edit(key, Some(&value))?;
+            edits.retain(|old| old.key_yaml != edit.key_yaml);
+            edits.push(edit);
+        }
+        for edit in overrides {
+            let key: serde_yaml_ng::Value = serde_yaml_ng::from_str(&edit.key_yaml)?;
+            crate::property_model::validate_key(
+                key.as_str()
+                    .context("Creation properties require string keys")?,
+            )?;
+            edits.retain(|old| old.key_yaml != edit.key_yaml);
+            edits.push(edit.clone());
+        }
+        let header =
+            crate::frontmatter::apply_edits(source_header.unwrap_or("---\n---\n"), &edits)?;
+        let frontmatter = crate::frontmatter::checked_parse(&header)?;
+        for (key, value) in &frontmatter.extra {
+            if let Some(key) = key.as_str() {
+                definitions.validate(key, value)?;
+            }
+        }
+        let values = crate::property_model::properties_from_mapping(&frontmatter.extra);
+        let title = self
+            .title
+            .template
+            .as_ref()
+            .map(|title| vars.substitute(title))
+            .or(frontmatter.title)
+            .map(|title| substitute_properties(&title, &values))
+            .transpose()?;
+        let content = substitute_properties(body, &values)?;
+        Ok(RenderedTemplate {
+            title,
+            content,
+            properties: edits,
+            header: (source_header.is_some() || !values.is_empty()).then_some(header),
+            tags: frontmatter.tags,
+        })
     }
+}
+fn substitute_property_dates(value: &mut serde_yaml_ng::Value, vars: &TemplateVariables) {
+    match value {
+        serde_yaml_ng::Value::String(value) => *value = vars.substitute(value),
+        serde_yaml_ng::Value::Sequence(values) => {
+            for value in values {
+                substitute_property_dates(value, vars);
+            }
+        }
+        serde_yaml_ng::Value::Mapping(values) => {
+            for (_, value) in values {
+                substitute_property_dates(value, vars);
+            }
+        }
+        _ => {}
+    }
+}
+pub fn substitute_properties(
+    text: &str,
+    values: &crate::property_model::PropertyMap,
+) -> Result<String> {
+    let mut output = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(index) = rest.find("{prop:") {
+        output.push_str(&rest[..index]);
+        rest = &rest[index + 6..];
+        let end = rest.find('}').context("Unclosed property placeholder")?;
+        let key = &rest[..end];
+        let value = values
+            .get(key)
+            .with_context(|| format!("Missing template property {key}"))?;
+        anyhow::ensure!(
+            *value != crate::property_model::PropertyValue::Unsupported,
+            "Complex property {key} cannot be interpolated"
+        );
+        output.push_str(&value.display());
+        rest = &rest[end + 1..];
+    }
+    output.push_str(rest);
+    Ok(output)
 }
 
 #[derive(Debug, Clone)]
 struct TemplateVariables {
     pub date: String,
     pub datetime: String,
+    pub iso_datetime: String,
     pub time: String,
     pub weekday: String,
     pub year: String,
@@ -79,6 +180,7 @@ impl TemplateVariables {
         Self {
             date: now.format("%Y-%m-%d").to_string(),
             datetime: now.format("%Y-%m-%d %H:%M").to_string(),
+            iso_datetime: now.to_rfc3339(),
             time: now.format("%H:%M").to_string(),
             weekday: now.format("%A").to_string(),
             year: now.format("%Y").to_string(),
@@ -91,6 +193,7 @@ impl TemplateVariables {
         template
             .replace("{date}", &self.date)
             .replace("{datetime}", &self.datetime)
+            .replace("{iso_datetime}", &self.iso_datetime)
             .replace("{time}", &self.time)
             .replace("{weekday}", &self.weekday)
             .replace("{year}", &self.year)
@@ -220,29 +323,30 @@ impl crate::storage::Storage {
             },
             content: ContentConfig {
                 template: r"# Meeting Notes
-
-**Date:** {date}
-**Time:** {time}
-
-## Attendees
-
-- 
-
-## Agenda
-
-1. 
-
-## Discussion
-
-## Action Items
-
-- [ ] 
-
-## Next Meeting
-
-"
+        
+        **Date:** {date}
+        **Time:** {time}
+        
+        ## Attendees
+        
+        - 
+        
+        ## Agenda
+        
+        1. 
+        
+        ## Discussion
+        
+        ## Action Items
+        
+        - [ ] 
+        
+        ## Next Meeting
+        
+        "
                 .to_string(),
             },
+            properties: Default::default(),
         };
         self.save_template("meeting", &meeting)?;
 
@@ -253,24 +357,25 @@ impl crate::storage::Storage {
             },
             content: ContentConfig {
                 template: r"# Tasks for {weekday}, {date}
-
-## High Priority
-
-- [ ] 
-
-## Normal Priority
-
-- [ ] 
-
-## Low Priority
-
-- [ ] 
-
-## Notes
-
-"
+        
+        ## High Priority
+        
+        - [ ] 
+        
+        ## Normal Priority
+        
+        - [ ] 
+        
+        ## Low Priority
+        
+        - [ ] 
+        
+        ## Notes
+        
+        "
                 .to_string(),
             },
+            properties: Default::default(),
         };
         self.save_template("todo", &todo)?;
 
@@ -281,22 +386,23 @@ impl crate::storage::Storage {
             },
             content: ContentConfig {
                 template: r"# {weekday}, {date}
-
-## How I'm feeling
-
-## What happened today
-
-## Grateful for
-
-1. 
-2. 
-3. 
-
-## Tomorrow's focus
-
-"
+        
+        ## How I'm feeling
+        
+        ## What happened today
+        
+        ## Grateful for
+        
+        1. 
+        2. 
+        3. 
+        
+        ## Tomorrow's focus
+        
+        "
                 .to_string(),
             },
+            properties: Default::default(),
         };
         self.save_template("journal", &journal)?;
 
@@ -330,6 +436,7 @@ mod tests {
             content: ContentConfig {
                 template: "Content here".to_string(),
             },
+            properties: Default::default(),
         };
 
         let toml_str = toml::to_string_pretty(&template).unwrap();
@@ -345,6 +452,7 @@ mod tests {
         let vars = TemplateVariables {
             date: "2026-03-28".to_string(),
             datetime: "2026-03-28 14:30".to_string(),
+            iso_datetime: String::new(),
             time: "14:30".to_string(),
             weekday: "Saturday".to_string(),
             year: "2026".to_string(),
@@ -377,6 +485,7 @@ mod tests {
             content: ContentConfig {
                 template: "Body".to_string(),
             },
+            properties: Default::default(),
         };
 
         storage.save_template("to-delete", &template).unwrap();

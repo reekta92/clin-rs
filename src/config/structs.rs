@@ -339,7 +339,7 @@ impl Default for ImageConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CustomSmartFolder {
     pub name: String,
     #[serde(default)]
@@ -350,6 +350,10 @@ pub struct CustomSmartFolder {
     pub folder_prefix: Option<String>,
     #[serde(default)]
     pub updated_within_days: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub all: Vec<crate::property_query::PropertyPredicate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub any: Option<Vec<crate::property_query::PropertyPredicate>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -396,6 +400,11 @@ pub struct ListConfig {
     pub default_expand_depth: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_smart_folders: Vec<CustomSmartFolder>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub property_fields: Vec<String>,
+    pub property_sort_key: Option<String>,
+    pub property_group_key: Option<String>,
+    pub calendar_date_property: Option<String>,
 }
 impl Default for ListConfig {
     fn default() -> Self {
@@ -424,6 +433,10 @@ impl Default for ListConfig {
             sections: vec![NotesSection::Calendar, NotesSection::Goals],
             default_expand_depth: None,
             custom_smart_folders: Vec::new(),
+            property_fields: Vec::new(),
+            property_sort_key: None,
+            property_group_key: None,
+            calendar_date_property: None,
         }
     }
 }
@@ -579,6 +592,7 @@ impl Default for CoreConfig {
 pub struct GoalsConfig {
     pub word_goal: usize,
     pub note_goal: usize,
+    pub note_word_goal_property: Option<String>,
 }
 
 impl Default for GoalsConfig {
@@ -586,6 +600,7 @@ impl Default for GoalsConfig {
         Self {
             word_goal: 500,
             note_goal: 3,
+            note_word_goal_property: None,
         }
     }
 }

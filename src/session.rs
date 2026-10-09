@@ -38,6 +38,9 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
     if first_run || force_setup {
         app.open_setup_view();
     }
+    if open_title.is_some() {
+        app.ensure_catalog_ready()?;
+    }
     if let Some(title) = open_title
         && !app.open_note_by_title(&title)
     {

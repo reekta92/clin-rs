@@ -756,6 +756,44 @@ impl ClinConfig {
                 self.graf.visual.edge_thickness
             ));
         }
+        for rule in &self.list.custom_smart_folders {
+            if rule.name.starts_with("__property_group__:") {
+                errs.push(format!(
+                    "Smart folder {} uses reserved property-group name",
+                    rule.name
+                ));
+            }
+            if rule.any.as_ref().is_some_and(Vec::is_empty) {
+                errs.push(format!(
+                    "Smart folder {}: any must contain at least one condition",
+                    rule.name
+                ));
+            }
+            for predicate in rule.all.iter().chain(rule.any.iter().flatten()) {
+                if let Err(error) = predicate.validate() {
+                    errs.push(format!("Smart folder {}: {error}", rule.name));
+                }
+            }
+        }
+        for key in self
+            .list
+            .property_fields
+            .iter()
+            .map(String::as_str)
+            .chain(self.list.property_sort_key.as_deref())
+            .chain(self.list.property_group_key.as_deref())
+            .chain(self.list.calendar_date_property.as_deref())
+            .chain(self.goals.note_word_goal_property.as_deref())
+        {
+            if let Err(error) = crate::property_model::validate_key(key) {
+                errs.push(format!("Property binding {key}: {error}"));
+            }
+        }
+        if self.list.default_sort_field == Some(crate::list_view::SortField::Property)
+            && self.list.property_sort_key.is_none()
+        {
+            errs.push("Property sort requires list.property_sort_key".into());
+        }
         if self.list.sections.len() > 2 {
             errs.push(format!(
                 "list.sections has {} entries, max is 2",
@@ -1210,6 +1248,8 @@ grid_color = "#222222"
             title_contains: Some("todo".to_string()),
             folder_prefix: Some("work/".to_string()),
             updated_within_days: Some(5),
+            all: Vec::new(),
+            any: None,
         }];
 
         config.save().unwrap();

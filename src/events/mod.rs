@@ -793,6 +793,9 @@ pub fn handle_global_popups_and_palette(
     event: crossterm::event::Event,
     _terminal_area: Rect,
 ) -> bool {
+    if app.handle_property_manager_event(event.clone()) {
+        return true;
+    }
     let crossterm::event::Event::Key(key) = event else {
         return false;
     };

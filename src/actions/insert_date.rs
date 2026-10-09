@@ -35,7 +35,8 @@ impl Action for InsertDateAction {
                 && input.control == 2
                 && matches!(
                     input.kind,
-                    crate::properties::PropertyType::String | crate::properties::PropertyType::Yaml
+                    crate::property_model::PropertyKind::String
+                        | crate::property_model::PropertyKind::Yaml
                 )
             {
                 input.value.insert_str(

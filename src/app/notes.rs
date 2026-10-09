@@ -95,11 +95,11 @@ impl App {
                     }
 
                     if data_changed {
+                        self.notes_revision = self.notes_revision.wrapping_add(1);
                         self.sort_notes();
+                        self.rebuild_note_index();
                         self.refresh_visual_list();
                         self.refresh_subnotes_view_cache();
-                        self.notes_revision += 1;
-                        self.rebuild_note_index();
                     }
 
                     self.set_default_status();
@@ -249,6 +249,7 @@ impl App {
             });
         }
 
+        self.rebuild_note_index();
         self.refresh_visual_list();
         self.refresh_subnotes_view_cache();
     }
@@ -278,6 +279,13 @@ impl App {
                     SortOrder::Ascending => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
                     SortOrder::Descending => b.title.to_lowercase().cmp(&a.title.to_lowercase()),
                 },
+                SortField::Property => crate::property_presentation::property_sort(
+                    a,
+                    b,
+                    self.config.list.property_sort_key.as_deref(),
+                    &self.property_definitions,
+                    self.list.sort_order,
+                ),
             }
         });
     }
@@ -637,6 +645,19 @@ impl App {
     }
 
     fn enter_edit_mode(&mut self, id: String, title: String, content: String) {
+        let defaults = match self.property_definitions.defaults() {
+            Ok(defaults) if self.property_definitions_error.is_none() => defaults,
+            Ok(_) => {
+                self.set_temporary_status_static(
+                    "Repair property definitions before creating note",
+                );
+                return;
+            }
+            Err(error) => {
+                self.set_temporary_status(&format!("{error:#}"));
+                return;
+            }
+        };
         if self.editor.external_editor_enabled {
             let new_note = Note {
                 title,
@@ -644,7 +665,10 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            match self.storage.save_note(&id, &new_note) {
+            match self
+                .storage
+                .save_note_with_properties(&id, &new_note, &defaults)
+            {
                 Ok(saved_id) => {
                     self.enqueue_backup(format!("auto: {}", new_note.title));
                     self.refresh_note_single(None, &saved_id);
@@ -664,6 +688,13 @@ impl App {
 
         self.editor.editing_id = Some(id);
         self.editor.properties = crate::properties::PropertiesState::default();
+        for edit in defaults {
+            if let Err(error) = self.editor.properties.commit(edit, true) {
+                self.set_temporary_status(&format!("Defaults: {error:#}"));
+                return;
+            }
+        }
+        self.sync_property_editor();
         if self.editor.sidebar == EditSidebar::Properties {
             self.editor.sidebar = EditSidebar::None;
         }
@@ -677,16 +708,25 @@ impl App {
         self.editor.text_align = self.config.editor.text_align;
         self.apply_editor_prefs();
         self.set_default_status();
+        if !self.editor.properties.pending.is_empty() {
+            self.mark_properties_modified();
+        }
     }
 
     pub fn start_note_from_template(&mut self, template: &Template, folder: String) {
-        let rendered = template.render();
+        let mut rendered = match template.render(&self.property_definitions, &[]) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                self.set_temporary_status(&format!("Template: {error:#}"));
+                return;
+            }
+        };
         let note_title = rendered
             .title
             .clone()
             .unwrap_or_else(|| String::from("Untitled note"));
-        let editor_title = rendered.title.unwrap_or_default();
-        self.open_new_note_from_rendered(&folder, note_title, editor_title, rendered.content);
+        let editor_title = rendered.title.take().unwrap_or_default();
+        self.open_new_note_from_rendered(&folder, note_title, editor_title, rendered);
     }
 
     pub fn start_note_from_template_with_title(
@@ -695,8 +735,14 @@ impl App {
         folder: String,
         title: String,
     ) {
-        let rendered = template.render();
-        self.open_new_note_from_rendered(&folder, title.clone(), title, rendered.content);
+        let rendered = match template.render(&self.property_definitions, &[]) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                self.set_temporary_status(&format!("Template: {error:#}"));
+                return;
+            }
+        };
+        self.open_new_note_from_rendered(&folder, title.clone(), title, rendered);
     }
 
     fn open_new_note_from_rendered(
@@ -704,52 +750,41 @@ impl App {
         folder: &str,
         note_title: String,
         editor_title: String,
-        content: String,
+        rendered: crate::templates::RenderedTemplate,
     ) {
-        let mut new_id = self.storage.new_note_id();
+        let mut id = self.storage.new_note_id();
         if !folder.is_empty() && !Self::is_virtual_path(folder) {
-            new_id = format!("{folder}/{new_id}");
+            id = format!("{folder}/{id}");
         }
-
-        if self.editor.external_editor_enabled {
-            let new_note = Note {
-                title: note_title,
-                content,
-                updated_at: now_unix_secs(),
-                tags: Vec::new(),
-            };
-            match self.storage.save_note(&new_id, &new_note) {
-                Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", new_note.title));
-                    self.refresh_note_single(None, &saved_id);
+        let note = Note {
+            title: note_title,
+            content: rendered.content,
+            updated_at: now_unix_secs(),
+            tags: rendered.tags,
+        };
+        match self
+            .storage
+            .create_note_with_header(&id, &note, rendered.header.as_deref())
+        {
+            Ok(saved_id) => {
+                self.enqueue_backup(format!("auto: {}", note.title));
+                self.refresh_note_single(None, &saved_id);
+                if self.editor.external_editor_enabled {
                     self.open_note_in_external_editor(&saved_id, None);
-                }
-                Err(e) => {
-                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
-                    self.set_temporary_status(&text);
-                    self.messages
-                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                } else {
+                    self.load_and_open_note(&saved_id, None);
+                    self.editor.title_editor = make_title_editor(
+                        &editor_title,
+                        self.app_theme.highlight_fg,
+                        self.app_theme.highlight_bg,
+                    );
+                    self.sync_property_editor();
                 }
             }
-            return;
+            Err(error) => {
+                self.set_temporary_status(&format!("Failed to create template note: {error:#}"))
+            }
         }
-
-        self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
-        self.editor.properties = crate::properties::PropertiesState::default();
-        if self.editor.sidebar == EditSidebar::Properties {
-            self.editor.sidebar = EditSidebar::None;
-        }
-        self.editor.initial_word_count = crate::goals::count_words(&content);
-        self.editor.title_editor = make_title_editor(
-            &editor_title,
-            self.app_theme.highlight_fg,
-            self.app_theme.highlight_bg,
-        );
-        self.editor.body = EditorDocument::from_text(&content);
-        self.apply_editor_prefs();
-
-        self.set_default_status();
     }
 
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {

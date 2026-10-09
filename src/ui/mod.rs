@@ -88,7 +88,10 @@ pub struct PreviewHeaderInfo {
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Suppress background element hover when a popup is active
     let popup_hover_pos = app.mouse_pos;
-    if app.popups.active.is_some() || app.command_palette.is_some() || app.popups.confirm.is_some()
+    if app.popups.active.is_some()
+        || app.command_palette.is_some()
+        || app.popups.confirm.is_some()
+        || app.property_manager.is_some()
     {
         app.mouse_pos = None;
     }
@@ -1483,6 +1486,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.mouse_pos,
         );
     }
+    crate::property_management::draw_property_manager(frame, app);
 }
 
 fn draw_text_prompt_popup(

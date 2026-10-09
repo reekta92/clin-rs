@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::time::{Duration, Instant};
 
-const NOTE_CACHE_VERSION: u16 = 3;
+const NOTE_CACHE_VERSION: u16 = 4;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct PersistedNoteCache {
@@ -707,6 +707,8 @@ mod tests {
             pinned: true,
             links: vec![],
             size_bytes: 100,
+            properties: Default::default(),
+            property_links: Vec::new(),
         };
         let stamp = FileStamp {
             modified_nanos: Some(1_234_567_890_000_000_000),

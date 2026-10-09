@@ -601,7 +601,6 @@ impl App {
     }
 
     pub fn get_current_goals_progress(&mut self) -> &mut crate::goals::DailyProgress {
-        self.check_and_reload_config();
         let today = chrono::Local::now().date_naive().to_string();
         if self.goals_progress.date != today {
             self.goals_progress = self.load_goals_progress();
@@ -731,7 +730,7 @@ impl App {
     }
 
     pub fn ensure_graph_preview(&mut self) {
-        let sig = self.notes.len();
+        let sig = self.notes_revision as usize;
         if self.graph_preview.is_some() && self.graph_preview_sig == sig {
             return;
         }
@@ -1383,6 +1382,8 @@ mod tests {
             title_contains: Some("project".to_string()),
             folder_prefix: Some("work/".to_string()),
             updated_within_days: Some(7),
+            all: Vec::new(),
+            any: None,
         }];
 
         let now = crate::ui::now_unix_secs();
@@ -1399,6 +1400,8 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
             // Fails folder_prefix
             crate::storage::NoteSummary {
@@ -1410,6 +1413,8 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
             // Fails title_contains
             crate::storage::NoteSummary {
@@ -1421,6 +1426,8 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
             // Fails tags
             crate::storage::NoteSummary {
@@ -1432,6 +1439,8 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
             // Fails updated_within_days (8 days ago)
             crate::storage::NoteSummary {
@@ -1443,6 +1452,8 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
+                properties: Default::default(),
+                property_links: Vec::new(),
             },
         ];
 

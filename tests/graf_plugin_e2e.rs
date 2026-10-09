@@ -53,6 +53,8 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
             pinned: false,
             links: vec!["b".into()],
             size_bytes: 0,
+            properties: Default::default(),
+            property_links: Vec::new(),
         },
         clin::storage::NoteSummary {
             id: "b.md".into(),
@@ -63,6 +65,8 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
             pinned: false,
             links: vec!["a".into()],
             size_bytes: 0,
+            properties: Default::default(),
+            property_links: Vec::new(),
         },
     ];
     let plugin = GrafPlugin::new(
@@ -321,6 +325,8 @@ fn feature_view_files_graph_preview_same_key() {
             pinned: false,
             links: vec![],
             size_bytes: 0,
+            properties: Default::default(),
+            property_links: Vec::new(),
         },
         clin::storage::NoteSummary {
             id: "canvas.canvas".into(),
@@ -331,6 +337,8 @@ fn feature_view_files_graph_preview_same_key() {
             pinned: false,
             links: vec![],
             size_bytes: 0,
+            properties: Default::default(),
+            property_links: Vec::new(),
         },
         clin::storage::NoteSummary {
             id: "draw.draw".into(),
@@ -341,6 +349,8 @@ fn feature_view_files_graph_preview_same_key() {
             pinned: false,
             links: vec![],
             size_bytes: 0,
+            properties: Default::default(),
+            property_links: Vec::new(),
         },
     ];
     let mut plugin = GrafPlugin::new(

@@ -2302,6 +2302,24 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
                     )],
                 ));
             }
+            let mut prop_spans = Vec::new();
+            for field in &app.config.list.property_fields {
+                if let Some(val) = note.properties.get(field) {
+                    if !prop_spans.is_empty() {
+                        prop_spans.push(Span::styled(" ", muted));
+                    }
+                    let key = crate::fsutil::sanitize_for_terminal(field);
+                    let display = val.display();
+                    let value = crate::fsutil::sanitize_for_terminal(&display);
+                    prop_spans.push(Span::styled(
+                        format!("{key}: {value}"),
+                        Style::default().fg(app.app_theme.fg),
+                    ));
+                }
+            }
+            if !prop_spans.is_empty() {
+                groups.push((ListHeaderField::Properties, prop_spans));
+            }
             Some(ListHeaderDetail::new(groups))
         }
         crate::app::VisualItem::Folder {
@@ -2646,6 +2664,8 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 0,
+            properties: Default::default(),
+            property_links: Vec::new(),
         };
         app.notes = vec![note];
         app.list.visual_list = vec![
@@ -2861,6 +2881,8 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 1_536,
+            properties: Default::default(),
+            property_links: Vec::new(),
         }];
         app.list.visual_list = vec![crate::list_view::VisualItem::Note {
             summary_idx: 0,
@@ -2930,6 +2952,19 @@ mod tests {
         .to_string();
         assert!(note_detail.contains("123456789012, 界界界界界… +3"));
         assert!(note_detail.contains(&crate::ui::format_size(1_536)));
+        app.config.list.property_fields = vec!["status".into()];
+        app.notes[0].properties.insert(
+            "status".into(),
+            crate::property_model::PropertyValue::String("active".into()),
+        );
+        let note_detail_with_prop = Line::from(
+            list_detail_value(&app)
+                .expect("note detail with prop")
+                .spans_without(&[]),
+        )
+        .to_string();
+        assert!(note_detail_with_prop.contains("status: active"));
+        app.config.list.property_fields.clear();
 
         app.list.visual_list = vec![crate::list_view::VisualItem::Folder {
             path: "folder".into(),
@@ -3001,6 +3036,8 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 1_536,
+            properties: Default::default(),
+            property_links: Vec::new(),
         }];
         app.list.visual_list = vec![crate::list_view::VisualItem::Note {
             summary_idx: 0,

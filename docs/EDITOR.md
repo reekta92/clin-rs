@@ -44,13 +44,44 @@ closes it; Esc returns focus to Body without leaving the editor. The pane also
 closes when focus moves to Title or the body. Mouse click selects, double-click
 edits, and the wheel scrolls only the sidebar.
 
-The dialog offers **String, Number, Boolean, Null, and YAML**. String treats
-`001`, `true`, and date-like text as text. Use YAML for sequences, nested
-mappings, aliases, or tagged values. Existing names are read-only; new names
-must be nonempty, single-line, and unique. Tab/Shift+Tab move between controls,
-arrows select the type or toggle a Boolean, Ctrl+Enter or Apply commits, and
-Esc cancels. Enter inserts a newline in String/YAML values. Validation errors
-stay in the dialog without changing the note.
+The dialog supports **String, Number, Boolean, Null, YAML, Date, Date/time,
+List, Select, Multi-select, Note reference, and Note references**. String keeps
+`001`, `true`, and date-like text as text. Dates require `YYYY-MM-DD`; date/time
+requires RFC 3339 with an offset. Lists offer one editable string item per
+line; use a YAML array for typed, empty, or multiline items. Select and reference
+controls offer choices with arrows/Space and mouse selection. YAML remains
+available for nested mappings, aliases, and tagged values.
+
+New names must be nonempty, single-line, and unique; matching existing vault
+keys appear as suggestions. Tab/Shift+Tab move between controls, arrows change
+type or toggle Boolean, Ctrl+Enter or Apply commits, and Esc cancels. Enter
+inserts a newline in text, YAML, or list values. Validation errors stay in
+dialog without changing note. New date/select/reference types create reusable
+vault definitions; incompatible existing values require review in manager.
+
+Properties shortcuts: `r` previews current-note key rename, `R` previews
+vault-wide rename (including definitions, smart-folder predicates, configured
+bindings, statusline tokens, and template properties), `d` opens definition
+manager, and `b` previews bulk edits. Management dialogs edit TOML; `Ctrl+S`
+previews, then `Ctrl+S` or focused Apply confirms. Esc returns to form or
+cancels. No files change before confirmation; partial batch failures retain
+remaining work in `.clin/property_batch.toml` for **Resume Property Batch**.
+
+Optional definitions live at `<vault>/.clin/properties.toml`, not global
+configuration. Unknown keys remain valid. Definitions can supply type,
+description, select options, and a default. Defaults apply only on note
+creation or explicit **Apply Property Defaults**, never when opening notes.
+
+```toml
+[properties.review_date]
+type = "date"
+description = "Next review"
+
+[properties.status]
+type = "select"
+options = ["draft", "review", "done"]
+default = "draft"
+```
 
 `title`, `updated_at`, `tags`, `pinned`, `links`, `original_ext`, and `text_align`
 are hidden from the list; use the existing note controls for them. These

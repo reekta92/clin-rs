@@ -24,6 +24,7 @@ pub(crate) struct FolderGraphNode {
 pub enum SortField {
     Title,
     Modified,
+    Property,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]

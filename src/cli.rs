@@ -74,6 +74,9 @@ pub enum NotesCmd {
         /// Create the note and exit without opening the TUI.
         #[arg(long)]
         no_tui: bool,
+        /// Initial typed property; repeat as --property KEY TYPE VALUE.
+        #[arg(long = "property", num_args = 3, action = clap::ArgAction::Append, allow_hyphen_values = true)]
+        properties: Vec<String>,
         /// Optional title for the note.
         title: Option<String>,
     },
@@ -93,11 +96,53 @@ pub enum NotesCmd {
         content: String,
         /// Optional title for the note.
         title: Option<String>,
+        /// Initial typed property; repeat as --property KEY TYPE VALUE.
+        #[arg(long = "property", num_args = 3, action = clap::ArgAction::Append, allow_hyphen_values = true)]
+        properties: Vec<String>,
     },
     /// Search notes by title and content.
     Search {
         /// Query string.
         query: String,
+    },
+    /// Inspect or mutate custom YAML properties without rewriting note body.
+    Properties {
+        #[command(subcommand)]
+        action: PropertyCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PropertyCmd {
+    /// Print custom metadata as YAML.
+    List { note: String },
+    /// Print one property; missing key is an error.
+    Get { note: String, key: String },
+    /// Set a property (declared type, or string unless --type given).
+    Set {
+        note: String,
+        key: String,
+        value: String,
+        #[arg(long = "type", value_enum)]
+        kind: Option<crate::property_model::PropertyKind>,
+    },
+    /// Remove one property; other header/body/ciphertext bytes remain intact.
+    Unset { note: String, key: String },
+    /// Preview a key rename; --apply confirms note and binding changes.
+    Rename {
+        old: String,
+        new: String,
+        #[arg(long, conflicts_with = "all", required_unless_present = "all")]
+        note: Option<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Preview/retry unfinished batch stored in vault; --apply confirms.
+    Resume {
+        #[arg(long)]
+        apply: bool,
     },
 }
 

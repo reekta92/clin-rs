@@ -122,8 +122,32 @@ impl App {
             return;
         };
         let query_text = popup.input.lines().join("");
+        let (cleaned_query, property_predicates) =
+            match crate::property_query::extract_property_filters(&query_text) {
+                Ok(res) => res,
+                Err(err) => {
+                    if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active
+                    {
+                        popup.title_result_ids.clear();
+                        popup.title_selected = 0;
+                        popup.grep_results.clear();
+                        popup.grep_row_offsets.clear();
+                        popup.grep_expanded.clear();
+                        popup.grep_selected = 0;
+                        popup.globally_truncated = false;
+                        popup.read_errors = 0;
+                        popup.subnote_results.clear();
+                        popup.subnote_selected = 0;
+                    }
+                    self.search_query_generation.fetch_add(1, Ordering::SeqCst);
+                    self.search_debounce_deadline = None;
+                    self.unsent_search_request = None;
+                    self.search_status = Some(err.to_string());
+                    return;
+                }
+            };
         let parsed = parse_search_query(
-            &query_text,
+            &cleaned_query,
             self.config.features.tags.is_enabled(),
             self.config.features.subnotes.is_enabled(),
         );
@@ -136,7 +160,8 @@ impl App {
             && parsed.folder_filter.is_none()
             && !parsed.pinned_only
             && parsed.tag_filter.is_none()
-            && subnote_text.is_none();
+            && subnote_text.is_none()
+            && property_predicates.is_empty();
         if no_filters {
             if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
                 popup.title_result_ids.clear();
@@ -167,6 +192,24 @@ impl App {
                 self.subnotes_view_cache
                     .iter()
                     .filter(|(parent_id, _)| self.config.features.file_view_enabled(parent_id))
+                    .filter(|(parent_id, _)| {
+                        if property_predicates.is_empty() {
+                            return true;
+                        }
+                        let stem = std::path::Path::new(parent_id).file_stem();
+                        self.visible_notes()
+                            .find(|(_, note)| note.id == *parent_id)
+                            .or_else(|| {
+                                self.visible_notes().find(|(_, note)| {
+                                    std::path::Path::new(&note.id).file_stem() == stem
+                                })
+                            })
+                            .is_some_and(|(_, note)| {
+                                property_predicates.iter().all(|predicate| {
+                                    predicate.matches(&note.properties, &self.property_definitions)
+                                })
+                            })
+                    })
                     .flat_map(|(parent_id, subs)| {
                         let parent_title = self
                             .visible_notes()
@@ -240,7 +283,7 @@ impl App {
                 continue;
             }
 
-            if let Some(ref folder) = parsed.folder_filter {
+            if let Some(folder) = &parsed.folder_filter {
                 let matches_folder = if folder.is_empty() {
                     note.folder.is_empty()
                 } else {
@@ -251,7 +294,7 @@ impl App {
                 }
             }
 
-            if let Some(ref tags) = parsed.tag_filter
+            if let Some(tags) = &parsed.tag_filter
                 && !tags.is_empty()
             {
                 let note_tags: Vec<String> = note.tags.iter().map(|t| t.to_lowercase()).collect();
@@ -261,6 +304,12 @@ impl App {
                 }
             }
 
+            if !property_predicates
+                .iter()
+                .all(|predicate| predicate.matches(&note.properties, &self.property_definitions))
+            {
+                continue;
+            }
             let matched_title = title_query.is_empty()
                 || note.title.to_lowercase().contains(&title_query)
                 || note.id.to_lowercase().contains(&title_query);
@@ -861,6 +910,42 @@ mod tests {
             assert_eq!(p.selected, 0);
         } else {
             panic!("subnotes popup did not open or was cleared");
+        }
+    }
+
+    #[test]
+    fn property_filter_search_and_malformed_handling() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let storage = make_test_storage(tmp.path());
+        let file_path = storage.note_path("done_task.md");
+        std::fs::write(&file_path, "---\nstatus: done\n---\n# Task Done\n").unwrap();
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.begin_search();
+
+        // Valid property filter
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("prop:status=done");
+        }
+        app.update_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &app.popups.active {
+            assert_eq!(popup.title_result_ids.len(), 1);
+            assert_eq!(&*popup.title_result_ids[0], "done_task.md");
+            assert!(app.search_status.is_none());
+        } else {
+            panic!("search popup missing");
+        }
+
+        // Malformed property filter
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.clear();
+            popup.input.insert_str("prop:invalid");
+        }
+        app.update_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &app.popups.active {
+            assert_eq!(popup.title_result_ids.len(), 0);
+            assert!(app.search_status.is_some());
+        } else {
+            panic!("search popup missing");
         }
     }
 }

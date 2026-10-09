@@ -109,7 +109,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
     if *focus == EditFocus::Properties
-        && key.modifiers == KeyModifiers::NONE
+        && (key.modifiers == KeyModifiers::NONE
+            || key.code == KeyCode::Char('R') && key.modifiers == KeyModifiers::SHIFT)
         && matches!(
             key.code,
             KeyCode::Up
@@ -120,7 +121,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 | KeyCode::PageDown
                 | KeyCode::Enter
                 | KeyCode::Delete
-                | KeyCode::Char('a' | 'j' | 'k' | ' ')
+                | KeyCode::Char('a' | 'j' | 'k' | 'd' | 'r' | 'b' | ' ')
+                | KeyCode::Char('R')
         )
     {
         app.handle_properties_list_key(key, focus);
