@@ -179,6 +179,20 @@ impl App {
                         self.set_temporary_status_static("Cannot rename virtual Subnotes folder");
                         return;
                     }
+                    let operation = crate::property_management::ReferenceOperation::RenameFolder {
+                        old: old_path.clone(),
+                        new: text.to_owned(),
+                    };
+                    match self.preview_reference_operation(operation) {
+                        Ok(true) => return,
+                        Ok(false) => {}
+                        Err(error) => {
+                            self.set_temporary_status(&format!(
+                                "Rename preflight failed: {error:#}"
+                            ));
+                            return;
+                        }
+                    }
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
                         self.set_temporary_status(&format!("Failed to rename folder: {e}"));
                         self.messages.push(
@@ -388,147 +402,160 @@ impl App {
 
     pub fn confirm_move(&mut self) {
         if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = self.popups.active.take()
-            && let Some(target_folder) = picker.filtered_folders.get(picker.selected)
+            && let Some(target) = picker.filtered_folders.get(picker.selected)
         {
-            match picker.mode {
-                FolderPickerMode::MoveNote { note_id } => {
-                    if let Err(e) = self.storage.move_note(&note_id, target_folder) {
-                        self.set_temporary_status(&format!("Failed to move note: {e}"));
-                    } else {
+            let operation = crate::property_management::ReferenceOperation::Move {
+                mode: picker.mode.clone(),
+                target: target.clone(),
+            };
+            match self.preview_reference_operation(operation) {
+                Ok(true) => {}
+                Ok(false) => self.perform_move(picker.mode, target),
+                Err(error) => {
+                    self.set_temporary_status(&format!("Move preflight failed: {error:#}"))
+                }
+            }
+        }
+    }
+    pub(crate) fn perform_move(&mut self, mode: FolderPickerMode, target_folder: &str) {
+        match mode {
+            FolderPickerMode::MoveNote { note_id } => {
+                if let Err(e) = self.storage.move_note(&note_id, target_folder) {
+                    self.set_temporary_status(&format!("Failed to move note: {e}"));
+                } else {
+                    self.request_notes_reconcile();
+                    self.set_temporary_status_static("Note moved");
+                }
+            }
+            FolderPickerMode::CopyNote { note_id } => {
+                match self.storage.duplicate_note(&note_id, target_folder) {
+                    Ok(_) => {
                         self.request_notes_reconcile();
-                        self.set_temporary_status_static("Note moved");
+                        self.set_temporary_status_static("Note copied");
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to copy note: {e}"));
                     }
                 }
-                FolderPickerMode::CopyNote { note_id } => {
-                    match self.storage.duplicate_note(&note_id, target_folder) {
-                        Ok(_) => {
-                            self.request_notes_reconcile();
-                            self.set_temporary_status_static("Note copied");
-                        }
-                        Err(e) => {
-                            self.set_temporary_status(&format!("Failed to copy note: {e}"));
-                        }
-                    }
-                }
-                FolderPickerMode::MoveFolder { folder_path } => {
-                    let folder_name = folder_path.rsplit('/').next().unwrap_or(&folder_path);
-                    let new_path = if target_folder.is_empty() {
-                        folder_name.to_string()
-                    } else {
-                        format!("{target_folder}/{folder_name}")
-                    };
+            }
+            FolderPickerMode::MoveFolder { folder_path } => {
+                let folder_name = folder_path.rsplit('/').next().unwrap_or(&folder_path);
+                let new_path = if target_folder.is_empty() {
+                    folder_name.to_string()
+                } else {
+                    format!("{target_folder}/{folder_name}")
+                };
 
-                    if folder_path == new_path {
-                        self.set_temporary_status_static("Folder is already in this location");
-                        return;
-                    }
+                if folder_path == new_path {
+                    self.set_temporary_status_static("Folder is already in this location");
+                    return;
+                }
 
-                    if let Err(e) = self.storage.rename_folder(&folder_path, &new_path) {
-                        self.set_temporary_status(&format!("Failed to move folder: {e}"));
-                    } else {
-                        if self.list.folder_expanded.remove(&folder_path) {
-                            self.list.folder_expanded.insert(new_path);
-                        }
-                        self.request_notes_reconcile();
-                        self.set_temporary_status_static("Folder moved");
+                if let Err(e) = self.storage.rename_folder(&folder_path, &new_path) {
+                    self.set_temporary_status(&format!("Failed to move folder: {e}"));
+                } else {
+                    if self.list.folder_expanded.remove(&folder_path) {
+                        self.list.folder_expanded.insert(new_path);
+                    }
+                    self.request_notes_reconcile();
+                    self.set_temporary_status_static("Folder moved");
+                }
+            }
+            FolderPickerMode::BulkMoveNotes { note_ids } => {
+                let mut failed = 0;
+                for id in note_ids {
+                    if self.storage.move_note(&id, target_folder).is_err() {
+                        failed += 1;
                     }
                 }
-                FolderPickerMode::BulkMoveNotes { note_ids } => {
-                    let mut failed = 0;
-                    for id in note_ids {
-                        if self.storage.move_note(&id, target_folder).is_err() {
-                            failed += 1;
-                        }
-                    }
-                    self.finish_bulk_list_op();
-                    if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to move {failed} note(s)"));
-                    } else {
-                        self.set_temporary_status_static("Selected notes moved");
+                self.finish_bulk_list_op();
+                if failed > 0 {
+                    self.set_temporary_status(&format!("Failed to move {failed} note(s)"));
+                } else {
+                    self.set_temporary_status_static("Selected notes moved");
+                }
+            }
+            FolderPickerMode::BulkCopyNotes { note_ids } => {
+                let mut failed = 0;
+                for id in &note_ids {
+                    if self.storage.duplicate_note(id, target_folder).is_err() {
+                        failed += 1;
                     }
                 }
-                FolderPickerMode::BulkCopyNotes { note_ids } => {
-                    let mut failed = 0;
-                    for id in &note_ids {
-                        if self.storage.duplicate_note(id, target_folder).is_err() {
-                            failed += 1;
-                        }
-                    }
-                    self.finish_bulk_list_op();
-                    let ok = note_ids.len() - failed;
-                    if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to copy {failed} note(s)"));
-                    } else {
-                        self.set_temporary_status(&format!("Copied {ok} note(s)"));
+                self.finish_bulk_list_op();
+                let ok = note_ids.len() - failed;
+                if failed > 0 {
+                    self.set_temporary_status(&format!("Failed to copy {failed} note(s)"));
+                } else {
+                    self.set_temporary_status(&format!("Copied {ok} note(s)"));
+                }
+            }
+            FolderPickerMode::BulkCopyFolders { folder_paths } => {
+                let mut failed = 0;
+                for p in &folder_paths {
+                    if self.storage.duplicate_folder(p, target_folder).is_err() {
+                        failed += 1;
                     }
                 }
-                FolderPickerMode::BulkCopyFolders { folder_paths } => {
-                    let mut failed = 0;
-                    for p in &folder_paths {
-                        if self.storage.duplicate_folder(p, target_folder).is_err() {
-                            failed += 1;
-                        }
-                    }
-                    self.finish_bulk_list_op();
-                    let ok = folder_paths.len() - failed;
-                    if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to copy {failed} folder(s)"));
-                    } else {
-                        self.set_temporary_status(&format!("Copied {ok} folder(s)"));
+                self.finish_bulk_list_op();
+                let ok = folder_paths.len() - failed;
+                if failed > 0 {
+                    self.set_temporary_status(&format!("Failed to copy {failed} folder(s)"));
+                } else {
+                    self.set_temporary_status(&format!("Copied {ok} folder(s)"));
+                }
+            }
+            FolderPickerMode::BulkCopyMixed {
+                note_ids,
+                folder_paths,
+            } => {
+                let mut failed = 0;
+                for id in &note_ids {
+                    if self.storage.duplicate_note(id, target_folder).is_err() {
+                        failed += 1;
                     }
                 }
-                FolderPickerMode::BulkCopyMixed {
-                    note_ids,
-                    folder_paths,
-                } => {
-                    let mut failed = 0;
-                    for id in &note_ids {
-                        if self.storage.duplicate_note(id, target_folder).is_err() {
-                            failed += 1;
-                        }
-                    }
-                    for p in &folder_paths {
-                        if self.storage.duplicate_folder(p, target_folder).is_err() {
-                            failed += 1;
-                        }
-                    }
-                    self.finish_bulk_list_op();
-                    let total = note_ids.len() + folder_paths.len();
-                    let ok = total - failed;
-                    if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to copy {failed} item(s)"));
-                    } else {
-                        self.set_temporary_status(&format!("Copied {ok} item(s)"));
+                for p in &folder_paths {
+                    if self.storage.duplicate_folder(p, target_folder).is_err() {
+                        failed += 1;
                     }
                 }
-                FolderPickerMode::BulkMoveFolders { folder_paths } => {
-                    let failed = self.bulk_move_folders(folder_paths, target_folder);
-                    self.finish_bulk_list_op();
-                    if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to move {failed} folder(s)"));
-                    } else {
-                        self.set_temporary_status_static("Moved folder(s)");
+                self.finish_bulk_list_op();
+                let total = note_ids.len() + folder_paths.len();
+                let ok = total - failed;
+                if failed > 0 {
+                    self.set_temporary_status(&format!("Failed to copy {failed} item(s)"));
+                } else {
+                    self.set_temporary_status(&format!("Copied {ok} item(s)"));
+                }
+            }
+            FolderPickerMode::BulkMoveFolders { folder_paths } => {
+                let failed = self.bulk_move_folders(folder_paths, target_folder);
+                self.finish_bulk_list_op();
+                if failed > 0 {
+                    self.set_temporary_status(&format!("Failed to move {failed} folder(s)"));
+                } else {
+                    self.set_temporary_status_static("Moved folder(s)");
+                }
+            }
+            FolderPickerMode::BulkMoveMixed {
+                note_ids,
+                folder_paths,
+            } => {
+                let total = note_ids.len() + folder_paths.len();
+                let mut failed = 0;
+                for id in &note_ids {
+                    if self.storage.move_note(id, target_folder).is_err() {
+                        failed += 1;
                     }
                 }
-                FolderPickerMode::BulkMoveMixed {
-                    note_ids,
-                    folder_paths,
-                } => {
-                    let total = note_ids.len() + folder_paths.len();
-                    let mut failed = 0;
-                    for id in &note_ids {
-                        if self.storage.move_note(id, target_folder).is_err() {
-                            failed += 1;
-                        }
-                    }
-                    failed += self.bulk_move_folders(folder_paths, target_folder);
-                    self.finish_bulk_list_op();
-                    let ok = total - failed;
-                    if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to move {failed} item(s)"));
-                    } else {
-                        self.set_temporary_status(&format!("Moved {ok} item(s)"));
-                    }
+                failed += self.bulk_move_folders(folder_paths, target_folder);
+                self.finish_bulk_list_op();
+                let ok = total - failed;
+                if failed > 0 {
+                    self.set_temporary_status(&format!("Failed to move {failed} item(s)"));
+                } else {
+                    self.set_temporary_status(&format!("Moved {ok} item(s)"));
                 }
             }
         }

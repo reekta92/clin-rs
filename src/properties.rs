@@ -71,6 +71,7 @@ impl PropertyDialog {
         Ok(FrontmatterEdit {
             key_yaml,
             value_yaml: Some(self.kind.encode(&self.value.lines().join("\n"))?),
+            rename_from: None,
         })
     }
     fn picker(&self) -> bool {
@@ -82,6 +83,20 @@ impl PropertyDialog {
                 | PropertyType::NoteReferences
         )
     }
+    fn toggle_boolean(&mut self) {
+        let value = if self
+            .value
+            .lines()
+            .first()
+            .is_some_and(|value| value.trim() == "true")
+        {
+            "false"
+        } else {
+            "true"
+        };
+        self.value.select_all();
+        self.value.insert_str(value);
+    }
     fn choose(&mut self) {
         let Some(value) = self.choices.get(self.choice) else {
             return;
@@ -90,9 +105,27 @@ impl PropertyDialog {
             self.kind,
             PropertyType::MultiSelect | PropertyType::NoteReferences
         ) {
-            let mut values = self.value.lines().to_vec();
-            if let Some(index) = values.iter().position(|candidate| candidate == value) {
-                values.remove(index);
+            let encoded = self.value.lines().join("\n");
+            let mut values: Vec<String> =
+                match crate::property_model::parse_property_value(self.kind, &encoded) {
+                    Ok(Value::Sequence(values)) => values
+                        .into_iter()
+                        .filter_map(|value| {
+                            if let Value::String(value) = value {
+                                Some(value)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                    Ok(_) => return,
+                    Err(error) => {
+                        self.error = Some(error.to_string());
+                        return;
+                    }
+                };
+            if values.iter().any(|candidate| candidate == value) {
+                values.retain(|candidate| candidate != value);
             } else {
                 values.push(value.clone());
             }
@@ -135,8 +168,14 @@ pub(crate) struct PropertiesState {
     pub(crate) values: crate::property_model::PropertyMap,
 }
 impl PropertiesState {
-    pub(crate) fn load(header: Result<Option<String>>) -> Self {
-        let mut state = Self::default();
+    pub(crate) fn load(
+        header: Result<Option<String>>,
+        definitions: &crate::property_model::PropertyDefinitions,
+    ) -> Self {
+        let mut state = Self {
+            definitions: definitions.clone(),
+            ..Default::default()
+        };
         match header {
             Ok(header) => {
                 state.baseline = header.clone();
@@ -218,6 +257,17 @@ impl PropertiesState {
             self.baseline = self.current.clone();
         }
         let header = header?;
+        // Retain transaction order while renamed keys have pending edits.
+        self.renamed_keys.extend(
+            self.pending
+                .iter()
+                .filter(|edit| edit.rename_from.is_some())
+                .filter_map(|edit| {
+                    serde_yaml_ng::from_str::<Value>(&edit.key_yaml)
+                        .ok()
+                        .and_then(|key| key.as_str().map(str::to_owned))
+                }),
+        );
         let current = if self.pending.is_empty() {
             header.clone()
         } else {
@@ -277,7 +327,11 @@ impl PropertiesState {
         let candidate =
             frontmatter::apply_edits(self.baseline.as_deref().unwrap_or("---\n---\n"), &pending)?;
         // Build a fresh tree, never clone mutable CST for rollback.
-        let mut view = Self::load(Ok(Some(candidate)));
+        let mut view = Self {
+            current: Some(candidate),
+            ..Default::default()
+        };
+        view.rebuild()?;
         ensure!(
             view.error.is_none(),
             "{}",
@@ -329,12 +383,9 @@ impl PropertiesState {
         frontmatter::rename_key(current, &old, new)?;
         let mut pending = self.pending.clone();
         pending.push(FrontmatterEdit {
-            key_yaml: row.key_yaml.clone(),
-            value_yaml: None,
-        });
-        pending.push(FrontmatterEdit {
             key_yaml: serde_yaml_ng::to_string(&Value::String(new.into()))?,
-            value_yaml: Some(row.value_yaml.clone()),
+            value_yaml: None,
+            rename_from: Some(row.key_yaml.clone()),
         });
         let candidate =
             frontmatter::apply_edits(self.baseline.as_deref().unwrap_or("---\n---\n"), &pending)?;
@@ -395,7 +446,11 @@ impl PropertiesState {
                     value
                         .as_str()
                         .is_some_and(|value| !value.is_empty() && !value.contains(['\r', '\n']))
-                }) =>
+                }) && (row.kind == PropertyType::NoteReferences
+                    || values
+                        .first()
+                        .and_then(Value::as_str)
+                        .is_none_or(|value| !value.trim_start().starts_with('['))) =>
                 {
                     values
                         .iter()
@@ -478,6 +533,7 @@ impl App {
         let name = input.name.lines().join("\n");
         if let Some(definition) = self.property_definitions.properties.get(&name)
             && adopt_definition
+            && (input.key_yaml.is_none() || input.kind != PropertyType::Yaml)
         {
             input.kind = definition.kind;
             if input.key_yaml.is_none()
@@ -524,7 +580,7 @@ impl App {
                 .collect()
         } else if let Some(definition) = self.property_definitions.properties.get(&name) {
             definition.options.clone()
-        } else {
+        } else if matches!(input.kind, PropertyType::Select | PropertyType::MultiSelect) {
             self.notes
                 .iter()
                 .filter_map(|note| note.properties.get(&name))
@@ -545,6 +601,8 @@ impl App {
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect()
+        } else {
+            Vec::new()
         };
         input.choice = input.choice.min(input.choices.len().saturating_sub(1));
     }
@@ -574,55 +632,36 @@ impl App {
         let candidate = frontmatter::apply_edits(current, std::slice::from_ref(&edit))?;
         let mapping = frontmatter::validate_header(&candidate)?;
         if let (Some(name), Some(value)) = (name, mapping.get(&key)) {
-            self.property_definitions.validate(name, value)?;
-            if !self.property_definitions.properties.contains_key(name)
-                && let Some(kind) = kind
-                && matches!(
-                    kind,
-                    PropertyType::Date
-                        | PropertyType::DateTime
-                        | PropertyType::Select
-                        | PropertyType::MultiSelect
-                        | PropertyType::NoteReference
-                        | PropertyType::NoteReferences
-                )
-            {
-                let mut options = choices.to_vec();
-                if matches!(kind, PropertyType::Select | PropertyType::MultiSelect) {
-                    let actual = if let Value::Sequence(values) = value {
-                        values.iter().filter_map(Value::as_str).collect::<Vec<_>>()
-                    } else {
-                        value.as_str().into_iter().collect()
-                    };
-                    for value in actual {
-                        if !options.iter().any(|option| option == value) {
-                            options.push(value.into());
-                        }
-                    }
+            if let Some(kind) = kind {
+                if !self.property_definitions.properties.contains_key(name)
+                    && matches!(
+                        kind,
+                        PropertyType::Date
+                            | PropertyType::DateTime
+                            | PropertyType::Select
+                            | PropertyType::MultiSelect
+                            | PropertyType::NoteReference
+                            | PropertyType::NoteReferences
+                    )
+                {
+                    self.ensure_catalog_ready()?;
                 }
-                let definition = crate::property_model::PropertyDefinition {
-                    kind,
-                    options,
-                    ..Default::default()
-                };
-                definition.validate(value)?;
-                ensure!(
+                if let Some(definition) = crate::property_model::inferred_definition(
+                    &self.property_definitions,
                     self.notes
                         .iter()
-                        .filter_map(|note| note.properties.get(name))
-                        .all(|value| value
-                            .to_yaml()
-                            .and_then(|value| definition.validate(&value))
-                            .is_ok()),
-                    "Existing notes conflict with this type; use definition manager to review conflicts"
-                );
-                let mut definitions = self.property_definitions.clone();
-                definitions.properties.insert(name.into(), definition);
-                definitions.save(&self.storage.data_dir)?;
-                self.property_definitions = definitions;
-                self.editor
-                    .properties
-                    .set_definitions(&self.property_definitions);
+                        .filter(|note| Some(note.id.as_str()) != self.editor.editing_id.as_deref()),
+                    name,
+                    kind,
+                    value,
+                    choices,
+                )? {
+                    let mut definitions = self.property_definitions.clone();
+                    definitions.properties.insert(name.into(), definition);
+                    self.save_property_definitions(definitions)?;
+                }
+            } else {
+                self.property_definitions.validate(name, value)?;
             }
         }
         self.editor.properties.commit(edit, new)
@@ -724,6 +763,7 @@ impl App {
                             FrontmatterEdit {
                                 key_yaml: key_yaml.clone(),
                                 value_yaml: None,
+                                rename_from: None,
                             },
                             false,
                         )));
@@ -740,12 +780,14 @@ impl App {
                     edit = Some(input.edit().map(|edit| (edit, input.key_yaml.is_none())));
                 }
                 KeyCode::Tab => {
+                    let adopt = input.control == 0;
                     input.advance(1);
-                    self.prepare_property_choices(input, true);
+                    self.prepare_property_choices(input, adopt);
                 }
                 KeyCode::BackTab => {
+                    let adopt = input.control == 0;
                     input.advance(-1);
-                    self.prepare_property_choices(input, true);
+                    self.prepare_property_choices(input, adopt);
                 }
                 KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
                     if input.control == 1 =>
@@ -787,7 +829,11 @@ impl App {
                         as usize;
                     input.name.select_all();
                     input.name.insert_str(&input.choices[input.choice]);
+                    let choices = std::mem::take(&mut input.choices);
+                    let choice = input.choice;
                     self.prepare_property_choices(input, true);
+                    input.choices = choices;
+                    input.choice = choice;
                 }
                 KeyCode::Up | KeyCode::Down
                     if input.control == 2 && input.picker() && !input.choices.is_empty() =>
@@ -814,16 +860,14 @@ impl App {
                     input.choose();
                     input.advance(1);
                 }
-                KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
+                KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Char(' ')
                     if input.control == 2 && input.kind == PropertyType::Boolean =>
                 {
-                    let value = if input.value.lines().join("\n").trim() == "true" {
-                        "false"
-                    } else {
-                        "true"
-                    };
-                    input.value.select_all();
-                    input.value.insert_str(value);
+                    input.toggle_boolean()
                 }
                 KeyCode::Enter
                     if input.control != 2
@@ -842,7 +886,7 @@ impl App {
                     if input.control == 0 {
                         crate::text_edit::feed_key(&self.keybinds, &mut input.name, key);
                         self.prepare_property_choices(input, false);
-                    } else if input.control == 2 {
+                    } else if input.control == 2 && input.kind != PropertyType::Boolean {
                         crate::text_edit::feed_key(&self.keybinds, &mut input.value, key);
                     }
                 }
@@ -907,7 +951,12 @@ impl App {
             }
             _ => {}
         }
-        self.sync_property_editor();
+        if key.code == KeyCode::Char('a')
+            || key.code == KeyCode::Enter
+                && self.editor.properties.selected >= self.editor.properties.rows.len()
+        {
+            self.sync_property_editor();
+        }
         let state = &mut self.editor.properties;
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => state.navigate(-1),
@@ -1146,7 +1195,19 @@ pub(crate) fn draw_dialog(frame: &mut ratatui::Frame, app: &mut App) {
                 chunks[2]
             };
             input.rects[2] = value_area;
-            if input.kind != PropertyType::Null {
+            if input.kind == PropertyType::Boolean {
+                let value = input.value.lines().first().map_or("", String::as_str);
+                let checkbox = format!(
+                    "[{}] {}",
+                    if value.trim() == "true" { "x" } else { " " },
+                    crate::fsutil::sanitize_for_terminal(value)
+                );
+                frame.render_widget(
+                    Paragraph::new(checkbox)
+                        .block(border("Boolean: Space/click toggles", input.control == 2)),
+                    value_area,
+                );
+            } else if input.kind != PropertyType::Null {
                 let value_title = match input.kind {
                     PropertyType::Boolean => "Checkbox ←/→ toggles",
                     PropertyType::Date => "Date YYYY-MM-DD",
@@ -1171,7 +1232,7 @@ pub(crate) fn draw_dialog(frame: &mut ratatui::Frame, app: &mut App) {
             }
             if let Some(error) = &input.error {
                 frame.render_widget(
-                    Paragraph::new(error.as_str())
+                    Paragraph::new(crate::fsutil::sanitize_for_terminal(error).to_string())
                         .style(Style::default().fg(ratatui::style::Color::Red))
                         .wrap(Wrap { trim: false }),
                     chunks[3],
@@ -1284,6 +1345,7 @@ pub(crate) fn handle_dialog_mouse(app: &mut App, mouse: crossterm::event::MouseE
                     match control {
                         1 => input.kind = input.kind.cycle(1),
                         3 => apply = true,
+                        2 if input.kind == PropertyType::Boolean => input.toggle_boolean(),
                         0 | 2 => {
                             let textarea = if control == 0 {
                                 &mut input.name
@@ -1323,7 +1385,7 @@ pub(crate) fn handle_dialog_mouse(app: &mut App, mouse: crossterm::event::MouseE
     }
     if let Some(mut dialog) = app.editor.properties.dialog.take() {
         if let PropertiesDialog::Edit(input) = &mut dialog {
-            app.prepare_property_choices(input, true);
+            app.prepare_property_choices(input, input.control == 0 && input.key_yaml.is_none());
         }
         app.editor.properties.dialog = Some(dialog);
     }
@@ -1381,12 +1443,93 @@ pub(crate) fn handle_list_mouse(
 mod tests {
     use super::*;
     #[test]
+    fn rename_transactions_preserve_comments_aliases_and_sequential_edits() {
+        for newline in ["\n", "\r\n"] {
+            let header = "---\nbase: &value ['001', two] # retain\ncopy: *value\n---\n"
+                .replace('\n', newline);
+            let mut state = PropertiesState::load(
+                Ok(Some(header.clone())),
+                &crate::property_model::PropertyDefinitions::default(),
+            );
+            assert!(state.rename("source").unwrap());
+            assert_eq!(
+                state.current.as_deref(),
+                Some(header.replace("base:", "source:").as_str())
+            );
+            let before = state.current.clone();
+            assert!(
+                state
+                    .commit(
+                        crate::property_model::property_edit(
+                            "source",
+                            Some(&serde_yaml_ng::from_str("[new, two]").unwrap())
+                        )
+                        .unwrap(),
+                        false
+                    )
+                    .is_err()
+            );
+            assert_eq!(state.current, before);
+            assert!(state.rename("final").unwrap());
+            let values = frontmatter::validate_header(state.current.as_deref().unwrap()).unwrap();
+            assert_eq!(values["final"][0].as_str(), Some("001"));
+            assert_eq!(values["copy"], values["final"]);
+            assert!(state.current.as_deref().unwrap().contains("# retain"));
+            assert!(state.current.as_deref().unwrap().contains("*value"));
+            assert!(state.rename("copy").is_err());
+        }
+    }
+    #[test]
+    fn scalar_rename_followed_by_edit_keeps_transaction_order() {
+        let mut state = PropertiesState::load(
+            Ok(Some("---\nold: original # keep\n---\n".into())),
+            &crate::property_model::PropertyDefinitions::default(),
+        );
+        assert!(state.rename("new").unwrap());
+        assert!(
+            state
+                .commit(
+                    crate::property_model::property_edit(
+                        "new",
+                        Some(&Value::String("changed".into()))
+                    )
+                    .unwrap(),
+                    false
+                )
+                .unwrap()
+        );
+        assert!(state.rename("final").unwrap());
+        assert!(
+            state
+                .commit(
+                    crate::property_model::property_edit(
+                        "final",
+                        Some(&Value::String("original".into()))
+                    )
+                    .unwrap(),
+                    false
+                )
+                .unwrap()
+        );
+        assert_eq!(
+            frontmatter::validate_header(state.current.as_deref().unwrap()).unwrap()["final"]
+                .as_str(),
+            Some("original")
+        );
+        assert!(state.current.as_deref().unwrap().contains("# keep"));
+    }
+
+    #[test]
     fn properties_transaction_revert_types_and_errors() {
         let baseline = "---\n# retain\ncode: '001' # quote\nstatus: open\n---\n";
-        let mut state = PropertiesState::load(Ok(Some(baseline.into())));
+        let mut state = PropertiesState::load(
+            Ok(Some(baseline.into())),
+            &crate::property_model::PropertyDefinitions::default(),
+        );
         let edit = |key: &str, value: &str| FrontmatterEdit {
             key_yaml: key.into(),
             value_yaml: Some(value.into()),
+            rename_from: None,
         };
         assert!(state.commit(edit("status", "answered"), false).unwrap());
         assert_eq!(state.pending.len(), 1);
@@ -1426,7 +1569,8 @@ mod tests {
                 .commit(
                     FrontmatterEdit {
                         key_yaml: "flag".into(),
-                        value_yaml: None
+                        value_yaml: None,
+                        rename_from: None,
                     },
                     false
                 )

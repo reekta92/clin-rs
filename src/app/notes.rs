@@ -214,7 +214,7 @@ impl App {
                     let generation_num = self.catalog_generation.load(Ordering::SeqCst);
                     self.send_catalog_cmd(crate::app::catalog::CatalogCommand::PutKnown {
                         generation: generation_num,
-                        summary,
+                        summary: Box::new(summary),
                         stamp,
                         old_id: prev_id.map(|s| s.to_string()),
                     });
@@ -426,8 +426,10 @@ impl App {
             }
             self.editor.body = body;
             self.editor.template_edit_path = None;
-            self.editor.properties =
-                crate::properties::PropertiesState::load(self.storage.load_frontmatter(note_id));
+            self.editor.properties = crate::properties::PropertiesState::load(
+                self.storage.load_frontmatter(note_id),
+                &self.property_definitions,
+            );
             if self.editor.sidebar == EditSidebar::Properties {
                 self.editor.sidebar = EditSidebar::None;
             }
@@ -1256,6 +1258,18 @@ impl App {
             if new_title.is_empty() {
                 self.set_temporary_status_static("Title cannot be empty");
                 return;
+            }
+            let operation = crate::property_management::ReferenceOperation::RenameNote {
+                id: popup.note_id.clone(),
+                title: new_title.to_owned(),
+            };
+            match self.preview_reference_operation(operation) {
+                Ok(true) => return,
+                Ok(false) => {}
+                Err(error) => {
+                    self.set_temporary_status(&format!("Rename preflight failed: {error:#}"));
+                    return;
+                }
             }
             match self.storage.rename_note(&popup.note_id, new_title) {
                 Ok(_) => {

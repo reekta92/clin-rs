@@ -2416,6 +2416,7 @@ mod tests {
             id: "test_note.md".to_string(),
             title: "Test Note".to_string(),
             is_backlink: false,
+            is_property: false,
         }];
         std::fs::write(app.storage.notes_dir.join("test_note.md"), "# Test Note\n")
             .expect("value is present");

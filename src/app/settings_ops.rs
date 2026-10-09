@@ -1400,7 +1400,7 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
             // Fails folder_prefix
@@ -1413,7 +1413,7 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
             // Fails title_contains
@@ -1426,7 +1426,7 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
             // Fails tags
@@ -1439,7 +1439,7 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
             // Fails updated_within_days (8 days ago)
@@ -1452,7 +1452,7 @@ mod tests {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: 0,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
         ];

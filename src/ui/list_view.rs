@@ -2664,7 +2664,7 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 0,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         };
         app.notes = vec![note];
@@ -2881,7 +2881,7 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 1_536,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         }];
         app.list.visual_list = vec![crate::list_view::VisualItem::Note {
@@ -3036,7 +3036,7 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 1_536,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         }];
         app.list.visual_list = vec![crate::list_view::VisualItem::Note {

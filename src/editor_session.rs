@@ -392,6 +392,7 @@ mod tests {
                 crate::frontmatter::FrontmatterEdit {
                     key_yaml: "status".into(),
                     value_yaml: Some("failed".into()),
+                    rename_from: None,
                 },
                 false,
             )

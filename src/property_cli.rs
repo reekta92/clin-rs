@@ -36,85 +36,20 @@ pub(crate) fn resolve_note(app: &App, selector: &str) -> Result<String> {
     );
     Ok(id)
 }
-pub(crate) fn adopt_type(
-    definitions: &mut PropertyDefinitions,
-    notes: &[crate::storage::NoteSummary],
-    key: &str,
-    kind: PropertyKind,
-    value: &serde_yaml_ng::Value,
-    choices: &[String],
-) -> Result<bool> {
-    definitions.validate(key, value)?;
-    if let Some(definition) = definitions.properties.get(key) {
-        ensure!(
-            kind == definition.kind || kind == PropertyKind::Yaml,
-            "Property {key} is defined as {}; change type through definition manager",
-            definition.kind.label()
-        );
-        return Ok(false);
-    }
-    if !matches!(
-        kind,
-        PropertyKind::Date
-            | PropertyKind::DateTime
-            | PropertyKind::Select
-            | PropertyKind::MultiSelect
-            | PropertyKind::NoteReference
-            | PropertyKind::NoteReferences
-    ) {
-        return Ok(false);
-    }
-    let mut options = choices.to_vec();
-    if matches!(kind, PropertyKind::Select | PropertyKind::MultiSelect) {
-        let actual: Vec<_> = match value {
-            serde_yaml_ng::Value::Sequence(values) => values
-                .iter()
-                .filter_map(serde_yaml_ng::Value::as_str)
-                .collect(),
-            _ => value.as_str().into_iter().collect(),
-        };
-        for value in actual {
-            if !options.iter().any(|option| option == value) {
-                options.push(value.into());
-            }
-        }
-    }
-    let definition = crate::property_model::PropertyDefinition {
-        kind,
-        options,
-        ..Default::default()
-    };
-    definition.validate(value)?;
-    ensure!(
-        notes
-            .iter()
-            .filter_map(|note| note.properties.get(key))
-            .all(|value| value
-                .to_yaml()
-                .and_then(|value| definition.validate(&value))
-                .is_ok()),
-        "Existing notes conflict with {key} type; review conflicts in definition manager"
-    );
-    definitions.properties.insert(key.into(), definition);
-    Ok(true)
-}
 pub(crate) fn creation_edits(
-    app: &mut App,
+    app: &App,
     arguments: &[String],
-) -> Result<(Vec<FrontmatterEdit>, bool)> {
+) -> Result<(Vec<FrontmatterEdit>, Option<PropertyDefinitions>)> {
     ensure!(
         app.property_definitions_error.is_none(),
         "Repair property definitions before creating typed properties"
     );
-    let mut definitions = app.property_definitions.clone();
+    let mut definitions = std::borrow::Cow::Borrowed(&app.property_definitions);
     let mut edits = Vec::new();
     let mut keys = std::collections::BTreeSet::new();
     let mut changed = false;
-    let chunks = arguments.chunks_exact(3);
-    ensure!(
-        chunks.remainder().is_empty(),
-        "--property expects KEY TYPE VALUE"
-    );
+    let (chunks, remainder) = arguments.as_chunks::<3>();
+    ensure!(remainder.is_empty(), "--property expects KEY TYPE VALUE");
     for chunk in chunks {
         ensure!(
             keys.insert(&chunk[0]),
@@ -123,13 +58,23 @@ pub(crate) fn creation_edits(
         );
         let kind = PropertyKind::from_str(&chunk[1], false).map_err(anyhow::Error::msg)?;
         let value = parse_property_value(kind, &chunk[2])?;
-        changed |= adopt_type(&mut definitions, &app.notes, &chunk[0], kind, &value, &[])?;
+        if let Some(definition) = crate::property_model::inferred_definition(
+            &definitions,
+            &app.notes,
+            &chunk[0],
+            kind,
+            &value,
+            &[],
+        )? {
+            definitions
+                .to_mut()
+                .properties
+                .insert(chunk[0].clone(), definition);
+            changed = true;
+        }
         edits.push(property_edit(&chunk[0], Some(&value))?);
     }
-    if changed {
-        app.property_definitions = definitions;
-    }
-    Ok((edits, changed))
+    Ok((edits, changed.then(|| definitions.into_owned())))
 }
 pub(crate) fn create(
     app: &mut App,
@@ -152,16 +97,19 @@ pub(crate) fn create(
             .load_default_template()
             .unwrap_or(crate::templates::Template {
                 name: String::new(),
-                title: Default::default(),
-                content: Default::default(),
-                properties: Default::default(),
+                title: crate::templates::TitleConfig::default(),
+                content: crate::templates::ContentConfig::default(),
+                properties: std::collections::BTreeMap::default(),
             })
     };
     if let Some(body) = body {
         template.content.template = body;
     }
-    let (edits, definitions_changed) = creation_edits(app, properties)?;
-    let rendered = template.render(&app.property_definitions, &edits)?;
+    let (edits, definitions) = creation_edits(app, properties)?;
+    let rendered = template.render(
+        definitions.as_ref().unwrap_or(&app.property_definitions),
+        &edits,
+    )?;
     let title = title
         .or(rendered.title)
         .unwrap_or_else(|| fallback_title.into());
@@ -171,8 +119,8 @@ pub(crate) fn create(
         updated_at: crate::ui::now_unix_secs(),
         tags: rendered.tags,
     };
-    if definitions_changed {
-        app.property_definitions.save(&app.storage.data_dir)?;
+    if let Some(definitions) = definitions {
+        app.save_property_definitions(definitions)?;
     }
     let id = app.storage.new_note_id();
     let saved = app
@@ -241,10 +189,17 @@ pub(crate) fn run(action: PropertyCmd) -> Result<()> {
                 header.as_deref().unwrap_or("---\n---\n"),
                 std::slice::from_ref(&edit),
             )?;
-            let mut definitions = app.property_definitions.clone();
-            if adopt_type(&mut definitions, &app.notes, &key, kind, &value, &[])? {
-                definitions.save(&app.storage.data_dir)?;
-                app.property_definitions = definitions;
+            if let Some(definition) = crate::property_model::inferred_definition(
+                &app.property_definitions,
+                app.notes.iter().filter(|note| note.id != id),
+                &key,
+                kind,
+                &value,
+                &[],
+            )? {
+                let mut definitions = app.property_definitions.clone();
+                definitions.properties.insert(key.clone(), definition);
+                app.save_property_definitions(definitions)?;
             }
             warn_metadata(&id);
             app.storage.update_properties(&id, &[edit])?;

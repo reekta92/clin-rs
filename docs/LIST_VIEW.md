@@ -23,7 +23,7 @@ The Grid layout displays notes as cards. It is optimized for visual recognition 
 
 ### 2. Tree Layout
 The Tree layout provides a hierarchical view of your folders and notes, similar to a traditional file explorer. It is ideal for navigating complex vault structures.
-- **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, and one folder per *Tag*. Toggle `smart_folders_enabled` in config to enable.
+- **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, one folder per *Tag*, and custom rule-based folders defined under `custom_smart_folders` in config. Custom folders support legacy folder/tag filters as well as `all` and `any` property predicates (`eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `contains`, `contains_any`, `contains_all`, `exists`, `missing`, `is_null`, `is_empty`).
 - **Folder Pinning**: Pin folders to the top of the list for quick access by selecting a folder and pressing the pin key (`p`).
 - **Inline Rename**: Rename notes and folders directly in the tree list by pressing the rename key (`r`). Press `Enter` to commit, or `Esc` to cancel.
 - **Drag-to-Move**: Click and drag notes onto folders to move them. Alternatively, use the `g u` keyboard shortcut to move the selected note to its parent directory.
@@ -54,8 +54,10 @@ When creating a new note (via the "Create new..." tile or keyboard shortcuts), a
 ## Core Interactions
 
 ### Organization
-- **Pinning**: Important notes can be pinned to appear at the top of the grid or in the "Pinned" tab.
-- **Sorting**: Sort your notes by title, creation date, or last modified date.
+- **Pinning**: Important notes can be pinned to appear at the top of the grid or in the "Pinned" tab (`pinned_on_top`).
+- **Sorting**: Sort your notes by title, last modified date, or custom frontmatter property (`default_sort_field = "property"` with `property_sort_key`). Property sort places notes with missing, null, or schema-invalid values last in both ascending and descending orders. Pinned notes and encryption precedence remain preserved.
+- **Grouping**: Group notes by property values (`property_group_key`). Notes are grouped by each scalar value (a note with a list property appears in all matching value groups). Notes with missing, null, or invalid values appear ungrouped. These virtual groups never create physical folders on disk.
+- **Property Metadata Display**: Display selected frontmatter property values inline in note list items by configuring `property_fields` in `[list]` (e.g. `property_fields = ["status", "priority"]`).
 - **Folders**: Organize notes into nested directories.
 
 ### Discovery
@@ -67,7 +69,7 @@ When creating a new note (via the "Create new..." tile or keyboard shortcuts), a
 The bottom strip is a configurable section below the notes list that displays up to two widgets at a time. Configure it via the `sections` array in the `[list]` config section (e.g., `sections = ["calendar", "goals"]`). The `calendar_enabled` option controls whether the strip is shown at all.
 
 Available widgets:
-- **`calendar`**: A rolling-weeks GitHub-style activity heatmap showing note activity over time. The start day is configured via `week_start` (`"sunday"` or `"monday"`).
+- **`calendar`**: A rolling-weeks GitHub-style activity heatmap showing note activity over time. The start day is configured via `week_start` (`"sunday"` or `"monday"`). By default, activity reflects note last-modified timestamps; set `calendar_date_property` to bind the heatmap to a custom frontmatter `date` or `date_time` property. Notes with missing or invalid date properties are skipped, while unsetting the binding preserves modified-date behavior.
 - **`goals`**: Daily word-count and note-count progress bars. Configure targets via the `[goals]` config section.
 - **`draw`**: A mini preview pane for recent `.draw` files.
 - **`graf`**: A mini preview pane for graph visualizations.

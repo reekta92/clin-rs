@@ -4,19 +4,21 @@ use crate::property_model::{PropertyDefinitions, PropertyKind, PropertyValue};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct HeaderChange {
     pub id: String,
     pub before: Option<String>,
     pub after: String,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct BindingChange {
     pub path: std::path::PathBuf,
+    #[serde(default)]
+    pub create: bool,
     pub before: String,
     pub after: String,
 }
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct PropertyBatch {
     pub notes: Vec<HeaderChange>,
     pub bindings: Vec<BindingChange>,
@@ -61,12 +63,24 @@ impl PropertyBatch {
                         is_config || parent.starts_with(&vault),
                         "Binding target outside vault"
                     );
-                    let actual = std::fs::read_to_string(&change.path)?;
-                    if actual == change.after {
+                    let actual = match std::fs::read_to_string(&change.path) {
+                        Ok(text) => Some(text),
+                        Err(error)
+                            if change.create && error.kind() == std::io::ErrorKind::NotFound =>
+                        {
+                            None
+                        }
+                        Err(error) => return Err(error.into()),
+                    };
+                    if actual.as_deref() == Some(change.after.as_str()) {
                         return Ok(());
                     }
                     ensure!(
-                        actual == change.before,
+                        if change.create {
+                            actual.is_none()
+                        } else {
+                            actual.as_deref() == Some(change.before.as_str())
+                        },
                         "Binding changed since preview; inspect and retry"
                     );
                     crate::fsutil::atomic_write_str(&change.path, &change.after)
@@ -123,6 +137,29 @@ impl App {
         self.refresh_visual_list();
         Ok(())
     }
+    pub(crate) fn save_property_definitions(
+        &mut self,
+        definitions: PropertyDefinitions,
+    ) -> Result<()> {
+        let stamp = std::fs::metadata(PropertyDefinitions::path(&self.storage.data_dir))
+            .ok()
+            .map(|metadata| crate::storage::FileStamp {
+                len: metadata.len(),
+                modified_nanos: metadata
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|time| time.as_nanos()),
+            });
+        ensure!(
+            stamp == self.property_definitions_stamp,
+            "Definitions changed since loaded; reload and retry"
+        );
+        definitions.save(&self.storage.data_dir)?;
+        self.reload_property_definitions();
+        self.enqueue_backup("properties: definitions");
+        Ok(())
+    }
     pub(crate) fn reload_property_definitions(&mut self) {
         let path = PropertyDefinitions::path(&self.storage.data_dir);
         self.property_definitions_stamp =
@@ -163,6 +200,11 @@ impl App {
                 crate::app::messages::MessageSeverity::Warning,
             );
         }
+        if let Some(plugin) = &mut self.graph_plugin {
+            plugin.notes.clone_from(&self.notes);
+            plugin.refresh_simulation(&self.config);
+        }
+        self.editor.links = self.compute_links();
         self.graph_preview = None;
         self.refresh_visual_list();
         self.list.pending_preview_update = true;
@@ -230,6 +272,10 @@ impl App {
         ids: &[String],
         edits: &[FrontmatterEdit],
     ) -> Result<PropertyBatch> {
+        ensure!(
+            !PropertyBatch::recovery_path(self).exists(),
+            "Resume pending property batch before preparing a new batch"
+        );
         if self.mode == ViewMode::Edit {
             self.autosave().map_err(anyhow::Error::msg)?;
         }
@@ -270,6 +316,10 @@ impl App {
         old: &str,
         new: &str,
     ) -> Result<PropertyBatch> {
+        ensure!(
+            !PropertyBatch::recovery_path(self).exists(),
+            "Resume pending property batch before preparing a new batch"
+        );
         if self.mode == ViewMode::Edit {
             self.autosave().map_err(anyhow::Error::msg)?;
         }
@@ -318,6 +368,7 @@ impl App {
             let after = doc.to_string();
             if before != after {
                 batch.bindings.push(BindingChange {
+                    create: false,
                     path: definition_path,
                     before,
                     after,
@@ -364,6 +415,7 @@ impl App {
             let after = doc.to_string();
             if before != after {
                 batch.bindings.push(BindingChange {
+                    create: false,
                     path: config_path,
                     before,
                     after,
@@ -397,6 +449,7 @@ impl App {
                 let after = doc.to_string();
                 if before != after {
                     batch.bindings.push(BindingChange {
+                        create: false,
                         path,
                         before,
                         after,
@@ -500,8 +553,14 @@ pub(crate) enum PropertyManagerMode {
     Bulk,
     Rename { global: bool },
     Resume,
+    References,
 }
 pub(crate) enum PropertyPreview {
+    References {
+        operation: ReferenceOperation,
+        relocations: std::collections::HashMap<String, String>,
+        batch: PropertyBatch,
+    },
     Definitions {
         text: String,
         original: Option<String>,
@@ -580,9 +639,10 @@ impl App {
                     if !global { ensure!(self.mode == ViewMode::Edit && !old.is_empty(), "Select property in note editor first"); }
                     toml::to_string(&toml::Value::Table(toml::map::Map::from_iter([("old".into(), toml::Value::String(old.into())), ("new".into(), toml::Value::String(String::new()))])))?
                 },
+                PropertyManagerMode::References => anyhow::bail!("Reference preview is opened by move/rename"),
                 PropertyManagerMode::Resume => {
                     let batch: PropertyBatch = toml::from_str(&std::fs::read_to_string(PropertyBatch::recovery_path(self)).context("No pending property batch")?)?;
-                    let mut manager = PropertyManager { mode, input: crate::ui::make_popup_textarea(&self.app_theme, ""), targets, original, preview: None, report: Vec::new(), error: None, confirm: false, input_rect: Default::default(), apply_rect: Default::default(), scroll: 0 };
+                    let mut manager = PropertyManager { mode, input: crate::ui::make_popup_textarea(&self.app_theme, ""), targets, original, preview: None, report: Vec::new(), error: None, confirm: false, input_rect: ratatui::layout::Rect::default(), apply_rect: ratatui::layout::Rect::default(), scroll: 0 };
                     manager.report = batch_report(&batch);
                     manager.preview = Some(PropertyPreview::Batch(batch));
                     return Ok(manager);
@@ -599,8 +659,8 @@ impl App {
                 report: Vec::new(),
                 error: None,
                 confirm: false,
-                input_rect: Default::default(),
-                apply_rect: Default::default(),
+                input_rect: ratatui::layout::Rect::default(),
+                apply_rect: ratatui::layout::Rect::default(),
                 scroll: 0,
             })
         })();
@@ -686,7 +746,48 @@ impl App {
                     self.property_definitions.validate(&request.name, value)?;
                 }
                 let edit = crate::property_model::property_edit(&request.name, value.as_ref())?;
-                let batch = self.prepare_property_batch(&manager.targets, &[edit])?;
+                let mut batch = self.prepare_property_batch(&manager.targets, &[edit])?;
+                if let Some(value) = &value {
+                    self.ensure_catalog_ready()?;
+                    if let Some(definition) = crate::property_model::inferred_definition(
+                        &self.property_definitions,
+                        self.notes
+                            .iter()
+                            .filter(|note| !manager.targets.contains(&note.id)),
+                        &request.name,
+                        request.kind,
+                        value,
+                        &[],
+                    )? {
+                        let mut definitions = self.property_definitions.clone();
+                        definitions
+                            .properties
+                            .insert(request.name.clone(), definition);
+                        let path = PropertyDefinitions::path(&self.storage.data_dir);
+                        let original = match std::fs::read_to_string(&path) {
+                            Ok(text) => Some(text),
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                            Err(error) => return Err(error.into()),
+                        };
+                        let mut document: toml_edit::DocumentMut =
+                            original.as_deref().unwrap_or("").parse()?;
+                        let desired: toml_edit::DocumentMut =
+                            toml_edit::ser::to_string_pretty(&definitions)?.parse()?;
+                        for (key, item) in desired.iter() {
+                            if let Some(existing) = document.get_mut(key) {
+                                crate::config::merge::merge_edit_item(existing, item.clone());
+                            } else {
+                                document.insert(key, item.clone());
+                            }
+                        }
+                        batch.bindings.push(BindingChange {
+                            path,
+                            create: original.is_none(),
+                            before: original.unwrap_or_default(),
+                            after: document.to_string(),
+                        });
+                    }
+                }
                 manager.report = batch_report(&batch);
                 manager.preview = Some(PropertyPreview::Batch(batch));
             }
@@ -738,7 +839,7 @@ impl App {
                     });
                 }
             }
-            PropertyManagerMode::Resume => {}
+            PropertyManagerMode::Resume | PropertyManagerMode::References => {}
         }
         Ok(())
     }
@@ -747,6 +848,30 @@ impl App {
             return Ok(false);
         };
         match preview {
+            PropertyPreview::References {
+                operation,
+                relocations,
+                batch,
+            } => {
+                ensure!(
+                    self.storage.prepare_reference_relocation(relocations)? == *batch,
+                    "References changed since preview; cancel and preview again"
+                );
+                match operation {
+                    ReferenceOperation::Move { mode, target } => {
+                        self.perform_move(mode.clone(), target)
+                    }
+                    ReferenceOperation::RenameNote { id, title } => {
+                        self.storage.rename_note(id, title)?;
+                        self.request_notes_reconcile();
+                    }
+                    ReferenceOperation::RenameFolder { old, new } => {
+                        self.storage.rename_folder(old, new)?;
+                        self.request_notes_reconcile();
+                    }
+                }
+                Ok(true)
+            }
             PropertyPreview::Definitions { text, original } => {
                 let path = PropertyDefinitions::path(&self.storage.data_dir);
                 let actual = match std::fs::read_to_string(&path) {
@@ -795,8 +920,7 @@ impl App {
                     definitions
                         .properties
                         .insert(new.clone(), definition.clone());
-                    definitions.save(&self.storage.data_dir)?;
-                    self.property_definitions = definitions;
+                    self.save_property_definitions(definitions)?;
                     self.editor
                         .properties
                         .set_definitions(&self.property_definitions);
@@ -832,7 +956,10 @@ impl App {
             Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                 KeyCode::Esc => {
                     if manager.preview.is_some()
-                        && !matches!(manager.mode, PropertyManagerMode::Resume)
+                        && !matches!(
+                            manager.mode,
+                            PropertyManagerMode::Resume | PropertyManagerMode::References
+                        )
                     {
                         manager.preview = None;
                         manager.confirm = false;
@@ -895,6 +1022,9 @@ impl App {
             }
             _ => {}
         }
+        if close && matches!(manager.mode, PropertyManagerMode::References) {
+            return true;
+        }
         let result = if preview {
             self.preview_property_management(&mut manager)
                 .map(|_| false)
@@ -955,6 +1085,7 @@ pub(crate) fn draw_property_manager(frame: &mut ratatui::Frame, app: &mut App) {
         PropertyManagerMode::Rename { global: true } => "RENAME PROPERTY ACROSS VAULT",
         PropertyManagerMode::Rename { global: false } => "RENAME PROPERTY",
         PropertyManagerMode::Resume => "RESUME PROPERTY BATCH",
+        PropertyManagerMode::References => "UPDATE NOTE REFERENCES",
     };
     let hints = [
         (
@@ -1025,4 +1156,216 @@ pub(crate) fn draw_property_manager(frame: &mut ratatui::Frame, app: &mut App) {
             .style(Style::default().fg(app.app_theme.destructive)),
         areas[2],
     );
+}
+#[derive(Clone)]
+pub(crate) enum ReferenceOperation {
+    Move {
+        mode: crate::popups::FolderPickerMode,
+        target: String,
+    },
+    RenameNote {
+        id: String,
+        title: String,
+    },
+    RenameFolder {
+        old: String,
+        new: String,
+    },
+}
+impl App {
+    pub(crate) fn preview_reference_operation(
+        &mut self,
+        operation: ReferenceOperation,
+    ) -> Result<bool> {
+        use std::collections::HashMap;
+        let mut relocations = HashMap::new();
+        let mut folders = Vec::new();
+        match &operation {
+            ReferenceOperation::RenameNote { id, title } => {
+                let target = self.storage.rename_note_target(id, title);
+                if &target != id {
+                    relocations.insert(id.clone(), target);
+                }
+            }
+            ReferenceOperation::RenameFolder { old, new } => {
+                folders.push((old.clone(), new.clone()));
+            }
+            ReferenceOperation::Move { mode, target } => {
+                use crate::popups::FolderPickerMode;
+                let (notes, paths): (&[String], &[String]) = match mode {
+                    FolderPickerMode::MoveNote { note_id } => (std::slice::from_ref(note_id), &[]),
+                    FolderPickerMode::MoveFolder { folder_path } => {
+                        (&[], std::slice::from_ref(folder_path))
+                    }
+                    FolderPickerMode::BulkMoveNotes { note_ids } => (note_ids, &[]),
+                    FolderPickerMode::BulkMoveFolders { folder_paths } => (&[], folder_paths),
+                    FolderPickerMode::BulkMoveMixed {
+                        note_ids,
+                        folder_paths,
+                    } => (note_ids, folder_paths),
+                    _ => return Ok(false),
+                };
+                for id in notes {
+                    let file = std::path::Path::new(id)
+                        .file_name()
+                        .and_then(|file| file.to_str())
+                        .context("Missing note filename")?;
+                    let new = if target.is_empty() {
+                        file.to_owned()
+                    } else {
+                        format!("{target}/{file}")
+                    };
+                    if &new != id {
+                        relocations.insert(id.clone(), new);
+                    }
+                }
+                for path in paths {
+                    let base = path.rsplit('/').next().unwrap_or(path);
+                    let new = if target.is_empty() {
+                        base.to_owned()
+                    } else {
+                        format!("{target}/{base}")
+                    };
+                    folders.push((path.clone(), new));
+                }
+            }
+        }
+        if !folders.is_empty() {
+            for id in self.storage.list_note_ids(true, false)? {
+                for (old, new) in &folders {
+                    if old != new
+                        && let Some(suffix) = id.strip_prefix(&format!("{old}/"))
+                    {
+                        relocations.insert(id.clone(), format!("{new}/{suffix}"));
+                    }
+                }
+            }
+        }
+        let batch = self.storage.prepare_reference_relocation(&relocations)?;
+        if batch.notes.is_empty() {
+            return Ok(false);
+        }
+        let mut report =
+            vec!["Move/rename and update declared references. Esc cancels without writes.".into()];
+        let mut targets: Vec<_> = relocations.iter().collect();
+        targets.sort();
+        report.extend(
+            targets
+                .into_iter()
+                .map(|(old, new)| format!("{old} -> {new}")),
+        );
+        report.extend(batch_report(&batch));
+        self.property_manager = Some(PropertyManager {
+            mode: PropertyManagerMode::References,
+            input: crate::ui::make_popup_textarea(&self.app_theme, ""),
+            targets: Vec::new(),
+            original: None,
+            preview: Some(PropertyPreview::References {
+                operation,
+                relocations,
+                batch,
+            }),
+            report,
+            error: None,
+            confirm: false,
+            input_rect: ratatui::layout::Rect::default(),
+            apply_rect: ratatui::layout::Rect::default(),
+            scroll: 0,
+        });
+        Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    #[test]
+    fn reference_preview_cancel_apply_backlinks_and_graph_union() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir()?;
+        crate::config::set_config_path_override(dir.path().join("config.toml"));
+        let vault = dir.path().join("vault");
+        std::fs::create_dir_all(vault.join(".clin"))?;
+        std::fs::write(
+            vault.join(".clin/properties.toml"),
+            "[properties.parent]\ntype = 'note_reference'\n",
+        )?;
+        std::fs::write(
+            vault.join("target.md"),
+            "---\ntitle: Target\nupdated_at: 1\n---\ntarget",
+        )?;
+        std::fs::write(
+            vault.join("child.md"),
+            "---\ntitle: Child\nupdated_at: 1\nparent: target.md\nraw: '[[Ghost]]'\n---\n[[Target]]",
+        )?;
+        let storage = crate::storage::Storage {
+            data_dir: vault.clone(),
+            notes_dir: vault.clone(),
+            config_dir: dir.path().into(),
+            templates_dir: vault.join(".clin/templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+        let mut app = App::new(storage)?;
+        app.ensure_catalog_ready()?;
+        let child = app
+            .notes
+            .iter()
+            .find(|note| note.id == "child.md")
+            .expect("child");
+        assert_eq!(child.property_links, ["target.md"]);
+        let specs = crate::graf_adapter::note_specs(&app.notes, &app.config.features);
+        assert_eq!(
+            specs
+                .iter()
+                .find(|note| note.id == "child.md")
+                .expect("child")
+                .links,
+            ["Target"]
+        );
+        app.load_and_open_note("target.md", None);
+        let links = app.compute_links();
+        assert!(
+            links
+                .iter()
+                .any(|link| link.id == "child.md" && link.is_backlink && link.is_property)
+        );
+        app.mode = ViewMode::List;
+        let operation = ReferenceOperation::Move {
+            mode: crate::popups::FolderPickerMode::MoveNote {
+                note_id: "target.md".into(),
+            },
+            target: "archive".into(),
+        };
+        let original = std::fs::read(vault.join("child.md"))?;
+        assert!(app.preview_reference_operation(operation.clone())?);
+        assert_eq!(std::fs::read(vault.join("child.md"))?, original);
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        assert!(app.property_manager.is_none());
+        assert!(vault.join("target.md").exists());
+        assert!(app.preview_reference_operation(operation)?);
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Tab,
+            KeyModifiers::NONE,
+        )));
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+        assert!(app.property_manager.is_none());
+        assert!(vault.join("archive/target.md").exists());
+        let values = frontmatter::checked_parse(
+            &app.storage.load_frontmatter("child.md")?.expect("header"),
+        )?
+        .extra;
+        assert_eq!(values["parent"].as_str(), Some("archive/target.md"));
+        assert_eq!(values["raw"].as_str(), Some("[[Ghost]]"));
+        Ok(())
+    }
 }

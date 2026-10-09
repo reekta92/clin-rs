@@ -625,6 +625,11 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
                     } else {
                         format!("→  {}", item.title)
                     };
+                    let text = if item.is_property {
+                        format!("{text} [property]")
+                    } else {
+                        text
+                    };
                     ListItem::new(text).style(Style::default().fg(theme.fg))
                 })
                 .collect();

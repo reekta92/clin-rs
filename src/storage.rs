@@ -2,6 +2,7 @@ use crate::config::ClinConfig;
 use rand::RngExt;
 const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 const NONCE_LEN: usize = 12;
+const PROPERTY_DRAFT_MAGIC: &[u8] = b"\xffCLINP2";
 use crate::frontmatter;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
@@ -50,6 +51,35 @@ pub struct NoteSummary {
     pub size_bytes: u64,
     pub properties: crate::property_model::PropertyMap,
     pub property_links: Vec<String>,
+}
+impl NoteSummary {
+    pub(crate) fn graph_links(&self, notes: &[Self]) -> Vec<String> {
+        let mut links: std::collections::BTreeSet<_> = self
+            .links
+            .iter()
+            .map(|link| {
+                crate::property_model::resolve_reference(notes, link)
+                    .map_or_else(|| link.clone(), |note| note.title.clone())
+            })
+            .collect();
+        links.extend(
+            self.property_links
+                .iter()
+                .filter_map(|link| crate::property_model::resolve_reference(notes, link))
+                .map(|note| note.title.clone()),
+        );
+        links.into_iter().collect()
+    }
+
+    pub(crate) fn all_links(&self) -> Vec<String> {
+        self.links
+            .iter()
+            .chain(&self.property_links)
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FileStamp {
@@ -544,6 +574,8 @@ impl Storage {
             format!("{folder}/{stem}.clin")
         };
         let target_id = self.unique_note_id(stem, "clin", &clin_id);
+        let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
+        let reference_changes = self.prepare_reference_relocation(&relocations)?;
         let target_path = self.note_path(&target_id);
 
         if let Some(parent) = target_path.parent() {
@@ -579,6 +611,7 @@ impl Storage {
             fs::remove_file(&old_path).context("failed to remove plain note after encryption")?;
         }
 
+        self.apply_reference_relocation(reference_changes, &relocations)?;
         Ok(target_id)
     }
 
@@ -619,6 +652,8 @@ impl Storage {
             format!("{folder}/{stem}.{orig_ext}")
         };
         let target_id = self.unique_note_id(stem, &orig_ext, &target_id);
+        let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
+        let reference_changes = self.prepare_reference_relocation(&relocations)?;
         let target_path = self.note_path(&target_id);
 
         if let Some(parent) = target_path.parent() {
@@ -651,6 +686,7 @@ impl Storage {
                 .context("failed to remove encrypted note after decryption")?;
         }
 
+        self.apply_reference_relocation(reference_changes, &relocations)?;
         Ok(target_id)
     }
 
@@ -1148,7 +1184,7 @@ impl Storage {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             })
         } else if ext != "md" && ext != "txt" {
@@ -1170,7 +1206,7 @@ impl Storage {
                 pinned: false,
                 links: Vec::new(),
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             })
         } else {
@@ -1293,6 +1329,7 @@ impl Storage {
             &[frontmatter::FrontmatterEdit {
                 key_yaml: "text_align".into(),
                 value_yaml: Some(serde_yaml_ng::to_string(&alignment)?),
+                rename_from: None,
             }],
         )?;
         let mut output = header.into_bytes();
@@ -1373,6 +1410,7 @@ impl Storage {
         output.extend_from_slice(payload);
         crate::fsutil::atomic_write(&path, &output)
     }
+
     pub fn editor_draft_path(&self) -> PathBuf {
         self.data_dir.join(".clin").join("editor_draft.bin")
     }
@@ -1388,6 +1426,7 @@ impl Storage {
         let draft = (id.to_string(), title.to_string(), content.to_string());
         let mut bytes = bincode::serde::encode_to_vec(&draft, bincode::config::standard())
             .context("failed to encode draft")?;
+        bytes.extend_from_slice(PROPERTY_DRAFT_MAGIC);
         bytes.extend(
             bincode::serde::encode_to_vec(edits, bincode::config::standard())
                 .context("failed to encode property draft")?,
@@ -1422,9 +1461,25 @@ impl Storage {
         .context("failed to decode editor draft")?;
         let edits = if used == decrypted.len() {
             Vec::new()
+        } else if let Some(payload) = decrypted[used..].strip_prefix(PROPERTY_DRAFT_MAGIC) {
+            let (edits, suffix_used) = bincode::serde::decode_from_slice::<
+                Vec<frontmatter::FrontmatterEdit>,
+                _,
+            >(payload, bincode::config::standard())
+            .context("failed to decode property draft")?;
+            anyhow::ensure!(
+                used + PROPERTY_DRAFT_MAGIC.len() + suffix_used == decrypted.len(),
+                "Unexpected trailing property draft bytes"
+            );
+            edits
         } else {
-            let (edits, suffix_used) =
-                bincode::serde::decode_from_slice::<Vec<frontmatter::FrontmatterEdit>, _>(
+            #[derive(serde::Deserialize)]
+            struct LegacyPropertyEdit {
+                key_yaml: String,
+                value_yaml: Option<String>,
+            }
+            let (legacy_edits, suffix_used) =
+                bincode::serde::decode_from_slice::<Vec<LegacyPropertyEdit>, _>(
                     &decrypted[used..],
                     bincode::config::standard(),
                 )
@@ -1433,7 +1488,14 @@ impl Storage {
                 used + suffix_used == decrypted.len(),
                 "Unexpected trailing property draft bytes"
             );
-            edits
+            legacy_edits
+                .into_iter()
+                .map(|e| frontmatter::FrontmatterEdit {
+                    key_yaml: e.key_yaml,
+                    value_yaml: e.value_yaml,
+                    rename_from: None,
+                })
+                .collect()
         };
         let existing = match self.load_note(&draft.0) {
             Ok(note) => Some(note),
@@ -1560,6 +1622,12 @@ impl Storage {
         } else {
             id.to_string()
         };
+        let relocations = if id != target_id && old_path.exists() {
+            HashMap::from([(id.to_owned(), target_id.clone())])
+        } else {
+            HashMap::new()
+        };
+        let reference_changes = self.prepare_reference_relocation(&relocations)?;
         let existing_pinned = existing.pinned;
         let links = extract_wikilinks(&note.content);
         let fm = frontmatter::Frontmatter {
@@ -1612,7 +1680,19 @@ impl Storage {
             let _ = self.migrate_subnotes_parent(id, &target_id);
         }
 
+        self.apply_reference_relocation(reference_changes, &relocations)?;
         Ok(target_id)
+    }
+
+    pub(crate) fn rename_note_target(&self, id: &str, title: &str) -> String {
+        if !self.rename_on_title_change {
+            return id.to_owned();
+        }
+        let ext = Path::new(id)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("md");
+        self.unique_note_id(&self.note_file_stem_from_title(title), ext, id)
     }
 
     pub fn rename_note(&mut self, id: &str, new_title: &str) -> Result<String> {
@@ -1869,7 +1949,19 @@ impl Storage {
             fs::create_dir_all(parent)?;
         }
 
-        fs::rename(old_full, new_full).context("failed to rename folder")
+        let prefix = format!("{old_path}/");
+        let relocations = self
+            .list_note_ids(true, false)?
+            .into_iter()
+            .filter_map(|id| {
+                id.strip_prefix(&prefix)
+                    .map(|suffix| format!("{new_path}/{suffix}"))
+                    .map(|target| (id, target))
+            })
+            .collect();
+        let reference_changes = self.prepare_reference_relocation(&relocations)?;
+        fs::rename(old_full, new_full).context("failed to rename folder")?;
+        self.apply_reference_relocation(reference_changes, &relocations)
     }
 
     /// Recursively copy folder `src_rel` (relative to notes dir) into `target_folder`
@@ -1926,6 +2018,151 @@ impl Storage {
         Ok(())
     }
 
+    /// Preflight declared references before changing target IDs. No note is written here.
+    pub(crate) fn prepare_reference_relocation(
+        &self,
+        relocations: &HashMap<String, String>,
+    ) -> Result<crate::property_management::PropertyBatch> {
+        use crate::property_management::{HeaderChange, PropertyBatch};
+        use crate::property_model::{
+            PropertyDefinitions, PropertyValue, property_edit, resolve_reference,
+        };
+        let mut batch = PropertyBatch::default();
+        if relocations.is_empty() {
+            return Ok(batch);
+        }
+        let definitions = PropertyDefinitions::load(&self.data_dir)?;
+        if !definitions
+            .properties
+            .values()
+            .any(|definition| definition.kind.is_reference())
+        {
+            return Ok(batch);
+        }
+        let ids = self.list_note_ids(true, false)?;
+        let notes: Vec<_> = ids
+            .iter()
+            .map(|id| self.load_note_summary(id))
+            .collect::<Result<_>>()?;
+        for note in &notes {
+            if !matches!(
+                Path::new(&note.id).extension().and_then(|ext| ext.to_str()),
+                Some("md" | "txt" | "clin")
+            ) {
+                continue;
+            }
+            let before = self.load_frontmatter(&note.id)?;
+            let Some(header) = &before else {
+                continue;
+            };
+            let mapping = frontmatter::checked_parse(header)?.extra;
+            let mut edits = Vec::new();
+            for (key, definition) in &definitions.properties {
+                if !definition.kind.is_reference() {
+                    continue;
+                }
+                let Some(value) = mapping.get(serde_yaml_ng::Value::String(key.clone())) else {
+                    continue;
+                };
+                let indexed = PropertyValue::from_yaml(value);
+                if !definition.validate_indexed(&indexed) {
+                    continue;
+                }
+                let replace = |value: &serde_yaml_ng::Value| {
+                    value
+                        .as_str()
+                        .and_then(|value| resolve_reference(&notes, value))
+                        .and_then(|target| relocations.get(&target.id))
+                        .map_or_else(
+                            || value.clone(),
+                            |id| serde_yaml_ng::Value::String(id.clone()),
+                        )
+                };
+                let after = match value {
+                    serde_yaml_ng::Value::Sequence(values) => {
+                        serde_yaml_ng::Value::Sequence(values.iter().map(replace).collect())
+                    }
+                    _ => replace(value),
+                };
+                if &after != value {
+                    edits.push(property_edit(key, Some(&after))?);
+                }
+            }
+            if !edits.is_empty() {
+                let after = frontmatter::apply_edits(header, &edits)?;
+                batch.notes.push(HeaderChange {
+                    id: relocations.get(&note.id).unwrap_or(&note.id).clone(),
+                    before,
+                    after,
+                });
+            }
+        }
+        anyhow::ensure!(
+            batch.notes.is_empty() || !self.data_dir.join(".clin/property_batch.toml").exists(),
+            "Resume pending property batch before moving referenced notes"
+        );
+        Ok(batch)
+    }
+
+    fn apply_reference_relocation(
+        &self,
+        mut batch: crate::property_management::PropertyBatch,
+        relocations: &HashMap<String, String>,
+    ) -> Result<()> {
+        if batch.notes.is_empty() {
+            return Ok(());
+        }
+        // A moved note may also have been saved with a changed title/body/header.
+        // Rebase only the declared reference changes on its newly written header.
+        for change in &mut batch.notes {
+            if relocations.values().any(|id| id == &change.id) {
+                let before =
+                    frontmatter::checked_parse(change.before.as_deref().unwrap_or("---\n---\n"))?
+                        .extra;
+                let after = frontmatter::checked_parse(&change.after)?.extra;
+                let edits: Vec<_> = after
+                    .iter()
+                    .filter(|(key, value)| before.get(*key) != Some(*value))
+                    .map(|(key, value)| {
+                        crate::property_model::property_edit(
+                            key.as_str().context("Reference key must be text")?,
+                            Some(value),
+                        )
+                    })
+                    .collect::<Result<_>>()?;
+                change.before = self.load_frontmatter(&change.id)?;
+                change.after = frontmatter::apply_edits(
+                    change.before.as_deref().unwrap_or("---\n---\n"),
+                    &edits,
+                )?;
+            }
+        }
+        let path = self.data_dir.join(".clin/property_batch.toml");
+        fs::create_dir_all(self.data_dir.join(".clin"))?;
+        crate::fsutil::atomic_write_str(&path, &toml::to_string(&batch)?)?;
+        let mut failures = Vec::new();
+        batch.notes.retain(|change| {
+            match self.replace_property_header(&change.id, change.before.as_deref(), &change.after)
+            {
+                Ok(()) => false,
+                Err(error) => {
+                    failures.push(format!("{}: {error:#}", change.id));
+                    true
+                }
+            }
+        });
+        if failures.is_empty() {
+            crate::fsutil::remove_file_if_exists(&path)?;
+        } else {
+            crate::fsutil::atomic_write_str(&path, &toml::to_string(&batch)?)?;
+            anyhow::bail!(
+                "Target moved; reference updates partially failed: {}. Resume notes properties resume --apply",
+                failures.join("; ")
+            );
+        }
+        Ok(())
+    }
+
     pub fn move_note(&mut self, id: &str, new_folder: &str) -> Result<String> {
         let old_path = self.note_path(id);
         if !old_path.exists() {
@@ -1956,8 +2193,11 @@ impl Storage {
             fs::create_dir_all(parent)?;
         }
 
+        let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
+        let reference_changes = self.prepare_reference_relocation(&relocations)?;
         fs::rename(&old_path, &new_path).context("failed to move note")?;
         let _ = self.migrate_subnotes_parent(id, &target_id);
+        self.apply_reference_relocation(reference_changes, &relocations)?;
         Ok(target_id)
     }
 
@@ -2419,6 +2659,90 @@ mod tests {
     use super::*;
 
     #[test]
+    fn declared_references_follow_move_rename_and_encryption() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let mut storage = Storage {
+            data_dir: dir.path().into(),
+            config_dir: dir.path().into(),
+            notes_dir: dir.path().into(),
+            templates_dir: dir.path().join("templates"),
+            key: [7; 32],
+            skip_dir_patterns: vec![],
+            rename_on_title_change: true,
+        };
+        fs::create_dir_all(dir.path().join(".clin"))?;
+        fs::write(
+            dir.path().join(".clin/properties.toml"),
+            "[properties.parent]\ntype = 'note_reference'\n[properties.sources]\ntype = 'note_references'\n",
+        )?;
+        fs::write(
+            dir.path().join("target.md"),
+            "---\ntitle: Target\nupdated_at: 1\n---\nbody",
+        )?;
+        fs::write(
+            dir.path().join("child.md"),
+            "---\ntitle: Child\nparent: '[[Target]]' # keep\nsources: [target.md, missing.md]\nraw: '[[Target]]'\n---\nchild body",
+        )?;
+        let moved = storage.move_note("target.md", "archive")?;
+        let header = storage.load_frontmatter("child.md")?.expect("header");
+        assert!(header.contains("# keep"));
+        let values = frontmatter::checked_parse(&header)?.extra;
+        assert_eq!(values["parent"].as_str(), Some(moved.as_str()));
+        assert_eq!(values["raw"].as_str(), Some("[[Target]]"));
+        let renamed = storage.rename_note(&moved, "Renamed")?;
+        let encrypted = storage.encrypt_note(&renamed)?;
+        let decrypted = storage.decrypt_note(&encrypted)?;
+        let values =
+            frontmatter::checked_parse(&storage.load_frontmatter("child.md")?.expect("header"))?
+                .extra;
+        assert_eq!(values["parent"].as_str(), Some(decrypted.as_str()));
+        assert_eq!(values["sources"][0].as_str(), Some(decrypted.as_str()));
+        assert_eq!(values["sources"][1].as_str(), Some("missing.md"));
+        assert_eq!(storage.load_note("child.md")?.content, "child body");
+        assert!(!dir.path().join(".clin/property_batch.toml").exists());
+        storage.rename_on_title_change = false;
+        // Both draft layouts recover without conflating a removal with a rename.
+        let rename = frontmatter::FrontmatterEdit {
+            key_yaml: "ancestor".into(),
+            value_yaml: None,
+            rename_from: Some("parent".into()),
+        };
+        storage.write_editor_draft("child.md", "Child", "child body", &[rename])?;
+        storage.recover_editor_draft()?;
+        let values =
+            frontmatter::checked_parse(&storage.load_frontmatter("child.md")?.expect("header"))?
+                .extra;
+        assert!(!values.contains_key(serde_yaml_ng::Value::String("parent".into())));
+        assert_eq!(values["ancestor"].as_str(), Some(decrypted.as_str()));
+        #[derive(serde::Serialize)]
+        struct LegacyEdit {
+            key_yaml: String,
+            value_yaml: Option<String>,
+        }
+        let mut draft = bincode::serde::encode_to_vec(
+            ("child.md", "Child", "legacy body"),
+            bincode::config::standard(),
+        )?;
+        draft.extend(bincode::serde::encode_to_vec(
+            vec![LegacyEdit {
+                key_yaml: "legacy".into(),
+                value_yaml: Some("true".into()),
+            }],
+            bincode::config::standard(),
+        )?);
+        fs::write(storage.editor_draft_path(), storage.encrypt(&draft)?)?;
+        storage.recover_editor_draft()?;
+        assert_eq!(storage.load_note("child.md")?.content, "legacy body");
+        assert_eq!(
+            frontmatter::checked_parse(&storage.load_frontmatter("child.md")?.expect("header"))?
+                .extra["legacy"]
+                .as_bool(),
+            Some(true)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn is_existing_vault_detects_user_content() {
         let tmp = tempfile::tempdir().unwrap();
         let vault = tmp.path().join("v");
@@ -2643,14 +2967,17 @@ mod tests {
                 frontmatter::FrontmatterEdit {
                     key_yaml: "status".into(),
                     value_yaml: Some("answered".into()),
+                    rename_from: None,
                 },
                 frontmatter::FrontmatterEdit {
                     key_yaml: "reviewed".into(),
                     value_yaml: Some("true".into()),
+                    rename_from: None,
                 },
                 frontmatter::FrontmatterEdit {
                     key_yaml: "confidence".into(),
                     value_yaml: None,
+                    rename_from: None,
                 },
             ];
             let edited_id = storage.save_note_with_properties(&saved_id, &note, &edits)?;
@@ -2697,6 +3024,7 @@ mod tests {
         let edits = [frontmatter::FrontmatterEdit {
             key_yaml: "status".into(),
             value_yaml: Some("answered".into()),
+            rename_from: None,
         }];
         let note = storage.load_note("note.md")?;
         storage.write_editor_draft("note.md", &note.title, &note.content, &edits)?;
@@ -2741,6 +3069,7 @@ mod tests {
         let reviewed = [frontmatter::FrontmatterEdit {
             key_yaml: "reviewed".into(),
             value_yaml: Some("true".into()),
+            rename_from: None,
         }];
         storage.save_note_with_properties(
             &encrypted,
@@ -2781,6 +3110,7 @@ mod tests {
         let reserved = [frontmatter::FrontmatterEdit {
             key_yaml: "title".into(),
             value_yaml: Some("bad".into()),
+            rename_from: None,
         }];
         storage.write_editor_draft(&plain, "legacy", "old draft", &reserved)?;
         let original = fs::read(storage.note_path(&plain))?;

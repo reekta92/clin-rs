@@ -215,7 +215,7 @@ pub fn note_specs(
             title: n.title.clone(),
             tags: n.tags.clone(),
             folder: n.folder.clone(),
-            links: n.links.clone(),
+            links: n.graph_links(summaries),
         })
         .collect()
 }
@@ -839,12 +839,16 @@ fn remove_wikilink_from_note(
 }
 
 fn refresh_note_summaries(storage: &Storage) -> Vec<crate::storage::NoteSummary> {
-    storage
+    let mut notes: Vec<_> = storage
         .list_note_ids(false, false)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|id| storage.load_note_summary(&id).ok())
-        .collect()
+        .collect();
+    if let Ok(definitions) = crate::property_model::PropertyDefinitions::load(&storage.data_dir) {
+        crate::property_model::refresh_reference_links(&mut notes, &definitions);
+    }
+    notes
 }
 
 /// Persist a wikilink edit and apply the resulting edge change to the live
@@ -934,7 +938,30 @@ fn apply_connection(
     };
     if let (Some(s), Some(t)) = (src_idx, tgt_idx) {
         let mut g = gs.write();
-        graf::apply_connection_change(&mut g.simulation, s, t, create);
+        let relation_remains = state.notes.iter().any(|note| {
+            let other_id = if note.id == resolved_source_id {
+                state
+                    .notes
+                    .iter()
+                    .find(|note| note.title.eq_ignore_ascii_case(&resolved_target_title))
+                    .map(|note| note.id.as_str())
+            } else if note.title.eq_ignore_ascii_case(&resolved_target_title) {
+                Some(resolved_source_id.as_str())
+            } else {
+                None
+            };
+            other_id.is_some_and(|id| {
+                note.property_links.iter().any(|link| {
+                    crate::property_model::resolve_reference(&state.notes, link)
+                        .is_some_and(|target| target.id == id)
+                })
+            })
+        });
+        if !create && relation_remains {
+            state.config_reload_msg =
+                Some("Property relation retained; edit it in the Properties pane".into());
+        }
+        graf::apply_connection_change(&mut g.simulation, s, t, create || relation_remains);
     }
     Some(resolved_source_id)
 }

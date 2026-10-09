@@ -38,7 +38,7 @@ pub enum CatalogCommand {
     },
     PutKnown {
         generation: u64,
-        summary: NoteSummary,
+        summary: Box<NoteSummary>,
         stamp: FileStamp,
         old_id: Option<String>,
     },
@@ -616,7 +616,7 @@ pub(crate) fn spawn_catalog_worker(
                             map.remove(old);
                         }
                         let id = summary.id.clone();
-                        map.insert(id.clone(), (stamp, summary.clone()));
+                        map.insert(id.clone(), (stamp, (*summary).clone()));
                         if baseline_complete {
                             dirty = true;
                             last_dirty_at = Some(Instant::now());
@@ -630,7 +630,7 @@ pub(crate) fn spawn_catalog_worker(
                             &event_tx,
                             CatalogEvent::Delta {
                                 generation: cmd_gen,
-                                upserts: vec![(summary, stamp)],
+                                upserts: vec![(*summary, stamp)],
                                 removed,
                                 folders: None,
                                 processed: 1,
@@ -707,7 +707,7 @@ mod tests {
             pinned: true,
             links: vec![],
             size_bytes: 100,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         };
         let stamp = FileStamp {

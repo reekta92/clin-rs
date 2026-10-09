@@ -262,6 +262,11 @@ template = """
 
     pub fn show_confirm(&mut self, action: ConfirmAction) {
         let (message, detail, confirm_label, is_destructive) = match &action {
+            ConfirmAction::EncryptNote { .. } => (
+                "Encrypt note body?".into(),
+                Some("Custom properties remain readable in plaintext. Definition defaults and Git history are also unencrypted.".into()),
+                "Encrypt".into(), false,
+            ),
             ConfirmAction::DeleteNote { title, .. } => (
                 format!("Move \"{title}\" to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
@@ -349,6 +354,7 @@ template = """
     pub fn confirm_action(&mut self) {
         if let Some(popup) = self.popups.confirm.take() {
             match popup.action {
+                ConfirmAction::EncryptNote { note_id } => self.encrypt_note_confirmed(&note_id),
                 ConfirmAction::DeleteNote { note_id, .. } => {
                     self.confirm_delete_selected(note_id);
                 }

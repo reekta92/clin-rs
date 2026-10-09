@@ -53,7 +53,7 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
             pinned: false,
             links: vec!["b".into()],
             size_bytes: 0,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         },
         clin::storage::NoteSummary {
@@ -65,7 +65,7 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
             pinned: false,
             links: vec!["a".into()],
             size_bytes: 0,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         },
     ];
@@ -325,7 +325,7 @@ fn feature_view_files_graph_preview_same_key() {
             pinned: false,
             links: vec![],
             size_bytes: 0,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         },
         clin::storage::NoteSummary {
@@ -337,7 +337,7 @@ fn feature_view_files_graph_preview_same_key() {
             pinned: false,
             links: vec![],
             size_bytes: 0,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         },
         clin::storage::NoteSummary {
@@ -349,7 +349,7 @@ fn feature_view_files_graph_preview_same_key() {
             pinned: false,
             links: vec![],
             size_bytes: 0,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         },
     ];

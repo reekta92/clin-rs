@@ -66,8 +66,12 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
 | `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
-| `default_sort_field` | `enum` | — | Optional initial sort field: `"title"` or `"modified"` |
+| `default_sort_field` | `enum` | — | Optional initial sort field: `"title"`, `"modified"`, or `"property"` (requires `property_sort_key`). Property sort keeps missing/null/invalid values last in both ascending and descending directions; pin and encryption precedence remain unchanged |
 | `default_sort_order` | `enum` | — | Optional initial sort order: `"ascending"` or `"descending"` |
+| `property_fields` | `array<String>` | `[]` | Custom property keys displayed as inline metadata in the notes list |
+| `property_sort_key` | `Option<String>` | — | Property key used when `default_sort_field = "property"` |
+| `property_group_key` | `Option<String>` | — | Property key used for list view grouping. Notes group by scalar value; list properties place notes into each scalar-value group. Missing/null/invalid properties are ungrouped. Virtual groups never create physical folders |
+| `calendar_date_property` | `Option<String>` | — | Property key used for note dates in the calendar heatmap widget. Requires a vault `date` or `date_time` definition; missing/invalid values are skipped, and unset binding preserves last-modified date behavior |
 | `inline_info` | `enum` | `true` | Show inline metadata info (modification date, tags) in the notes list |
 | `pinned_on_top` | `enum` | `false` | Keep pinned notes at the top of the list |
 | `show_hidden_files` | `enum` | `false` | Show hidden files and folders (starting with ".") in the notes list |
@@ -82,7 +86,7 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `folder_graph_preview` | `enum` | `false` | Show graph preview for folders |
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
-| `custom_smart_folders` | `array` | `[]` | User-defined smart folder rules. Each entry: `{name, tags=[], title_contains=..., folder_prefix=..., updated_within_days=...}` |
+| `custom_smart_folders` | `array` | `[]` | User-defined smart folder rules. Each entry: `{name, tags=[], title_contains=..., folder_prefix=..., updated_within_days=..., all=[], any=[]}` |
 
 ### `[editor]`
 
@@ -414,6 +418,132 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 |---|---|---|---|
 | `word_goal` | `usize` | `500` | Daily target word count (incremental additions). Set to 0 to disable |
 | `note_goal` | `usize` | `3` | Daily target note count (edited or created). Set to 0 to disable |
+### `[properties]`
+
+Clin vaults optionally define property schemas in `<vault>/.clin/properties.toml`. Definitions configure types, descriptions, allowed options, and default values.
+
+#### Schema (`<vault>/.clin/properties.toml`)
+
+```toml
+[properties.status]
+type = "select"
+description = "Current note lifecycle status"
+options = ["draft", "active", "review", "archived"]
+default = "draft"
+
+[properties.priority]
+type = "number"
+description = "Numeric priority level (1 = highest)"
+default = 3
+
+[properties.history_related]
+type = "boolean"
+description = "Flag indicating historical note context"
+default = false
+
+[properties.due_date]
+type = "date"
+description = "Target completion date (YYYY-MM-DD)"
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `enum` | Property data type: `string`, `number`, `boolean`, `date`, `date_time`, `list`, `select`, `multi_select`, `note_reference`, `note_references`, `null`, `yaml` |
+| `description` | `String` | Human-readable description of the property |
+| `default` | `Value` | Default value applied during note creation or explicit `properties.defaults` action |
+| `options` | `array<String>` | Allowed choice values. Required for `select` and `multi_select` types |
+
+Unknown property keys in note frontmatter are valid even if omitted from `.clin/properties.toml`. Property-driven relation/graph views and note-goal tracking UI are planned for future releases.
+
+> **Security Note:** Note frontmatter properties and `.clin/` definitions are stored as plaintext YAML and TOML on disk. Encryption and Git backup do not hide this metadata.
+
+---
+
+### Smart Folders & Predicates
+
+Smart folders combine folder-level constraints (`tags`, `title_contains`, `folder_prefix`, `updated_within_days`) with predicate arrays:
+
+- **`all`**: List of predicates that must all match (logical AND). Empty list `all = []` is valid and matches all notes.
+- **`any`**: Optional list of predicates where at least one must match (logical OR). If specified, `any = []` is invalid and requires at least one predicate.
+
+#### Predicate Schema
+
+```toml
+[[list.custom_smart_folders]]
+name = "Historical Active"
+tags = ["project"]
+all = [
+  { property = "history_related", op = "eq", value = true },
+  { property = "status", op = "ne", value = "archived" }
+]
+any = [
+  { property = "priority", op = "lte", value = 2 },
+  { property = "due_date", op = "exists" }
+]
+```
+
+#### Supported Operators
+
+| Operator | Value Type | Description |
+|---|---|---|
+| `eq` | Scalar / List | Property value equals operand |
+| `ne` | Scalar / List | Property is present and comparable, but does not equal operand (absent properties do not match) |
+| `lt` | Number / String / Date | Property value is less than operand |
+| `lte` | Number / String / Date | Property value is less than or equal to operand |
+| `gt` | Number / String / Date | Property value is greater than operand |
+| `gte` | Number / String / Date | Property value is greater than or equal to operand |
+| `contains` | Scalar | String contains substring, or list contains scalar element |
+| `contains_any` | Array | List property contains at least one of the operand elements |
+| `contains_all` | Array | List property contains all operand elements |
+| `exists` | None (unary) | Property key is present in note (including `null` values) |
+| `missing` | None (unary) | Property key is completely absent from note |
+| `is_null` | None (unary) | Property key is explicitly set to `null` |
+| `is_empty` | None (unary) | Property value is an empty string `""` or empty list `[]` |
+
+---
+
+### Search Syntax
+
+Property queries are supported in both TUI search bars and `clin notes search`:
+
+- **Comparisons:** `prop:KEY=VALUE`, `prop:KEY!=VALUE`, `prop:KEY<VALUE`, `prop:KEY<=VALUE`, `prop:KEY>VALUE`, `prop:KEY>=VALUE`, `prop:KEY~VALUE` (contains).
+- **Unary Filters:** `has:KEY` (exists), `missing:KEY` (absent), `null:KEY` (is null), `empty:KEY` (empty string or list).
+- **Quoting:** Keys and values with spaces or special characters can be quoted: `prop:"review status"="needs work"`.
+- **Type Matching:** Text strings and Booleans are distinguished by quotes: `prop:history_related=true` matches Boolean `true`, whereas `prop:history_related="true"` matches string `"true"`.
+- **Escape & Legacy Prefixes:** Legacy filter prefixes (`f:`, `t:`, etc.) and `\e\` literal escape sequences are preserved.
+
+---
+
+### CLI Commands for Properties
+
+Manage note properties directly from the command line:
+
+```bash
+# List all custom metadata properties of a note as YAML
+clin notes properties list <note>
+
+# Read a single property value from a note
+clin notes properties get <note> <key>
+
+# Set or update a property value (type inferred from schema or specified via --type)
+clin notes properties set <note> <key> <value> [--type <kind>]
+
+# Remove a property from a note
+clin notes properties unset <note> <key>
+
+# Rename a property key in a single note or across the entire vault
+clin notes properties rename <old> <new> --note <note> [--apply]
+clin notes properties rename <old> <new> --all [--apply]
+
+# Resume an interrupted batch operation from .clin/property_batch.toml
+clin notes properties resume [--apply]
+
+# Create notes with initial properties (repeatable --property KEY TYPE VALUE)
+clin notes new "Project Note" --property status select active --property priority number 1
+clin notes quick "Meeting content" --property history_related boolean true
+```
+
+CLI property types (`--type` / `--property`) use kebab-case: `string`, `number`, `boolean`, `null`, `yaml`, `date`, `date-time`, `list`, `select`, `multi-select`, `note-reference`, `note-references`.
 ---
 
 ## Example config.toml

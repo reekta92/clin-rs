@@ -1059,10 +1059,9 @@ impl App {
             SmartFolderKind::Custom(name) => {
                 if let Some(index) = &self.note_index
                     && index.revision == self.notes_revision
+                    && let Some(indices) = index.custom_smart_folder_indices.get(name)
                 {
-                    if let Some(indices) = index.custom_smart_folder_indices.get(name) {
-                        return indices.clone();
-                    }
+                    return indices.clone();
                 }
                 let rule = self
                     .config
@@ -1106,7 +1105,7 @@ impl App {
                     is_note: true,
                     x: 0.0,
                     y: 0.0,
-                    links: n.links.clone(),
+                    links: n.graph_links(&self.notes),
                 })
                 .collect();
             return (children, crate::app::VIRTUAL_PINNED_LABEL.to_string());
@@ -1130,7 +1129,7 @@ impl App {
                         is_note: true,
                         x: 0.0,
                         y: 0.0,
-                        links: n.links.clone(),
+                        links: n.graph_links(&self.notes),
                     })
                     .collect();
                 return (children, label);
@@ -1172,7 +1171,7 @@ impl App {
                 is_note: true,
                 x: 0.0,
                 y: 0.0,
-                links: n.links.clone(),
+                links: n.graph_links(&self.notes),
             })
             .collect();
         let label = if focused_path.is_empty() {

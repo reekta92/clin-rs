@@ -29,6 +29,9 @@ pub struct Frontmatter {
 pub struct FrontmatterEdit {
     pub key_yaml: String,
     pub value_yaml: Option<String>,
+    /// Explicit source key for a rename; rename does not replace property value.
+    #[serde(default)]
+    pub rename_from: Option<String>,
 }
 
 /// Split framing without decoding the body (which may be ciphertext).
@@ -165,19 +168,16 @@ fn fragment(yaml: &str) -> Result<YamlNode> {
 }
 
 pub fn apply_edits(header: &str, edits: &[FrontmatterEdit]) -> Result<String> {
-    let original = validate_header(header)?;
+    let mut original = validate_header(header)?;
     if edits.is_empty() {
         return Ok(header.to_owned());
     }
     let (opening, yaml, closing) = framing(header)?;
     let mut file = YamlFile::from_str(yaml)?;
     let mut touched = Vec::with_capacity(edits.len());
-    let mut skip_next = false;
-    for (index, edit) in edits.iter().enumerate() {
-        if skip_next {
-            skip_next = false;
-            continue;
-        }
+    for edit in edits {
+        // Reparse after each mutation so key lookup sees renamed CST entries.
+        file = YamlFile::from_str(&file.to_string())?;
         let before = opening.ends_with("\r\n").then(|| file.to_string());
         let document = file.ensure_document();
         let mapping = document
@@ -185,45 +185,68 @@ pub fn apply_edits(header: &str, edits: &[FrontmatterEdit]) -> Result<String> {
             .context("Frontmatter must be a YAML mapping")?;
         let key = fragment(&edit.key_yaml)?;
         let semantic_key = semantic_document(&edit.key_yaml)?;
-        // Adjacent remove/add of the same value is a key rename, retaining its CST.
-        if edit.value_yaml.is_none()
-            && let Some(next) = edits.get(index + 1)
-            && let Some(value) = &next.value_yaml
-            && let Some(entry) = mapping.find_entry_by_key(&key)
-            && entry
-                .value_node()
-                .is_some_and(|node| node.to_string().trim() == value.trim())
-        {
-            let new_key = fragment(&next.key_yaml)?;
-            if !mapping.contains_key(&new_key) {
-                ensure!(mapping.rename_key(&key, &new_key), "Property rename failed");
-                touched.push(semantic_key);
-                touched.push(semantic_document(&next.key_yaml)?);
-                skip_next = true;
+        if let Some(source) = &edit.rename_from {
+            ensure!(
+                edit.value_yaml.is_none(),
+                "Rename cannot replace property value"
+            );
+            let source_key = fragment(source)?;
+            let source_semantic = semantic_document(source)?;
+            crate::property_model::validate_key(
+                source_semantic
+                    .as_str()
+                    .context("Rename supports string keys")?,
+            )?;
+            crate::property_model::validate_key(
+                semantic_key
+                    .as_str()
+                    .context("Rename supports string keys")?,
+            )?;
+            ensure!(mapping.contains_key(&source_key), "Property does not exist");
+            if source_semantic == semantic_key {
                 continue;
             }
-        }
-        match &edit.value_yaml {
-            Some(value) => {
-                let value_node = fragment(value)?;
-                // Preserve presentation for semantic no-ops, including quoted scalars.
-                if let Ok(semantic_value) = semantic_document(value)
-                    && original.get(&semantic_key) == Some(&semantic_value)
-                    && !touched.contains(&semantic_key)
-                {
-                    continue;
+            ensure!(!mapping.contains_key(&key), "Property already exists");
+            ensure!(
+                mapping.rename_key(&source_key, &key),
+                "Property rename failed"
+            );
+            if let Some(value) = original.remove(&source_semantic) {
+                original.insert(semantic_key.clone(), value);
+            }
+            if touched.contains(&source_semantic) {
+                touched.push(semantic_key.clone());
+            }
+            touched.push(source_semantic);
+        } else {
+            match &edit.value_yaml {
+                Some(value) => {
+                    let value_node = fragment(value)?;
+                    // Preserve presentation for semantic no-ops, including quoted scalars.
+                    if let Ok(semantic_value) = semantic_document(value)
+                        && original.get(&semantic_key) == Some(&semantic_value)
+                        && !touched.contains(&semantic_key)
+                        && (touched.is_empty()
+                            || semantic_document(&file.to_string()).is_ok_and(|value| {
+                                value.as_mapping().is_some_and(|values| {
+                                    values.get(&semantic_key) == Some(&semantic_value)
+                                })
+                            }))
+                    {
+                        continue;
+                    }
+                    if let Some(entry) = mapping.find_entry_by_key(&key) {
+                        entry.set_value(&value_node, mapping.is_flow_style());
+                    } else {
+                        mapping.set(&key, &value_node);
+                    }
                 }
-                if let Some(entry) = mapping.find_entry_by_key(&key) {
-                    entry.set_value(&value_node, mapping.is_flow_style());
-                } else {
-                    mapping.set(&key, &value_node);
+                None => {
+                    mapping.remove(&key);
                 }
             }
-            None => {
-                mapping.remove(&key);
-            }
+            touched.push(semantic_key);
         }
-        touched.push(semantic_key);
         if let Some(before) = before {
             let after = file.to_string();
             let mut prefix = before
@@ -281,16 +304,14 @@ pub fn rename_key(header: &str, old: &str, new: &str) -> Result<String> {
     if old == new {
         return Ok(header.into());
     }
-    let (opening, yaml, closing) = framing(header)?;
-    let file = YamlFile::from_str(yaml)?;
-    let mapping = file
-        .document()
-        .and_then(|document| document.as_mapping())
-        .context("Expected property mapping")?;
-    ensure!(mapping.rename_key(old, new), "Property rename failed");
-    let result = format!("{opening}{}{closing}", file);
-    validate_header(&result)?;
-    Ok(result)
+    apply_edits(
+        header,
+        &[FrontmatterEdit {
+            key_yaml: serde_yaml_ng::to_string(&Value::String(new.into()))?,
+            value_yaml: None,
+            rename_from: Some(serde_yaml_ng::to_string(&Value::String(old.into()))?),
+        }],
+    )
 }
 
 pub fn parse(content: &str) -> (Frontmatter, &str) {
@@ -336,6 +357,7 @@ pub fn serialize(
             edits.push(FrontmatterEdit {
                 key_yaml: serde_yaml_ng::to_string(key)?,
                 value_yaml: Some(serde_yaml_ng::to_string(value)?),
+                rename_from: None,
             });
         }
     }
@@ -344,6 +366,7 @@ pub fn serialize(
             edits.push(FrontmatterEdit {
                 key_yaml: serde_yaml_ng::to_string(key)?,
                 value_yaml: None,
+                rename_from: None,
             });
         }
     }
@@ -427,14 +450,17 @@ mod tests {
                 FrontmatterEdit {
                     key_yaml: "status".into(),
                     value_yaml: Some("answered".into()),
+                    rename_from: None,
                 },
                 FrontmatterEdit {
                     key_yaml: "reviewed".into(),
                     value_yaml: Some("true".into()),
+                    rename_from: None,
                 },
                 FrontmatterEdit {
                     key_yaml: "confidence".into(),
                     value_yaml: None,
+                    rename_from: None,
                 },
             ];
             let result = apply_edits(&source, &edits).unwrap();
@@ -449,7 +475,8 @@ mod tests {
                     &source,
                     &[FrontmatterEdit {
                         key_yaml: "id".into(),
-                        value_yaml: Some("'001'".into())
+                        value_yaml: Some("'001'".into()),
+                        rename_from: None,
                     }]
                 )
                 .unwrap(),
@@ -463,7 +490,8 @@ mod tests {
                 mixed,
                 &[FrontmatterEdit {
                     key_yaml: "status".into(),
-                    value_yaml: Some("cafê".into())
+                    value_yaml: Some("cafê".into()),
+                    rename_from: None,
                 }]
             )
             .unwrap(),
@@ -473,10 +501,12 @@ mod tests {
             FrontmatterEdit {
                 key_yaml: "x".into(),
                 value_yaml: Some("changed".into()),
+                rename_from: None,
             },
             FrontmatterEdit {
                 key_yaml: "x".into(),
                 value_yaml: Some("original".into()),
+                rename_from: None,
             },
         ];
         assert_eq!(validate_header(&apply_edits("---\nx: original\n---\n", &repeated).unwrap()).unwrap()["x"].as_str(), Some("original"));
@@ -500,6 +530,7 @@ mod tests {
                 &[FrontmatterEdit {
                     key_yaml: "custom".into(),
                     value_yaml: Some(yaml.into()),
+                    rename_from: None,
                 }],
             )
             .unwrap();
@@ -513,6 +544,7 @@ mod tests {
             &[FrontmatterEdit {
                 key_yaml: "1".into(),
                 value_yaml: Some("new".into()),
+                rename_from: None,
             }],
         )
         .unwrap();
@@ -528,6 +560,7 @@ mod tests {
             &[FrontmatterEdit {
                 key_yaml: "third".into(),
                 value_yaml: Some("*base".into()),
+                rename_from: None,
             }],
         )
         .unwrap();
@@ -540,7 +573,8 @@ mod tests {
                 anchors,
                 &[FrontmatterEdit {
                     key_yaml: "base".into(),
-                    value_yaml: None
+                    value_yaml: None,
+                    rename_from: None,
                 }]
             )
             .is_err()

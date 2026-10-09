@@ -81,7 +81,11 @@ impl App {
 
         // 1. Outgoing/Forward links
         let content = self.editor.body.lines().join("\n");
-        let forward_targets = crate::storage::extract_wikilinks(&content);
+        let mut forward_targets = crate::storage::extract_wikilinks(&content);
+        forward_targets.extend(crate::property_model::reference_links(
+            &self.editor.properties.values,
+            &self.property_definitions,
+        ));
 
         let mut forward_notes = Vec::new();
         for target in forward_targets {
@@ -104,9 +108,12 @@ impl App {
             if n.id == cur_id {
                 continue;
             }
-            let title_hit =
-                !cur_title.is_empty() && n.links.iter().any(|l| l.to_lowercase() == cur_title);
-            let id_hit = n.links.iter().any(|l| l == &cur_id);
+            let title_hit = !cur_title.is_empty()
+                && n.all_links().iter().any(|l| l.to_lowercase() == cur_title);
+            let id_hit = n
+                .all_links()
+                .iter()
+                .any(|l| self.resolve_wikilink_target(l).as_deref() == Some(&cur_id));
             if (title_hit || id_hit) && !incoming_notes.iter().any(|(i_id, _)| i_id == &n.id) {
                 incoming_notes.push((n.id.clone(), n.title.clone()));
             }
@@ -115,15 +122,30 @@ impl App {
         // 3. Combine them
         for (id, title) in forward_notes {
             items.push(LinkItem {
-                id,
+                id: id.clone(),
                 title,
+                is_property: crate::property_model::reference_links(
+                    &self.editor.properties.values,
+                    &self.property_definitions,
+                )
+                .iter()
+                .any(|target| self.resolve_wikilink_target(target).as_deref() == Some(&id)),
                 is_backlink: false,
             });
         }
         for (id, title) in incoming_notes {
             items.push(LinkItem {
-                id,
+                id: id.clone(),
                 title,
+                is_property: self
+                    .notes
+                    .iter()
+                    .find(|note| note.id == id)
+                    .is_some_and(|note| {
+                        note.property_links.iter().any(|target| {
+                            self.resolve_wikilink_target(target).as_deref() == Some(&cur_id)
+                        })
+                    }),
                 is_backlink: true,
             });
         }
@@ -215,10 +237,12 @@ impl App {
     /// Resolve a wikilink target string to a note id (title match, lowercased;
     /// fallback exact id). Mirrors graf/graph.rs:78-97 + the backlinks matcher.
     fn resolve_wikilink_target(&self, target: &str) -> Option<String> {
-        let lower = target.to_lowercase();
-        self.visible_notes()
-            .find(|(_, n)| n.title.to_lowercase() == lower || n.id == target)
-            .map(|(_, n)| n.id.clone())
+        crate::property_model::resolve_reference(&self.notes, target)
+            .filter(|note| {
+                self.visible_notes()
+                    .any(|(_, visible)| visible.id == note.id)
+            })
+            .map(|note| note.id.clone())
     }
 
     /// Open (or close if already open) the linked-note preview for the wikilink

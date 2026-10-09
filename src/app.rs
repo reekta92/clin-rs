@@ -513,6 +513,7 @@ impl App {
         preview_render_cols(self.editor.last_preview_pane_width, self.preview_wrap)
     }
     pub fn rebuild_note_index(&mut self) {
+        crate::property_model::refresh_reference_links(&mut self.notes, &self.property_definitions);
         let now = crate::ui::now_unix_secs();
         let custom_rules: &[crate::config::CustomSmartFolder] =
             if self.config.features.smart_folders.is_enabled() {
@@ -531,6 +532,36 @@ impl App {
             self.config.list.calendar_date_property.as_deref(),
         );
         self.note_index = Some(index);
+        if let Some(key) = self.config.list.calendar_date_property.as_deref() {
+            let excluded = self
+                .visible_notes()
+                .filter(|(_, note)| {
+                    matches!(
+                        std::path::Path::new(&note.id)
+                            .extension()
+                            .and_then(|ext| ext.to_str()),
+                        Some("md" | "txt" | "clin")
+                    ) && self
+                        .property_definitions
+                        .date_value(key, &note.properties)
+                        .is_none()
+                })
+                .count();
+            if excluded > 0 {
+                self.messages.push(format!("Calendar property {key}: excluded {excluded} notes with missing/invalid dates"), crate::app::messages::MessageSeverity::Warning);
+            }
+        }
+        let unresolved = self
+            .notes
+            .iter()
+            .flat_map(|note| &note.property_links)
+            .filter(|target| {
+                crate::property_model::resolve_reference(&self.notes, target).is_none()
+            })
+            .count();
+        if unresolved > 0 {
+            self.messages.push(format!("{unresolved} unresolved/ambiguous property references; inspect values in Properties"), crate::app::messages::MessageSeverity::Warning);
+        }
     }
     pub fn desired_list_preview_height(&self) -> u16 {
         self.list.last_preview_pane_height
@@ -2555,9 +2586,9 @@ word_goal = 1200
 "#;
         std::fs::write(&config_path, config_content).expect("value is present");
 
-        // Force a reload by clearing the cached mtime
-        // Force a reload by clearing the cached mtime
+        // Exercise the event-loop reload hook before reading progress.
         app.config_mtime = None;
+        app.check_and_reload_config();
         app.get_current_goals_progress();
 
         // Verify the config has been reloaded and word_goal is now 1200

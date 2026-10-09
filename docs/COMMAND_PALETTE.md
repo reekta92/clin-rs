@@ -79,7 +79,7 @@ Actions are grouped by category:
 | Category | Shipped actions |
 |---|---|
 | **General** | Insert date, OCR paste, paste image, insert image from file, rasterize |
-| **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info, Toggle Properties |
+| **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info, Toggle Properties, Manage Property Definitions, Bulk Edit Properties, Rename Property, Rename Property Across Vault, Resume Property Batch, Apply Property Defaults |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note |
 | **Views** | Graph, draw, canvas, backup, setup wizard, vault switcher |
@@ -87,12 +87,24 @@ Actions are grouped by category:
 
 File-format conversion can require external tools; URL import requires `curl`. CSV and JSON conversions are handled in Rust.
 
-**Toggle Properties** (`properties.toggle`) opens the selected Markdown/text
-note in the built-in editor and opens the Properties sidebar, ignoring
-external-editor preference. In Edit it toggles that sidebar. Other file types report
-that properties are available for notes; encrypted notes retain decrypt-first
-opening.
+### Property Actions
 
+| Action ID | Name | Description |
+|---|---|---|
+| `properties.toggle` | Toggle Properties | Opens note in built-in editor and toggles the Properties sidebar |
+| `properties.definitions` | Manage Property Definitions | Edit schema types, options, and defaults in `<vault>/.clin/properties.toml` |
+| `properties.bulk` | Bulk Edit Properties | Add, update, or remove properties across currently selected notes |
+| `properties.rename` | Rename Property | Rename a frontmatter property key in the active note |
+| `properties.rename_vault` | Rename Property Across Vault | Rename a property key and update config bindings across all vault notes |
+| `properties.resume` | Resume Property Batch | Resume an interrupted property batch operation |
+| `properties.defaults` | Apply Property Defaults | Apply schema-defined default property values to the active note |
+
+#### Property Management Lifecycle
+
+- **TOML Managers & Preview:** Schema and batch editors accept TOML input. Pressing `Ctrl+S` generates a preview diff before prompting for final confirmation.
+- **Bulk Edit Snapshotting:** The target note IDs are snapshotted when the bulk action is invoked; no note writes take place until explicitly confirmed.
+- **Atomic Execution & Batch Recovery:** All property updates are written per-file atomically. If an operation is interrupted or partially fails, pending work is retained in `<vault>/.clin/property_batch.toml` and can be resumed with `properties.resume`.
+- **Defaults Behavior:** Schema defaults are applied upon new note creation or through explicit execution of `properties.defaults`; opening an existing note never modifies its frontmatter automatically.
 ## Execution
 
 ```rust

@@ -346,7 +346,7 @@ impl crate::storage::Storage {
         "
                 .to_string(),
             },
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
         };
         self.save_template("meeting", &meeting)?;
 
@@ -375,7 +375,7 @@ impl crate::storage::Storage {
         "
                 .to_string(),
             },
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
         };
         self.save_template("todo", &todo)?;
 
@@ -402,7 +402,7 @@ impl crate::storage::Storage {
         "
                 .to_string(),
             },
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
         };
         self.save_template("journal", &journal)?;
 
@@ -436,7 +436,7 @@ mod tests {
             content: ContentConfig {
                 template: "Content here".to_string(),
             },
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
         };
 
         let toml_str = toml::to_string_pretty(&template).unwrap();
@@ -485,7 +485,7 @@ mod tests {
             content: ContentConfig {
                 template: "Body".to_string(),
             },
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
         };
 
         storage.save_template("to-delete", &template).unwrap();

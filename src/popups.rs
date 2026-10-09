@@ -2,6 +2,9 @@ use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 
 pub enum ConfirmAction {
+    EncryptNote {
+        note_id: String,
+    },
     DeleteNote {
         note_id: String,
         title: String,
@@ -115,6 +118,7 @@ pub struct FolderPopup {
     pub input: TextArea<'static>,
 }
 
+#[derive(Clone)]
 pub enum FolderPickerMode {
     MoveNote {
         note_id: String,

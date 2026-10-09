@@ -26,6 +26,7 @@ pub struct LinkItem {
     pub id: String,
     pub title: String,
     pub is_backlink: bool,
+    pub is_property: bool,
 }
 
 pub(crate) struct EditorPreviewScheduler {

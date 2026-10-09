@@ -77,6 +77,7 @@ impl PropertyKind {
     pub fn is_reference(self) -> bool {
         matches!(self, Self::NoteReference | Self::NoteReferences)
     }
+    #[must_use]
     pub fn cycle(self, delta: isize) -> Self {
         let index = Self::ALL.iter().position(|kind| *kind == self).unwrap_or(0);
         Self::ALL[(index as isize + delta).rem_euclid(Self::ALL.len() as isize) as usize]
@@ -152,6 +153,11 @@ impl PropertyValue {
         match self {
             Self::Integer(v) => usize::try_from(*v).ok(),
             Self::Unsigned(v) => usize::try_from(*v).ok(),
+            Self::Number(v)
+                if v.is_finite() && *v >= 0.0 && v.fract() == 0.0 && *v < usize::MAX as f64 =>
+            {
+                Some(*v as usize)
+            }
             _ => None,
         }
     }
@@ -244,8 +250,11 @@ impl PropertyDefinitions {
                 "Duplicate options for property {key}"
             );
             ensure!(
-                definition.options.iter().all(|option| !option.is_empty()),
-                "Select options must be nonempty for {key}"
+                definition
+                    .options
+                    .iter()
+                    .all(|option| !option.is_empty() && !option.contains(['\r', '\n'])),
+                "Select options must be nonempty and single-line for {key}"
             );
             if matches!(
                 definition.kind,
@@ -326,6 +335,62 @@ impl PropertyDefinitions {
             .collect()
     }
 }
+pub(crate) fn inferred_definition<'a>(
+    definitions: &PropertyDefinitions,
+    notes: impl IntoIterator<Item = &'a crate::storage::NoteSummary>,
+    key: &str,
+    kind: PropertyKind,
+    value: &Value,
+    choices: &[String],
+) -> Result<Option<PropertyDefinition>> {
+    definitions.validate(key, value)?;
+    if let Some(definition) = definitions.properties.get(key) {
+        ensure!(
+            kind == definition.kind || kind == PropertyKind::Yaml,
+            "Property {key} is defined as {}; change type through definition manager",
+            definition.kind.label()
+        );
+        return Ok(None);
+    }
+    if !matches!(
+        kind,
+        PropertyKind::Date
+            | PropertyKind::DateTime
+            | PropertyKind::Select
+            | PropertyKind::MultiSelect
+            | PropertyKind::NoteReference
+            | PropertyKind::NoteReferences
+    ) {
+        return Ok(None);
+    }
+    let mut options = Vec::new();
+    if matches!(kind, PropertyKind::Select | PropertyKind::MultiSelect) {
+        options.extend_from_slice(choices);
+        let values: Vec<_> = match value {
+            Value::Sequence(values) => values.iter().filter_map(Value::as_str).collect(),
+            _ => value.as_str().into_iter().collect(),
+        };
+        for value in values {
+            if !options.iter().any(|option| option == value) {
+                options.push(value.into());
+            }
+        }
+    }
+    let definition = PropertyDefinition {
+        kind,
+        options,
+        ..Default::default()
+    };
+    definition.validate(value)?;
+    ensure!(
+        notes
+            .into_iter()
+            .filter_map(|note| note.properties.get(key))
+            .all(|value| definition.validate_indexed(value)),
+        "Existing notes conflict with {key} type; review conflicts in definition manager"
+    );
+    Ok(Some(definition))
+}
 pub fn validate_key(key: &str) -> Result<()> {
     ensure!(
         !key.trim().is_empty() && !key.contains(['\r', '\n']),
@@ -342,10 +407,23 @@ pub fn property_edit(key: &str, value: Option<&Value>) -> Result<FrontmatterEdit
     Ok(FrontmatterEdit {
         key_yaml: serde_yaml_ng::to_string(&Value::String(key.into()))?,
         value_yaml: value.map(serde_yaml_ng::to_string).transpose()?,
+        rename_from: None,
     })
 }
 pub fn toml_to_yaml(value: &toml::Value) -> Result<Value> {
-    Ok(serde_yaml_ng::to_value(value)?)
+    match value {
+        toml::Value::Datetime(value) => Ok(Value::String(value.to_string())),
+        toml::Value::Array(values) => Ok(Value::Sequence(
+            values.iter().map(toml_to_yaml).collect::<Result<_>>()?,
+        )),
+        toml::Value::Table(values) => Ok(Value::Mapping(
+            values
+                .iter()
+                .map(|(key, value)| Ok((Value::String(key.clone()), toml_to_yaml(value)?)))
+                .collect::<Result<_>>()?,
+        )),
+        _ => Ok(serde_yaml_ng::to_value(value)?),
+    }
 }
 fn strict_date(value: &str) -> Result<NaiveDate> {
     let date = NaiveDate::parse_from_str(value, "%Y-%m-%d").context("Expected YYYY-MM-DD date")?;
@@ -355,6 +433,75 @@ fn strict_date(value: &str) -> Result<NaiveDate> {
     );
     Ok(date)
 }
+/// Normalize only explicitly declared reference fields; raw YAML is never scanned.
+pub(crate) fn reference_target(value: &str) -> &str {
+    let value = value
+        .strip_prefix("[[")
+        .and_then(|v| v.strip_suffix("]]"))
+        .unwrap_or(value);
+    value
+        .split('|')
+        .next()
+        .unwrap_or(value)
+        .split('#')
+        .next()
+        .unwrap_or(value)
+        .trim()
+}
+pub(crate) fn reference_links(
+    values: &PropertyMap,
+    definitions: &PropertyDefinitions,
+) -> Vec<String> {
+    let mut links = std::collections::BTreeSet::new();
+    for (key, definition) in &definitions.properties {
+        if !definition.kind.is_reference() {
+            continue;
+        }
+        let Some(value) = values
+            .get(key)
+            .filter(|value| definition.validate_indexed(value))
+        else {
+            continue;
+        };
+        match value {
+            PropertyValue::String(value) => {
+                links.insert(reference_target(value).to_owned());
+            }
+            PropertyValue::List(values) => {
+                for value in values {
+                    if let PropertyValue::String(value) = value {
+                        links.insert(reference_target(value).to_owned());
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    links.into_iter().collect()
+}
+pub(crate) fn refresh_reference_links(
+    notes: &mut [crate::storage::NoteSummary],
+    definitions: &PropertyDefinitions,
+) {
+    for note in notes {
+        note.property_links = reference_links(&note.properties, definitions);
+    }
+}
+pub(crate) fn resolve_reference<'a>(
+    notes: &'a [crate::storage::NoteSummary],
+    target: &str,
+) -> Option<&'a crate::storage::NoteSummary> {
+    let target = reference_target(target);
+    if let Some(note) = notes.iter().find(|note| note.id == target) {
+        return Some(note);
+    }
+    let mut matches = notes
+        .iter()
+        .filter(|note| note.title.eq_ignore_ascii_case(target));
+    let note = matches.next()?;
+    matches.next().is_none().then_some(note)
+}
+
 pub fn validate_reference(value: &str) -> Result<()> {
     let value = value
         .strip_prefix("[[")
@@ -425,7 +572,8 @@ pub fn parse_property_value(kind: PropertyKind, input: &str) -> Result<Value> {
             Value::Null
         }
         PropertyKind::List | PropertyKind::MultiSelect | PropertyKind::NoteReferences
-            if !input.trim_start().starts_with('[') =>
+            if !input.trim_start().starts_with('[')
+                || kind == PropertyKind::NoteReferences && input.trim_start().starts_with("[[") =>
         {
             Value::Sequence(if input.is_empty() {
                 Vec::new()

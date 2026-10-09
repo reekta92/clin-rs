@@ -43,6 +43,11 @@ name = "Meeting Notes"
 [title]
 template = "Meeting - {date}"
 
+[properties]
+status = "active"
+priority = 1
+history_related = true
+
 [content]
 template = """
 # Meeting Notes
@@ -75,7 +80,7 @@ template = """
 | root | `name` | String | Human-readable template name (shown in popup) |
 | `[title]` | `template` | String (optional) | Title template with variables; if absent, prompts for title |
 | `[content]` | `template` | String | Body content template with variables |
-
+| `[properties]` | `*` | TOML Value | Key-value pairs of initial typed note properties |
 ### Rust Types
 
 ```rust
@@ -83,13 +88,40 @@ pub struct Template {
     pub name: String,
     pub title: TitleConfig,     // template: Option<String>
     pub content: ContentConfig, // template: String
+    pub properties: BTreeMap<String, toml::Value>,
 }
 
 pub struct RenderedTemplate {
     pub title: Option<String>,
     pub content: String,
+    pub properties: Vec<FrontmatterEdit>,
+    pub header: Option<String>,
+    pub tags: Vec<String>,
 }
 ```
+
+### Template Rendering & Precedence
+
+Templates are rendered through `Template::render`:
+
+```rust
+impl Template {
+    pub fn render(
+        &self,
+        definitions: &PropertyDefinitions,
+        overrides: &[FrontmatterEdit],
+    ) -> Result<RenderedTemplate>;
+}
+```
+
+**Property Evaluation Precedence:**
+1. **Explicit Creation Edits:** Command-line `--property` flags or programmatic creation overrides.
+2. **Template Properties & Frontmatter:** Values in the template `[properties]` table or embedded YAML frontmatter.
+3. **Schema Defaults:** Property defaults configured in `<vault>/.clin/properties.toml`.
+
+> **Note:** Property defaults are applied exclusively during note creation or via the explicit `properties.defaults` command palette action. Opening an existing note never automatically populates default values.
+
+Built-in keys (`title`, `tags`) cannot be defined under `[properties]`. Legacy YAML frontmatter blocks inside `[content].template` are preserved.
 
 ---
 
@@ -101,12 +133,33 @@ Available variables for `{variable_name}` substitution:
 |---|---|---|
 | `{date}` | `2026-05-10` | Current date (YYYY-MM-DD) |
 | `{datetime}` | `2026-05-10 14:30` | Date and time |
-| `{time}` | `14:30` | Current time (HH:MM) |
+| `{iso_datetime}` | `2026-05-10T14:30:00+00:00` | ISO 8601 / RFC 3339 timestamp |
 | `{weekday}` | `Saturday` | Full weekday name |
 | `{year}` | `2026` | 4-digit year |
 | `{month}` | `05` | Zero-padded month |
 | `{day}` | `10` | Zero-padded day of month |
 
+
+### Property Placeholders
+
+Body and title templates can interpolate property values using `{prop:KEY}`:
+
+```toml
+[title]
+template = "[{prop:status}] {date} - Standup"
+
+[content]
+template = """
+# Project Notes
+
+Priority: {prop:priority}
+Created: {iso_datetime}
+"""
+```
+
+- `{prop:KEY}` fetches the resolved property value.
+- Missing, unknown, complex (nested mapping/matrix), or unsupported property placeholders produce a render error. Property formulas and expressions are not supported.
+- Date variables inside template property strings (e.g. `due = "{date}"`) are substituted before schema validation.
 Variables are substituted by `TemplateVariables::substitute()` which scans for `{name}` patterns and replaces them. Unknown variables are left as-is.
 
 ```rust

@@ -36,20 +36,37 @@ impl Action for EncryptNoteAction {
             return Ok(());
         }
 
-        match app.storage.encrypt_note(&note_id) {
+        let header = app.storage.load_frontmatter(&note_id)?;
+        if header
+            .as_deref()
+            .map(crate::frontmatter::checked_parse)
+            .transpose()?
+            .is_some_and(|header| !header.extra.is_empty())
+        {
+            app.show_confirm(crate::popups::ConfirmAction::EncryptNote { note_id });
+        } else {
+            app.encrypt_note_confirmed(&note_id);
+        }
+
+        Ok(())
+    }
+}
+
+impl App {
+    pub(crate) fn encrypt_note_confirmed(&mut self, note_id: &str) {
+        match self.storage.encrypt_note(note_id) {
             Ok(new_id) => {
-                app.refresh_note_single(Some(&note_id), &new_id);
-                app.set_temporary_status(&format!("Note encrypted: {new_id}"));
+                self.refresh_note_single(Some(note_id), &new_id);
+                self.set_temporary_status(&format!("Note encrypted: {new_id}"));
+                self.enqueue_backup("note: encrypt");
             }
-            Err(e) => {
-                app.set_temporary_status(&format!("Failed to encrypt: {e:#}"));
-                app.messages.push(
-                    format!("Failed to encrypt: {e:#}"),
+            Err(error) => {
+                self.set_temporary_status(&format!("Failed to encrypt: {error:#}"));
+                self.messages.push(
+                    format!("Failed to encrypt: {error:#}"),
                     crate::app::messages::MessageSeverity::Warning,
                 );
             }
         }
-
-        Ok(())
     }
 }

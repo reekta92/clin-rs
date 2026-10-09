@@ -212,7 +212,7 @@ mod tests {
                 pinned: true,
                 links: vec![],
                 size_bytes: 10,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
             NoteSummary {
@@ -224,7 +224,7 @@ mod tests {
                 pinned: false,
                 links: vec![],
                 size_bytes: 20,
-                properties: Default::default(),
+                properties: std::collections::BTreeMap::default(),
                 property_links: Vec::new(),
             },
         ];
@@ -262,7 +262,7 @@ mod tests {
             pinned: false,
             links: vec![],
             size_bytes: 1,
-            properties: Default::default(),
+            properties: std::collections::BTreeMap::default(),
             property_links: Vec::new(),
         }];
         let with_cal = NoteIndex::build(
