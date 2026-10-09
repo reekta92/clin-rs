@@ -96,10 +96,8 @@ impl App {
 
                     if data_changed {
                         self.notes_revision = self.notes_revision.wrapping_add(1);
-                        self.sort_notes();
-                        self.rebuild_note_index();
-                        self.refresh_visual_list();
                         self.refresh_subnotes_view_cache();
+                        self.refresh_property_dependents();
                     }
 
                     self.set_default_status();
@@ -249,9 +247,8 @@ impl App {
             });
         }
 
-        self.rebuild_note_index();
-        self.refresh_visual_list();
         self.refresh_subnotes_view_cache();
+        self.refresh_property_dependents();
     }
 
     pub(crate) fn sort_notes(&mut self) {
@@ -408,9 +405,24 @@ impl App {
         }
     }
 
+    pub(crate) fn finish_pending_editor_save(&mut self) -> bool {
+        if self.mode == ViewMode::Edit
+            && self.editor.autosave_status == crate::editor::AutosaveStatus::Unsaved
+            && let Err(error) = self.autosave()
+        {
+            self.set_temporary_status(&error);
+            return false;
+        }
+        true
+    }
+
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
+        if !self.finish_pending_editor_save() {
+            return;
+        }
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editor.editing_id = Some(note_id.to_string());
+            self.editor.reference_save_decision = None;
             self.editor.initial_word_count = crate::goals::count_words(&note.content);
             self.editor.title_editor = make_title_editor(
                 &note.title,
@@ -611,22 +623,53 @@ impl App {
             return false;
         }
 
-        let found = self
-            .visible_notes()
-            .find(|(_, note)| note.title.eq_ignore_ascii_case(query))
-            .map(|(i, _)| i);
-        if let Some(index) = found
-            && let Some(v_idx) = self.list.visual_list.iter().position(|v| match v {
-                VisualItem::Note { summary_idx, .. } => *summary_idx == index,
-                _ => false,
+        let Some(id) = crate::property_model::resolve_reference(&self.notes, query)
+            .map(|note| note.id.clone())
+        else {
+            return false;
+        };
+        let Some((index, note)) = self.visible_notes().find(|(_, note)| note.id == id) else {
+            return false;
+        };
+        let folder = note.folder.clone();
+        let groups = self
+            .list
+            .visual_list
+            .iter()
+            .filter_map(|item| {
+                if let VisualItem::SmartFolder {
+                    kind: SmartFolderKind::Custom(name),
+                    ..
+                } = item
+                    && self
+                        .property_group_members(name)
+                        .is_some_and(|ids| ids.contains(&id))
+                {
+                    Some(SmartFolderKind::Custom(name.clone()).virtual_path())
+                } else {
+                    None
+                }
             })
-        {
-            self.list.visual_index = v_idx;
-            self.open_selected();
-            return true;
+            .collect::<Vec<_>>();
+        self.list.folder_expanded.extend(groups);
+        let mut parent = std::path::Path::new(&folder);
+        while !parent.as_os_str().is_empty() {
+            self.list
+                .folder_expanded
+                .insert(parent.to_string_lossy().into_owned());
+            parent = parent.parent().unwrap_or_else(|| std::path::Path::new(""));
         }
-
-        false
+        if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder = folder;
+        }
+        self.refresh_visual_list();
+        if let Some(v_idx) = self.list.visual_list.iter().position(
+            |item| matches!(item, VisualItem::Note { summary_idx, .. } if *summary_idx == index),
+        ) {
+            self.list.visual_index = v_idx;
+        }
+        self.open_note_at_line(&id, None);
+        true
     }
 
     pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
@@ -647,55 +690,49 @@ impl App {
     }
 
     fn enter_edit_mode(&mut self, id: String, title: String, content: String) {
-        let defaults = match self.property_definitions.defaults() {
-            Ok(defaults) if self.property_definitions_error.is_none() => defaults,
-            Ok(_) => {
-                self.set_temporary_status_static(
-                    "Repair property definitions before creating note",
-                );
-                return;
-            }
+        if !self.finish_pending_editor_save() {
+            return;
+        }
+        if self.property_definitions_error.is_some() {
+            self.set_temporary_status_static("Repair property definitions before creating note");
+            return;
+        }
+        let template = Template {
+            name: String::new(),
+            title: crate::templates::TitleConfig::default(),
+            content: crate::templates::ContentConfig { template: content },
+            properties: std::collections::BTreeMap::default(),
+        };
+        let rendered = match template.render(&self.property_definitions, &[]) {
+            Ok(rendered) => rendered,
             Err(error) => {
-                self.set_temporary_status(&format!("{error:#}"));
+                self.set_temporary_status(&format!("Initial properties: {error:#}"));
                 return;
             }
         };
-        if self.editor.external_editor_enabled {
-            let new_note = Note {
-                title,
-                content,
-                updated_at: now_unix_secs(),
-                tags: Vec::new(),
-            };
-            match self
-                .storage
-                .save_note_with_properties(&id, &new_note, &defaults)
-            {
-                Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", new_note.title));
-                    self.refresh_note_single(None, &saved_id);
-                    self.open_note_in_external_editor(&saved_id, None);
-                }
-                Err(e) => {
-                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
-                    self.set_temporary_status(&text);
-                    self.messages
-                        .push(text, crate::app::messages::MessageSeverity::Warning);
-                }
-            }
+        // Persist embedded headers intact; headerless drafts retain existing deferred-save UX.
+        if self.editor.external_editor_enabled || template.content.template.starts_with("---") {
+            self.open_new_note_with_id(id, title.clone(), title, rendered);
             return;
         }
-
-        self.mode = ViewMode::Edit;
-
-        self.editor.editing_id = Some(id);
-        self.editor.properties = crate::properties::PropertiesState::default();
-        for edit in defaults {
-            if let Err(error) = self.editor.properties.commit(edit, true) {
+        let mut properties = crate::properties::PropertiesState::default();
+        for edit in rendered.properties {
+            if let Err(error) = properties.commit(edit, true) {
                 self.set_temporary_status(&format!("Defaults: {error:#}"));
                 return;
             }
         }
+        let content = rendered.content;
+        self.mode = ViewMode::Edit;
+
+        self.editor.editing_id = Some(id);
+        self.editor.reference_save_decision = None;
+        self.editor.template_edit_path = None;
+        self.editor.autosave_status = crate::editor::AutosaveStatus::Saved;
+        self.editor.autosave_timer = None;
+        self.editor.last_saved_time = None;
+        *self.editor.modified_status_cache.borrow_mut() = None;
+        self.editor.properties = properties;
         self.sync_property_editor();
         if self.editor.sidebar == EditSidebar::Properties {
             self.editor.sidebar = EditSidebar::None;
@@ -709,13 +746,18 @@ impl App {
         self.editor.body = EditorDocument::from_text(&content);
         self.editor.text_align = self.config.editor.text_align;
         self.apply_editor_prefs();
+        self.rebuild_outline();
+        self.editor.links = self.compute_links();
+        self.editor.md_preview_renderer = None;
         self.set_default_status();
-        if !self.editor.properties.pending.is_empty() {
-            self.mark_properties_modified();
-        }
+        self.mark_properties_modified();
     }
 
     pub fn start_note_from_template(&mut self, template: &Template, folder: String) {
+        if self.property_definitions_error.is_some() {
+            self.set_temporary_status_static("Repair property definitions before creating note");
+            return;
+        }
         let mut rendered = match template.render(&self.property_definitions, &[]) {
             Ok(rendered) => rendered,
             Err(error) => {
@@ -737,6 +779,10 @@ impl App {
         folder: String,
         title: String,
     ) {
+        if self.property_definitions_error.is_some() {
+            self.set_temporary_status_static("Repair property definitions before creating note");
+            return;
+        }
         let rendered = match template.render(&self.property_definitions, &[]) {
             Ok(rendered) => rendered,
             Err(error) => {
@@ -758,6 +804,19 @@ impl App {
         if !folder.is_empty() && !Self::is_virtual_path(folder) {
             id = format!("{folder}/{id}");
         }
+        self.open_new_note_with_id(id, note_title, editor_title, rendered);
+    }
+
+    fn open_new_note_with_id(
+        &mut self,
+        id: String,
+        note_title: String,
+        editor_title: String,
+        rendered: crate::templates::RenderedTemplate,
+    ) {
+        if !self.finish_pending_editor_save() {
+            return;
+        }
         let note = Note {
             title: note_title,
             content: rendered.content,
@@ -772,6 +831,11 @@ impl App {
                 self.enqueue_backup(format!("auto: {}", note.title));
                 self.refresh_note_single(None, &saved_id);
                 if self.editor.external_editor_enabled {
+                    self.editor.properties = crate::properties::PropertiesState::default();
+                    self.editor.editing_id = None;
+                    self.editor.template_edit_path = None;
+                    self.editor.autosave_timer = None;
+                    self.editor.autosave_status = crate::editor::AutosaveStatus::Saved;
                     self.open_note_in_external_editor(&saved_id, None);
                 } else {
                     self.load_and_open_note(&saved_id, None);
@@ -781,6 +845,7 @@ impl App {
                         self.app_theme.highlight_bg,
                     );
                     self.sync_property_editor();
+                    self.write_draft();
                 }
             }
             Err(error) => {
@@ -790,6 +855,9 @@ impl App {
     }
 
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
+        if !self.finish_pending_editor_save() {
+            return;
+        }
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
             self.editor.properties = crate::properties::PropertiesState::default();
@@ -1193,40 +1261,7 @@ impl App {
             new_id = format!("{folder}/{new_id}");
         }
 
-        if self.editor.external_editor_enabled {
-            let note = Note {
-                title,
-                content,
-                updated_at: now_unix_secs(),
-                tags: vec![],
-            };
-            match self.storage.save_note(&new_id, &note) {
-                Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", note.title));
-                    self.refresh_note_single(None, &saved_id);
-                    self.open_note_in_external_editor(&saved_id, None);
-                }
-                Err(e) => {
-                    let text = format!("Failed to save new note '{}': {e}", note.title);
-                    self.set_temporary_status(&text);
-                    self.messages
-                        .push(text, crate::app::messages::MessageSeverity::Warning);
-                }
-            }
-            return;
-        }
-
-        self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
-        self.editor.initial_word_count = crate::goals::count_words(&content);
-        self.editor.title_editor = make_title_editor(
-            &title,
-            self.app_theme.highlight_fg,
-            self.app_theme.highlight_bg,
-        );
-        self.editor.body = EditorDocument::from_text(&content);
-        self.apply_editor_prefs();
-        self.set_default_status();
+        self.enter_edit_mode(new_id, title, content);
     }
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note { summary_idx, .. }) =

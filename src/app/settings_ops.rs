@@ -458,6 +458,8 @@ impl App {
 
     pub fn toggle_preview_encryption(&mut self) {
         self.preview_encryption = !self.preview_encryption;
+        self.list.note_metrics = None;
+        self.refresh_selected_note_metrics();
         if self.list.preview_enabled {
             self.update_preview();
         }

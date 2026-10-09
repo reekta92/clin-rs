@@ -45,6 +45,12 @@ pub(crate) struct PropertyDialog {
     pub(crate) choice: usize,
     pub(crate) choice_rect: Rect,
     pub(crate) choice_view_start: usize,
+    definition_offer: Option<crate::property_model::PropertyDefinition>,
+    definition_confirm: bool,
+}
+enum TypedPropertyCommit {
+    Applied(bool),
+    Offer(crate::property_model::PropertyDefinition),
 }
 impl PropertyDialog {
     fn advance(&mut self, direction: isize) {
@@ -329,6 +335,7 @@ impl PropertiesState {
         // Build a fresh tree, never clone mutable CST for rollback.
         let mut view = Self {
             current: Some(candidate),
+            definitions: self.definitions.clone(),
             ..Default::default()
         };
         view.rebuild()?;
@@ -412,6 +419,8 @@ impl PropertiesState {
             choice: 0,
             choice_rect: Rect::default(),
             choice_view_start: 0,
+            definition_offer: None,
+            definition_confirm: false,
         })));
     }
     pub(crate) fn begin_edit(&mut self, theme: &AppThemeColors, delete: bool) -> Result<()> {
@@ -472,6 +481,8 @@ impl PropertiesState {
                 choice: 0,
                 choice_rect: Rect::default(),
                 choice_view_start: 0,
+                definition_offer: None,
+                definition_confirm: false,
             })));
             if row.kind == PropertyType::Null
                 && let Some(PropertiesDialog::Edit(dialog)) = &mut self.dialog
@@ -612,10 +623,15 @@ impl App {
         new: bool,
         kind: Option<PropertyType>,
         choices: &[String],
-    ) -> Result<bool> {
+        consent: bool,
+    ) -> Result<TypedPropertyCommit> {
         ensure!(
             self.property_definitions_error.is_none(),
             "Repair property definitions first"
+        );
+        ensure!(
+            self.editor.properties.error.is_none(),
+            "Repair note frontmatter first"
         );
         let key: Value = serde_yaml_ng::from_str(&edit.key_yaml)?;
         let name = key.as_str();
@@ -656,6 +672,9 @@ impl App {
                     value,
                     choices,
                 )? {
+                    if !consent {
+                        return Ok(TypedPropertyCommit::Offer(definition));
+                    }
                     let mut definitions = self.property_definitions.clone();
                     definitions.properties.insert(name.into(), definition);
                     self.save_property_definitions(definitions)?;
@@ -664,7 +683,10 @@ impl App {
                 self.property_definitions.validate(name, value)?;
             }
         }
-        self.editor.properties.commit(edit, new)
+        self.editor
+            .properties
+            .commit(edit, new)
+            .map(TypedPropertyCommit::Applied)
     }
     pub fn toggle_properties(&mut self) {
         if self.mode == ViewMode::List {
@@ -716,6 +738,7 @@ impl App {
             })
     }
     pub(crate) fn mark_properties_modified(&mut self) {
+        self.editor.links = self.compute_links();
         self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
         self.editor.autosave_timer =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
@@ -728,7 +751,36 @@ impl App {
         };
         self.seq_matcher.clear();
         if key.code == KeyCode::Esc {
+            if let PropertiesDialog::Edit(input) = &mut dialog
+                && input.definition_offer.take().is_some()
+            {
+                input.definition_confirm = false;
+                self.editor.properties.dialog = Some(dialog);
+            }
             return true;
+        }
+        if let PropertiesDialog::Edit(input) = &mut dialog
+            && input.definition_offer.is_some()
+        {
+            match key.code {
+                KeyCode::Left | KeyCode::Right | KeyCode::Tab | KeyCode::BackTab => {
+                    input.definition_confirm = !input.definition_confirm
+                }
+                KeyCode::Enter if input.definition_confirm => input.control = 3,
+                KeyCode::Enter => {
+                    input.definition_offer = None;
+                    self.editor.properties.dialog = Some(dialog);
+                    return true;
+                }
+                _ => {
+                    self.editor.properties.dialog = Some(dialog);
+                    return true;
+                }
+            }
+            if key.code != KeyCode::Enter {
+                self.editor.properties.dialog = Some(dialog);
+                return true;
+            }
         }
         if self
             .keybinds
@@ -897,9 +949,18 @@ impl App {
                 PropertiesDialog::Edit(input) => (Some(input.kind), input.choices.as_slice()),
                 _ => (None, &[][..]),
             };
-            match edit.and_then(|(edit, new)| self.commit_typed_property(edit, new, kind, choices))
-            {
-                Ok(changed) => {
+            let consent = matches!(&dialog, PropertiesDialog::Edit(input) if input.definition_offer.is_some() && input.definition_confirm);
+            match edit.and_then(|(edit, new)| {
+                self.commit_typed_property(edit, new, kind, choices, consent)
+            }) {
+                Ok(TypedPropertyCommit::Offer(definition)) => {
+                    if let PropertiesDialog::Edit(input) = &mut dialog {
+                        input.definition_offer = Some(definition);
+                        input.definition_confirm = false;
+                        input.control = 3;
+                    }
+                }
+                Ok(TypedPropertyCommit::Applied(changed)) => {
                     if changed {
                         self.mark_properties_modified();
                     }
@@ -1109,6 +1170,34 @@ pub(crate) fn draw_dialog(frame: &mut ratatui::Frame, app: &mut App) {
     };
     match dialog {
         PropertiesDialog::Edit(input) => {
+            if let Some(definition) = &input.definition_offer {
+                let chunks =
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).split(content);
+                frame.render_widget(Paragraph::new(format!(
+                    "Create vault definition for {}?\nType: {}\nOptions: {:?}\nNo conflicting saved values found.\n\nDefinition affects every note in this vault. Confirmation applies definition and pending note edit. Escape returns to input; no writes yet.",
+                    crate::fsutil::sanitize_for_terminal(&input.name.lines().join("")), definition.kind.label(), definition.options
+                )).wrap(Wrap { trim: false }), chunks[0]);
+                let buttons =
+                    Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                        .split(chunks[1]);
+                input.rects = [Rect::default(), Rect::default(), buttons[0], buttons[1]];
+                for (index, label) in ["[ Create vault definition ]", "[ Back ]"]
+                    .iter()
+                    .enumerate()
+                {
+                    frame.render_widget(
+                        Paragraph::new(*label).style(if (index == 0) == input.definition_confirm {
+                            Style::default()
+                                .fg(theme.highlight_fg)
+                                .bg(theme.highlight_bg)
+                        } else {
+                            theme.bg_style()
+                        }),
+                        buttons[index],
+                    );
+                }
+                return;
+            }
             let chunks = Layout::vertical([
                 Constraint::Length(3),
                 Constraint::Length(3),
@@ -1254,7 +1343,7 @@ pub(crate) fn draw_dialog(frame: &mut ratatui::Frame, app: &mut App) {
                                 | PropertyType::NoteReference
                                 | PropertyType::NoteReferences
                         ) {
-                            "Apply creates reusable type definition if undeclared."
+                            "Apply offers vault definition creation if undeclared; confirmation required."
                         } else {
                             ""
                         }
@@ -1317,7 +1406,14 @@ pub(crate) fn handle_dialog_mouse(app: &mut App, mouse: crossterm::event::MouseE
     if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
         match dialog {
             PropertiesDialog::Edit(input) => {
-                if input.choice_rect.width > 0
+                if input.definition_offer.is_some() {
+                    for (index, rect) in input.rects[2..].iter().enumerate() {
+                        if crate::events::contains_cell(*rect, mouse.column, mouse.row) {
+                            input.definition_confirm = index == 0;
+                            apply = true;
+                        }
+                    }
+                } else if input.choice_rect.width > 0
                     && crate::events::contains_cell(input.choice_rect, mouse.column, mouse.row)
                 {
                     input.choice = (input.choice_view_start
@@ -1333,10 +1429,10 @@ pub(crate) fn handle_dialog_mouse(app: &mut App, mouse: crossterm::event::MouseE
                         input.choose();
                     }
                 }
-                if let Some(control) = input
-                    .rects
-                    .iter()
-                    .position(|rect| crate::events::contains_cell(*rect, mouse.column, mouse.row))
+                if input.definition_offer.is_none()
+                    && let Some(control) = input.rects.iter().position(|rect| {
+                        crate::events::contains_cell(*rect, mouse.column, mouse.row)
+                    })
                 {
                     if control == 0 && input.key_yaml.is_some() {
                         return true;
@@ -1443,6 +1539,87 @@ pub(crate) fn handle_list_mouse(
 mod tests {
     use super::*;
     #[test]
+    fn typed_dialogs_require_definition_consent_and_reopen_every_kind() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir()?;
+        crate::config::set_config_path_override(dir.path().join("config.toml"));
+        let vault = dir.path().join("vault");
+        std::fs::create_dir_all(&vault)?;
+        std::fs::write(vault.join("note.md"), "---\ntitle: Note\n---\nBody")?;
+        std::fs::write(vault.join("target.md"), "---\ntitle: Target\n---\nTarget")?;
+        let storage = crate::storage::Storage {
+            data_dir: vault.clone(),
+            notes_dir: vault.clone(),
+            config_dir: dir.path().into(),
+            templates_dir: vault.join(".clin/templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+        let mut app = App::new(storage)?;
+        app.ensure_catalog_ready()?;
+        app.load_and_open_note("note.md", None);
+        let apply = KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL);
+        for (index, (kind, value)) in [
+            (PropertyType::String, "001"),
+            (PropertyType::Number, "18446744073709551615"),
+            (PropertyType::Boolean, "false"),
+            (PropertyType::Null, ""),
+            (PropertyType::Yaml, "{nested: [1, two]}"),
+            (PropertyType::Date, "2026-10-09"),
+            (PropertyType::DateTime, "2026-10-09T12:00:00+02:00"),
+            (PropertyType::List, "[one, true, 0]"),
+            (PropertyType::Select, "draft"),
+            (PropertyType::MultiSelect, "draft\nreview"),
+            (PropertyType::NoteReference, "target.md"),
+            (PropertyType::NoteReferences, "target.md"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let name = format!("field{index}");
+            app.editor.properties.begin_add(&app.app_theme);
+            if let Some(PropertiesDialog::Edit(input)) = &mut app.editor.properties.dialog {
+                input.name.insert_str(&name);
+                input.kind = kind;
+                input.value.insert_str(value);
+                input.control = 3;
+            }
+            let before = app.editor.properties.current.clone();
+            app.handle_properties_dialog_key(apply);
+            if app.editor.properties.dialog.is_some() {
+                assert_eq!(app.editor.properties.current, before);
+                assert!(!app.property_definitions.properties.contains_key(&name));
+                app.handle_properties_dialog_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+                assert_eq!(app.editor.properties.current, before);
+                app.handle_properties_dialog_key(apply);
+                app.handle_properties_dialog_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+                app.handle_properties_dialog_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
+            assert!(
+                app.editor.properties.dialog.is_none(),
+                "{} failed",
+                kind.label()
+            );
+            app.autosave().map_err(anyhow::Error::msg)?;
+            app.load_and_open_note("note.md", None);
+            let row = app
+                .editor
+                .properties
+                .rows
+                .iter()
+                .find(|row| row.name() == name)
+                .expect("saved property");
+            assert_eq!(row.kind, kind);
+            assert_eq!(
+                row.value,
+                crate::property_model::parse_property_value(kind, value)?
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn rename_transactions_preserve_comments_aliases_and_sequential_edits() {
         for newline in ["\n", "\r\n"] {
             let header = "---\nbase: &value ['001', two] # retain\ncopy: *value\n---\n"
@@ -1534,7 +1711,7 @@ mod tests {
         assert!(state.commit(edit("status", "answered"), false).unwrap());
         assert_eq!(state.pending.len(), 1);
         assert!(state.commit(edit("status", "open"), false).unwrap());
-        assert!(state.pending.is_empty());
+        assert_eq!(state.pending.len(), 0);
         assert_eq!(state.current.as_deref(), Some(baseline));
         let revision = state.revision;
         assert!(!state.commit(edit("code", "\"001\""), false).unwrap());
@@ -1547,7 +1724,7 @@ mod tests {
             assert!(state.commit(edit(key, value), new).is_err());
         }
         assert_eq!(state.current.as_deref(), Some(baseline));
-        assert!(state.pending.is_empty());
+        assert_eq!(state.pending.len(), 0);
         let encoded = PropertyType::String.encode("true").unwrap();
         assert_eq!(
             serde_yaml_ng::from_str::<Value>(&encoded).unwrap(),
@@ -1763,7 +1940,7 @@ mod tests {
             assert_eq!(dialog.value.lines(), &["DATE"]);
         }
         app.handle_properties_dialog_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(app.editor.properties.pending.is_empty());
+        assert_eq!(app.editor.properties.pending.len(), 0);
         crate::events::handle_edit_keys(
             &mut app,
             KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),

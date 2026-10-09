@@ -59,14 +59,14 @@ impl NoteSummary {
             .iter()
             .map(|link| {
                 crate::property_model::resolve_reference(notes, link)
-                    .map_or_else(|| link.clone(), |note| note.title.clone())
+                    .map_or_else(|| link.clone(), |note| note.id.clone())
             })
             .collect();
         links.extend(
             self.property_links
                 .iter()
                 .filter_map(|link| crate::property_model::resolve_reference(notes, link))
-                .map(|note| note.title.clone()),
+                .map(|note| note.id.clone()),
         );
         links.into_iter().collect()
     }
@@ -531,6 +531,49 @@ impl Storage {
         Ok(())
     }
 
+    pub(crate) fn conversion_target(&self, id: &str, encrypt: bool) -> Result<String> {
+        let path = self.property_note_path(id)?;
+        let old_ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+        anyhow::ensure!(
+            if encrypt {
+                old_ext != "clin" && !is_image_ext(old_ext)
+            } else {
+                old_ext == "clin"
+            },
+            "Invalid encryption/decryption source"
+        );
+        let extension = if encrypt {
+            "clin".to_owned()
+        } else {
+            self.load_frontmatter(id)?
+                .as_deref()
+                .map(frontmatter::checked_parse)
+                .transpose()?
+                .and_then(|header| header.original_ext)
+                .unwrap_or_else(|| "md".into())
+        };
+        anyhow::ensure!(
+            !extension.is_empty()
+                && extension
+                    .chars()
+                    .all(|ch| ch.is_alphanumeric() || matches!(ch, '-' | '_')),
+            "Invalid original extension"
+        );
+        anyhow::ensure!(encrypt || extension != "clin", "Invalid original extension");
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .context("Missing file stem")?;
+        let preferred = Path::new(id).with_extension(&extension);
+        let target = self.unique_note_id(
+            stem,
+            &extension,
+            preferred.to_str().context("Invalid note path")?,
+        );
+        self.property_note_path(&target)?;
+        Ok(target)
+    }
+
     pub fn encrypt_note(&mut self, id: &str) -> Result<String> {
         if id.ends_with(".clin") {
             anyhow::bail!("Note is already encrypted");
@@ -545,8 +588,9 @@ impl Storage {
 
         self.ensure_key()?;
 
+        self.property_note_path(id)?;
         let note = self.load_note(id)?;
-        let old_path = self.note_path(id);
+        let old_path = self.property_note_path(id)?;
         let source = fs::read(&old_path).context("failed to read source note")?;
         let source_header = if ext == "canvas" || ext == "draw" {
             None
@@ -558,30 +602,9 @@ impl Storage {
             .transpose()?
             .unwrap_or_default();
 
-        let folder = if let Some(idx) = id.rfind('/') {
-            &id[..idx]
-        } else {
-            ""
-        };
-
-        let stem = old_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Untitled note");
-        let clin_id = if folder.is_empty() {
-            format!("{stem}.clin")
-        } else {
-            format!("{folder}/{stem}.clin")
-        };
-        let target_id = self.unique_note_id(stem, "clin", &clin_id);
+        let target_id = self.conversion_target(id, true)?;
         let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
         let reference_changes = self.prepare_reference_relocation(&relocations)?;
-        let target_path = self.note_path(&target_id);
-
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).context("failed to create note directory")?;
-        }
-
         let original_ext = old_path
             .extension()
             .and_then(|e| e.to_str())
@@ -604,14 +627,7 @@ impl Storage {
         let mut final_output = fm_string.into_bytes();
         final_output.extend_from_slice(&encrypted);
 
-        crate::fsutil::atomic_write(&target_path, &final_output)
-            .context("failed to write encrypted note")?;
-
-        if old_path.exists() {
-            fs::remove_file(&old_path).context("failed to remove plain note after encryption")?;
-        }
-
-        self.apply_reference_relocation(reference_changes, &relocations)?;
+        self.commit_prepared_file(reference_changes, id, &target_id, final_output)?;
         Ok(target_id)
     }
 
@@ -622,7 +638,7 @@ impl Storage {
 
         self.ensure_key()?;
 
-        let old_path = self.note_path(id);
+        let old_path = self.property_note_path(id)?;
         let clin_content = fs::read(&old_path).context("failed to read encrypted note")?;
         let (fm_opt, _) = split_frontmatter_payload(&clin_content);
         let source_header = frontmatter::split_header(&clin_content)?.0;
@@ -636,35 +652,14 @@ impl Storage {
 
         let note = self.load_note(id)?;
 
-        let folder = if let Some(idx) = id.rfind('/') {
-            &id[..idx]
-        } else {
-            ""
-        };
-
-        let stem = old_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Untitled note");
-        let target_id = if folder.is_empty() {
-            format!("{stem}.{orig_ext}")
-        } else {
-            format!("{folder}/{stem}.{orig_ext}")
-        };
-        let target_id = self.unique_note_id(stem, &orig_ext, &target_id);
+        let target_id = self.conversion_target(id, false)?;
         let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
         let reference_changes = self.prepare_reference_relocation(&relocations)?;
-        let target_path = self.note_path(&target_id);
-
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).context("failed to create note directory")?;
-        }
         let existing_pinned = existing.pinned;
 
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
-        if is_raw {
-            crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
-                .context("failed to write decrypted note")?;
+        let output = if is_raw {
+            note.content.as_bytes().to_vec()
         } else {
             let fm = frontmatter::Frontmatter {
                 title: Some(note.title.clone()),
@@ -676,17 +671,9 @@ impl Storage {
                 text_align: existing.text_align,
                 extra: existing.extra,
             };
-            let final_content = frontmatter::serialize(&fm, source_header, &note.content)?;
-            crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
-                .context("failed to write decrypted note")?;
-        }
-
-        if old_path.exists() {
-            fs::remove_file(&old_path)
-                .context("failed to remove encrypted note after decryption")?;
-        }
-
-        self.apply_reference_relocation(reference_changes, &relocations)?;
+            frontmatter::serialize(&fm, source_header, &note.content)?.into_bytes()
+        };
+        self.commit_prepared_file(reference_changes, id, &target_id, output)?;
         Ok(target_id)
     }
 
@@ -844,7 +831,7 @@ impl Storage {
                 std::path::Component::ParentDir => return None,
                 std::path::Component::Normal(c) => {
                     let s = c.to_string_lossy();
-                    if s.starts_with('.') || s.contains('\0') {
+                    if matches!(s.as_ref(), ".clin" | ".git") || s.contains('\0') {
                         return None;
                     }
                     normalized.push(c);
@@ -897,7 +884,9 @@ impl Storage {
                         .is_some_and(|n| include_hidden || !n.starts_with('.'))
                 {
                     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    if self.skip_dir_patterns.iter().any(|re| re.is_match(name)) {
+                    if matches!(name, ".clin" | ".git")
+                        || self.skip_dir_patterns.iter().any(|re| re.is_match(name))
+                    {
                         continue;
                     }
                     dirs_to_visit.push(path);
@@ -1035,10 +1024,11 @@ impl Storage {
                 };
 
                 if path.is_dir() {
-                    if self
-                        .skip_dir_patterns
-                        .iter()
-                        .any(|re| re.is_match(file_name))
+                    if matches!(file_name, ".clin" | ".git")
+                        || self
+                            .skip_dir_patterns
+                            .iter()
+                            .any(|re| re.is_match(file_name))
                     {
                         continue;
                     }
@@ -1358,8 +1348,11 @@ impl Storage {
         }
         let bytes = fs::read(&path).context("Failed to read property target")?;
         let (header, payload) = frontmatter::split_header(&bytes)?;
-        let header = frontmatter::apply_edits(header.unwrap_or("---\n---\n"), edits)?;
-        let mut output = header.into_bytes();
+        let updated = frontmatter::apply_edits(header.unwrap_or("---\n---\n"), edits)?;
+        if header.unwrap_or("---\n---\n") == updated {
+            return Ok(());
+        }
+        let mut output = updated.into_bytes();
         output.extend_from_slice(payload);
         if output != bytes {
             crate::fsutil::atomic_write(&path, &output).context("Failed to write properties")?;
@@ -1409,6 +1402,38 @@ impl Storage {
         let mut output = header.as_bytes().to_vec();
         output.extend_from_slice(payload);
         crate::fsutil::atomic_write(&path, &output)
+    }
+
+    pub(crate) fn retarget_editor_draft(&mut self, old_id: &str, new_id: &str) -> Result<()> {
+        let path = self.editor_draft_path();
+        if !path.exists() {
+            return Ok(());
+        }
+        self.ensure_key()?;
+        let plain = self.decrypt(&fs::read(&path)?)?;
+        let (mut draft, used): ((String, String, String), usize) =
+            bincode::serde::decode_from_slice(&plain, bincode::config::standard())?;
+        if draft.0 != old_id {
+            return Ok(());
+        }
+        draft.0 = new_id.to_owned();
+        let committed = self
+            .load_note(new_id)
+            .is_ok_and(|note| note.title == draft.1 && note.content == draft.2);
+        let mut bytes = bincode::serde::encode_to_vec(draft, bincode::config::standard())?;
+        if committed {
+            bytes.extend_from_slice(PROPERTY_DRAFT_MAGIC);
+            bytes.extend(bincode::serde::encode_to_vec(
+                Vec::<frontmatter::FrontmatterEdit>::new(),
+                bincode::config::standard(),
+            )?);
+        } else {
+            bytes.extend_from_slice(&plain[used..]);
+        }
+        crate::fsutil::atomic_write(&path, &self.encrypt(&bytes)?)?;
+        #[cfg(unix)]
+        fs::File::open(path.parent().context("Missing draft parent")?)?.sync_all()?;
+        Ok(())
     }
 
     pub fn editor_draft_path(&self) -> PathBuf {
@@ -1560,7 +1585,7 @@ impl Storage {
         edits: &[frontmatter::FrontmatterEdit],
         initial_header: Option<&str>,
     ) -> Result<String> {
-        let old_path = self.note_path(id);
+        let old_path = self.property_note_path(id)?;
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let source = match fs::read(&old_path) {
             Ok(bytes) => Some(bytes),
@@ -1641,12 +1666,8 @@ impl Storage {
             extra: existing.extra,
         };
 
-        let target_path = self.note_path(&target_id);
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).context("failed to create note directory")?;
-        }
-
-        if target_ext == "clin" {
+        let output = if target_ext == "clin" {
+            self.ensure_key()?;
             let bytes = bincode::serde::encode_to_vec(note, bincode::config::standard())
                 .context("failed to encode note")?;
             let encrypted = self.encrypt(&bytes)?;
@@ -1655,32 +1676,13 @@ impl Storage {
             let mut final_output = fm_string.into_bytes();
             final_output.extend_from_slice(&encrypted);
 
-            crate::fsutil::atomic_write(&target_path, &final_output)
-                .context("failed to write note")?;
+            final_output
         } else if target_ext == "canvas" || target_ext == "draw" {
-            crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
-                .context("failed to write note")?;
+            note.content.as_bytes().to_vec()
         } else {
-            let final_content = frontmatter::serialize(&fm, source_header, &note.content)?;
-            crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
-                .context("failed to write plain note")?;
-        }
-
-        if id != target_id {
-            let old_path_to_remove = self.note_path(id);
-            // On case-insensitive filesystems the old and new paths can be
-            // the same file (case-only rename) — removing would delete the
-            // just-written note.
-            if old_path_to_remove.exists()
-                && !crate::fsutil::is_same_file(&old_path_to_remove, &target_path)
-            {
-                fs::remove_file(&old_path_to_remove).context("failed to rename note file")?;
-            }
-            // Keep subnotes DB key in sync with the note's new id.
-            let _ = self.migrate_subnotes_parent(id, &target_id);
-        }
-
-        self.apply_reference_relocation(reference_changes, &relocations)?;
+            frontmatter::serialize(&fm, source_header, &note.content)?.into_bytes()
+        };
+        self.commit_prepared_file(reference_changes, id, &target_id, output)?;
         Ok(target_id)
     }
 
@@ -1704,12 +1706,10 @@ impl Storage {
         if crate::storage::is_image_ext(old_ext) {
             let preferred_stem = self.note_file_stem_from_title(new_title);
             let target_id = self.unique_note_id(&preferred_stem, old_ext, id);
-            let old_path = self.note_path(id);
-            let target_path = self.note_path(&target_id);
-            if let Some(parent) = target_path.parent() {
-                fs::create_dir_all(parent).context("failed to create note directory")?;
-            }
-            fs::rename(&old_path, &target_path).context("failed to rename image")?;
+            let old_path = self.property_note_path(id)?;
+            let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
+            let reference_changes = self.prepare_reference_relocation(&relocations)?;
+            self.commit_prepared_file(reference_changes, id, &target_id, fs::read(old_path)?)?;
             return Ok(target_id);
         }
 
@@ -1931,7 +1931,8 @@ impl Storage {
         Ok(())
     }
 
-    pub fn rename_folder(&self, old_path: &str, new_path: &str) -> Result<()> {
+    pub fn rename_folder(&mut self, old_path: &str, new_path: &str) -> Result<()> {
+        self.ensure_key()?;
         let old_full = self
             .validate_path_within_notes_dir(old_path)
             .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
@@ -1945,10 +1946,6 @@ impl Storage {
         if new_full.exists() {
             anyhow::bail!("Target folder already exists");
         }
-        if let Some(parent) = new_full.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
         let prefix = format!("{old_path}/");
         let relocations = self
             .list_note_ids(true, false)?
@@ -1959,9 +1956,10 @@ impl Storage {
                     .map(|target| (id, target))
             })
             .collect();
-        let reference_changes = self.prepare_reference_relocation(&relocations)?;
-        fs::rename(old_full, new_full).context("failed to rename folder")?;
-        self.apply_reference_relocation(reference_changes, &relocations)
+        let mut reference_changes = self.prepare_reference_relocation(&relocations)?;
+        reference_changes.parents.extend(relocations.clone());
+        reference_changes.prepare_folder(self, old_path, new_path)?;
+        self.commit_prepared_batch(reference_changes)
     }
 
     /// Recursively copy folder `src_rel` (relative to notes dir) into `target_folder`
@@ -2075,7 +2073,14 @@ impl Storage {
                         .and_then(|target| relocations.get(&target.id))
                         .map_or_else(
                             || value.clone(),
-                            |id| serde_yaml_ng::Value::String(id.clone()),
+                            |id| {
+                                serde_yaml_ng::Value::String(
+                                    crate::property_model::rewrite_reference(
+                                        value.as_str().unwrap_or_default(),
+                                        id,
+                                    ),
+                                )
+                            },
                         )
                 };
                 let after = match value {
@@ -2104,67 +2109,33 @@ impl Storage {
         Ok(batch)
     }
 
-    fn apply_reference_relocation(
+    fn commit_prepared_file(
+        &mut self,
+        mut batch: crate::property_management::PropertyBatch,
+        source: &str,
+        target: &str,
+        output: Vec<u8>,
+    ) -> Result<()> {
+        self.ensure_key()?;
+        batch.prepare_file(self, source, target, output)?;
+        self.commit_prepared_batch(batch)
+    }
+
+    fn commit_prepared_batch(
         &self,
         mut batch: crate::property_management::PropertyBatch,
-        relocations: &HashMap<String, String>,
     ) -> Result<()> {
-        if batch.notes.is_empty() {
-            return Ok(());
-        }
-        // A moved note may also have been saved with a changed title/body/header.
-        // Rebase only the declared reference changes on its newly written header.
-        for change in &mut batch.notes {
-            if relocations.values().any(|id| id == &change.id) {
-                let before =
-                    frontmatter::checked_parse(change.before.as_deref().unwrap_or("---\n---\n"))?
-                        .extra;
-                let after = frontmatter::checked_parse(&change.after)?.extra;
-                let edits: Vec<_> = after
-                    .iter()
-                    .filter(|(key, value)| before.get(*key) != Some(*value))
-                    .map(|(key, value)| {
-                        crate::property_model::property_edit(
-                            key.as_str().context("Reference key must be text")?,
-                            Some(value),
-                        )
-                    })
-                    .collect::<Result<_>>()?;
-                change.before = self.load_frontmatter(&change.id)?;
-                change.after = frontmatter::apply_edits(
-                    change.before.as_deref().unwrap_or("---\n---\n"),
-                    &edits,
-                )?;
-            }
-        }
-        let path = self.data_dir.join(".clin/property_batch.toml");
-        fs::create_dir_all(self.data_dir.join(".clin"))?;
-        crate::fsutil::atomic_write_str(&path, &toml::to_string(&batch)?)?;
-        let mut failures = Vec::new();
-        batch.notes.retain(|change| {
-            match self.replace_property_header(&change.id, change.before.as_deref(), &change.after)
-            {
-                Ok(()) => false,
-                Err(error) => {
-                    failures.push(format!("{}: {error:#}", change.id));
-                    true
-                }
-            }
-        });
-        if failures.is_empty() {
-            crate::fsutil::remove_file_if_exists(&path)?;
-        } else {
-            crate::fsutil::atomic_write_str(&path, &toml::to_string(&batch)?)?;
-            anyhow::bail!(
-                "Target moved; reference updates partially failed: {}. Resume notes properties resume --apply",
-                failures.join("; ")
-            );
-        }
+        let (failures, _) = batch.apply_storage(self)?;
+        anyhow::ensure!(
+            failures.is_empty(),
+            "Mutation partially failed: {}. Resume notes properties resume --apply",
+            failures.join("; ")
+        );
         Ok(())
     }
 
     pub fn move_note(&mut self, id: &str, new_folder: &str) -> Result<String> {
-        let old_path = self.note_path(id);
+        let old_path = self.property_note_path(id)?;
         if !old_path.exists() {
             anyhow::bail!("Note does not exist");
         }
@@ -2184,20 +2155,14 @@ impl Storage {
             return Ok(id.to_string());
         }
 
-        let new_path = self.note_path(&target_id);
+        let new_path = self.property_note_path(&target_id)?;
         if new_path.exists() {
             anyhow::bail!("Note with this name already exists in target folder");
         }
 
-        if let Some(parent) = new_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
         let relocations = HashMap::from([(id.to_owned(), target_id.clone())]);
         let reference_changes = self.prepare_reference_relocation(&relocations)?;
-        fs::rename(&old_path, &new_path).context("failed to move note")?;
-        let _ = self.migrate_subnotes_parent(id, &target_id);
-        self.apply_reference_relocation(reference_changes, &relocations)?;
+        self.commit_prepared_file(reference_changes, id, &target_id, fs::read(&old_path)?)?;
         Ok(target_id)
     }
 
@@ -2536,11 +2501,19 @@ impl Storage {
         let mut db: HashMap<String, SubNotePayload> =
             match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
                 Ok((map, _)) => map,
-                Err(_) => return Ok(()),
+                Err(error) => {
+                    return Err(error)
+                        .context("Invalid subnotes database; retain relocation recovery");
+                }
             };
-        let Some(payload) = db.remove(old_id) else {
+        if old_id == new_id || !db.contains_key(old_id) {
             return Ok(());
-        };
+        }
+        anyhow::ensure!(
+            !db.contains_key(new_id),
+            "Subnotes destination already exists; inspect and retry"
+        );
+        let payload = db.remove(old_id).context("Missing source subnotes")?;
         db.insert(new_id.to_string(), payload);
         let mut out = bincode::serde::encode_to_vec(&db, bincode::config::standard())
             .context("failed to serialize subnotes database")?;
@@ -2681,13 +2654,16 @@ mod tests {
         )?;
         fs::write(
             dir.path().join("child.md"),
-            "---\ntitle: Child\nparent: '[[Target]]' # keep\nsources: [target.md, missing.md]\nraw: '[[Target]]'\n---\nchild body",
+            "---\ntitle: Child\nparent: '[[Target#Heading|Alias]]' # keep\nsources: [target.md, missing.md]\nraw: '[[Target]]'\n---\nchild body",
         )?;
         let moved = storage.move_note("target.md", "archive")?;
         let header = storage.load_frontmatter("child.md")?.expect("header");
         assert!(header.contains("# keep"));
         let values = frontmatter::checked_parse(&header)?.extra;
-        assert_eq!(values["parent"].as_str(), Some(moved.as_str()));
+        assert_eq!(
+            values["parent"].as_str(),
+            Some(format!("[[{moved}#Heading|Alias]]").as_str())
+        );
         assert_eq!(values["raw"].as_str(), Some("[[Target]]"));
         let renamed = storage.rename_note(&moved, "Renamed")?;
         let encrypted = storage.encrypt_note(&renamed)?;
@@ -2695,7 +2671,10 @@ mod tests {
         let values =
             frontmatter::checked_parse(&storage.load_frontmatter("child.md")?.expect("header"))?
                 .extra;
-        assert_eq!(values["parent"].as_str(), Some(decrypted.as_str()));
+        assert_eq!(
+            values["parent"].as_str(),
+            Some(format!("[[{decrypted}#Heading|Alias]]").as_str())
+        );
         assert_eq!(values["sources"][0].as_str(), Some(decrypted.as_str()));
         assert_eq!(values["sources"][1].as_str(), Some("missing.md"));
         assert_eq!(storage.load_note("child.md")?.content, "child body");
@@ -2713,7 +2692,10 @@ mod tests {
             frontmatter::checked_parse(&storage.load_frontmatter("child.md")?.expect("header"))?
                 .extra;
         assert!(!values.contains_key(serde_yaml_ng::Value::String("parent".into())));
-        assert_eq!(values["ancestor"].as_str(), Some(decrypted.as_str()));
+        assert_eq!(
+            values["ancestor"].as_str(),
+            Some(format!("[[{decrypted}#Heading|Alias]]").as_str())
+        );
         #[derive(serde::Serialize)]
         struct LegacyEdit {
             key_yaml: String,
@@ -2877,11 +2859,11 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: <[u8; 32]>::default(),
+            key: [9; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };
@@ -2937,8 +2919,8 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             key: rand::random(),
@@ -3138,11 +3120,11 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: core::array::from_fn(|_| 0),
+            key: [9; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };
@@ -3176,11 +3158,11 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: core::array::from_fn(|_| 0),
+            key: [9; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: false,
         };
@@ -3211,11 +3193,11 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
-            key: core::array::from_fn(|_| 0),
+            key: [9; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: false,
         };
@@ -3240,8 +3222,8 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             key: rand::random(),
@@ -3274,8 +3256,8 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
         let mut storage = Storage {
-            data_dir: PathBuf::new(),
-            config_dir: PathBuf::new(),
+            data_dir: notes_dir.clone(),
+            config_dir: notes_dir.clone(),
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             key: rand::random(),

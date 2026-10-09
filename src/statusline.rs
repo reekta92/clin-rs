@@ -462,11 +462,25 @@ impl StatuslineContext<'_> {
             "note_goal_progress" => Some(self.note_word_goal_target().map_or_else(
                 || "disabled".into(),
                 |t| {
-                    let words = self
-                        .app
-                        .map(|a| self.edit_memo.borrow_mut().counts(a).0)
-                        .unwrap_or(0);
-                    format!("{words}/{t}").into()
+                    let words = self.app.and_then(|app| {
+                        if self.view == ViewMode::Edit {
+                            Some(self.edit_memo.borrow_mut().counts(app).0)
+                        } else {
+                            app.list
+                                .note_metrics
+                                .as_ref()
+                                .filter(|(id, _, _)| {
+                                    self.note.is_some_and(|note| &note.id == id)
+                                        && !(id.ends_with(".clin") && app.preview_encryption)
+                                })
+                                .and_then(|(_, _, words)| *words)
+                        }
+                    });
+                    format!(
+                        "{}/{t}",
+                        words.map_or_else(|| "—".into(), |words| words.to_string())
+                    )
+                    .into()
                 },
             )),
             "goal_notes" => Some(
@@ -2483,7 +2497,7 @@ mod tests {
         assert_eq!(ctx.resolve("prop:status").as_deref(), Some("active"));
         assert_eq!(ctx.resolve("prop:missing").as_deref(), Some(""));
         assert_eq!(ctx.resolve("note_goal_target").as_deref(), Some("500"));
-        assert_eq!(ctx.resolve("note_goal_progress").as_deref(), Some("0/500"));
+        assert_eq!(ctx.resolve("note_goal_progress").as_deref(), Some("—/500"));
 
         // Zero target
         note.properties.insert(

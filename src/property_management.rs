@@ -4,6 +4,11 @@ use crate::property_model::{PropertyDefinitions, PropertyKind, PropertyValue};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
+mod guided;
+mod recovery;
+use guided::{GuidedAction, draw_guided_management};
+use recovery::PreparedChange;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct HeaderChange {
     pub id: String,
@@ -19,92 +24,18 @@ pub(crate) struct BindingChange {
     pub after: String,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct PropertyBatch {
+    #[serde(default)]
+    pub version: Option<u32>,
+    #[serde(default)]
+    pub vault: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub writes: Vec<PreparedChange>,
+    #[serde(default)]
+    pub parents: std::collections::BTreeMap<String, String>,
     pub notes: Vec<HeaderChange>,
     pub bindings: Vec<BindingChange>,
-}
-impl PropertyBatch {
-    fn recovery_path(app: &App) -> std::path::PathBuf {
-        app.storage
-            .data_dir
-            .join(".clin")
-            .join("property_batch.toml")
-    }
-    pub fn save_recovery(&self, app: &App) -> Result<()> {
-        std::fs::create_dir_all(app.storage.data_dir.join(".clin"))?;
-        crate::fsutil::atomic_write_str(&Self::recovery_path(app), &toml::to_string(self)?)
-    }
-    pub fn apply(&mut self, app: &mut App) -> Result<Vec<String>> {
-        self.save_recovery(app)?;
-        let mut failures = Vec::new();
-        self.notes.retain(|change| {
-            match app.storage.replace_property_header(
-                &change.id,
-                change.before.as_deref(),
-                &change.after,
-            ) {
-                Ok(()) => false,
-                Err(error) => {
-                    failures.push(format!("{}: {error:#}", change.id));
-                    true
-                }
-            }
-        });
-        if self.notes.is_empty() {
-            let config_path = crate::config::ClinConfig::config_path()?;
-            let vault = std::fs::canonicalize(&app.storage.data_dir)?;
-            self.bindings.retain(|change| {
-                let result = (|| -> Result<()> {
-                    let is_config = change.path == config_path;
-                    let parent = std::fs::canonicalize(
-                        change.path.parent().context("Missing binding parent")?,
-                    )?;
-                    ensure!(
-                        is_config || parent.starts_with(&vault),
-                        "Binding target outside vault"
-                    );
-                    let actual = match std::fs::read_to_string(&change.path) {
-                        Ok(text) => Some(text),
-                        Err(error)
-                            if change.create && error.kind() == std::io::ErrorKind::NotFound =>
-                        {
-                            None
-                        }
-                        Err(error) => return Err(error.into()),
-                    };
-                    if actual.as_deref() == Some(change.after.as_str()) {
-                        return Ok(());
-                    }
-                    ensure!(
-                        if change.create {
-                            actual.is_none()
-                        } else {
-                            actual.as_deref() == Some(change.before.as_str())
-                        },
-                        "Binding changed since preview; inspect and retry"
-                    );
-                    crate::fsutil::atomic_write_str(&change.path, &change.after)
-                })();
-                match result {
-                    Ok(()) => false,
-                    Err(error) => {
-                        failures.push(format!("{}: {error:#}", change.path.display()));
-                        true
-                    }
-                }
-            });
-        }
-        if self.notes.is_empty() && self.bindings.is_empty() {
-            crate::fsutil::remove_file_if_exists(&Self::recovery_path(app))?;
-        } else {
-            self.save_recovery(app)?;
-        }
-        app.request_notes_reconcile();
-        app.reload_config();
-        app.reload_property_definitions();
-        app.enqueue_backup("properties: batch edit");
-        Ok(failures)
-    }
 }
 
 impl App {
@@ -186,8 +117,6 @@ impl App {
             }
         }
         self.notes_revision = self.notes_revision.wrapping_add(1);
-        self.sort_notes();
-        self.rebuild_note_index();
         self.editor
             .properties
             .set_definitions(&self.property_definitions);
@@ -200,26 +129,41 @@ impl App {
                 crate::app::messages::MessageSeverity::Warning,
             );
         }
+        self.refresh_property_dependents();
+    }
+    pub(crate) fn refresh_property_dependents(&mut self) {
+        self.sort_notes();
+        self.rebuild_note_index();
+        self.list.note_metrics = None;
+        self.refresh_visual_list();
+        self.editor.links = self.compute_links();
+        self.graph_preview = None;
         if let Some(plugin) = &mut self.graph_plugin {
             plugin.notes.clone_from(&self.notes);
             plugin.refresh_simulation(&self.config);
         }
-        self.editor.links = self.compute_links();
-        self.graph_preview = None;
-        self.refresh_visual_list();
-        self.list.pending_preview_update = true;
-        for note in &self.notes {
-            for warning in self
-                .property_definitions
+        if matches!(
+            self.popups.active,
+            Some(crate::popups::ActivePopup::Search(_))
+        ) {
+            self.update_search();
+        }
+        let mut diagnostics = self.notes.iter().flat_map(|note| {
+            self.property_definitions
                 .diagnostics(&note.properties)
                 .into_iter()
-                .take(3)
-            {
-                self.messages.push(
-                    format!("{}: {warning}", note.id),
-                    crate::app::messages::MessageSeverity::Warning,
-                );
-            }
+                .map(move |warning| format!("{}: {warning}", note.id))
+        });
+        for warning in diagnostics.by_ref().take(10) {
+            self.messages
+                .push(warning, crate::app::messages::MessageSeverity::Warning);
+        }
+        let remaining = diagnostics.count();
+        if remaining > 0 {
+            self.messages.push(
+                format!("…and {remaining} more invalid property values"),
+                crate::app::messages::MessageSeverity::Warning,
+            );
         }
     }
     pub(crate) fn check_property_definitions(&mut self) {
@@ -284,7 +228,7 @@ impl App {
             "Repair property definitions before bulk editing"
         );
         let mut changes = Vec::new();
-        for id in ids {
+        for id in ids.iter().collect::<std::collections::BTreeSet<_>>() {
             let before = self.storage.load_frontmatter(id)?;
             self.storage.property_note_path(id)?;
             let after = frontmatter::apply_edits(before.as_deref().unwrap_or("---\n---\n"), edits)?;
@@ -298,7 +242,7 @@ impl App {
                     )?;
                 }
             }
-            if before.as_deref() != Some(after.as_str()) {
+            if before.as_deref().unwrap_or("---\n---\n") != after {
                 changes.push(HeaderChange {
                     id: id.clone(),
                     before,
@@ -309,6 +253,7 @@ impl App {
         Ok(PropertyBatch {
             notes: changes,
             bindings: Vec::new(),
+            ..Default::default()
         })
     }
     pub(crate) fn prepare_property_rename(
@@ -324,6 +269,10 @@ impl App {
             self.autosave().map_err(anyhow::Error::msg)?;
         }
         self.ensure_catalog_ready()?;
+        ensure!(
+            self.property_definitions_error.is_none(),
+            "Repair property definitions before renaming keys across the vault"
+        );
         crate::property_model::validate_key(old)?;
         crate::property_model::validate_key(new)?;
         ensure!(old != new, "Choose a different property name");
@@ -332,25 +281,21 @@ impl App {
             "Target definition already exists"
         );
         let mut batch = PropertyBatch::default();
-        for note in &self.notes {
+        for id in self.storage.list_note_ids(true, false)? {
             if !matches!(
-                std::path::Path::new(&note.id)
+                std::path::Path::new(&id)
                     .extension()
                     .and_then(|value| value.to_str()),
                 Some("md" | "txt" | "clin")
             ) {
                 continue;
             }
-            let before = self.storage.load_frontmatter(&note.id)?;
+            let before = self.storage.load_frontmatter(&id)?;
             if let Some(header) = &before {
                 let mapping = frontmatter::validate_header(header)?;
                 if mapping.contains_key(serde_yaml_ng::Value::String(old.into())) {
                     let after = frontmatter::rename_key(header, old, new)?;
-                    batch.notes.push(HeaderChange {
-                        id: note.id.clone(),
-                        before,
-                        after,
-                    });
+                    batch.notes.push(HeaderChange { id, before, after });
                 }
             }
         }
@@ -360,7 +305,7 @@ impl App {
             let mut doc: toml_edit::DocumentMut = before.parse()?;
             if let Some(table) = doc
                 .get_mut("properties")
-                .and_then(toml_edit::Item::as_table_mut)
+                .and_then(toml_edit::Item::as_table_like_mut)
                 && let Some(value) = table.remove(old)
             {
                 table.insert(new, value);
@@ -429,12 +374,14 @@ impl App {
                     continue;
                 }
                 let before = std::fs::read_to_string(&path)?;
+                let template: crate::templates::Template = toml::from_str(&before)
+                    .with_context(|| format!("Invalid template {}", path.display()))?;
                 let mut doc: toml_edit::DocumentMut = before
                     .parse()
                     .with_context(|| format!("Invalid template {}", path.display()))?;
                 if let Some(table) = doc
                     .get_mut("properties")
-                    .and_then(toml_edit::Item::as_table_mut)
+                    .and_then(toml_edit::Item::as_table_like_mut)
                 {
                     ensure!(
                         !table.contains_key(new) || !table.contains_key(old),
@@ -443,6 +390,21 @@ impl App {
                     );
                     if let Some(value) = table.remove(old) {
                         table.insert(new, value);
+                    }
+                }
+                let (header, body) =
+                    frontmatter::split_header(template.content.template.as_bytes())
+                        .with_context(|| format!("Invalid template header {}", path.display()))?;
+                if let Some(header) = header
+                    && frontmatter::validate_header(header)?
+                        .contains_key(serde_yaml_ng::Value::String(old.into()))
+                {
+                    let renamed = frontmatter::rename_key(header, old, new)?;
+                    let item = &mut doc["content"]["template"];
+                    let decor = item.as_value().map(|value| value.decor().clone());
+                    *item = toml_edit::value(format!("{renamed}{}", std::str::from_utf8(body)?));
+                    if let (Some(decor), Some(value)) = (decor, item.as_value_mut()) {
+                        *value.decor_mut() = decor;
                     }
                 }
                 replace_document_tokens(&mut doc, old, new);
@@ -584,6 +546,174 @@ pub(crate) struct PropertyManager {
     pub input_rect: ratatui::layout::Rect,
     pub apply_rect: ratatui::layout::Rect,
     pub scroll: u16,
+    guided: Option<GuidedManager>,
+}
+enum GuidedManager {
+    Definitions {
+        definitions: PropertyDefinitions,
+        keys: Vec<String>,
+        selected: usize,
+        form: Option<Box<ManagementForm>>,
+    },
+    Bulk(Box<ManagementForm>),
+}
+struct ManagementForm {
+    name: ratatui_textarea::TextArea<'static>,
+    value: ratatui_textarea::TextArea<'static>,
+    description: ratatui_textarea::TextArea<'static>,
+    options: ratatui_textarea::TextArea<'static>,
+    kind: PropertyKind,
+    enabled: bool, // Definition default enabled / bulk set (rather than unset).
+    control: usize,
+    rects: [ratatui::layout::Rect; 7],
+    choices: Vec<String>,
+    choice: usize,
+}
+impl ManagementForm {
+    fn new(
+        app: &App,
+        name: &str,
+        definition: Option<&crate::property_model::PropertyDefinition>,
+    ) -> Result<Self> {
+        let field = |text: &str| {
+            let mut input = crate::ui::make_popup_textarea(&app.app_theme, "");
+            input.insert_str(text);
+            input
+        };
+        let value = definition
+            .and_then(|definition| definition.default.as_ref())
+            .map(crate::property_model::toml_to_yaml)
+            .transpose()?
+            .map(|value| match value {
+                serde_yaml_ng::Value::String(value) => Ok(value),
+                _ => serde_yaml_ng::to_string(&value),
+            })
+            .transpose()?
+            .unwrap_or_default();
+        Ok(Self {
+            name: field(name),
+            value: field(&value),
+            description: field(definition.map_or("", |definition| &definition.description)),
+            options: field(
+                &definition.map_or_else(String::new, |definition| definition.options.join("\n")),
+            ),
+            kind: definition.map_or(PropertyKind::String, |definition| definition.kind),
+            enabled: definition.is_some_and(|definition| definition.default.is_some()),
+            control: 0,
+            rects: [ratatui::layout::Rect::default(); 7],
+            choices: Vec::new(),
+            choice: 0,
+        })
+    }
+    fn key(&self) -> String {
+        self.name.lines().join("\n")
+    }
+    fn definition(&self) -> Result<crate::property_model::PropertyDefinition> {
+        let value = if self.enabled {
+            let value = crate::property_model::parse_property_value(
+                self.kind,
+                &self.value.lines().join("\n"),
+            )?;
+            Some(toml::Value::try_from(value).context(
+                "Default must be representable in TOML (null/large unsigned defaults unsupported)",
+            )?)
+        } else {
+            None
+        };
+        Ok(crate::property_model::PropertyDefinition {
+            kind: self.kind,
+            description: self.description.lines().join("\n"),
+            options: self
+                .options
+                .lines()
+                .iter()
+                .filter(|option| !option.is_empty())
+                .cloned()
+                .collect(),
+            default: value,
+        })
+    }
+    fn bulk_text(&self) -> Result<String> {
+        let mut table = toml::map::Map::new();
+        table.insert("name".into(), toml::Value::String(self.key()));
+        table.insert("type".into(), toml::Value::try_from(self.kind)?);
+        if self.enabled {
+            table.insert(
+                "value".into(),
+                toml::Value::String(self.value.lines().join("\n")),
+            );
+        } else {
+            table.insert("unset".into(), toml::Value::Boolean(true));
+        }
+        Ok(toml::to_string(&table)?)
+    }
+    fn textarea(&mut self) -> Option<&mut ratatui_textarea::TextArea<'static>> {
+        match self.control {
+            0 => Some(&mut self.name),
+            2 => Some(&mut self.value),
+            3 => Some(&mut self.description),
+            4 => Some(&mut self.options),
+            _ => None,
+        }
+    }
+    fn advance(&mut self, delta: isize, definition: bool) {
+        loop {
+            self.control = (self.control as isize + delta).rem_euclid(7) as usize;
+            if definition || !matches!(self.control, 3 | 4) {
+                break;
+            }
+        }
+    }
+    fn refresh_choices(&mut self, app: &App) {
+        self.choices = if self.kind.is_reference() {
+            app.visible_notes()
+                .map(|(_, note)| note.id.clone())
+                .filter(|id| {
+                    matches!(
+                        std::path::Path::new(id)
+                            .extension()
+                            .and_then(|value| value.to_str()),
+                        Some("md" | "txt" | "clin")
+                    )
+                })
+                .collect()
+        } else {
+            self.options
+                .lines()
+                .iter()
+                .filter(|option| !option.is_empty())
+                .cloned()
+                .collect()
+        };
+        self.choice = self.choice.min(self.choices.len().saturating_sub(1));
+    }
+    fn choose(&mut self) {
+        let Some(choice) = self.choices.get(self.choice).cloned() else {
+            return;
+        };
+        if matches!(
+            self.kind,
+            PropertyKind::MultiSelect | PropertyKind::NoteReferences
+        ) {
+            let mut values = self.value.lines().to_vec();
+            if values.contains(&choice) {
+                values.retain(|value| value != &choice);
+            } else {
+                values.push(choice);
+            }
+            self.value.select_all();
+            self.value.insert_str(
+                values
+                    .into_iter()
+                    .filter(|value| !value.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+        } else {
+            self.value.select_all();
+            self.value.insert_str(choice);
+        }
+    }
 }
 #[derive(Deserialize)]
 struct BulkInput {
@@ -642,7 +772,7 @@ impl App {
                 PropertyManagerMode::References => anyhow::bail!("Reference preview is opened by move/rename"),
                 PropertyManagerMode::Resume => {
                     let batch: PropertyBatch = toml::from_str(&std::fs::read_to_string(PropertyBatch::recovery_path(self)).context("No pending property batch")?)?;
-                    let mut manager = PropertyManager { mode, input: crate::ui::make_popup_textarea(&self.app_theme, ""), targets, original, preview: None, report: Vec::new(), error: None, confirm: false, input_rect: ratatui::layout::Rect::default(), apply_rect: ratatui::layout::Rect::default(), scroll: 0 };
+                    let mut manager = PropertyManager { mode, input: crate::ui::make_popup_textarea(&self.app_theme, ""), targets, original, preview: None, report: Vec::new(), error: None, confirm: false, input_rect: ratatui::layout::Rect::default(), apply_rect: ratatui::layout::Rect::default(), scroll: 0, guided: None };
                     manager.report = batch_report(&batch);
                     manager.preview = Some(PropertyPreview::Batch(batch));
                     return Ok(manager);
@@ -662,6 +792,28 @@ impl App {
                 input_rect: ratatui::layout::Rect::default(),
                 apply_rect: ratatui::layout::Rect::default(),
                 scroll: 0,
+                guided: match mode {
+                    PropertyManagerMode::Definitions => Some(GuidedManager::Definitions {
+                        definitions: self.property_definitions.clone(),
+                        keys: self
+                            .property_definitions
+                            .properties
+                            .keys()
+                            .chain(self.notes.iter().flat_map(|note| note.properties.keys()))
+                            .cloned()
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .into_iter()
+                            .collect(),
+                        selected: 0,
+                        form: None,
+                    }),
+                    PropertyManagerMode::Bulk => {
+                        let mut form = ManagementForm::new(self, "", None)?;
+                        form.enabled = true;
+                        Some(GuidedManager::Bulk(Box::new(form)))
+                    }
+                    _ => None,
+                },
             })
         })();
         match result {
@@ -670,6 +822,7 @@ impl App {
         }
     }
     fn preview_property_management(&mut self, manager: &mut PropertyManager) -> Result<()> {
+        manager.sync_guided()?;
         let text = manager.input.lines().join("\n");
         manager.report.clear();
         manager.confirm = false;
@@ -723,14 +876,7 @@ impl App {
                     .value
                     .as_ref()
                     .map(|value| {
-                        if matches!(
-                            request.kind,
-                            PropertyKind::Yaml
-                                | PropertyKind::List
-                                | PropertyKind::MultiSelect
-                                | PropertyKind::NoteReferences
-                        ) && value.is_str()
-                        {
+                        if value.is_str() {
                             crate::property_model::parse_property_value(
                                 request.kind,
                                 value.as_str().unwrap_or_default(),
@@ -789,6 +935,28 @@ impl App {
                     }
                 }
                 manager.report = batch_report(&batch);
+                manager.report.push(format!(
+                    "{} unique targets, {} changes, {} no-ops",
+                    manager.targets.len(),
+                    batch.notes.len(),
+                    manager.targets.len().saturating_sub(batch.notes.len())
+                ));
+                for id in &manager.targets {
+                    manager.report.push(format!(
+                        "Target: {id}{}",
+                        if batch.notes.iter().any(|change| &change.id == id) {
+                            ""
+                        } else {
+                            " (no-op)"
+                        }
+                    ));
+                }
+                if manager.targets.iter().any(|id| id.ends_with(".clin")) {
+                    manager.report.push("Encrypted metadata remains plaintext; encryption and Git history do not hide these properties.".into());
+                }
+                if !batch.bindings.is_empty() {
+                    manager.report.push("Create vault definition: affects all notes; existing values are not rewritten automatically.".into());
+                }
                 manager.preview = Some(PropertyPreview::Batch(batch));
             }
             PropertyManagerMode::Rename { global } => {
@@ -858,6 +1026,20 @@ impl App {
                     "References changed since preview; cancel and preview again"
                 );
                 match operation {
+                    ReferenceOperation::Convert { id, encrypt } => {
+                        self.apply_note_conversion(id, *encrypt)?
+                    }
+                    ReferenceOperation::SaveDraft { intent } => {
+                        ensure!(
+                            self.title_save_intent()? == *intent,
+                            "Draft or source changed since preview; cancel and preview again"
+                        );
+                        self.editor.reference_save_decision = Some((intent.clone(), true));
+                        if let Err(error) = self.autosave() {
+                            self.editor.reference_save_decision = Some((intent.clone(), false));
+                            anyhow::bail!(error);
+                        }
+                    }
                     ReferenceOperation::Move { mode, target } => {
                         self.perform_move(mode.clone(), target)
                     }
@@ -949,7 +1131,32 @@ impl App {
         let mut close = false;
         let mut preview = false;
         let mut apply = false;
+        if manager.preview.is_none() && manager.guided.is_some() {
+            match self.handle_guided_management(&mut manager, &event) {
+                Ok(GuidedAction::Handled) => {
+                    self.property_manager = Some(manager);
+                    return true;
+                }
+                Ok(GuidedAction::Preview) => preview = true,
+                Ok(GuidedAction::Pass) => {}
+                Err(error) => {
+                    manager.error = Some(format!("{error:#}"));
+                    self.property_manager = Some(manager);
+                    return true;
+                }
+            }
+        } else if manager.preview.is_none()
+            && matches!(&event, Event::Key(key) if key.code == KeyCode::F(2))
+        {
+            match self.enable_guided_management(&mut manager) {
+                Ok(()) => manager.error = None,
+                Err(error) => manager.error = Some(format!("{error:#}")),
+            }
+            self.property_manager = Some(manager);
+            return true;
+        }
         match event {
+            _ if preview => {}
             Event::Paste(text) if manager.preview.is_none() => {
                 manager.input.insert_str(text);
             }
@@ -1023,6 +1230,18 @@ impl App {
             _ => {}
         }
         if close && matches!(manager.mode, PropertyManagerMode::References) {
+            if let Some(PropertyPreview::References {
+                operation: ReferenceOperation::SaveDraft { intent },
+                ..
+            }) = manager.preview
+            {
+                self.editor.reference_save_decision = Some((intent, false));
+                self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+                self.editor.autosave_timer = None;
+                self.set_temporary_status_static(
+                    "Title rename cancelled; unsaved draft retained. Save to preview again.",
+                );
+            }
             return true;
         }
         let result = if preview {
@@ -1048,10 +1267,33 @@ impl App {
 }
 fn batch_report(batch: &PropertyBatch) -> Vec<String> {
     let mut lines = vec![format!(
-        "{} note changes, {} binding changes. No writes until Apply.",
+        "{} prepared relocations/writes, {} note headers, {} bindings. No new writes until Apply.",
+        batch.writes.len(),
         batch.notes.len(),
         batch.bindings.len()
     )];
+    if let Some(version) = batch.version {
+        lines.push(format!(
+            "Recovery version {version}; vault {}",
+            batch
+                .vault
+                .as_ref()
+                .map_or_else(|| "(missing)".into(), |path| path.display().to_string())
+        ));
+    }
+    for change in &batch.writes {
+        lines.push(format!(
+            "Prepared {}: {} -> {} (encrypted recovery artifact)",
+            if change.folder { "folder" } else { "file" },
+            change.source,
+            change.target
+        ));
+    }
+    for (source, target) in &batch.parents {
+        lines.push(format!(
+            "Pending draft/subnote identity: {source} -> {target}"
+        ));
+    }
     for change in &batch.notes {
         lines.push(format!("--- {}", change.id));
         lines.push(format!(
@@ -1130,11 +1372,13 @@ pub(crate) fn draw_property_manager(frame: &mut ratatui::Frame, app: &mut App) {
                 .style(app.app_theme.bg_style()),
             areas[0],
         );
+    } else if manager.guided.is_some() {
+        draw_guided_management(frame, manager, &app.notes, &app.app_theme, areas[0]);
     } else {
         manager.input.set_block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("TOML (Ctrl+S previews; no writes yet)"),
+                .title("Advanced TOML (F2 guided; Ctrl+S preview)"),
         );
         frame.render_widget(&manager.input, areas[0]);
     }
@@ -1157,8 +1401,23 @@ pub(crate) fn draw_property_manager(frame: &mut ratatui::Frame, app: &mut App) {
         areas[2],
     );
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TitleSaveIntent {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub edits: Vec<FrontmatterEdit>,
+    pub before: Option<Vec<u8>>,
+}
 #[derive(Clone)]
 pub(crate) enum ReferenceOperation {
+    SaveDraft {
+        intent: TitleSaveIntent,
+    },
+    Convert {
+        id: String,
+        encrypt: bool,
+    },
     Move {
         mode: crate::popups::FolderPickerMode,
         target: String,
@@ -1173,6 +1432,67 @@ pub(crate) enum ReferenceOperation {
     },
 }
 impl App {
+    pub(crate) fn convert_note_with_preview(&mut self, id: &str, encrypt: bool) -> Result<()> {
+        let editor_target = self.editor.editing_id.as_deref() == Some(id);
+        ensure!(
+            self.finish_pending_editor_save(),
+            "Unsaved draft retained; finish save before conversion"
+        );
+        let id = if editor_target {
+            self.editor.editing_id.clone().unwrap_or_else(|| id.into())
+        } else {
+            id.into()
+        };
+        if !self.preview_reference_operation(ReferenceOperation::Convert {
+            id: id.clone(),
+            encrypt,
+        })? {
+            self.apply_note_conversion(&id, encrypt)?;
+        }
+        Ok(())
+    }
+    fn apply_note_conversion(&mut self, id: &str, encrypt: bool) -> Result<()> {
+        let target = if encrypt {
+            self.storage.encrypt_note(id)?
+        } else {
+            self.storage.decrypt_note(id)?
+        };
+        self.refresh_note_single(Some(id), &target);
+        if self.mode == ViewMode::Edit && self.editor.editing_id.as_deref() == Some(id) {
+            self.load_and_open_note(&target, None);
+        }
+        self.set_temporary_status(&format!(
+            "Note {}: {target}",
+            if encrypt { "encrypted" } else { "decrypted" }
+        ));
+        self.enqueue_backup(if encrypt {
+            "note: encrypt"
+        } else {
+            "note: decrypt"
+        });
+        Ok(())
+    }
+    pub(crate) fn title_save_intent(&self) -> Result<TitleSaveIntent> {
+        let id = self.editor.editing_id.clone().context("No editor note")?;
+        let mut title = crate::events::get_title_text(&self.editor.title_editor)
+            .trim()
+            .to_owned();
+        if title.is_empty() {
+            title = "Untitled note".into();
+        }
+        let before = match std::fs::read(self.storage.property_note_path(&id)?) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        Ok(TitleSaveIntent {
+            id,
+            title,
+            content: self.editor.body.lines().join("\n"),
+            edits: self.editor.properties.pending.clone(),
+            before,
+        })
+    }
     pub(crate) fn preview_reference_operation(
         &mut self,
         operation: ReferenceOperation,
@@ -1181,6 +1501,15 @@ impl App {
         let mut relocations = HashMap::new();
         let mut folders = Vec::new();
         match &operation {
+            ReferenceOperation::Convert { id, encrypt } => {
+                relocations.insert(id.clone(), self.storage.conversion_target(id, *encrypt)?);
+            }
+            ReferenceOperation::SaveDraft { intent } => {
+                let target = self.storage.rename_note_target(&intent.id, &intent.title);
+                if target != intent.id {
+                    relocations.insert(intent.id.clone(), target);
+                }
+            }
             ReferenceOperation::RenameNote { id, title } => {
                 let target = self.storage.rename_note_target(id, title);
                 if &target != id {
@@ -1245,8 +1574,12 @@ impl App {
         if batch.notes.is_empty() {
             return Ok(false);
         }
-        let mut report =
-            vec!["Move/rename and update declared references. Esc cancels without writes.".into()];
+        let mut report = vec![
+            "Relocate note IDs and update declared references. Esc cancels without writes.".into(),
+        ];
+        if matches!(operation, ReferenceOperation::Convert { encrypt: true, .. }) {
+            report.push("Encryption protects body only. YAML properties, definitions/defaults remain plaintext.".into());
+        }
         let mut targets: Vec<_> = relocations.iter().collect();
         targets.sort();
         report.extend(
@@ -1271,6 +1604,7 @@ impl App {
             input_rect: ratatui::layout::Rect::default(),
             apply_rect: ratatui::layout::Rect::default(),
             scroll: 0,
+            guided: None,
         });
         Ok(true)
     }
@@ -1280,6 +1614,314 @@ impl App {
 mod tests {
     use super::*;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    #[test]
+    fn creation_resets_pending_state_applies_defaults_and_splits_initial_header() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir()?;
+        crate::config::set_config_path_override(dir.path().join("config.toml"));
+        let vault = dir.path().join("vault");
+        std::fs::create_dir_all(vault.join(".clin"))?;
+        std::fs::write(
+            vault.join(".clin/properties.toml"),
+            "[properties.status]\ntype = 'string'\ndefault = 'draft'\n",
+        )?;
+        std::fs::write(
+            vault.join("old.md"),
+            "---\ntitle: Old\nold: true\n---\nOld body",
+        )?;
+        let storage = crate::storage::Storage {
+            data_dir: vault.clone(),
+            notes_dir: vault.clone(),
+            config_dir: dir.path().into(),
+            templates_dir: vault.join(".clin/templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+        let mut app = App::new(storage)?;
+        app.load_and_open_note("old.md", None);
+        app.editor.properties.commit(
+            crate::property_model::property_edit("stale", Some(&serde_yaml_ng::Value::Bool(true)))?,
+            true,
+        )?;
+        app.editor.properties.begin_add(&app.app_theme);
+        app.editor.template_edit_path = Some(dir.path().join("stale.toml"));
+        app.start_note_with_content(String::new(), "Fresh".into(), "Fresh body".into());
+        assert!(app.editor.template_edit_path.is_none());
+        assert!(app.editor.properties.dialog.is_none());
+        assert_eq!(
+            app.editor.properties.values.get("status"),
+            Some(&PropertyValue::String("draft".into()))
+        );
+        assert!(!app.editor.properties.values.contains_key("stale"));
+        assert!(!app.editor.properties.values.contains_key("old"));
+        assert!(app.storage.editor_draft_path().exists());
+        app.autosave().map_err(anyhow::Error::msg)?;
+        let id = app.editor.editing_id.clone().expect("new note");
+        assert_eq!(app.storage.load_note(&id)?.content, "Fresh body");
+        app.start_note_with_content(
+            String::new(),
+            "Header".into(),
+            "---\nstatus: explicit # retain\n---\nSeparated body".into(),
+        );
+        assert_eq!(app.editor.body.lines().join("\n"), "Separated body");
+        assert_eq!(
+            app.editor.properties.values.get("status"),
+            Some(&PropertyValue::String("explicit".into()))
+        );
+        let id = app.editor.editing_id.clone().expect("header note");
+        assert!(
+            app.storage
+                .load_frontmatter(&id)?
+                .expect("header")
+                .contains("# retain")
+        );
+        let before = app.editor.editing_id.clone();
+        app.property_definitions_error = Some("invalid definitions".into());
+        app.start_blank_note_with_title(String::new(), "Rejected".into());
+        assert_eq!(app.editor.editing_id, before);
+        Ok(())
+    }
+
+    #[test]
+    fn bulk_preflight_noops_and_partial_retry_preserve_notes() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir()?;
+        let config_path = dir.path().join("config.toml");
+        std::fs::write(&config_path, "[features]\nbackup = false\n")?;
+        crate::config::set_config_path_override(config_path);
+        let vault = dir.path().join("vault");
+        std::fs::create_dir_all(&vault)?;
+        for (name, text) in [
+            ("a.md", "---\ntitle: A\nstatus: old # retain\n---\nBody A."),
+            ("b.md", "---\ntitle: B\nstatus: old\n---\nBody B."),
+            ("plain.txt", "Plain body."),
+        ] {
+            std::fs::write(vault.join(name), text)?;
+        }
+        let storage = crate::storage::Storage {
+            data_dir: vault.clone(),
+            notes_dir: vault.clone(),
+            config_dir: dir.path().into(),
+            templates_dir: vault.join(".clin/templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+        let mut app = App::new(storage)?;
+        app.ensure_catalog_ready()?;
+        app.open_property_manager(PropertyManagerMode::Definitions, None);
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+        if let Some(PropertyManager {
+            guided:
+                Some(GuidedManager::Definitions {
+                    form: Some(form), ..
+                }),
+            ..
+        }) = &mut app.property_manager
+        {
+            assert_eq!(form.key(), "status");
+            form.kind = PropertyKind::Select;
+            form.options.insert_str("draft\nreview");
+        } else {
+            anyhow::bail!("Guided adoption missing");
+        }
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(
+            app.property_manager
+                .as_ref()
+                .expect("manager")
+                .report
+                .iter()
+                .any(|line| line.contains("conflict a.md"))
+        );
+        assert!(!PropertyDefinitions::path(&vault).exists());
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        assert!(app.property_manager.is_none());
+        app.open_property_manager(PropertyManagerMode::Bulk, Some("a.md"));
+        if let Some(PropertyManager {
+            guided: Some(GuidedManager::Bulk(form)),
+            ..
+        }) = &mut app.property_manager
+        {
+            form.name.insert_str("status");
+            form.value.insert_str("new");
+        } else {
+            anyhow::bail!("Guided bulk missing");
+        }
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(
+            app.property_manager
+                .as_ref()
+                .expect("preview")
+                .preview
+                .is_some()
+        );
+        assert!(std::fs::read_to_string(vault.join("a.md"))?.contains("status: old"));
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        app.handle_property_manager_event(Event::Key(KeyEvent::new(
+            KeyCode::Esc,
+            KeyModifiers::NONE,
+        )));
+        assert!(app.property_manager.is_none());
+        let unset = crate::property_model::property_edit("absent", None)?;
+        let batch = app.prepare_property_batch(&["plain.txt".into()], &[unset])?;
+        assert_eq!(batch.notes.len(), 0);
+        assert_eq!(std::fs::read(vault.join("plain.txt"))?, b"Plain body.");
+        let edit = crate::property_model::property_edit(
+            "status",
+            Some(&serde_yaml_ng::Value::String("new".into())),
+        )?;
+        let mut batch = app.prepare_property_batch(&["a.md".into(), "b.md".into()], &[edit])?;
+        assert!(std::fs::read_to_string(vault.join("a.md"))?.contains("status: old"));
+        let original_b = std::fs::read_to_string(vault.join("b.md"))?;
+        std::fs::write(
+            vault.join("b.md"),
+            original_b.replace("status: old", "status: external"),
+        )?;
+        let failures = batch.apply(&mut app)?;
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("b.md"));
+        assert_eq!(batch.notes.len(), 1);
+        let a = std::fs::read_to_string(vault.join("a.md"))?;
+        assert!(a.contains("status: new # retain"));
+        assert!(a.ends_with("Body A."));
+        assert!(std::fs::read_to_string(vault.join("b.md"))?.contains("status: external"));
+        let recovery = PropertyBatch::recovery_path(&app);
+        let mut pending: PropertyBatch = toml::from_str(&std::fs::read_to_string(&recovery)?)?;
+        assert_eq!(pending, batch);
+        assert!(app.prepare_property_batch(&["a.md".into()], &[]).is_err());
+        std::fs::write(vault.join("b.md"), original_b)?;
+        assert_eq!(pending.apply(&mut app)?.len(), 0);
+        assert!(!recovery.exists());
+        assert!(std::fs::read_to_string(vault.join("b.md"))?.contains("status: new"));
+        assert!(std::fs::read_to_string(vault.join("b.md"))?.ends_with("Body B."));
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_preserves_note_ids_search_generation_and_selected_goal_count() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir()?;
+        crate::config::set_config_path_override(dir.path().join("config.toml"));
+        let vault = dir.path().join("vault");
+        std::fs::create_dir_all(&vault)?;
+        for (name, text) in [
+            (
+                "a.md",
+                "---\ntitle: A\npriority: 1\ngoal: 100\nstatus: done\n---\none two three four",
+            ),
+            (
+                "b.md",
+                "---\ntitle: B\npriority: 2\ngoal: 50\n---\nother body",
+            ),
+        ] {
+            std::fs::write(vault.join(name), text)?;
+        }
+        let storage = crate::storage::Storage {
+            data_dir: vault.clone(),
+            notes_dir: vault.clone(),
+            config_dir: dir.path().into(),
+            templates_dir: vault.join(".clin/templates"),
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+            rename_on_title_change: false,
+        };
+        let mut app = App::new(storage)?;
+        app.ensure_catalog_ready()?;
+        app.config.goals.note_word_goal_property = Some("goal".into());
+        app.config.list.property_sort_key = Some("priority".into());
+        app.list.sort_field = crate::list_view::SortField::Property;
+        app.refresh_property_dependents();
+        let row = app.list.visual_list.iter().position(|item| matches!(item, crate::list_view::VisualItem::Note { summary_idx, .. } if app.notes[*summary_idx].id == "a.md")).expect("A row");
+        app.list.visual_index = row;
+        app.list.selected_indices.insert(row);
+        app.request_preview_update();
+        let mut context = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        context.note = crate::statusline::active_note(&app, ViewMode::List);
+        assert_eq!(
+            context.resolve("note_goal_progress").as_deref(),
+            Some("4/100")
+        );
+        app.list.sort_order = crate::list_view::SortOrder::Ascending;
+        app.refresh_property_dependents();
+        assert_eq!(app.get_selected_note_id().as_deref(), Some("a.md"));
+        assert_eq!(app.property_targets(), ["a.md"]);
+        app.begin_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("prop:status=done");
+        }
+        app.update_search();
+        let generation = app
+            .search_query_generation
+            .load(std::sync::atomic::Ordering::SeqCst);
+        std::fs::create_dir_all(vault.join(".clin"))?;
+        std::fs::write(
+            vault.join(".clin/properties.toml"),
+            "[properties.status]\ntype = 'boolean'\n",
+        )?;
+        app.reload_property_definitions();
+        assert!(
+            app.search_query_generation
+                .load(std::sync::atomic::Ordering::SeqCst)
+                > generation
+        );
+        assert!(app.search_status.is_some());
+        app.popups.active = None;
+        let changed = std::fs::read_to_string(vault.join("a.md"))?
+            .replace("priority: 1", "priority: 9")
+            .replace("one two three four", "one two");
+        std::fs::write(vault.join("a.md"), changed)?;
+        app.refresh_note_single(None, "a.md");
+        assert_eq!(app.get_selected_note_id().as_deref(), Some("a.md"));
+        let mut context = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        context.note = crate::statusline::active_note(&app, ViewMode::List);
+        assert_eq!(
+            context.resolve("note_goal_progress").as_deref(),
+            Some("2/100")
+        );
+        app.notes
+            .iter_mut()
+            .find(|note| note.id == "a.md")
+            .expect("A")
+            .id = "a.clin".into();
+        app.preview_encryption = true;
+        app.refresh_property_dependents();
+        let row = app.list.visual_list.iter().position(|item| matches!(item, crate::list_view::VisualItem::Note { summary_idx, .. } if app.notes[*summary_idx].id == "a.clin")).expect("encrypted row");
+        app.list.visual_index = row;
+        app.request_preview_update();
+        let mut context = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        context.note = crate::statusline::active_note(&app, ViewMode::List);
+        assert_eq!(
+            context.resolve("note_goal_progress").as_deref(),
+            Some("—/100")
+        );
+        Ok(())
+    }
 
     #[test]
     fn reference_preview_cancel_apply_backlinks_and_graph_union() -> Result<()> {
@@ -1324,7 +1966,7 @@ mod tests {
                 .find(|note| note.id == "child.md")
                 .expect("child")
                 .links,
-            ["Target"]
+            ["target.md"]
         );
         app.load_and_open_note("target.md", None);
         let links = app.compute_links();

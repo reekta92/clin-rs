@@ -269,7 +269,10 @@ fn run_notes(action: NotesCmd) -> Result<()> {
         NotesCmd::Search { query } => {
             use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
             let mut app = crate::property_cli::ready_app()?;
-            let (text, properties) = crate::property_query::extract_property_filters(&query)?;
+            let (text, mut properties) = crate::property_query::extract_property_filters(&query)?;
+            for predicate in &mut properties {
+                predicate.prepare(&app.property_definitions)?;
+            }
             let parsed = crate::app::parse_search_query(
                 &text,
                 app.config.features.tags.is_enabled(),

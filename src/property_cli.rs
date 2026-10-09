@@ -120,7 +120,16 @@ pub(crate) fn create(
         tags: rendered.tags,
     };
     if let Some(definitions) = definitions {
+        let created: Vec<_> = definitions
+            .properties
+            .keys()
+            .filter(|key| !app.property_definitions.properties.contains_key(*key))
+            .cloned()
+            .collect();
         app.save_property_definitions(definitions)?;
+        for key in created {
+            report_definition(&key);
+        }
     }
     let id = app.storage.new_note_id();
     let saved = app
@@ -128,6 +137,12 @@ pub(crate) fn create(
         .create_note_with_header(&id, &note, rendered.header.as_deref())?;
     app.enqueue_backup(format!("properties: create {title}"));
     Ok((saved, title))
+}
+fn report_definition(key: &str) {
+    eprintln!(
+        "Created vault definition {} in .clin/properties.toml; type applies vault-wide. Existing values are not rewritten.",
+        crate::fsutil::sanitize_for_terminal(key)
+    );
 }
 fn warn_metadata(id: &str) {
     if id.ends_with(".clin") {
@@ -200,6 +215,7 @@ pub(crate) fn run(action: PropertyCmd) -> Result<()> {
                 let mut definitions = app.property_definitions.clone();
                 definitions.properties.insert(key.clone(), definition);
                 app.save_property_definitions(definitions)?;
+                report_definition(&key);
             }
             warn_metadata(&id);
             app.storage.update_properties(&id, &[edit])?;
@@ -234,6 +250,7 @@ pub(crate) fn run(action: PropertyCmd) -> Result<()> {
                 crate::property_management::PropertyBatch {
                     notes: vec![crate::property_management::HeaderChange { id, before, after }],
                     bindings: Vec::new(),
+                    ..Default::default()
                 }
             };
             print!("{}", toml::to_string_pretty(&batch)?);

@@ -27,6 +27,8 @@ pub struct LinkItem {
     pub title: String,
     pub is_backlink: bool,
     pub is_property: bool,
+    pub is_body: bool,
+    pub unresolved: bool,
 }
 
 pub(crate) struct EditorPreviewScheduler {
@@ -91,6 +93,7 @@ pub struct NoteEditor {
     pub editing_id: Option<String>,
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
+    pub(crate) reference_save_decision: Option<(crate::property_management::TitleSaveIntent, bool)>,
     pub title_editor: TextArea<'static>,
     pub(crate) body: EditorDocument,
     pub(crate) properties: crate::properties::PropertiesState,
@@ -166,6 +169,7 @@ impl Default for NoteEditor {
             editing_id: None,
             initial_word_count: 0,
             template_edit_path: None,
+            reference_save_decision: None,
             title_editor: TextArea::default(),
             body: EditorDocument::default(),
             properties: crate::properties::PropertiesState::default(),

@@ -279,6 +279,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Save => {
+                app.editor.reference_save_decision = None;
                 if app.autosave().is_ok() {
                     app.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
                     app.editor.last_saved_time = Some(std::time::Instant::now());

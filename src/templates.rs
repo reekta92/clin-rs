@@ -70,6 +70,13 @@ impl Template {
             .transpose()?
             .unwrap_or_default();
         let mut edits = definitions.defaults()?;
+        for edit in &mut edits {
+            if let Some(source) = &edit.value_yaml {
+                let mut value = serde_yaml_ng::from_str(source)?;
+                substitute_property_dates(&mut value, &vars);
+                edit.value_yaml = Some(serde_yaml_ng::to_string(&value)?);
+            }
+        }
         edits.retain(|edit| {
             serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&edit.key_yaml)
                 .is_ok_and(|key| !source_mapping.contains_key(&key))
@@ -98,6 +105,11 @@ impl Template {
             crate::frontmatter::apply_edits(source_header.unwrap_or("---\n---\n"), &edits)?;
         let frontmatter = crate::frontmatter::checked_parse(&header)?;
         for (key, value) in &frontmatter.extra {
+            anyhow::ensure!(
+                !serde_yaml_ng::to_string(value)?.contains("{prop:"),
+                "Property placeholders belong in title/body, not property values ({})",
+                key.as_str().unwrap_or("YAML key")
+            );
             if let Some(key) = key.as_str() {
                 definitions.validate(key, value)?;
             }

@@ -12,6 +12,13 @@ struct SmartFolderData {
 }
 impl App {
     pub fn refresh_visual_list(&mut self) {
+        let focused = self.list.row_keys.get(&self.list.visual_index).cloned();
+        let selected: Vec<_> = self
+            .list
+            .selected_indices
+            .iter()
+            .filter_map(|index| self.list.row_keys.get(index).cloned())
+            .collect();
         self.list.list_viewport_offset = None;
         let mut visual = Vec::new();
         // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
@@ -820,6 +827,7 @@ impl App {
 
             self.list.visual_list = visual;
             self.apply_property_grouping();
+            self.restore_list_row_keys(focused.as_ref(), &selected);
             self.clamp_visual_index();
             self.request_preview_update();
             return;
@@ -827,8 +835,116 @@ impl App {
 
         self.list.visual_list = visual;
         self.apply_property_grouping();
+        self.restore_list_row_keys(focused.as_ref(), &selected);
         self.clamp_visual_index();
         self.request_preview_update();
+    }
+
+    fn restore_list_row_keys(
+        &mut self,
+        focused: Option<&(String, String)>,
+        selected: &[(String, String)],
+    ) {
+        let had_keys = !self.list.row_keys.is_empty();
+        self.list.row_keys.clear();
+        let mut group = String::new();
+        for (index, item) in self.list.visual_list.iter().enumerate() {
+            let key = match item {
+                VisualItem::Note { summary_idx, .. } => self
+                    .notes
+                    .get(*summary_idx)
+                    .map(|note| (format!("n:{}", note.id), group.clone())),
+                VisualItem::Folder { path, .. } => {
+                    group.clone_from(path);
+                    Some((format!("f:{path}"), String::new()))
+                }
+                VisualItem::SmartFolder { kind, .. } => {
+                    group = kind.virtual_path();
+                    Some((format!("s:{group}"), String::new()))
+                }
+                VisualItem::CreateNew { .. } => None,
+                VisualItem::Subnote {
+                    parent_id,
+                    subnote_idx,
+                    ..
+                } => Some((format!("sn:{parent_id}:{subnote_idx}"), String::new())),
+            };
+            if let Some(key) = key {
+                self.list.row_keys.insert(index, key);
+            }
+        }
+        let find = |key: &(String, String)| {
+            self.list
+                .row_keys
+                .iter()
+                .filter(|(_, candidate)| *candidate == key)
+                .map(|(index, _)| *index)
+                .min()
+                .or_else(|| {
+                    self.list
+                        .row_keys
+                        .iter()
+                        .filter(|(_, candidate)| candidate.0 == key.0)
+                        .map(|(index, _)| *index)
+                        .min()
+                })
+        };
+        if let Some(index) = focused.and_then(find) {
+            self.list.visual_index = index;
+        }
+        if had_keys {
+            self.list.selected_indices = selected.iter().filter_map(find).collect();
+        }
+    }
+
+    pub(crate) fn refresh_selected_note_metrics(&mut self) {
+        let selected = self
+            .list
+            .visual_list
+            .get(self.list.visual_index)
+            .and_then(|item| {
+                if let VisualItem::Note { summary_idx, .. } = item {
+                    self.notes.get(*summary_idx)
+                } else {
+                    None
+                }
+            });
+        let Some(note) = selected else {
+            self.list.note_metrics = None;
+            return;
+        };
+        let id = note.id.clone();
+        let target = self
+            .config
+            .goals
+            .note_word_goal_property
+            .as_deref()
+            .and_then(|key| note.properties.get(key))
+            .and_then(crate::property_model::PropertyValue::word_goal);
+        let stamp = self.note_stamps.get(&id).copied();
+        if target.is_none_or(|target| target == 0)
+            || id.ends_with(".clin") && self.preview_encryption
+            || !self.config.features.file_view_enabled(&id)
+        {
+            self.list.note_metrics = Some((id, stamp, None));
+            return;
+        }
+        if self
+            .list
+            .note_metrics
+            .as_ref()
+            .is_some_and(|(cached, revision, words)| {
+                cached == &id && *revision == stamp && words.is_some()
+            })
+        {
+            return;
+        }
+        let words = self
+            .storage
+            .load_note(&id)
+            .ok()
+            .map(|note| crate::goals::count_words(&note.content));
+        self.list.note_metrics = Some((id, stamp, words));
     }
 
     /// Poll only state owned by Edit mode. Generic list/setup work stays out of
@@ -1000,6 +1116,7 @@ impl App {
     }
 
     pub fn request_preview_update(&mut self) {
+        self.refresh_selected_note_metrics();
         if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
         }

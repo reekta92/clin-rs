@@ -513,6 +513,15 @@ impl App {
         preview_render_cols(self.editor.last_preview_pane_width, self.preview_wrap)
     }
     pub fn rebuild_note_index(&mut self) {
+        self.config_errors = self.config.validate();
+        for rule in &mut self.config.list.custom_smart_folders {
+            for predicate in rule.all.iter_mut().chain(rule.any.iter_mut().flatten()) {
+                if let Err(error) = predicate.prepare(&self.property_definitions) {
+                    self.config_errors
+                        .push(format!("Smart folder {}: {error:#}", rule.name));
+                }
+            }
+        }
         crate::property_model::refresh_reference_links(&mut self.notes, &self.property_definitions);
         let now = crate::ui::now_unix_secs();
         let custom_rules: &[crate::config::CustomSmartFolder] =
@@ -1161,16 +1170,7 @@ impl App {
         }
         self.config_errors = self.config.validate();
         self.notes_revision = self.notes_revision.wrapping_add(1);
-        self.sort_notes();
-        self.rebuild_note_index();
-        self.graph_preview = None;
-        self.refresh_visual_list();
-        if matches!(
-            self.popups.active,
-            Some(crate::popups::ActivePopup::Search(_))
-        ) {
-            self.update_search();
-        }
+        self.refresh_property_dependents();
     }
 
     pub fn check_and_reload_config(&mut self) {
@@ -1826,12 +1826,68 @@ impl App {
             updated_at,
             tags,
         };
+        self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+        self.storage
+            .write_editor_draft(
+                &id,
+                &note.title,
+                &note.content,
+                &self.editor.properties.pending,
+            )
+            .map_err(|error| format!("Draft save failed: {error:#}"))?;
+        if self
+            .storage
+            .data_dir
+            .join(".clin/property_batch.toml")
+            .exists()
+        {
+            return Err(
+                "Pending recovery; resume property batch before saving. Draft retained.".into(),
+            );
+        }
+        let target_id = self.storage.rename_note_target(&id, &note.title);
+        if target_id != id && self.storage.note_path(&id).exists() {
+            let relocations = std::collections::HashMap::from([(id.clone(), target_id.clone())]);
+            let changes = self
+                .storage
+                .prepare_reference_relocation(&relocations)
+                .map_err(|error| format!("Reference preflight failed: {error:#}"))?;
+            if changes.notes.iter().any(|change| change.id != target_id) {
+                let intent = self
+                    .title_save_intent()
+                    .map_err(|error| format!("Draft preflight failed: {error:#}"))?;
+                match &self.editor.reference_save_decision {
+                    Some((approved, true)) if approved == &intent => {}
+                    Some((cancelled, false)) if cancelled == &intent => {
+                        return Err(
+                            "Title rename cancelled; draft retained. Save to preview again.".into(),
+                        );
+                    }
+                    _ => {
+                        if self.property_manager.is_none() {
+                            self.preview_reference_operation(
+                                crate::property_management::ReferenceOperation::SaveDraft {
+                                    intent,
+                                },
+                            )
+                            .map_err(|error| format!("Reference preview failed: {error:#}"))?;
+                        }
+                        return Err(
+                            "Title rename requires reference preview; draft retained.".into()
+                        );
+                    }
+                }
+            }
+        }
         match self
             .storage
             .save_note_with_properties(&id, &note, &self.editor.properties.pending)
         {
             Ok(saved_id) => {
                 self.editor.editing_id = Some(saved_id.clone());
+                self.editor.reference_save_decision = None;
+                self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                self.editor.last_saved_time = Some(std::time::Instant::now());
                 let refresh = self.storage.load_frontmatter(&saved_id);
                 if let Err(error) = self.editor.properties.refresh(refresh, true) {
                     self.set_temporary_status(&format!(
@@ -1839,6 +1895,7 @@ impl App {
                     ));
                 }
                 *self.editor.modified_status_cache.borrow_mut() = None;
+                self.refresh_note_single(Some(&id), &saved_id);
                 self.enqueue_backup(format!("auto: {}", note.title));
 
                 let current_words = crate::goals::count_words(&note.content);
@@ -1868,6 +1925,21 @@ impl App {
                 Ok(())
             }
             Err(e) => {
+                if target_id != id
+                    && !self.storage.note_path(&id).exists()
+                    && self.storage.load_note(&target_id).is_ok_and(|saved| {
+                        saved.title == note.title && saved.content == note.content
+                    })
+                {
+                    self.editor.editing_id = Some(target_id.clone());
+                    let _ = self
+                        .editor
+                        .properties
+                        .refresh(self.storage.load_frontmatter(&target_id), true);
+                    self.write_draft();
+                    self.request_notes_reconcile();
+                    self.enqueue_backup(format!("partial auto: {}", note.title));
+                }
                 self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
                 let text = format!("Autosave failed for '{id}': {e}");
                 self.set_temporary_status(&text);

@@ -123,7 +123,14 @@ impl App {
         };
         let query_text = popup.input.lines().join("");
         let (cleaned_query, property_predicates) =
-            match crate::property_query::extract_property_filters(&query_text) {
+            match crate::property_query::extract_property_filters(&query_text).and_then(
+                |(text, mut predicates)| {
+                    for predicate in &mut predicates {
+                        predicate.prepare(&self.property_definitions)?;
+                    }
+                    Ok((text, predicates))
+                },
+            ) {
                 Ok(res) => res,
                 Err(err) => {
                     if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active

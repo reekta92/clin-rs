@@ -110,6 +110,11 @@ where
                 {
                     synchronize_source_highlight(app, change);
                 }
+                if body_rev_before != body_rev_after
+                    || properties_before != app.editor.properties.revision
+                {
+                    app.editor.links = app.compute_links();
+                }
                 app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
                 app.editor.autosave_timer =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
@@ -215,7 +220,9 @@ where
                 }
                 Ok(true)
             } else {
-                let _ = app.autosave();
+                if app.autosave().is_err() {
+                    return Ok(true);
+                }
                 crate::force_quit()
             }
         }
@@ -407,7 +414,7 @@ mod tests {
             crate::editor::AutosaveStatus::Unsaved
         );
         assert!(app.editor.autosave_timer.is_none());
-        assert!(!app.editor.properties.pending.is_empty());
+        assert_ne!(app.editor.properties.pending.len(), 0);
         assert!(app.storage.editor_draft_path().exists());
     }
 }

@@ -1308,7 +1308,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 [[package]]
 name = "graf-rs"
 version = "1.1.0"
-source = "git+https://github.com/reekta92/graf?rev=9c32610#9c3261071adb07da6faa4e3654beef9fd9846bac"
+source = "git+https://github.com/reekta92/graf?rev=ac5aa24#ac5aa24f5047c225f9d5f12bb0fc84d3154c9928"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4096,7 +4096,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

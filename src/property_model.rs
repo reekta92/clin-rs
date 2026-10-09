@@ -448,6 +448,20 @@ pub(crate) fn reference_target(value: &str) -> &str {
         .unwrap_or(value)
         .trim()
 }
+pub(crate) fn rewrite_reference(value: &str, target_id: &str) -> String {
+    let wrapped = value.starts_with("[[") && value.ends_with("]]");
+    let inner = if wrapped {
+        &value[2..value.len() - 2]
+    } else {
+        value
+    };
+    let suffix = inner.find(['#', '|']).map_or("", |index| &inner[index..]);
+    if wrapped {
+        format!("[[{target_id}{suffix}]]")
+    } else {
+        format!("{target_id}{suffix}")
+    }
+}
 pub(crate) fn reference_links(
     values: &PropertyMap,
     definitions: &PropertyDefinitions,
@@ -705,6 +719,14 @@ mod tests {
         assert!(parse_property_value(PropertyKind::Date, "2026-02-30").is_err());
         assert!(parse_property_value(PropertyKind::DateTime, "2026-10-09T10:00:00").is_err());
         assert!(parse_property_value(PropertyKind::NoteReference, "../secret.md").is_err());
+        assert_eq!(
+            rewrite_reference("[[old.md#Heading|Alias]]", "new.md"),
+            "[[new.md#Heading|Alias]]"
+        );
+        assert_eq!(
+            rewrite_reference("old.md#Heading", "new.md"),
+            "new.md#Heading"
+        );
         let values = PropertyMap::from([
             ("flag".into(), PropertyValue::Bool(true)),
             ("large".into(), high),

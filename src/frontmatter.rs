@@ -25,7 +25,7 @@ pub struct Frontmatter {
     pub extra: serde_yaml_ng::Mapping,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontmatterEdit {
     pub key_yaml: String,
     pub value_yaml: Option<String>,

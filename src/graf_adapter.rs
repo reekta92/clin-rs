@@ -203,6 +203,9 @@ pub fn clin_theme(
     t
 }
 
+#[cfg(test)]
+mod tests;
+
 pub fn note_specs(
     summaries: &[crate::storage::NoteSummary],
     features: &crate::config::FeaturesConfig,
@@ -856,114 +859,75 @@ fn refresh_note_summaries(storage: &Storage) -> Vec<crate::storage::NoteSummary>
 fn apply_connection(
     state: &mut GrafPlugin,
     source_id: &str,
-    target_title: &str,
+    target_id: &str,
     create: bool,
 ) -> Option<String> {
-    let mut resolved_source_id = source_id.to_string();
-    let mut resolved_target_title = target_title.to_string();
-
-    if !create {
-        let source_has_link = state.notes.iter().any(|n| {
-            n.id == source_id && n.links.iter().any(|l| l.eq_ignore_ascii_case(target_title))
-        });
-
-        if !source_has_link
-            && let Some(target_note) = state
-                .notes
-                .iter()
-                .find(|n| n.title.eq_ignore_ascii_case(target_title))
-            && let Some(source_note) = state.notes.iter().find(|n| n.id == source_id)
-        {
-            let source_title = &source_note.title;
-            if target_note
-                .links
-                .iter()
-                .any(|l| l.eq_ignore_ascii_case(source_title))
-            {
-                resolved_source_id = target_note.id.clone();
-                resolved_target_title = source_title.clone();
-            }
-        }
-    }
-
-    let result = if create {
-        add_wikilink_to_note(
-            &mut state.storage,
-            &resolved_source_id,
-            &resolved_target_title,
-        )
-    } else {
-        remove_wikilink_from_note(
-            &mut state.storage,
-            &resolved_source_id,
-            &resolved_target_title,
-        )
-    };
-    if result.is_err() {
-        return None;
-    }
-    // Keep state.notes in sync (used by the search popup and a later manual rebuild).
-    if let Some(src_summary) = state.notes.iter_mut().find(|n| n.id == resolved_source_id) {
-        if create {
-            if !src_summary
-                .links
-                .iter()
-                .any(|l| l.eq_ignore_ascii_case(&resolved_target_title))
-            {
-                src_summary.links.push(resolved_target_title.to_string());
-            }
-        } else {
-            src_summary
-                .links
-                .retain(|l| !l.eq_ignore_ascii_case(&resolved_target_title));
-        }
-    }
-    // Mutate the live graph; do NOT rebuild the simulation.
-    let Some(gs) = state.graph_state.as_ref() else {
-        return Some(source_id.to_string());
-    };
-    let (src_idx, tgt_idx) = {
-        let g = gs.read();
-        let graph = g.simulation.get_graph();
-        let src = graph
-            .node_indices()
-            .find(|i| graph[*i].data.id == resolved_source_id);
-        let tgt = graph.node_indices().find(|i| {
-            graph[*i]
-                .data
-                .title
-                .eq_ignore_ascii_case(&resolved_target_title)
-        });
-        (src, tgt)
-    };
-    if let (Some(s), Some(t)) = (src_idx, tgt_idx) {
-        let mut g = gs.write();
-        let relation_remains = state.notes.iter().any(|note| {
-            let other_id = if note.id == resolved_source_id {
-                state
-                    .notes
-                    .iter()
-                    .find(|note| note.title.eq_ignore_ascii_case(&resolved_target_title))
-                    .map(|note| note.id.as_str())
-            } else if note.title.eq_ignore_ascii_case(&resolved_target_title) {
-                Some(resolved_source_id.as_str())
-            } else {
-                None
-            };
-            other_id.is_some_and(|id| {
-                note.property_links.iter().any(|link| {
-                    crate::property_model::resolve_reference(&state.notes, link)
-                        .is_some_and(|target| target.id == id)
-                })
+    let body_links = |source: &str, target: &str| -> Vec<String> {
+        state
+            .notes
+            .iter()
+            .find(|note| note.id == source)
+            .into_iter()
+            .flat_map(|note| &note.links)
+            .filter(|link| {
+                crate::property_model::resolve_reference(&state.notes, link)
+                    .is_some_and(|note| note.id == target)
             })
-        });
-        if !create && relation_remains {
-            state.config_reload_msg =
-                Some("Property relation retained; edit it in the Properties pane".into());
+            .cloned()
+            .collect()
+    };
+    let mut source = source_id.to_owned();
+    let mut target = target_id.to_owned();
+    let mut links = body_links(&source, &target);
+    if !create && links.is_empty() {
+        let reverse = body_links(&target, &source);
+        if !reverse.is_empty() {
+            std::mem::swap(&mut source, &mut target);
+            links = reverse;
         }
-        graf::apply_connection_change(&mut g.simulation, s, t, create || relation_remains);
     }
-    Some(resolved_source_id)
+    if create {
+        add_wikilink_to_note(&mut state.storage, &source, &target).ok()?;
+    } else {
+        for link in links {
+            remove_wikilink_from_note(&mut state.storage, &source, &link).ok()?;
+        }
+    }
+    state.notes = refresh_note_summaries(&state.storage);
+    let remains = state.notes.iter().any(|note| {
+        let other = if note.id == source {
+            Some(target.as_str())
+        } else if note.id == target {
+            Some(source.as_str())
+        } else {
+            None
+        };
+        other.is_some_and(|id| {
+            note.all_links().iter().any(|link| {
+                crate::property_model::resolve_reference(&state.notes, link)
+                    .is_some_and(|note| note.id == id)
+            })
+        })
+    });
+    if !create && remains {
+        state.config_reload_msg = Some(
+            "Remaining body/property relation retained; edit property in Properties pane".into(),
+        );
+    }
+    if let Some(gs) = &state.graph_state {
+        let mut guard = gs.write();
+        let graph = guard.simulation.get_graph();
+        let source = graph
+            .node_indices()
+            .find(|index| graph[*index].data.id == source);
+        let target = graph
+            .node_indices()
+            .find(|index| graph[*index].data.id == target);
+        if let (Some(source), Some(target)) = (source, target) {
+            graf::apply_connection_change(&mut guard.simulation, source, target, create || remains);
+        }
+    }
+    Some(source)
 }
 
 fn execute_menu_action(state: &mut GrafPlugin, config: &ClinConfig, item: LibMenuItem) {
@@ -1408,11 +1372,12 @@ fn handle_event(
                         }
                         LibAction::ConnectionEvent {
                             source_id,
-                            target_title,
+                            target_id,
                             create,
+                            ..
                         } => {
                             let mod_id =
-                                apply_connection(app_state, &source_id, &target_title, create);
+                                apply_connection(app_state, &source_id, &target_id, create);
                             if let Some(id) = mod_id {
                                 return Ok(Some(EventAction::NoteModified(id)));
                             }

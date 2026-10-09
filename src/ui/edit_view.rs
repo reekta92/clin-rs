@@ -625,10 +625,14 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
                     } else {
                         format!("→  {}", item.title)
                     };
-                    let text = if item.is_property {
+                    let text = if item.unresolved {
+                        format!("{text} [unresolved property]")
+                    } else if item.is_property && item.is_body {
+                        format!("{text} [body + property]")
+                    } else if item.is_property {
                         format!("{text} [property]")
                     } else {
-                        text
+                        format!("{text} [body]")
                     };
                     ListItem::new(text).style(Style::default().fg(theme.fg))
                 })

@@ -81,11 +81,12 @@ impl App {
 
         // 1. Outgoing/Forward links
         let content = self.editor.body.lines().join("\n");
-        let mut forward_targets = crate::storage::extract_wikilinks(&content);
-        forward_targets.extend(crate::property_model::reference_links(
+        let body_targets = crate::storage::extract_wikilinks(&content);
+        let property_targets = crate::property_model::reference_links(
             &self.editor.properties.values,
             &self.property_definitions,
-        ));
+        );
+        let forward_targets = body_targets.iter().chain(&property_targets).cloned();
 
         let mut forward_notes = Vec::new();
         for target in forward_targets {
@@ -102,19 +103,16 @@ impl App {
             Some(id) => id.clone(),
             None => return items,
         };
-        let cur_title = crate::events::get_title_text(&self.editor.title_editor).to_lowercase();
         let mut incoming_notes = Vec::new();
         for (_, n) in self.visible_notes() {
             if n.id == cur_id {
                 continue;
             }
-            let title_hit = !cur_title.is_empty()
-                && n.all_links().iter().any(|l| l.to_lowercase() == cur_title);
             let id_hit = n
                 .all_links()
                 .iter()
                 .any(|l| self.resolve_wikilink_target(l).as_deref() == Some(&cur_id));
-            if (title_hit || id_hit) && !incoming_notes.iter().any(|(i_id, _)| i_id == &n.id) {
+            if id_hit && !incoming_notes.iter().any(|(i_id, _)| i_id == &n.id) {
                 incoming_notes.push((n.id.clone(), n.title.clone()));
             }
         }
@@ -124,12 +122,13 @@ impl App {
             items.push(LinkItem {
                 id: id.clone(),
                 title,
-                is_property: crate::property_model::reference_links(
-                    &self.editor.properties.values,
-                    &self.property_definitions,
-                )
-                .iter()
-                .any(|target| self.resolve_wikilink_target(target).as_deref() == Some(&id)),
+                is_body: body_targets
+                    .iter()
+                    .any(|target| self.resolve_wikilink_target(target).as_deref() == Some(&id)),
+                unresolved: false,
+                is_property: property_targets
+                    .iter()
+                    .any(|target| self.resolve_wikilink_target(target).as_deref() == Some(&id)),
                 is_backlink: false,
             });
         }
@@ -137,6 +136,16 @@ impl App {
             items.push(LinkItem {
                 id: id.clone(),
                 title,
+                is_body: self
+                    .notes
+                    .iter()
+                    .find(|note| note.id == id)
+                    .is_some_and(|note| {
+                        note.links.iter().any(|target| {
+                            self.resolve_wikilink_target(target).as_deref() == Some(&cur_id)
+                        })
+                    }),
+                unresolved: false,
                 is_property: self
                     .notes
                     .iter()
@@ -150,6 +159,18 @@ impl App {
             });
         }
 
+        for target in &property_targets {
+            if self.resolve_wikilink_target(target).is_none() {
+                items.push(LinkItem {
+                    id: String::new(),
+                    title: target.clone(),
+                    is_property: true,
+                    is_body: false,
+                    unresolved: true,
+                    is_backlink: false,
+                });
+            }
+        }
         items
     }
 
@@ -182,6 +203,12 @@ impl App {
             }
             EditSidebar::Links => {
                 if let Some(item) = self.editor.links.get(self.editor.sidebar_selected).cloned() {
+                    if item.unresolved {
+                        self.set_temporary_status_static(
+                            "Unresolved or ambiguous property reference; use exact note ID",
+                        );
+                        return false;
+                    }
                     let _ = self.autosave();
                     self.open_note_at_line(&item.id, None);
                     true

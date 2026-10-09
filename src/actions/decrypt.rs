@@ -36,11 +36,8 @@ impl Action for DecryptNoteAction {
             return Ok(());
         }
 
-        match app.storage.decrypt_note(&note_id) {
-            Ok(new_id) => {
-                app.refresh_note_single(Some(&note_id), &new_id);
-                app.set_temporary_status(&format!("Note decrypted: {new_id}"));
-            }
+        match app.convert_note_with_preview(&note_id, false) {
+            Ok(()) => {}
             Err(e) => {
                 app.set_temporary_status(&format!("Failed to decrypt: {e:#}"));
                 app.messages.push(

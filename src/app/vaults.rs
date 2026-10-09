@@ -73,6 +73,9 @@ impl App {
     /// as the Setup wizard vault change). Under `--vault` override the switch
     /// is session-only: config is never rewritten.
     pub fn switch_vault(&mut self, path: PathBuf) {
+        if !self.finish_pending_editor_save() {
+            return;
+        }
         if same_vault(&path, &self.storage.data_dir) {
             self.set_temporary_status_static("Vault already active");
             return;

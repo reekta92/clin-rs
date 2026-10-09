@@ -54,12 +54,8 @@ impl Action for EncryptNoteAction {
 
 impl App {
     pub(crate) fn encrypt_note_confirmed(&mut self, note_id: &str) {
-        match self.storage.encrypt_note(note_id) {
-            Ok(new_id) => {
-                self.refresh_note_single(Some(note_id), &new_id);
-                self.set_temporary_status(&format!("Note encrypted: {new_id}"));
-                self.enqueue_backup("note: encrypt");
-            }
+        match self.convert_note_with_preview(note_id, true) {
+            Ok(()) => {}
             Err(error) => {
                 self.set_temporary_status(&format!("Failed to encrypt: {error:#}"));
                 self.messages.push(

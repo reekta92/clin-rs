@@ -31,6 +31,10 @@ pub struct PropertyPredicate {
     value: Option<toml::Value>,
     #[serde(skip)]
     operand: Option<PropertyValue>,
+    #[serde(skip)]
+    kind: Option<PropertyKind>,
+    #[serde(skip)]
+    invalid: bool,
 }
 impl<'de> Deserialize<'de> for PropertyPredicate {
     fn deserialize<D: serde::Deserializer<'de>>(
@@ -57,8 +61,10 @@ impl PropertyPredicate {
         let predicate = Self {
             property,
             op,
+            kind: value_kind(value.as_ref()),
             value,
             operand,
+            invalid: false,
         };
         predicate.validate()?;
         Ok(predicate)
@@ -73,7 +79,7 @@ impl PropertyPredicate {
                 | PropertyOperator::IsEmpty
         );
         ensure!(
-            unary == self.value.is_none(),
+            unary == self.operand.is_none(),
             "Property {}: operator {:?} {} value",
             self.property,
             self.op,
@@ -85,6 +91,11 @@ impl PropertyPredicate {
         );
         if let Some(value) = &self.operand {
             match self.op {
+                PropertyOperator::Contains => ensure!(
+                    !matches!(value, PropertyValue::Unsupported | PropertyValue::List(_)),
+                    "Contains requires scalar operand for {}",
+                    self.property
+                ),
                 PropertyOperator::ContainsAny | PropertyOperator::ContainsAll => ensure!(
                     matches!(value, PropertyValue::List(_)),
                     "List operand required for {}",
@@ -112,7 +123,82 @@ impl PropertyPredicate {
         }
         Ok(())
     }
+    /// Prepare once per query/config/definition revision, before iterating notes.
+    pub fn prepare(&mut self, definitions: &PropertyDefinitions) -> Result<()> {
+        self.invalid = true;
+        self.validate()?;
+        let definition = definitions.properties.get(&self.property);
+        self.kind = definition
+            .map(|definition| definition.kind)
+            .or(value_kind(self.value.as_ref()));
+        if let Some(kind) = self.kind {
+            let ordered = matches!(
+                self.op,
+                PropertyOperator::Lt
+                    | PropertyOperator::Lte
+                    | PropertyOperator::Gt
+                    | PropertyOperator::Gte
+            );
+            let list = matches!(
+                kind,
+                PropertyKind::List | PropertyKind::MultiSelect | PropertyKind::NoteReferences
+            );
+            ensure!(
+                !ordered
+                    || matches!(
+                        kind,
+                        PropertyKind::String
+                            | PropertyKind::Number
+                            | PropertyKind::Date
+                            | PropertyKind::DateTime
+                            | PropertyKind::Select
+                    ),
+                "Property {}: ordered comparisons not supported for {}",
+                self.property,
+                kind.label()
+            );
+            ensure!(
+                !matches!(
+                    self.op,
+                    PropertyOperator::ContainsAny | PropertyOperator::ContainsAll
+                ) || list,
+                "Property {}: list operator requires list definition",
+                self.property
+            );
+            ensure!(
+                self.op != PropertyOperator::Contains || list || kind == PropertyKind::String,
+                "Property {}: contains requires string/list definition",
+                self.property
+            );
+            if let Some(operand) = &self.operand {
+                let element = self.op == PropertyOperator::Contains && list;
+                if !element {
+                    if let Some(definition) = definition {
+                        definition.validate(&operand.to_yaml()?).with_context(|| {
+                            format!("Property {}: invalid query operand", self.property)
+                        })?;
+                    } else {
+                        crate::property_model::validate_kind(kind, &operand.to_yaml()?)
+                            .with_context(|| {
+                                format!("Property {}: invalid date operand", self.property)
+                            })?;
+                    }
+                } else {
+                    ensure!(
+                        !matches!(operand, PropertyValue::Unsupported | PropertyValue::List(_)),
+                        "Property {}: contains needs scalar operand",
+                        self.property
+                    );
+                }
+            }
+        }
+        self.invalid = false;
+        Ok(())
+    }
     pub fn matches(&self, map: &PropertyMap, definitions: &PropertyDefinitions) -> bool {
+        if self.invalid {
+            return false;
+        }
         let actual = map.get(&self.property);
         match self.op {
             PropertyOperator::Exists => return actual.is_some(),
@@ -137,7 +223,7 @@ impl PropertyPredicate {
         let Some(expected) = &self.operand else {
             return false;
         };
-        let kind = definition.map(|d| d.kind);
+        let kind = definition.map(|d| d.kind).or(self.kind);
         let comparison = compare_values(actual, expected, kind);
         match self.op {
             PropertyOperator::Eq => comparison == Some(Ordering::Equal),
@@ -178,9 +264,13 @@ impl PropertyPredicate {
             "{} {:?}{}",
             self.property,
             self.op,
-            self.value
-                .as_ref()
-                .map_or_else(String::new, |v| format!(" {v}"))
+            self.value.as_ref().map_or_else(
+                || self
+                    .operand
+                    .as_ref()
+                    .map_or_else(String::new, |v| format!(" {}", v.display())),
+                |v| format!(" {v}")
+            )
         )
     }
 }
@@ -274,15 +364,26 @@ fn key(input: &str) -> Result<String> {
     validate_key(&value)?;
     Ok(value)
 }
-fn operand(input: &str) -> Result<toml::Value> {
+fn value_kind(value: Option<&toml::Value>) -> Option<PropertyKind> {
+    match value {
+        Some(toml::Value::Datetime(date)) if date.date.is_some() && date.time.is_none() => {
+            Some(PropertyKind::Date)
+        }
+        Some(toml::Value::Datetime(_)) => Some(PropertyKind::DateTime),
+        _ => None,
+    }
+}
+fn operand(input: &str) -> Result<PropertyValue> {
     let yaml: serde_yaml_ng::Value =
         serde_yaml_ng::from_str(input).context("Invalid property query operand")?;
     // TOML has no null; explicit null uses null:key instead.
     ensure!(!yaml.is_null(), "Use null:KEY for explicit null values");
-    let json = serde_json::to_value(&yaml)?;
-    let result: toml::Value =
-        serde_json::from_value(json).context("Unsupported property query operand")?;
-    Ok(result)
+    let value = PropertyValue::from_yaml(&yaml);
+    ensure!(
+        value != PropertyValue::Unsupported,
+        "Unsupported property query operand"
+    );
+    Ok(value)
 }
 pub fn extract_property_filters(input: &str) -> Result<(String, Vec<PropertyPredicate>)> {
     // Preserve the old parser for ordinary searches, including unmatched quotes.
@@ -365,11 +466,16 @@ pub fn extract_property_filters(input: &str) -> Result<(String, Vec<PropertyPred
         .into_iter()
         .find(|(operator, _)| tail.starts_with(operator))
         .context("Invalid property query operator")?;
-        predicates.push(PropertyPredicate::new(
-            key(&expression[..index])?,
+        let predicate = PropertyPredicate {
+            property: key(&expression[..index])?,
             op,
-            Some(operand(&tail[operator.len()..])?),
-        )?);
+            value: None,
+            operand: Some(operand(&tail[operator.len()..])?),
+            kind: None,
+            invalid: false,
+        };
+        predicate.validate()?;
+        predicates.push(predicate);
     }
     Ok((remaining.join(" "), predicates))
 }
@@ -390,6 +496,51 @@ pub fn validate_date_binding(key: &str, definitions: &PropertyDefinitions) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preparation_rejects_invalid_declared_operands_and_keeps_integer_identity() -> Result<()> {
+        let definitions: PropertyDefinitions = toml::from_str(
+            "[properties.due]\ntype = 'date'\n[properties.flag]\ntype = 'boolean'\n[properties.score]\ntype = 'number'\n",
+        )?;
+        for query in [
+            "prop:due>=2026-02-30",
+            "prop:due=true",
+            "prop:flag>false",
+            "prop:score=oops",
+        ] {
+            assert!(
+                extract_property_filters(query)
+                    .and_then(|(_, mut predicates)| predicates[0].prepare(&definitions))
+                    .is_err(),
+                "{query}"
+            );
+        }
+        let (_, mut predicates) = extract_property_filters(
+            "prop:large=18446744073709551615 prop:low=-9223372036854775808",
+        )?;
+        let map = PropertyMap::from([
+            ("large".into(), PropertyValue::Unsigned(u64::MAX)),
+            ("low".into(), PropertyValue::Integer(i64::MIN)),
+        ]);
+        for predicate in &mut predicates {
+            predicate.prepare(&definitions)?;
+            assert!(predicate.matches(&map, &definitions));
+        }
+        let mut date: PropertyPredicate =
+            toml::from_str("property = 'instant'\nop = 'eq'\nvalue = 2026-10-09T12:00:00Z\n")?;
+        date.prepare(&PropertyDefinitions::default())?;
+        let map = PropertyMap::from([(
+            "instant".into(),
+            PropertyValue::String("2026-10-09T14:00:00+02:00".into()),
+        )]);
+        assert!(date.matches(&map, &PropertyDefinitions::default()));
+        let mut ordinary = extract_property_filters("prop:instant=2026-10-09T12:00:00Z")?
+            .1
+            .remove(0);
+        ordinary.prepare(&PropertyDefinitions::default())?;
+        assert!(!ordinary.matches(&map, &PropertyDefinitions::default()));
+        Ok(())
+    }
+
     #[test]
     fn filters_distinguish_types_presence_and_quoted_operands() {
         let (text, rules) = extract_property_filters(
