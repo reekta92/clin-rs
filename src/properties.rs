@@ -984,7 +984,7 @@ mod tests {
             config_dir: dir.path().into(),
             notes_dir: dir.path().into(),
             templates_dir: dir.path().join("templates"),
-            key: [0; 32],
+            key: <[u8; 32]>::default(),
             skip_dir_patterns: vec![],
             rename_on_title_change: false,
         };
