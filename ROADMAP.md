@@ -84,6 +84,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 #### General
 - [ ] **More filtypes** — more text filetypes(`.org`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
 - [ ] **Feature toggles** — nearly every big feature will be toggleable for which means if you don't use canvas files, you will be able to disable it which will dismiss it's code from runtime
+- [ ] **Keybind settings** — set keybinds directly from the TUI OR open the keybind config at the default editor in the help view
 
 #### Notes View
 - [ ] **Notebook files** — a text file type where you can embed interactable drawings(via `draw`), schemes(via `pinstar`) etc. At it's core it's a markdown file with a special property, so it will be compatible with other `.md` editors.
