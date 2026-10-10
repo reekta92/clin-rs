@@ -28,7 +28,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Tag management** — add, remove, filter by tags
 - [X] **Sorting & pinning** — sort by title/modified, pin notes to top
 - [X] **Custom keybinds** — fully rebindable via keybinds.toml
-- [X] **Graph view full integration (graf)** — `graf` is no longer external; physics, minimap, legend, search, config
+- [X] **Graph view full integration (graf)** — upstream `graf` library with clin-owned preview, search, config, keybinds, and statusline
 - [X] **Outline** — note hierarchy from headers
 - [X] **Text search** — search note content via internal `SearchWorker`
 - [X] **Batch tagging** — tag multiple notes at once
@@ -42,15 +42,15 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Daily goals** — daily word count and note count goals with in-app progress bars
 - [X] **Calendar** — rolling-week activity heatmap widget in the notes list view
 
-- [X] **Setup wizard** — first-run single-screen onboarding: theme, background, hint bar style, icon mode, keybind preset cycling with live markdown preview
-- [X] **Modular custom themes** — drop-in TOML themes in ~/.config/clin/themes/, no recompile
+- [X] **Setup wizard** — first-run onboarding: vault, theme, background, hint bar style, icons, notes layout, feature presets, and keybinds with live preview
+- [X] **Modular custom themes** — drop-in TOML themes in the active config directory's themes/ subdirectory, no recompile
 - [X] **Expanded theme library** — 19 built-in themes (added Catppuccin Frappé/Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material)
 - [X] **Show-all-files mode** — list every vault file, non-notes open in OS default app
-- [X] **Native image rendering** — pixel image rendering via ratatui-image (sixel/kitty/iTerm/halfblocks auto-detected) across canvas, draw, notes preview, and editor preview; configurable via `[image]` section
+- [X] **Native image rendering** — pixel image rendering via ratatui-image (sixel/kitty/iTerm/halfblocks auto-detected) across canvas, notes preview, and editor preview; controlled by `[features] images` and `[image]` settings (Draw v2 has no image elements)
 - [X] **Folders-first toggle** — folders_first config + Ctrl+H shortcut
 - [X] **Path expansion** — ~ and $VAR/${VAR} expansion in storage_path
 - [X] **Smart folders** — virtual smart folders (Today, This Week, Untagged) with custom rules (tags, title, folder, age)
-- [X] **Sub-notes** — virtual encrypted notes attached to physical notes, with full management UI
+- [X] **Sub-notes** — virtual notes attached to physical notes, with full management UI; encryption when saved under encrypted parents
 - [X] **Word frequency** — show most used words in note info popup
 - [X] **Word & character metrics** — writing statistics and goals
 - [X] **Draw smoothing** — drawing canvas stroke smoothing implemented via a binomial filter
@@ -59,8 +59,8 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Global UI hover highlights** — mouse hover highlights for TUI panels and interactive lists
 - [X] **Editor enhancements** — right-click editor context menu and merged title bar
 - [X] **Help view (3-pane)** — tabbed help with auto-generated keybind index, per-tab descriptions, popup accordion, preset-aware tips, page indicator
-- [X] **Subnotes browsable view** — Subnotes grid tab + virtual tree folder in notes list, radial braille graph with zoom/pan, subnotes manager popup (add/edit/delete, encrypted)
-- [X] **Editor READ/EDIT modes** — modal editing with read-mode select+clipboard, mode highlight, source-line map for READ↔EDIT scroll sync
+- [X] **Subnotes browsable view** — Subnotes grid tab + virtual tree folder in notes list, radial braille graph with zoom/pan, subnotes manager popup (add/edit/delete, parent-dependent encryption)
+- [X] **Editor text and preview** — title/body editing, selection/clipboard, Markdown source highlighting, optional rendered preview (current editor has no READ/EDIT modal state)
 - [X] **Editor find popup** — custom find popup replacing textarea search
 - [X] **Editor soft-wrap toggle** — configurable soft-wrap for the editor body
 - [X] **Editor sidebars + wikilink previews** — forward/back links pane alongside the editor
@@ -75,15 +75,16 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Backup libgit2 auth callbacks** — push/pull auth callbacks for remote sync
 - [X] **Config-gated markdown features** — per-feature toggles for syntax highlighting, code theme, code line numbers, preview wrap, wrap indicator, link URL max length
 - [X] **Pin status preserved through encrypt/decrypt** — pinned flag survives `.md` ↔ `.clin` conversion
-- [X] **Hint bar style customization** — custom `hint_bar_style` options (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
-- [X] **CLI mode** — list, quick-note, find, config, storage, and keybind tools via `clin` subcommands
+- [X] **Hint bar style customization** — custom `hint_bar_style` options (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blurred`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
+- [X] **CLI mode** — list/new/open/cat/quick/search, config, storage, keybind, template, and cache tools via `clin` subcommands
+- [X] **Feature toggles** — `[features]` controls views/features; disabled entry points are hidden, deleted features release keybinds, images/backup workers require restart
+- [X] **Selection-aware metrics** — editor header shows selected/total word and character counts via statusline tokens
 - [x] **todo.txt** — todo.txt standardization support
 
 ## Planned
 
 #### General
 - [ ] **More filtypes** — more text filetypes(`.org`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
-- [ ] **Feature toggles** — nearly every big feature will be toggleable for which means if you don't use canvas files, you will be able to disable it which will dismiss it's code from runtime
 - [ ] **Keybind settings** — set keybinds directly from the TUI OR open the keybind config at the default editor in the help view
 
 #### Notes View
@@ -93,7 +94,6 @@ Make the `clin-rs` project a modular platform that only provides main functional
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
 - [ ] **Properties edit** — allow for editing the frontmatter of the files directly from the editor, design is considered to be similar to Obsidian's properties pane/section
-- [ ] **Dynamic metrics** — make the metrics like word count dynamic according to the selection
 
 #### Graph View
 - [ ] **Date/time linking** — categorize nodes by note date
@@ -102,8 +102,8 @@ Make the `clin-rs` project a modular platform that only provides main functional
 #### Pinstar View
 - [ ] **Insert note links** — embed note references as objects
 - [ ] **QOL** — UI improvements for telling the state of the node, text alignment options for nodes
-- [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
-- [ ] **New node types** — more node types like link nodes, etc. (image nodes implemented as placeholders)
+- [ ] **Additional node properties** — beyond shipped titles and text-node shapes, such as configurable border styles
+- [ ] **Additional node types** — beyond shipped text/file/link/group nodes (image files already render through terminal graphics or placeholders)
 - [ ] **Keyboard mode** — keyboard focused mode that allows for doing mouse actions like moving nodes, panning etc. with keyboard commands only, similar to `vim` commands
 - [ ] **Jump to** — kinda like find in file/quick search, searches a string through entire node titles, content etc. allows for jumping to that node
 

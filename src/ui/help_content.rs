@@ -189,7 +189,7 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Auto-save & Recovery",
-        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Keystrokes are also continuously written to an encrypted draft to survive crashes.",
+        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Editor changes also attempt to write an encrypted recovery draft. Recovery is best effort, not a substitute for backups.",
     ),
     tip(
         "External editor workflow",
@@ -423,7 +423,7 @@ const TEMPLATES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Template path",
-        "Drop any custom template `.toml` files in the directory `` ~/.config/clin/templates/ `` to load them.",
+        "Drop custom template `.toml` files in `` <vault>/.clin/templates/ `` (for both default and custom vaults) to load them.",
     ),
     tip(
         "Command line template helper",
@@ -554,7 +554,7 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
 const NOTES_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Command Palette",
-        body: "Press {list:OpenCommandPalette} to open the **Command Palette** — a fuzzy launcher that runs any action by name without remembering its key. Type to filter the list; ``Tab`` / ``Shift+Tab`` cycle the category tabs (General, Notes, Import, Append, Views, Settings). Move with ``Up`` / ``Down`` (wraps around) and run the highlighted action with ``Enter``; ``Esc`` closes. The palette opens scoped to the selected note, so note-specific actions apply to it.",
+        body: "Press {list:OpenCommandPalette} to open the **Command Palette** — a fuzzy launcher that runs any action by name without remembering its key. Type to filter the list; ``Tab`` / ``Shift+Tab`` cycle the available category tabs (All, Notes, Import, Append, Views, Settings). Move with ``Up`` / ``Down`` (wraps around) and run the highlighted action with ``Enter``; ``Esc`` closes. The palette opens scoped to the selected note, so note-specific actions apply to it.",
     },
     PopupHelp {
         name: "Tags",
@@ -562,7 +562,7 @@ const NOTES_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Subnotes",
-        body: "Press {list:ManageSubnotes} to open the **Subnotes** manager — encrypted child notes attached to the selected note. In the list pane, ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits it; ``Tab`` cycles focus list → title → content. ``Ctrl+e`` hands the current subnote to your external editor. Notes that carry subnotes show a ⧉ marker in the notes list. Closing the popup auto-saves whenever anything changed.",
+        body: "Press {list:ManageSubnotes} to open the **Subnotes** manager — child notes attached to the selected note. Subnotes saved under encrypted parents use encryption; plaintext-parent subnotes use only XOR obfuscation. In the list pane, ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits it; ``Tab`` cycles focus list → title → content. ``Ctrl+e`` hands the current subnote to your external editor. Notes that carry subnotes show a ⧉ marker in the notes list. Closing the popup auto-saves whenever anything changed.",
     },
     PopupHelp {
         name: "Search",
@@ -581,7 +581,7 @@ const NOTES_POPUPS: &[PopupHelp] = &[
 const EDITOR_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Subnotes",
-        body: "Press {edit:ManageSubnotes} while editing to open the **Subnotes** manager without leaving the editor — attach encrypted child notes to the note you are editing. In the list pane ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits; ``Tab`` cycles focus list → title → content and ``Ctrl+e`` hands the current subnote to your external editor. Closing the popup auto-saves whenever anything changed; notes carrying subnotes show a ⧉ marker in the list.",
+        body: "Press {edit:ManageSubnotes} while editing to open the **Subnotes** manager without leaving the editor — attach child notes to the note you are editing. Plaintext-parent subnotes use only XOR obfuscation, not encryption. In the list pane ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits; ``Tab`` cycles focus list → title → content and ``Ctrl+e`` hands the current subnote to your external editor. Closing the popup auto-saves whenever anything changed; notes carrying subnotes show a ⧉ marker in the list.",
     },
     PopupHelp {
         name: "Context Menu",

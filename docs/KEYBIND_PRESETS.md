@@ -15,7 +15,8 @@ Set the preset under `[core]` in the active configuration file; `clin config sho
 # Choose from: "default", "helix", "vim", "emacs"
 keybind_preset = "helix"
 
-# Optional for the default preset. Vim, Helix, and Emacs enable their sequences automatically.
+# Explicitly enable sequences. Presets containing sequences enable them automatically,
+# including the default preset's Ctrl+g image commands.
 enable_key_sequences = true
 ```
 
@@ -44,8 +45,8 @@ Helix style mappings rely on the `Space` key as a leader key for application-lev
 | List | Open Trash | `Space T` |
 | List | Cycle Sort Mode | `Space s` |
 | List | Manage Tags | `Space .` |
-| List | Delete selected | `d` / `Delete` |
-| List | Quit | `Ctrl+c` / `q` |
+| List | Delete selected | `Space d` |
+| List | Quit | `q` |
 | Graph | Navigation | `h`/`j`/`k`/`l` / Arrows |
 | Graph | Auto Fit | `Space a` |
 | Graph | Refresh | `Space r` |
@@ -62,11 +63,11 @@ Vim style mappings support standard hjkl navigation, double-key operators, and E
 | List | Move Down | `j` / `Down` |
 | List | Move Left | `h` / `Left` |
 | List | Move Right | `l` / `Right` |
-| List | Delete selected | `d d` / `d` / `Delete` |
-| List | Jump to Top / Bottom | `g g` / `G` |
-| List | Page Up / Down | `Ctrl+b` / `Ctrl+f` |
-| List | Open Command Palette | `: ` (Colon then Space) |
-| List | Quit | `: q` / `q` |
+| List | Delete selected | `d d` |
+| List | Jump to Top / Bottom | `g g` / (`g G` or `G`) |
+| List | Page Up / Down | `Ctrl+u` / `Ctrl+d` (also PageUp/PageDown) |
+| List | Open Command Palette | `Ctrl+p` |
+| List | Quit | `: q` |
 | Graph | Navigation | `h`/`j`/`k`/`l` / Arrows |
 | Graph | Quit | `: q` / `q` |
 
@@ -80,7 +81,8 @@ Emacs mappings use Ctrl-heavy bindings for navigation and Ctrl-x prefix commands
 | List | Move Down | `Ctrl+n` / `Down` |
 | List | Move Left | `Ctrl+b` / `Left` |
 | List | Move Right | `Ctrl+f` / `Right` |
-| List | Page Up | `Ctrl+v` / `PageUp` |
+| List | Page Up | `Alt+v` / `PageUp` |
+| List | Page Down | `Ctrl+v` / `PageDown` |
 | List | Open Command Palette | `Ctrl+x Ctrl+p` |
 | List | Delete selected | `Ctrl+d` / `Delete` |
 | List | Help | `Ctrl+h` / `F1` |
@@ -89,6 +91,10 @@ Emacs mappings use Ctrl-heavy bindings for navigation and Ctrl-x prefix commands
 | Graph | Quit | `Ctrl+x Ctrl+c` / `q` |
 
 ---
+
+## Count Prefixes
+
+Vim and Helix enable numeric count prefixes on navigation surfaces (for example `3j` or `3E`). Default and Emacs do not. Counts and sequences never apply to typing in text-input fields.
 
 ## TOML Custom Keybind Sequence Syntax
 

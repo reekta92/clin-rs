@@ -6,26 +6,23 @@ Technical docs for the force-directed graph module — visualizes the note corpu
 
 ## Overview
 
-The graph view displays all notes as nodes with edges representing `[[wikilinks]]` connections between them. It uses a force-directed layout simulation (`fdg_sim` crate) that runs in a background thread, settling into a stable configuration.
+The graph view displays all notes as nodes with edges representing `[[wikilinks]]` connections between them. It uses upstream `graf`'s force-directed layout (`fdg_sim`) in a background thread for graphs up to 1,000 displayed nodes; larger graphs use a static clustered layout.
 
-**Source:** `src/graf/` — modules: `app`, `graph`, `input`, `physics`, `render`, `spatial`, `themes`, `ui`, `util`, `viewport`
+**Source:** `src/graf_adapter.rs` (`GrafPlugin`) integrates upstream [`graf`](https://github.com/reekta92/graf-rs), pinned by `Cargo.toml` / `Cargo.lock`. Graph construction, physics, rendering, spatial indexing, and viewport live in that crate. Clin owns note I/O, preview, quick search, config-error UI, statusline, and keybind mapping.
 
 ---
 
 ## Graph Construction
 
-`build_graph()` in `src/graf/graph.rs` is the entry point. It:
+Clin creates `graf::NodeSpec` values from note summaries (ID, title, encryption state, tags, folder, links), then delegates construction to upstream `graf::graph::build_graph()`:
 
-1. Lists all note IDs from `Storage`
-2. Loads each note summary (title, tags, folder, links)
-3. Filters out nodes that don't meet criteria:
-   - `show_orphan` — show isolated notes with no links
-   - `exclude_tags` — skip notes with these tags
-   - `exclude_patterns` — skip notes matching path patterns
-   - `max_node` — cap total nodes
-4. Creates force nodes with `GraphNodeData`
-5. Creates edges from `[[wikilinks]]` extracted by `extract_wikilinks()`
-6. Resolves links via title matching (case-insensitive)
+1. Exclude notes carrying a tag listed in `[graf.filter] exclude_tags`.
+2. Resolve links against titles case-insensitively; self-links and unresolved links do not create edges.
+3. With `show_orphan = false` (default), omit notes without a valid connection.
+4. If `max_node` is positive and candidates exceed it, retain the most-connected candidates (ranked by link-list length). `0` removes this cap.
+5. Build force nodes and edges among retained candidates.
+
+Clin does not expose an `exclude_patterns` graph option. Vault listing rules and disabled file-view features still affect which notes reach the graph.
 
 ```rust
 pub struct GraphNodeData {
@@ -42,49 +39,41 @@ pub struct GraphNodeData {
 
 ## Physics Simulation
 
-Runs in a dedicated background thread (`start_physics()` in `src/graf/physics.rs`).
+Upstream `graf::physics::start_physics()` owns simulation startup.
 
 ### Parameters
 
-Only `ideal_distance` is a user-configurable option (in `[graf.physics]`, `PhysicsConfig` in `src/config/structs.rs`):
+Clin exposes two options in `[graf.physics]` (`src/config/structs.rs`):
 
 | Parameter | Default | Description |
 |---|---|---|
 | `ideal_distance` | 80.0 | Target distance between connected nodes |
+| `tick_rate` | `"auto"` | `"auto"`: 16 ms steps up to 500 nodes, 33 ms for 501–1,000; `"fixed"`: 16 ms |
 
-All other simulation constants (`damping`, `max_iterations`, `gravity`, `cooling`, `timestep`, `thread_sleep_ms`, `prevent_overlapping`) are internal to `src/graf/physics.rs` and not exposed as config options.
+Other physics constants belong to the upstream library, not clin's config surface. More than 1,000 displayed nodes use static clustered placement even when `max_node = 0`.
 
 ### Thread Lifecycle
 
-Graph is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)). The physics thread is spawned on view entry and joined on exit:
+Graph is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)):
 
+```text
+User enters Graph
+  ├─ app.graph_plugin = Some(GrafPlugin::new(...))
+  ├─ upstream physics shares Arc<RwLock<GraphState>>
+  ├─ host calls overlay_render() / overlay_handle_event()
+  └─ exit drops plugin, signals physics stop, restores return_mode
 ```
-User enters Graph view
-  ├─ graf_state = Some(GrafAppState::new(...))
-  ├─ start_physics() spawns background thread
-  │     └─ Arc<AtomicBool> kill signal + channel
-  │     └─ Loop:
-  │         ├─ Check kill signal
-  │         ├─ simulation.update(timestep)
-  │         ├─ Apply gravity, drag targets
-  │         ├─ Set is_settled if energy < threshold
-  │         └─ Compute bounds, update render cache
-  ├─ Main loop calls graf_state.overlay_render() each frame
-  │     └─ Polls shared GraphState for positions
-  └─ On overlay exit (OverlayResult::Exit):
-       ├─ Send kill signal → join physics thread
-       └─ graf_state = None; mode = return_mode
 
-### Settling
+### Continuous vs Static Layout
 
-The simulation is considered "settled" when total kinetic energy drops below `0.05 × node_count`. Once settled, the physics thread sleeps until a wake signal (e.g., drag, auto-fit, config reload).
+Dynamic graphs continuously simulate with a minimum temperature; they do **not** sleep until a wake signal after an energy threshold. Empty graphs and graphs above the 1,000-node dynamic limit have no physics worker and are marked settled. Dragging and refresh update the appropriate dynamic/static layout.
 
 
 ---
 
 ## Rendering Pipeline
 
-`draw_graph_view()` in `src/graf/render.rs`. Uses ratatui's `Canvas` widget with Braille markers for high-density node rendering.
+Upstream `graf::draw_graph_view()` uses ratatui's `Canvas`; `[graf.visual] canvas_marker` selects Braille (default), half-block, or dot markers. Clin renders the surrounding preview/search/status UI.
 
 ### Layers
 
@@ -102,7 +91,9 @@ The simulation is considered "settled" when total kinetic energy drops below `0.
 ### Node Rendering
 
 - **Shape:** `circle` (default), `square`, or `diamond` — set via `node_shape`
-- **Size:** `fixed` (default 2.0) or `link_count` (scaled by connections)
+- **Size mode:** `fixed` (base 2.0) or `link_count`; `node_scale` sets screen-space scale (1–10, default 5) or `"automatic"`
+- **Fill:** `dynamic` (default), `filled`, or `none`
+- **Selection emphasis:** `grow` (default), `none`, `dim`, or `grow_dim`
 - **Color modes:** `folder` (by folder), `tag` (by first tag), `link_count` (heatmap), `uniform`
 - **Labels:** controlled by `label_mode` — `selected`, `neighbors`, `all`, `none`
 
@@ -120,13 +111,13 @@ The simulation is considered "settled" when total kinetic energy drops below `0.
 
 ### Legend
 
-- **Position:** `bottom_right` (default) or other corners
-- **Max items:** configurable (default 10)
-- Shows nodes sorted by link count with color swatches
+- Controlled by `show_legend` (default `true`)
+- Displays category/color information through the upstream renderer
+- Legend position and item limits are not exposed by clin
 
 ### Render Cache
 
-`RenderCache` stores pre-computed edge data, node data, label data, legend data, and grid data. It's invalidated on topology changes via a `topology_dirty` flag to avoid redundant computation.
+Render caches and spatial indexing belong to upstream `graf`; consult the pinned library implementation for their internal layout. Clin separately caches selected-note preview content.
 
 ---
 
@@ -143,12 +134,12 @@ The Graph view supports a preview pane identically to the List view. When enable
 
 | Key | Action |
 |---|---|
-| `Up`/`Down`/`Left`/`Right` | Directional node selection |
-| `+` / `Ctrl+J` | Zoom in |
-| `-` / `Ctrl+K` | Zoom out |
+| `Up`/`Down`/`Left`/`Right`, `k`/`j`/`h`/`l` | Pan viewport |
+| `+` / `=` | Zoom in |
+| `-` / `_` | Zoom out |
 | `Enter` | Open selected node's note |
 | `a` | Auto-fit view to all nodes |
-| `f` | Toggle search popup |
+| `/` | Toggle search popup |
 | `Shift+M` | Toggle minimap |
 | `Shift+L` | Toggle legend |
 | `Shift+G` | Toggle grid |
@@ -172,25 +163,13 @@ The Graph view supports a preview pane identically to the List view. When enable
 
 ## Viewport
 
-`Viewport` struct in `src/graf/viewport.rs` handles the screen↔world coordinate transform:
-
-```rust
-pub struct Viewport {
-    pub offset_x: f64,
-    pub offset_y: f64,
-    pub zoom: f64,
-}
-```
-
-- **World → Screen:** `screen = (world - offset) * zoom`
-- **Screen → World:** `world = screen / zoom + offset`
-- **Auto-fit:** Sets offset and zoom to contain all nodes within the terminal area with padding (`auto_fit_padding`)
+Upstream `graf` owns the screen↔world transform, camera pan, zoom-to-cursor, and auto-fit. Viewport internals are library types, not a local clin module. Auto-fit contains the graph bounds with library-defined padding; the adapter uses upstream transforms for mouse hit-testing.
 
 ---
 
 ## Search
 
-The search popup (`src/graf/ui.rs`) provides:
+Clin's quick-search popup (`src/graf_adapter.rs`, `src/ui/quick_search.rs`) provides:
 
 - Real-time filtering by node title
 - Results limited by `max_results` / `max_visible`
@@ -205,11 +184,11 @@ All graf options are stored in the main `config.toml` under sections:
 
 | Section | Purpose |
 |---|---|
-| `[graf]` | Global graph settings: preview_enabled |
-| `[graf.visual]` | Colors, node/edge style, labels, minimap, legend, grid |
+| `[graf]` | Display-node cap (`max_node`) and preview visibility |
+| `[graf.visual]` | Node/edge style, scale/fill/selection, labels, minimap, legend, looking glass |
 | `[graf.visual.colors]` | Per-color overrides (hex values) |
 | `[graf.physics]` | Force simulation parameters |
-| `[graf.interaction]` | Zoom, drag, double-click settings |
+| `[graf.interaction]` | Zoom factor and drag sensitivity |
 | `[graf.filter]` | Node inclusion/exclusion rules |
 | `[graf.search]` | Search popup behavior |
 See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full option documentation — that is the authoritative reference for all graf config sections and keys.
@@ -218,17 +197,7 @@ See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full option documentation —
 
 ## Theme Palettes
 
-Theme color palettes are defined in `src/graf/themes.rs`. Each theme provides ~10 color values:
-
-```rust
-pub fn theme_colors(theme: &Theme) -> HashMap<String, String> {
-    match theme {
-        Theme::TokyoNight => tokyo_night(),
-        Theme::CatppuccinMocha => catppuccin_mocha(),
-        // ...
-    }
-}
-```
+Clin resolves palettes in `src/config/themes.rs` and `src/config/custom_themes.rs`. `clin_theme()` in `src/graf_adapter.rs` maps these colors and `AppThemeColors` into upstream `graf::ThemeColors`; `[graf.visual.colors]` overrides selected graph colors.
 
 See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details on themes and color derivation.
 

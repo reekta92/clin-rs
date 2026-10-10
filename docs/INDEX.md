@@ -20,18 +20,18 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
 - [OUTLINE.md](OUTLINE.md) — Outline view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
-- [SETUP.md](SETUP.md) — First-run setup wizard: theme/background/hint-bar/icon-mode/keybind-preset cycling with live preview
-- [HELP.md](HELP.md) — Help view: 3-pane layout, 8 tabs, keybind index, tips, popup accordion
-- [EDITOR.md](EDITOR.md) — Editor view: READ/EDIT modes, find popup, soft-wrap, sidebars, wikilink previews, external editor
+- [SETUP.md](SETUP.md) — First-run setup wizard: vault selection, layout, feature presets, appearance, and keybinds with live preview
+- [HELP.md](HELP.md) — Help view: 3-pane layout, up to 8 feature-filtered tabs, keybind index, tips, popup accordion
+- [EDITOR.md](EDITOR.md) — Editor view: title/body editing and Markdown preview, find popup, soft-wrap, sidebars, wikilink previews, external editor
 
 ## Features
 
-- [ENCRYPTION.md](ENCRYPTION.md) — Zero-knowledge encryption: ChaCha20-Poly1305, key management, `.clin` file format, encrypt/decrypt workflow
+- [ENCRYPTION.md](ENCRYPTION.md) — Per-note encryption and its limits: ChaCha20-Poly1305, key management, `.clin` file format, encrypt/decrypt workflow
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system: 19 built-in themes, color derivation, per-color overrides, AppThemeColors
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — Command palette and Action trait: available actions, registration, how to add new actions
 - [TEMPLATES.md](TEMPLATES.md) — Note template system: TOML file format, template variables, CLI usage
 - [IMAGE_RENDERING.md](IMAGE_RENDERING.md) — Native image rendering: ratatui-image, sixel/kitty/iTerm protocols, [image] config, cache/worker
-- [SUBNOTES.md](SUBNOTES.md) — Subnotes: encrypted attached notes, grid tab, virtual tree folder, radial graph, manager popup
+- [SUBNOTES.md](SUBNOTES.md) — Subnotes: attached notes with parent-dependent encryption, grid tab, virtual tree folder, radial graph, manager popup
 
 ## Configuration
 
@@ -53,14 +53,14 @@ docs/
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
 ├── OUTLINE.md             Outline
-├── EDITOR.md             Editor: READ/EDIT modes, find, soft-wrap, sidebars, wikilinks
+├── EDITOR.md             Editor: title/body editing, preview, find, soft-wrap, sidebars, wikilinks
 ├── SETUP.md              First-run setup wizard
-├── ENCRYPTION.md         Zero-knowledge encryption
+├── ENCRYPTION.md         Per-note encryption and security limits
 ├── THEME_SYSTEM.md       Theme and color system
 ├── COMMAND_PALETTE.md    Command palette + Action trait
 ├── IMAGE_RENDERING.md    Native image rendering, ratatui-image, protocols
 ├── TEMPLATES.md          Note template system
-├── SUBNOTES.md           Subnotes: encrypted virtual notes, grid tab, radial graph
+├── SUBNOTES.md           Subnotes: virtual notes, encryption limits, grid tab, radial graph
 ├── CONFIG_REFERENCE.md   All config options
 ├── KEYBIND_PRESETS.md     Keybind presets and sequence syntax
 ```

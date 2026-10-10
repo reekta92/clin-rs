@@ -13,7 +13,7 @@
 </div>
 
 [![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
-[![Release](https://github.com/reekta92/clin-rs/actions/workflows/release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
+[![Release](https://github.com/reekta92/clin-rs/actions/workflows/release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![MSRV: 1.90.0](https://img.shields.io/badge/MSRV-1.90.0-orange.svg)](https://blog.rust-lang.org/2025/09/18/Rust-1.90.0/)
 [![GitHub release](https://img.shields.io/github/v/release/reekta92/clin-rs.svg?logo=github)](https://github.com/reekta92/clin-rs/releases)
@@ -25,9 +25,9 @@
 </div>
 
 ## About
-`clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a roughly 2-5 MB Rust binary with minimal resource use, while keeping the UI approachable.
+`clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a single Rust binary, while keeping the UI approachable.
 
-Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering is supported via `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; enable with `[image] enabled = true`). Databases and Obsidian plugins are not supported.
+Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering is supported via `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; controlled by `[features] images = true`). Databases and Obsidian plugins are not supported.
 
 ## Screenshots
 
@@ -72,14 +72,14 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 ## Highlights
 
 - **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews; auto-refresh on external file changes; show-info popup with word/char/header metrics.
-- **Editor view** — modal READ/EDIT modes, built-in find popup, soft-wrap toggle, sidebars with wikilink previews, mouse support, line numbers, undo/redo, editor context menu, external editor integration, insert-date action. See [EDITOR.md](docs/EDITOR.md).
+- **Editor view** — title/body editing with optional Markdown preview, built-in find popup, soft-wrap toggle, sidebars with wikilink previews, mouse support, line numbers, undo/redo, editor context menu, external editor integration, insert-date action. See [EDITOR.md](docs/EDITOR.md).
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
 - **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group/image nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, mouse-drag panning, zoom-to-cursor, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
 - **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
 - **Outline view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
 - **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
-- **Subnotes** — encrypted virtual notes attached to any note, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
-- **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, draw, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
+- **Subnotes** — virtual notes attached to physical notes (encrypted only under encrypted parents), with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
+- **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
 - **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
@@ -87,7 +87,7 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 - **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
 
 - **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
-- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, with image nodes supported as placeholder blocks.
+- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, with image files displayed through terminal graphics or fallback placeholders. See [compatibility limits](docs/CANVAS.md#obsidian-compatibility).
 - **Templates** — TOML-based note templates with variable substitution (`{date}`, `{time}`, `{weekday}`, etc.). See [TEMPLATES.md](docs/TEMPLATES.md).
 - **Goals system** — daily word-count and note-count goals with in-app progress bars. Configurable via `[goals]` config section and command palette.
 - **Import & conversion** — import File/CSV/JSON/URL/Clipboard content as a new note or append to the current note. PDF, DOCX, HTML converted via external tools.
@@ -110,6 +110,8 @@ These tools are **optional** — clin works without them:
 | `tesseract` | OCR paste (clipboard image → text) | `tesseract-ocr` |
 | `wl-clipboard` | Clipboard access (Wayland) | `wl-clipboard` |
 | `xclip` or `xsel` | Clipboard access (X11) | `xclip` |
+| `markitdown` or `pandoc` | Convert PDF/DOCX/HTML and other imported files to Markdown | `pip install markitdown` / `pandoc` |
+| `curl` | URL imports | `curl` |
 
 ---
 
@@ -290,7 +292,7 @@ cp -r /Volumes/clin/clin.app /Applications/
 hdiutil detach /Volumes/clin
 
 # Or using .tar.gz
-tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf clin-rs-aarch64-apple-darwin.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/
@@ -313,14 +315,17 @@ clin
 # Create a quick note
 clin notes quick "Meeting notes from today" "standup-2026-06-13"
 
-# Create a note from a template
-clin notes new --template diary
+# Initialize templates, then create a note using its display name
+clin templates init
+clin notes new --template "Meeting Notes" "Weekly Standup"
 
 # Open a specific note
 clin notes open "my-note"
 ```
 
-Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the command palette with `Ctrl+P`, and view the graph with `Ctrl+G`. Press `?` for the full keybind reference.
+Once inside the TUI (default preset): navigate with `j`/`k`, open notes with `Enter`, open the command palette with `:` or `Ctrl+P`, and view the graph with `Ctrl+G`. Press `?` or `F1` for help, `F2` for quick keybinds, `F3` for messages, and `F4` to switch vaults. In Editor, `Ctrl+P` toggles Markdown preview instead of opening the palette.
+
+CLI templates currently insert the literal body without variable substitution or the template title; use the TUI template picker for rendered variables. See [Templates](docs/TEMPLATES.md).
 
 ---
 
@@ -336,12 +341,12 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
 | **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
-| **Help** | In-app keybind + feature reference | Eight tabs (Notes/Editor/Graph/Draw/Canvas/Backup/Templates/About), search, popup accordion, preset-aware tips |
+| **Help** | In-app keybind + feature reference | Up to eight tabs (Notes/Editor/Graph/Draw/Canvas/Backup/Templates/About), filtered by enabled features; search, popup accordion, preset-aware tips |
 
 | Feature | Description |
 |---|---|
 | **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph |
-| **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt, zero-knowledge |
+| **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt; local plaintext key, visible unauthenticated frontmatter |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
 | **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, 13 hint-bar styles |
 | **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
@@ -360,6 +365,11 @@ See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all availab
 ### config.toml example
 
 ```toml
+[features]
+images = true
+calendar = true
+backup = false
+
 [core]
 storage_path = "/path/to/your/vault"
 mouse_enabled = true
@@ -385,7 +395,6 @@ default_view = "grid"
 # default_sort_field = "title"
 # default_sort_order = "ascending"
 pinned_on_top = false
-calendar_enabled = true
 
 [editor]
 external_command = "nvim"
@@ -397,7 +406,7 @@ show_line_numbers = true
 
 See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md) for theme options and [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for all options and sections.
 
-### keybinds.toml example
+### keybinds/<preset>.toml example
 
 See the [full keybinds reference](docs/CONFIG_REFERENCE.md) for all available actions and defaults.
 
@@ -409,13 +418,13 @@ open = ["Enter"]
 delete = ["d", "Delete"]
 quit = ["q"]
 help = ["?", "F1"]
-open_command_palette = ["Ctrl+p", "Shift+Enter"]
+open_command_palette = [":", "Ctrl+p"]
 # ... see CONFIG_REFERENCE.md for full list
 
 [edit]
 back = ["Esc"]
-cycle_focus = ["Tab"]
-copy = ["Ctrl+c", "Ctrl+Insert"]
+cycle_focus = ["Ctrl+t"]
+copy = ["Ctrl+c"]
 # ... see CONFIG_REFERENCE.md
 
 [graph]
@@ -446,6 +455,8 @@ clin keybinds show                Show keybindings
 clin keybinds export              Export keybinds as TOML
 clin keybinds reset               Reset keybinds to defaults
 
+clin cache reset                  Delete current vault's note-summary cache
+
 clin templates list               List templates
 clin templates init               Create example templates
 
@@ -453,6 +464,7 @@ clin config show                  Print the config file path
 clin config edit                  Open config in $VISUAL or $EDITOR
 clin config reset                 Reset config to default values
 
+clin --setup                      Force first-run setup wizard
 clin --version                    Print version
 clin --config <PATH>              Override config file (global)
 clin --vault <VAULT>              Override the storage/vault path (global)
@@ -476,14 +488,14 @@ Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all proje
 
 - [Draw](docs/DRAW.md) — freehand drawing canvas
 - [Outline](docs/OUTLINE.md) — nested outline navigation
-- [Editor](docs/EDITOR.md) — READ/EDIT modes, find, soft-wrap, sidebars, wikilink previews
+- [Editor](docs/EDITOR.md) — title/body editing, find, soft-wrap, sidebars, wikilink previews
 - [Encryption](docs/ENCRYPTION.md) — ChaCha20-Poly1305 per-note encryption
 - [Help](docs/HELP.md) — 3-pane help view: tabs, keybind index, tips, popup accordion
 - [Image Rendering](docs/IMAGE_RENDERING.md) — ratatui-image pixel rendering, protocols, [image] config
 - [Theme System](docs/THEME_SYSTEM.md) — built-in themes and customization
 - [Setup](docs/SETUP.md) — first-run setup wizard
 - [Command Palette](docs/COMMAND_PALETTE.md) — extensible action system
-- [Subnotes](docs/SUBNOTES.md) — encrypted attached notes, grid tab, radial graph, manager popup
+- [Subnotes](docs/SUBNOTES.md) — attached notes, parent-dependent encryption, grid tab, radial graph, manager popup
 - [Templates](docs/TEMPLATES.md) — TOML-based note templates
 
 
@@ -511,4 +523,4 @@ Licensed under the [GNU General Public License v3.0](LICENSE).
 
 ## Credits
 
-Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), and [fdg-sim](https://github.com/grantshandy/fdg). Markdown preview via built-in comrak/syntect renderer.
+Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), upstream [graf](https://github.com/reekta92/graf-rs) (fdg-sim physics), and [pinstar](https://github.com/reekta92/pinstar). Markdown preview via built-in comrak/syntect renderer.

@@ -18,7 +18,8 @@ pub enum ViewMode {
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
     Backup,  // Git backup dashboard
     Outline,  // Header-based note outline
-    Setup,  // First-run setup wizard
+    Setup,   // First-run setup wizard
+}
 ```
 
 Transition rules:
@@ -33,10 +34,10 @@ Graph ──Esc───► List
 Draw  ──Esc───► List
 Canvas──Esc───► List
 List  ──?/F1──► Help
-Help  ──Esc───► List
+Help  ──Esc───► previous view
 List  ──palette──► Backup   (via command palette backup.open)
 List  ──palette──► Outline  (via command palette outline.open)
-List  ──palette──► Setup   (via setup.open)
+List  ──palette──► Setup   (via setup_wizard)
 Setup ──Esc───► List
 Backup ──Esc───► List
 Outline ──Esc───► List
@@ -52,23 +53,22 @@ Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). G
 
 ```
 main()
-  └─ parse_cli_command() → CliCommand
-      ├─ CliCommand::Run → Storage::init() → App::new() → run_tui_session() → run_app()
-      ├─ CliCommand::Help → print help, exit
-      ├─ CliCommand::QuickNote → save note, exit
-      ├─ CliCommand::NewAndOpen → save note → run_tui_session()
-      └─ CliCommand::*Config → config operations, exit
+  └─ clap Cli::from_arg_matches() → Cli
+      ├─ no subcommand → session::bootstrap_app() → run_tui_session() → run_app()
+      ├─ --help / --version → clap output, exit
+      ├─ Command::Notes → list/new/open/cat/quick/search
+      │    └─ new opens TUI unless --body or --no-tui is supplied
+      └─ Command::{Storage,Keybinds,Templates,Config,Cache} → operation, exit
 ```
 
 ### TUI Session (`run_tui_session`)
 
 ```
 run_tui_session(app)
-  ├─ enable_raw_mode()
-  ├─ EnterAlternateScreen + EnableMouseCapture + EnableBracketedPaste
-  ├─ Terminal::new(backend)
+  ├─ session::start_session() → SessionGuard
+  │    └─ raw mode, alternate screen, mouse capture, bracketed paste, terminal
   ├─ run_app(terminal, app)   ← main event loop
-  ├─ cleanup: disable_raw_mode, LeaveAlternateScreen, ...
+  ├─ session::finish_session() + SessionGuard cleanup
   └─ return Result
 ```
 
@@ -103,7 +103,7 @@ Five sub-views (Graph, Draw, Canvas, Backup, Outline) implement the [`OverlayVie
 - [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
 - [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
 
-Their state is stored as `Option<X>` fields on `App` (e.g. `graph_state: Option<GrafAppState>`, `draw_state: Option<DrawAppState>`). When the user enters Graph/Draw/Canvas/Backup/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawAppState>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Backup/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
 
 No sub-view takes terminal ownership or runs a separate event loop.
 
@@ -115,7 +115,7 @@ No sub-view takes terminal ownership or runs a separate event loop.
 ```
 App
   ├── storage: Storage                    // file I/O, encryption, templates
-  ├── keybinds: Keybinds                  // loaded from keybinds.toml
+  ├── keybinds: Keybinds                  // <config-dir>/keybinds/<preset>.toml
   ├── notes: Vec<NoteSummary>             // filtered/sorted note list
   ├── editor: NoteEditor                  // title TextArea + EditorDocument body
   ├── mode: ViewMode                      // current active view
@@ -123,9 +123,9 @@ App
   ├── popups: PopupManager                // confirm, folder, tag, template, theme popups
   ├── app_theme: AppThemeColors           // derived colors from theme config
   ├── return_mode: Option<ViewMode>       // where to return after overlay exit
-  ├── graph_state: Option<GrafAppState>        // force-directed graph overlay
+  ├── graph_plugin: Option<GrafPlugin>         // clin adapter over upstream graf
   ├── draw_state: Option<DrawAppState>         // freehand drawing overlay
-  ├── canvas_state: Option<PinstarState>       // node/edge canvas overlay
+  ├── canvas_state: Option<PinstarPlugin>      // clin adapter over upstream pinstar
   ├── backup_state: Option<BackupState>        // git backup dashboard overlay
   ├── outline_state: Option<OutlineState>  // header-based outline overlay
   └── ...status helpers, config, caches
@@ -147,7 +147,7 @@ App::new(storage)
     ├── App::autosave()
     │     └─ storage.save_note() → writes to disk
     │
-    └── Overlay state (graph_state, draw_state, canvas_state, backup_state, outline_state)
+    └── Overlay state (graph_plugin, draw_state, canvas_state, backup_state, outline_state)
           └─ Owned by App as Option<X>. Created on view transition via mode change.
              Dropped (set to None) on overlay exit. No separate event loop.
 ```
@@ -165,11 +165,12 @@ lib.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
             ├─ List  → draw_list_view()
             ├─ Edit  → draw_edit_view()
             ├─ Help  → draw_help_view()
-            ├─ Graph → graf_state.overlay_render(frame, area, theme, config, status)
+            ├─ Graph → graph_plugin.overlay_render(frame, area, theme, config, status)
             ├─ Draw  → draw_state.overlay_render(frame, area, theme, config, status)
             ├─ Canvas→ canvas_state.overlay_render(frame, area, theme, config, status)
             ├─ Backup→ backup_state.overlay_render(frame, area, theme, config, status)
-            └─ Outline → outline_state.overlay_render(frame, area, theme, config, status)
+            ├─ Outline → outline_state.overlay_render(frame, area, theme, config, status)
+            └─ Setup → draw_setup()
        │
        └─ if theme popup → draw_theme_popup()
 ```
@@ -201,7 +202,9 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 ```
 ┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Backup · Templates · About) ─┐
 │                                                              │
-│                Help content (scrollable)                     │
+│  Keybind index       │ Tab description + popup accordion     │
+│  (paginated)         ├───────────────────────────────────────┤
+│                      │ Suggested tips                       │
 │                                                              │
 ├─ Hint line ──────────────────────────────────────────────────┤
 └──────────────────────────────────────────────────────────────┘
@@ -221,7 +224,8 @@ src/
 ├── calendar.rs           — GitHub-style activity heatmap
 ├── cli.rs                — CLI argument definitions (clap-derive)
 ├── console.rs            — Colored CLI output and clap theme
-├── editor_document.rs    — NoteEditor line/buffer state and logic
+├── editor.rs             — NoteEditor title/body focus, sidebar, preview state
+├── editor_document.rs    — EditorDocument body, revision, snapshots, change contract
 ├── editor_session.rs     — Dedicated event loop for edit mode
 ├── event_source.rs       — Crossterm/channel event stream abstraction
 ├── frontmatter.rs        — YAML frontmatter parse/serialize
@@ -247,6 +251,7 @@ src/
 │   ├── edit_panes.rs     — Editor sidebar management
 │   ├── folders.rs        — Folder tree, move, duplicate, pin
 │   ├── import_ops.rs     — File/URL import orchestration
+│   ├── loading.rs        — Catalog refresh, previews, subnote virtual folders
 │   ├── messages.rs       — Status/message overlay and queue
 │   ├── notes.rs          — Core note lifecycle
 │   ├── popups.rs         — Non-editor popup dialogs
@@ -282,7 +287,7 @@ src/
 │   └── help_meta.rs      — Action metadata for help UI
 ├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
 │   ├── mod.rs            — Central UI dispatcher, shared helpers
-│   ├── camera.rs         — Canvas camera viewport pan/zoom handling
+│   ├── canvas_grid.rs    — Adaptive grid state/rendering for local Draw
 │   ├── canvas_menu.rs    — Context menu for canvas/draw
 │   ├── canvas_overlay.rs — Shared canvas drawing overlays (marquee, grid)
 │   ├── canvas_selection.rs — Multi-select node/edge state
@@ -293,6 +298,7 @@ src/
 │   ├── popups.rs         — Popup and status-bar rendering
 │   ├── title_bar.rs      — Title bar / tab bar rendering
 │   ├── setup.rs          — Setup wizard rendering
+│   ├── vault_switcher.rs — Vault selection overlay
 │   ├── quick_search.rs   — Generic quick-search popup
 │   ├── scrollbar.rs      — Auto-hiding vertical scrollbar
 │   ├── quick_keybinds.rs — Quick keybind-hint dropdown
@@ -311,7 +317,7 @@ src/
 ├── markdown/             — GFM markdown rendering pipeline
 │   ├── mod.rs            — MarkdownRenderer, render_builtin_sync
 │   ├── builtin.rs        — Core comrak → grid renderer
-│   ├── source_highlight.rs — Per-line source highlighter for EDIT mode
+│   ├── source_highlight.rs — Per-line source highlighter for editable Markdown
 │   ├── style.rs          — RenderLine type, MarkdownTheme palette
 │   ├── cache.rs          — Cached markdown output with revalidation
 │   ├── todotxt.rs        — Render plugin for todo.txt items
@@ -328,14 +334,9 @@ src/
 │   ├── render.rs         — Dashboard rendering
 │   ├── state.rs          — BackupState, BackupSection, BackupInputMode
 │   └── worker.rs         — Background auto-backup worker
-├── graf/                 — Force-directed graph view
-│   ├── app.rs            — GrafAppState, OverlayView implementation
-│   ├── graph.rs          — build_graph(), GraphNodeData
-│   ├── input.rs          — Keyboard/mouse handlers
-│   ├── physics.rs        — Force simulation thread
-│   ├── render.rs         — draw_graph_view(), minimap, legend
-│   ├── ui.rs             — Search popup, layout orchestration
-│   └── viewport.rs       — Camera viewport (zoom, pan, hit-test)
+├── graf_adapter.rs       — GrafPlugin: host preview/search/config/status, note I/O
+├── pinstar_adapter.rs    — PinstarPlugin: host keybinds/status/clipboard/images
+├── snapshot.rs           — Canvas and Draw preview snapshots
 ├── draw/                 — Freehand drawing overlay
 │   ├── geometry.rs       — Affine transform and bounding box math
 │   ├── input.rs          — Mouse/keyboard handlers
@@ -347,15 +348,11 @@ src/
 │   ├── render.rs         — Tree + detail rendering
 │   ├── state.rs          — OutlineState, tree model
 │   └── parse.rs          — Header outline parser
-    ├── mod.rs            — Module root, color picker palette
-    ├── app.rs            — PinstarState, OverlayView implementation
-    ├── data.rs           — CanvasData, CanvasNode, CanvasEdge (JSON schema)
-    ├── input.rs          — Mouse/keyboard event handlers
-    ├── render.rs         — Canvas + node/edge rendering
-    └── state.rs          — PinstarState, viewport, mutations
 ```
 
 ---
+
+Graph construction, physics, spatial indexing, viewport, and node rendering live in upstream [`graf`](https://github.com/reekta92/graf-rs), not `src/graf/`. Canvas schema, state, gestures, and rendering live in upstream [`pinstar`](https://github.com/reekta92/pinstar). `Cargo.toml` and `Cargo.lock` pin the library versions; clin adapters own host integration. Draw and Outline remain local overlays.
 
 ## Threading Model
 
@@ -373,9 +370,10 @@ src/
 ┌──────────────────────────────────────────────────────┐
 │  Physics Thread (graf)                               │
 │  - Runs fdg_sim force simulation in background       │
-│  - Iterates at configurable speed (thread_sleep_ms)  │
-│  - Sets topology_dirty flag on new frame              │
-│  - Terminates via Arc<AtomicBool>                    │
+│  - tick_rate = auto/fixed; rate depends on node count │
+│  - Continuous layout for up to 1,000 displayed nodes │
+│  - Larger graphs use static clustered layout        │
+│  - Stops via kill channel / sender disconnection     │
 └──────────────────────────────────────────────────────┘
          │
          │ spawn / join (oneshot)
@@ -399,6 +397,8 @@ src/
 
 ---
 
+Other background work includes catalog enumeration, search, folder previews, image decoding, and auto-backup. Worker results are installed by the host loop; Editor deliberately defers generic queues until it exits. Feature flags gate worker startup (images/backup changes require restart).
+
 ## Key Patterns
 
 ### Command Palette / Action System
@@ -414,7 +414,7 @@ pub trait Action: Send + Sync {
 }
 ```
 
-Actions are registered in a `Lazy<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides a searchable popup. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
+Actions are registered in a `LazyLock<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides a searchable popup. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
 
 ### Theme System
 

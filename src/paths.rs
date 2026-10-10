@@ -12,11 +12,11 @@
 //!   key.bin
 //!   state.json
 //! <cache_dir>/
-//!   note_cache.bin
+//!   vaults/<vault-digest>/note_cache.bin
 //! <effective storage root>/.clin/
 //!   subnotes.bin
-//!   templates/                       # custom-vault mode, unchanged
-//! <effective storage root>/templates/ # native mode, unchanged
+//!   editor_draft.bin
+//!   templates/                       # default and custom vaults
 //! <notes_dir>/<attachments_subdir>/
 //!   <generated image files>
 //! ```

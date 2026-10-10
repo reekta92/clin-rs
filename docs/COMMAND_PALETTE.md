@@ -1,12 +1,12 @@
- # Command Palette
+# Command Palette
 
-Technical docs for the command palette and Action trait — an extensible action system accessible via Ctrl+P or Shift+Enter.
+Technical docs for the command palette and Action trait — an extensible action system accessible from List with `:` or `Ctrl+p` in the default preset. In Editor, `Ctrl+p` toggles Markdown preview instead.
 
 ---
 
 ## Overview
 
-The command palette provides a searchable list of actions. Users can invoke any registered action without navigating menus. The palette is modeless — it opens over view and closes after executing or canceling.
+The command palette provides a searchable list of actions. Users can invoke any registered action without navigating menus. The palette opens over the current view, intercepts input, and closes after executing or canceling.
 **Source:** `src/actions/mod.rs` (Action trait + registry), `src/palette.rs` (popup widget)
 
 ---
@@ -48,15 +48,16 @@ pub trait Action: Send + Sync {
 
 ## Registration
 
-Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. The current registry contains 65 actions. Add an action there after implementing `Action`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
+Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. The visible action list depends on feature toggles; it is not a fixed action count. Add an action there after implementing `Action`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
 
-Action metadata is cached separately:
+Action metadata is built from the registry, filtered by enabled features, with dynamic names/descriptions:
 
 ```rust
 pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
     let icon_mode = app.config.ui.icon_mode;
     ACTIONS
         .iter()
+        .filter(|a| action_feature_enabled(&a.id(), app))
         .map(|a| {
             let (nerd, unicode) = a.glyph();
             ActionInfo {
@@ -78,14 +79,14 @@ Actions are grouped by category:
 
 | Category | Shipped actions |
 |---|---|
-| **General** | Insert date, OCR paste, paste image, insert image from file, rasterize |
-| **Notes** | Encrypt, decrypt, manage sub-notes, outline, show info |
+| **General** | Show info, paste image, insert image from file (shown under All) |
+| **Notes** | Encrypt, decrypt, manage sub-notes, outline, insert date, rasterize |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
-| **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note |
-| **Views** | Graph, draw, canvas, backup, setup wizard, vault switcher |
-| **Settings** | Theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
+| **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note; OCR paste |
+| **Views** | Graph, draw, canvas, backup, vault switcher |
+| **Settings** | Setup wizard, theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
-File-format conversion can require external tools; URL import requires `curl`. CSV and JSON conversions are handled in Rust.
+File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Views/Settings categories; General actions appear under All, not a separate General tab.
 
 ## Execution
 
@@ -95,6 +96,9 @@ pub fn execute_action(
     app: &mut App,
     context_note_id: Option<&str>,
 ) -> Result<()> {
+    if !action_feature_enabled(action_id, app) {
+        anyhow::bail!("Action disabled: {action_id}");
+    }
     for action in get_all_actions() {
         if action.id() == action_id {
             return action.execute(app, context_note_id);
@@ -128,8 +132,8 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ```
 ### Search Behavior
 
-- Real-time filtering by action `name` and `description`
-- Case-insensitive substring match
+- Fuzzy matching against dynamic action **names**, not descriptions
+- Results ranked by `SkimMatcherV2` score
 - Results update on every keystroke
 - If no results, shows "No matching actions" message
 
@@ -149,10 +153,10 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ## View Lifecycle
 
 ```
-User presses Ctrl+P or Shift+Enter
-  └─ app.command_palette = Some(CommandPalette::new())
+User presses List's OpenCommandPalette binding (: or Ctrl+p by default)
+  └─ app.command_palette = Some(CommandPalette::new(context_note_id, app))
   └─ draw_ui() renders palette overlay
-  └─ handle_list_keys() / handle_edit_keys() checks for active palette
+  └─ global popup dispatch checks for active palette
       ├─ If palette active → route keys to palette navigation
       │   ├─ Up/Down → change selection
       │   ├─ Type chars → filter

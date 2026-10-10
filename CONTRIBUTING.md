@@ -11,30 +11,33 @@ Thank you for considering contributing to clin! Here's how to get started.
 
 ## Releasing
 
-Releases are fully automated via **Actions → Dispatch Release → Run workflow**.
+Releases are fully automated via **Actions → Release → Run workflow**.
 
-1. Select bump type: `patch`, `minor`, `major`, or `pre-patch`
+1. Select bump type: `patch`, `minor`, or `major`. Use the separate `prerelease` flag and identifier for pre-releases.
 2. Click **Run workflow**
 
 This produces:
 - **Platforms:** Linux x86_64, Linux aarch64, Windows x86_64, macOS aarch64 (Apple Silicon)
 - **Linux packages:** `.deb` (x86_64 + aarch64), `.rpm` (x86_64 + aarch64), AppImage (x86_64), AUR (`clin-rs-bin`)
-- **Other package managers:** crates.io, Nix
+- **Other package managers:** crates.io; Nix consumes the repository flake (no separate release publish step)
 - **Artifacts:** changelog, .tar.xz, .tar.gz, .zip, .dmg
 
 ### Required repository secrets
 
 | Secret | Source | Used by |
 |---|---|---|
+| `BOT_TOKEN` | Repository bot token with Git write access | Release commits/tags and wiki publication |
 | `CARGO_REGISTRY_TOKEN` | [crates.io/settings/tokens](https://crates.io/settings/tokens) — publish scope | crates.io publish |
 | `AUR_SSH_PRIVATE_KEY` | SSH keypair registered at [aur.archlinux.org](https://aur.archlinux.org/account) | AUR package push |
 
 
 ## Development
 
-- **Code style**: Run `cargo fmt` before committing
-- **Linting**: Run `cargo clippy -- -D warnings` and fix all warnings
-- **Testing**: Run `cargo test` to verify nothing is broken
+- **Local CI runner**: `development/scripts/check.sh` runs fmt, check, clippy, test, dependency, and MSRV gates; use `development/scripts/check.sh clippy test` for a subset
+- **Code style**: Run `cargo fmt --all` before committing
+- **Linting**: Run `cargo clippy --locked --all-targets -- -D warnings` and fix all warnings
+- **Testing**: Run `cargo test --locked`; ignored performance tests are opt-in
+- **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases.
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 

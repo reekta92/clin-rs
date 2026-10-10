@@ -22,23 +22,26 @@ The screen is centered both horizontally and vertically. The left column contain
 ┌─────────────────────────────────────────────┬──────────────────────────────────┐
 │             CLIN ASCII logo (6 rows)         │                                  │
 │                                              │         Live Markdown            │
+│  [Vault]           Current vault   [select]  │
 │  [Theme]           Tokyo Night     [next]    │         Preview Pane             │
 │  [Background]      Transparent     [next]    │                                  │
 │  [Hint Bar Style]  Classic         [next]    │  (rendered by built-in           │
 │  [Icon Mode]       Nerd            [next]    │   comrak/syntect renderer)       │
+│  [Layout]          Grid            [next]    │
+│  [Features]        Default         [next]    │
 │  [Keybind Preset]  Default         [next]    │                                  │
 │                                              │                                  │
 │        [ Done — Finish Setup ]               │                                  │
 └─────────────────────────────────────────────┴──────────────────────────────────┘
 ```
 
-### Constants (from `src/ui/setup.rs`)
+### Constants (`src/setup.rs` row indices; `src/ui/setup.rs` layout)
 
 | Constant | Value | Description |
 |---|---|---|
 | `COL_WIDTH` | 44 | Width of left column |
 | `COL_HEIGHT` | 20 | Total centered-column height |
-| `OPTION_ROWS` | 8 | Vault plus seven cycle-in-place rows |
+| `OPTION_ROWS` | 8 | Vault plus seven option rows |
 | `DONE_ROW` | 8 | Done button index |
 | `PREVIEW_WIDTH` | 50 | Markdown preview width |
 
@@ -71,7 +74,7 @@ list, `Enter` toggles the highlighted feature, and ←/→ cycle the preset
 (cycling away from Custom and back preserves the custom toggles).
 
 Above Done, wizard always shows: `Remember: press ? for help or F2 for keybinds.`
-`?` is display-only during setup; help opens after setup.
+`?` is display-only during setup; `F1` is also skipped there. Help opens after setup. `clin --setup` reopens the wizard even when config already exists.
 
 ### Vault behavior
 

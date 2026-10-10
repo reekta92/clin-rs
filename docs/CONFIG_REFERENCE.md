@@ -6,7 +6,25 @@ Full reference of all configuration options for clin-rs.
 
 ## Configuration
 
-Run `clin config show` to print the active configuration file path.
+Run `clin config show` to print the active configuration file path. `clin --config <PATH>` relocates the config file, preset keybinds, and custom themes, but not application data/cache roots. `clin config reset` resets canonical config values; it keeps vault files, encryption keys, local state, caches, themes, and keybind files.
+
+**Sources:** `src/config/structs.rs` (schema/defaults), `src/config/types.rs` (enum values), `src/config/mod.rs` (loading/migration), `src/keybinds/defaults.rs` (default bindings).
+
+## Paths
+
+The default vault is `<Documents>/clin Vault`. Documents resolves through platform user-directory settings, falling back to `~/Documents`; thus the fallback vault is `~/Documents/clin Vault`. Notes live directly in the vault root, including for default storage; templates live in `<vault>/.clin/templates/`.
+
+| Data | Location |
+|---|---|
+| Active config | `clin config show`; Linux: `$XDG_CONFIG_HOME/clin/config.toml` or `~/.config/clin/config.toml`; macOS: `~/.config/clin/config.toml`; Windows: platform `ProjectDirs` config directory |
+| Keybinds / custom themes | `<active-config-dir>/keybinds/<preset>.toml` / `<active-config-dir>/themes/*.toml` |
+| Encryption key / local UI state | `<application-data-local-dir>/key.bin` / `state.json` |
+| Note-summary cache | `<application-cache-dir>/vaults/<vault-digest>/note_cache.bin`; `clin cache reset` removes current vault's cache and legacy caches |
+| Templates / subnotes / editor draft | `<vault>/.clin/templates/` / `subnotes.bin` / `editor_draft.bin` |
+| Image attachments | `<vault>/<image.attachments_subdir>/` |
+
+Application data/cache paths come from `directories::ProjectDirs::from("com", "clin", "clin")`, independently of `--config` and `--vault`.
+
 ### `[features]`
 
 Master feature toggles. Supported values: `true` / `"enabled"`, `false` / `"disabled"`, and `"deleted"`. Setting a flag to `false` / `"disabled"` skips the feature's startup work and hides its entry points (keybinds, palette actions, help tabs, statusline tokens). Setting it to `"deleted"` also clears its keybinds, making them available for custom mappings. Changes to `images` and `backup` require a restart (they control background worker threads); all others apply at runtime via the command palette's `settings.toggle_*` actions.
@@ -22,15 +40,15 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `help_view` | `enum` | `true` | Enable the in-app Help view |
 | `tags` | `enum` | `true` | Enable the tag manager and tag UI surfaces |
 | `trash` | `enum` | `true` | Enable the trash view/restore UI (deletes still go to trash) |
-| `subnotes` | `enum` | `true` | Enable encrypted virtual subnotes |
+| `subnotes` | `enum` | `true` | Enable virtual subnotes (encrypted only under encrypted parents) |
 | `templates` | `enum` | `true` | Enable note templates |
 | `import` | `enum` | `true` | Enable import (File/CSV/JSON/URL/Clipboard) and OCR paste |
 | `encryption` | `enum` | `true` | Enable encrypt/decrypt actions (`.clin` files stay readable) |
 | `images` | `enum` | `true` | Enable native pixel image rendering (restart required) |
-| `backup` | `enum` | `false` | Enable git backup worker and dashboard (restart required) |
+| `backup` | `enum` | `true` | Enable git backup worker and dashboard (restart required) |
 | `goals` | `enum` | `true` | Enable the daily word/note goals system |
 | `calendar` | `enum` | `true` | Show rolling-week note activity in the notes list |
-| `smart_folders` | `enum` | `false` | Enable virtual smart folders (Today, This Week, Untagged) |
+| `smart_folders` | `enum` | `true` | Enable virtual smart folders (Today, This Week, Untagged) |
 
 ### `[core]`
 
@@ -38,48 +56,48 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 |---|---|---|---|
 | `storage_path` | `PathBuf` | platform default | Custom vault storage path. Supports `~` and `$VAR`/`${VAR}` expansion (e.g., `~/notes`, `$HOME/vault`) |
 | `vaults` | `array<PathBuf>` | `[]` | Extra vaults shown in the F4 vault switcher. Supports `~` and `$VAR`/`${VAR}` expansion. Vault removal via the switcher removes entries from this list; files on disk are never touched. Not persisted while `--vault` override is active |
-| `mouse_enabled` | `enum` | `true` | Enable mouse support (clicking, scrolling, panning) |
-| `confirm_on_delete` | `enum` | `true` | Show confirmation dialog before deleting notes |
+| `vault_names` | `map<String, String>` | `{}` | Display names keyed by vault path; renamed through the vault switcher |
+| `mouse_enabled` | `bool` | `true` | Enable mouse support (clicking, scrolling, panning) |
+| `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
-| `confirm_on_quit` | `enum` | `false` | Ask for confirmation before quitting |
-| `preview_wrap` | `enum` | `true` | Wrap markdown preview to pane width (toggle at runtime with Ctrl+w) |
-| `syntax_highlighting` | `enum` | `true` | Enable syntax highlighting in markdown fenced code blocks (requires re-render) |
-| `accent_hint_migrated` | `enum` | `false` | Internal flag used for one-time theme migration. Do not set manually. |
+| `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
+| `preview_wrap` | `bool` | `true` | Wrap markdown preview to pane width (toggle at runtime with Ctrl+w) |
+| `syntax_highlighting` | `bool` | `true` | Enable syntax highlighting in markdown fenced code blocks (requires re-render) |
 | `code_theme` | `string` | `"base16-ocean.dark"` | syntect theme name for code-block highlighting (unknown names fall back to plain) |
-| `code_line_numbers` | `enum` | `true` | Show line numbers in fenced code blocks |
-| `preview_wrap_indicator` | `enum` | `false` | Append a `┄` continuation glyph at the end of soft-wrapped preview lines |
+| `code_line_numbers` | `bool` | `true` | Show line numbers in fenced code blocks |
+| `preview_wrap_indicator` | `bool` | `false` | Append a `┄` continuation glyph at the end of soft-wrapped preview lines |
 | `link_url_max_length` | `usize` | `80` | Middle-truncate link/image URLs longer than this; `0` disables |
 | `keybind_preset` | `enum` | `"default"` | Keybind preset: `"default"`, `"helix"`, `"vim"`, `"emacs"`. Applies to navigation, never text editing |
-| `enable_key_sequences` | `enum` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Sequence-capable presets enable them automatically |
+| `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Sequence-capable presets enable them automatically |
 | `preview_expand_mode` | `enum` | `"inline"` | Ctrl+e behavior: `"inline"` (maximize the preview pane) or `"external"` (run `preview_command` on the note) |
 | `preview_command` | `String` | — | Command for external preview (Ctrl+e when `preview_expand_mode = "external"`). Shell-split with the note's temp file appended; falls back to `$PAGER`, then `less` |
-| `auto_refresh` | `enum` | `true` | Reload notes list on external file changes (notify watcher) |
+| `auto_refresh` | `bool` | `true` | Reload notes list on external file changes (notify watcher) |
 
 ### `[list]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `preview_enabled` | `enum` | `true` | Show the preview pane in notes list by default |
+| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
 | `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
-| `preview_encryption` | `enum` | `false` | Show previews of encrypted notes |
-| `show_file_size` | `enum` | `false` | Show file size in the notes list |
+| `preview_encryption` | `bool` | `false` | Show previews of encrypted notes |
+| `show_file_size` | `bool` | `false` | Show file size in the notes list |
 | `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
 | `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
 | `default_sort_field` | `enum` | — | Optional initial sort field: `"title"` or `"modified"` |
 | `default_sort_order` | `enum` | — | Optional initial sort order: `"ascending"` or `"descending"` |
-| `inline_info` | `enum` | `true` | Show inline metadata info (modification date, tags) in the notes list |
-| `pinned_on_top` | `enum` | `false` | Keep pinned notes at the top of the list |
-| `show_hidden_files` | `enum` | `false` | Show hidden files and folders (starting with ".") in the notes list |
-| `show_all_files` | `enum` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
+| `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
+| `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
+| `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
+| `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
 | `skip_dirs` | `array` | `[]` | Directory-name patterns to omit from the notes list |
-| `folders_first` | `enum` | `true` | Show subfolders before files in the notes list (Tree and Grid layouts) |
+| `folders_first` | `bool` | `true` | Show subfolders before files in the notes list (Tree and Grid layouts) |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
 | `week_start` | `enum` | `"sunday"` | Start day for rolling-week activity: `"sunday"` or `"monday"` |
-| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf` |
-| `folder_graph_preview` | `enum` | `false` | Show graph preview for folders |
+| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`, `todo` |
+| `folder_graph_preview` | `bool` | `false` | Show graph preview for folders |
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
 | `custom_smart_folders` | `array` | `[]` | User-defined smart folder rules. Each entry: `{name, tags=[], title_contains=..., folder_prefix=..., updated_within_days=...}` |
@@ -89,20 +107,20 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `external_command` | `String` | — | External editor command (e.g. `"nvim"`, `"code"`) |
-| `external_enabled` | `enum` | `false` | Enable external editor mode |
-| `preview_enabled` | `enum` | `false` | Show markdown preview panel in editor by default |
-| `show_line_numbers` | `enum` | `true` | Show line numbers in the editor |
+| `external_enabled` | `bool` | `false` | Enable external editor mode |
+| `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
+| `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
 | `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
-| `soft_wrap` | `enum` | `false` | Soft-wrap the editor body |
-| `copy_on_select` | `enum` | `true` | Copy to clipboard immediately when a mouse drag selects text; `false` keeps the selection for the copy keybind |
-| `edit_mode_highlight` | `enum` | `true` | Highlight the active READ/EDIT mode |
-| `ghost_syntax` | `enum` | `true` | Visually dim markdown delimiters (brackets, URLs, etc.) in edit view |
-| `extended_markdown_features` | `enum` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |
- | `text_align` | `enum` | `"left"` | Text alignment (`"left"`, `"center"`, `"right"`, `"justified"`). Active only when `soft_wrap` is `true` |
+| `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
+| `copy_on_select` | `bool` | `true` | Copy to clipboard immediately when a mouse drag selects text; `false` keeps the selection for the copy keybind |
+| `edit_mode_highlight` | `bool` | `true` | Apply Markdown syntax highlighting to the editable body |
+| `ghost_syntax` | `bool` | `true` | Visually dim markdown delimiters (brackets, URLs, etc.) in edit view |
+| `extended_markdown_features` | `bool` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |
+| `text_align` | `enum` | `"left"` | Text alignment (`"left"`, `"center"`, `"right"`, `"justified"`). Active only when `soft_wrap` is `true` |
 | `zen_padding_percent` | `u16` | `15` | Percent of terminal width padded on each side in zen mode; clamped to 45 |
-| `zen_hide_line_numbers` | `enum` | `true` | Hide line numbers while zen mode is active |
-| `zen_hide_scrollbar` | `enum` | `true` | Hide scrollbar while zen mode is active |
-| `zen_focus_dimming` | `enum` | `false` | Dim content outside the active neighborhood in zen mode |
+| `zen_hide_line_numbers` | `bool` | `true` | Hide line numbers while zen mode is active |
+| `zen_hide_scrollbar` | `bool` | `true` | Hide scrollbar while zen mode is active |
+| `zen_focus_dimming` | `bool` | `false` | Dim content outside the active neighborhood in zen mode |
 | `zen_focus_unit` | `enum` | `"paragraph"` | Unit for focus neighborhood (`"paragraph"`, `"line"`) |
 | `zen_focus_context` | `usize` | `3` | Number of units above the cursor to keep bright |
 ### `[ui]`
@@ -112,12 +130,12 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 |---|---|---|---|
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 19 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
-| `show_status_bar` | `enum` | `true` | Show the status bar at the bottom of the screen |
-| `tab_icons_only` | `enum` | `false` | Show only Nerd Font icons (no text) on tab bars |
+| `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
+| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
 | `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
-| `scrollbars` | `enum` | `true` | Show mouse-draggable scrollbars on scrollable regions |
-| `scrollbar_pan_mode` | `enum` | `false` | Notes list scrollbar pans without moving selection |
-| `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blur"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |
+| `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
+| `scrollbar_pan_mode` | `bool` | `false` | Notes list scrollbar pans without moving selection |
+| `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blurred"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |
 | `accent` | `String` | — | Hex color override for accent (#ff6600) |
 | `heading` | `String` | — | Hex color override for headings |
 | `success` | `String` | — | Hex color override for success indicators |
@@ -127,9 +145,6 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `border` | `String` | — | Hex color override for borders |
 | `tag` | `String` | — | Hex color override for tag labels |
 | `folder` | `String` | — | Hex color override for folder labels |
-| `pinned` | `String` | — | Hex color override for pinned items |
-| `smart` | `String` | — | Hex color override for smart folder items |
-| `subnote` | `String` | — | Hex color override for subnote items |
 | `background_color` | `String` | — | Hex color override for solid background |
 
 ### `[statusline]`
@@ -177,7 +192,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{theme}`: Active theme name
 - `{preset}`: Keybind preset (`default`, `helix`, `vim`, `emacs`)
 - `{icon_mode}`: Icon mode (`nerd`, `unicode`, `none`)
-- `{hint_bar_style}`: Style variant (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
+- `{hint_bar_style}`: Style variant (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blurred`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
 - `{background}`: Background style (`transparent`, `solid`)
 
 ##### Goals (all views)
@@ -307,15 +322,16 @@ These inject pre-styled groups of cells (e.g., from tab/status systems) and rema
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `max_dimension` | `u32` | `2048` | Maximum decode dimension in pixels |
 | `cache_size` | `usize` | `32` | LRU cache entry count |
 | `preview_rows` | `u8` | `8` | Rows occupied by preview images |
 | `attachments_subdir` | `String` | `"attachments"` | Subdirectory for pasted/imported image attachments |
 
 Example:
 ```toml
+[features]
+images = true
+
 [image]
-max_dimension = 2048
 cache_size = 32
 preview_rows = 8
 attachments_subdir = "attachments"
@@ -326,7 +342,7 @@ attachments_subdir = "attachments"
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `max_node` | `usize` | `500` | Maximum number of nodes to simulate and display (0 = unlimited) |
-| `preview_enabled` | `enum` | `false` | Enable the preview pane in Graph view |
+| `preview_enabled` | `bool` | `false` | Enable the preview pane in Graph view |
 ### `[graf.visual]`
 
 | Option | Type | Default | Description |
@@ -338,16 +354,19 @@ attachments_subdir = "attachments"
 | `label_max_length` | `usize` | `20` | Max label character length (1–60) |
 | `node_size` | `f64` | `2.0` | Base node size (1.0–5.0) |
 | `node_size_mode` | `enum` | `"fixed"` | How node size is determined: `"fixed"`, `"link_count"` |
+| `node_scale` | `integer or string` | `5` | Screen-space node scale: integer 1–10 or `"automatic"` |
+| `node_fill` | `enum` | `"dynamic"` | Fill style: `"dynamic"`, `"filled"`, `"none"` |
+| `selection_focus` | `enum` | `"grow"` | Selected-node emphasis: `"none"`, `"grow"`, `"dim"`, `"grow_dim"` |
 | `edge_thickness` | `u16` | `1` | Edge line thickness (1–3) |
-| `show_legend` | `enum` | `true` | Show legend |
-| `show_minimap` | `enum` | `false` | Show minimap |
+| `show_legend` | `bool` | `true` | Show legend |
+| `show_minimap` | `bool` | `false` | Show minimap |
 | `minimap_position` | `enum` | `"top_right"` | Minimap corner: `"top_right"`, `"top_left"`, `"bottom_right"`, `"bottom_left"` |
 | `minimap_width` | `u16` | `24` | Minimap width in cells |
 | `minimap_height` | `u16` | `12` | Minimap height in cells |
 | `canvas_marker` | `enum` | `"braille"` | Canvas rendering marker: `"braille"`, `"half_block"`, `"dot"` |
 | `node_shape` | `enum` | `"circle"` | Node shape: `"circle"`, `"square"`, `"diamond"` |
 | `label_offset` | `f64` | `4.0` | Distance of labels from nodes |
-| `show_looking_glass` | `enum` | `true` | Show zoom looking glass around cursor |
+| `show_looking_glass` | `bool` | `true` | Show zoom looking glass around cursor |
 | `looking_glass_width` | `u16` | `24` | Width of the looking glass in cells |
 | `looking_glass_height` | `u16` | `12` | Height of the looking glass in cells |
 #### `[graf.visual.colors]`
@@ -383,7 +402,7 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `exclude_tags` | `Vec<String>` | `[]` | Tags to exclude from graph |
-| `show_orphan` | `enum` | `false` | Show isolated notes with no valid links |
+| `show_orphan` | `bool` | `false` | Show isolated notes with no valid links |
 
 ### `[graf.search]`
 
@@ -395,18 +414,18 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `backup_on_save` | `enum` | `false` | Perform a backup commit whenever a note is saved |
-| `backup_on_quit` | `enum` | `false` | Perform a backup commit when the app exits |
+| `backup_on_save` | `bool` | `false` | Stored settings toggle; currently does not gate save-triggered backups. See [BACKUP.md](BACKUP.md) |
+| `backup_on_quit` | `bool` | `false` | Perform a backup commit when the app exits |
 | `auto_backup_interval` | `u64` | — | Interval in minutes for automatic background backups |
-| `auto_push` | `enum` | `false` | Automatically push commits to remote |
+| `auto_push` | `bool` | `false` | Automatically push commits to remote |
 | `remote_url` | `String` | — | Remote git repository URL |
-| `remote_name` | `String` | `"origin"` | Name of the git remote |
+| `remote_name` | `String` | — (`"origin"` at runtime) | Name of the git remote |
 
 ### `[notes]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `rename_on_title_change` | `enum` | `true` | Sync the note's filename to its `title:` frontmatter on every save. Set to `false` to keep filenames stable (e.g. when the vault is shared with Obsidian, where filenames are the `[[wikilink]]` targets) |
+| `rename_on_title_change` | `bool` | `true` | Sync the note's filename to its `title:` frontmatter on every save. Set to `false` to keep filenames stable (e.g. when the vault is shared with Obsidian, where filenames are the `[[wikilink]]` targets) |
 
 ### `[goals]`
 
@@ -419,6 +438,13 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 ## Example config.toml
 
 ```toml
+[features]
+calendar = true
+backup = false
+goals = true
+images = true
+smart_folders = true
+
 [core]
 # storage_path supports ~ and $VAR/${VAR} expansion: "~/notes", "$HOME/vault"
 storage_path = "/path/to/your/vault"
@@ -435,7 +461,6 @@ density = "comfortable"
 default_view = "grid"
 default_sort_field = "modified"
 default_sort_order = "descending"
-calendar_enabled = true
 pinned_on_top = true
 
 [editor]
@@ -445,7 +470,6 @@ preview_enabled = true
 show_line_numbers = true
 
 [backup]
-enabled = false
 backup_on_save = false
 backup_on_quit = false
 auto_backup_interval = 30
@@ -454,7 +478,6 @@ remote_url = "https://github.com/user/my-notes.git"
 remote_name = "origin"
 
 [goals]
-enabled = true
 word_goal = 500
 note_goal = 3
 
@@ -465,9 +488,6 @@ show_status_bar = true
 icon_mode = "nerd"
 hint_bar_style = "classic"
 accent = "#ff6600"
-pinned = "#ffaa00"
-smart = "#ff66aa"
-subnote = "#66ccff"
 
 [graf]
 max_node = 500
@@ -499,7 +519,19 @@ max_visible = 10
 
 ## Keybinds
 
-Keybind files are stored under the active configuration directory at `keybinds/<preset>.toml`. Runtime help shows the active preset path.
+Keybind files are stored under the active configuration directory at `keybinds/<preset>.toml`. Runtime help shows the active preset path. Tables below describe the **default** preset; feature toggles may hide bindings.
+
+### Global Function Keys
+
+| Key | Action |
+|---|---|
+| `F1` | Contextual help (except Setup); closes Help when already open |
+| `F2` | Quick keybind dropdown |
+| `F3` | Message history overlay |
+| `F4` | Vault switcher |
+| `F5` | Force full redraw |
+
+These global handlers take precedence over per-view bindings.
 
 ### List Actions (`[list]`)
 
@@ -561,12 +593,13 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 |---|---|---|
 | `back` | `Esc` | Return to notes (auto-saves) |
 | `save` | `Ctrl+s` | Save |
-| `cycle_focus` | `Ctrl+t` | Cycle focus (Title, Content) |
+| `cycle_focus` | `Ctrl+t` | Cycle focus (Title, Body, visible Sidebar) |
 | `insert_tab` | `Tab` | Insert tab character |
 | `select_all` | `Ctrl+a`, `Ctrl+Shift+a` | Select all |
-| `copy` | `Ctrl+Shift+c`, `Ctrl+Insert`, `Ctrl+c` | Copy |
-| `cut` | `Ctrl+Shift+x`, `Shift+Delete`, `Ctrl+x` | Cut |
-| `paste` | `Ctrl+Shift+v`, `Shift+Insert`, `Ctrl+v`, `Ctrl+z` | Paste |
+| `copy` | `Ctrl+c` | Copy |
+| `cut` | `Ctrl+x` | Cut |
+| `paste` | `Ctrl+v` | Paste |
+| `undo` | `Ctrl+z` | Undo |
 | `redo` | `Ctrl+y`, `Ctrl+Shift+z` | Redo |
 | `delete_word` | `Ctrl+Backspace` | Delete previous word |
 | `delete_next_word` | `Ctrl+Delete` | Delete next word |
@@ -574,6 +607,8 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | `move_to_bottom` | `Ctrl+End` | Move cursor to bottom |
 | `toggle_markdown_preview` | `Ctrl+p` | Toggle markdown preview |
 | `toggle_preview_fullscreen` | `F11` | Toggle preview fullscreen |
+| `toggle_zen_mode` | `F8` | Toggle zen mode |
+| `cycle_alignment` | `F9` | Cycle text alignment (requires soft wrap) |
 | `toggle_wrap` | `F10` | Toggle word wrap (editor and preview) |
 | `preview_page_up` | `PageUp` | Page preview up |
 | `preview_page_down` | `PageDown` | Page preview down |
@@ -599,7 +634,7 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 | `search` | `/`, `Ctrl+f` | Search help |
 | `reroll` | `r` | Reroll help tips |
 
-> Note: digits `1`–`8` jump directly to the eight help tabs (Notes→About). These are fixed and not configurable in keybind files.
+> Digits `1`–`8` jump to visible help tabs by position; disabled-feature tabs are omitted. These shortcuts apply when no configured help binding matches.
 
 ### Graph Actions (`[graph]`)
 
@@ -744,11 +779,23 @@ Keybind files are stored under the active configuration directory at `keybinds/<
 |---|---|---|
 | `move_up` | `k`, `Up` | Move selection up |
 | `move_down` | `j`, `Down` | Move selection down |
-| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l`, `e` | Toggle collapse/expand |
+| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l` | Toggle collapse/expand |
+| `expand_all` | `e` | Expand all |
 | `collapse_all` | `c` | Collapse all |
 | `open` | `Enter`, `o` | Jump to section |
 | `back` | `Esc`, `q` | Back |
 | `help` | `?` | Show help |
+
+### Setup Actions (`[setup]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `up` | `Up`, `k` | Previous option |
+| `down` | `Down`, `j` | Next option |
+| `cycle_next` | `Right`, `l`, `Space` | Next option value |
+| `cycle_prev` | `Left`, `h` | Previous option value |
+| `activate` | `Enter` | Activate row or finish on Done |
+| `finish` | `Esc` | Request setup exit |
 
 ---
 

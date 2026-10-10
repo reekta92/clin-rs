@@ -6,7 +6,7 @@ Technical docs for the on-demand encryption system — encrypt/decrypt individua
 
 ## Overview
 
-clin provides on-demand encryption for individual notes. Encrypted notes use the `.clin` extension and are decrypted back to `.md` on demand. The key never leaves the user's machine and is stored in the application data-local directory, outside the versioned vault.
+clin provides on-demand encryption for individual notes. Encrypted notes use the `.clin` extension and are decrypted to their recorded original extension (`.md` when absent). The application stores a shared plaintext key in the application data-local directory, outside the vault; clin does not transmit it as part of normal vault backup.
 
 **Source:** `src/storage.rs` (encrypt/decrypt methods) + `src/actions/encrypt.rs`, `src/actions/decrypt.rs`
 
@@ -17,9 +17,9 @@ clin provides on-demand encryption for individual notes. Encrypted notes use the
 **ChaCha20-Poly1305** (via the `chacha20poly1305` crate).
 
 - Symmetric stream cipher (ChaCha20) + authentication tag (Poly1305)
-- AEAD (Authenticated Encryption with Associated Data) — tamper-proof
+- AEAD (Authenticated Encryption with Associated Data) — detects modification of the encrypted payload; plaintext frontmatter is **not** authenticated
 - 256-bit key (32 bytes)
-- 96-bit nonce (12 bytes), randomly generated per encryption with `OsRng`
+- 96-bit nonce (12 bytes), freshly generated per encryption with `rand::rng().fill(...)`
 
 ---
 
@@ -35,10 +35,10 @@ clin provides on-demand encryption for individual notes. Encrypted notes use the
 
 ### Key Generation
 
-On first `encrypt_note()` call:
+During `Storage` initialization (and again before operations that need the key):
 
 1. `ensure_key()` checks if `key.bin` exists
-2. If not, generate 32 random bytes via `OsRng`
+2. If not, generate 32 random bytes via `rand::rng().fill(...)`
 3. Write to `key.bin` with `0o400` permissions (Unix) — owner read-only
 4. Store in `Storage::key: [u8; 32]`
 
@@ -48,7 +48,9 @@ On first `encrypt_note()` call:
 - Key is held in memory in `Storage::key` (zeroed on drop via `zeroize` crate)
 - No password protection yet — key is plaintext on disk
 - No key rotation
-- No per-note keys — single key for all encrypted notes
+- No per-note keys — one application-wide key is shared across vaults
+- Keep a secure separate backup of `key.bin`; copying the vault alone does not copy the key, and losing it makes encrypted content unrecoverable
+- Anyone who can read the key and vault can decrypt content; this is not password protection or a zero-knowledge service
 
 ---
 
@@ -80,9 +82,9 @@ Encrypted `.clin` files have two sections:
 
 **Magic:** `CLIN1` (5 bytes) — identifies the encrypted payload start
 
-**Nonce:** 12 random bytes, unique per encryption
+**Nonce:** 12 fresh random bytes per encryption (uniqueness is probabilistic)
 
-**Ciphertext:** ChaCha20-Poly1305 encrypted output of bincode-serialized `Note`:
+**Ciphertext:** ChaCha20-Poly1305 encrypted output of bincode-serialized `Note`, including the 16-byte authentication tag:
 
 ```rust
 pub struct Note {
@@ -95,7 +97,7 @@ pub struct Note {
 
 ### Why Frontmatter is Plaintext
 
-The YAML frontmatter in `.clin` files is **not encrypted**. This allows:
+The YAML frontmatter in `.clin` files is **neither encrypted nor authenticated**. Titles, tags, timestamps, pinned state, links, original extension, text alignment, and other metadata remain visible and can be modified independently of the encrypted payload. Do not store secrets in frontmatter. This allows:
 
 - **Fast summary loading** — `load_note_summary()` reads frontmatter directly without decryption
 - **Search indexing** — titles and tags are visible without the key
@@ -107,7 +109,7 @@ The frontmatter metadata (`pinned`, `links`, and any unknown keys such as Obsidi
 
 ## Workflow
 
-### Encrypt (`.md` → `.clin`)
+### Encrypt (plaintext note → `.clin`)
 
 ```
 User selects a note → Command Palette → Encrypt Note
@@ -118,15 +120,15 @@ encrypt_note(id):
   3. Build frontmatter from note (title, tags, etc.)
   4. bincode::serialize(note) → bytes
   5. encrypt(bytes):
-     a. OsRng → 12-byte nonce
+     a. rand::rng().fill(...) → 12-byte nonce
      b. ChaCha20Poly1305::encrypt(nonce, bytes) → ciphertext
      c. CLIN1 magic + nonce + ciphertext → encrypted blob
   6. Prepend YAML frontmatter to encrypted blob
-  7. Write to .clin file
-  8. Delete original .md
+  7. Atomically write to a collision-safe .clin path
+  8. Delete original plaintext file (not a secure erase)
 ```
 
-### Decrypt (`.clin` → `.md`)
+### Decrypt (`.clin` → original extension)
 
 ```
 User selects a note → Command Palette → Decrypt Note
@@ -136,8 +138,8 @@ decrypt_note(id):
   2. Read .clin file
   3. Load note (which decrypts the payload internally)
   4. Extract frontmatter from plaintext prefix
-  5. Serialize frontmatter + content as .md
-  6. Write to .md file
+  5. Serialize frontmatter + content using recorded original extension (default .md)
+  6. Write to a collision-safe plaintext path
   7. Delete original .clin
 ```
 
@@ -168,11 +170,12 @@ load_note(id):
 ---
 ## Editor Draft Recovery
 
-To prevent data loss in the event of an unexpected process exit (e.g., panics or `SIGKILL`), the `clin-rs` editor maintains a continuous, synchronously updated `editor_draft.bin` file.
-- Located at `<data_dir>/.clin/editor_draft.bin`.
+Editor mutations attempt to synchronously write a recovery draft for plaintext notes.
+- Located at `<vault>/.clin/editor_draft.bin`.
 - Contains a bincode-serialized tuple: `(note_id, title, content)`.
-- Encrypted using the same ChaCha20-Poly1305 vault key, preserving privacy for unsaved work-in-progress keystrokes.
-- Automatically decrypted and recovered on the next app boot, then deleted.
+- Encrypted using the same application-wide ChaCha20-Poly1305 key.
+- Bootstrap attempts to decrypt and restore it into the note; `.clin` IDs are excluded from draft writes.
+- Recovery is best effort: write/save errors are not all propagated, and the current recovery path deletes a readable draft even after decoding or save failures. Drafts are not a replacement for backups.
 
 
 ## Key Rust Types
@@ -215,4 +218,8 @@ See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for the action system.
 - No key rotation
 - No per-note keys
 - Bulk encrypt/decrypt not available (individual notes only)
-- Canvas (`.canvas`) and Draw (`.draw`) files are not encrypted
+- Images are rejected by Encrypt Note. Canvas/Draw views require plaintext JSON; the generic action does not reject their extensions, but note-style conversion can add frontmatter and break JSON loading. Do not treat this as supported canvas/draw encryption.
+- Plaintext frontmatter is visible and unauthenticated
+- `.clin` editing is blocked; decrypt through the palette before editing
+- Subnotes saved under plaintext parents are only XOR-obfuscated, not encrypted; see [SUBNOTES.md](SUBNOTES.md)
+- Encrypting deletes the current plaintext file, not previous copies, OS/editor caches, backups, or Git history. Existing backup history can still expose plaintext. Review backups before pushing a vault to any remote.

@@ -27,6 +27,7 @@ folder = "#7dcfff"
 pinned = "#9ece6a"       # Pinned category
 smart = "#bb9af7"        # Smart folders category
 subnote = "#94e2d5"      # Subnotes category
+selection_indicator = "#ffffff" # optional selection marker color
 highlight_fg = "#1a1b26"
 highlight_bg = "#7aa2f7"
 background = "#1a1b26"   # optional → transparent when absent
@@ -42,7 +43,7 @@ bg     = "#1a1b26"       # optional
 
 ### Lookup Order
 
-1. **Custom dir** — `<name>.toml` in `~/.config/clin/themes/` is checked first.
+1. **Custom dir** — `<name>.toml` in `<active-config-dir>/themes/` is checked first.
 2. **Built-in** — if no custom file found, the name is matched against built-in themes.
 3. **Fallback** — unknown names silently resolve to the Default theme.
 
@@ -72,13 +73,13 @@ config.toml [ui] section
          │
          ▼
 UiConfig struct (config)
-    ├── theme: Theme enum
+    ├── theme: String (custom or built-in name)
     ├── background: Background enum
     └── per-color overrides (Option<String> hex)
          │
          ▼
-AppThemeColors::from_config(&UiConfig)
-    ├── Theme enum → graf/themes.rs → ThemeColors palette
+AppThemeColors::from_config(&UiConfig, &mut warnings)
+    ├── Custom-first resolution → custom chrome or config/themes.rs palette
     ├── Apply per-color overrides
     └── Return AppThemeColors struct
          │
@@ -118,7 +119,7 @@ Used everywhere in rendering (app_theme field on App)
 | 18 | Synthwave '84 | `"synthwave"` / `"synthwave84"` |
 | 19 | Material | `"material"` / `"material_theme"` |
 
-Each theme defines an 8-color palette for nodes plus chrome, title, text, foreground, grid, and background colors in `src/graf/themes.rs`.
+Each theme defines an 8-color palette for nodes plus chrome, title, text, foreground, grid, and background colors in `src/config/themes.rs` (18 named palettes plus Default).
 
 ---
 
@@ -207,6 +208,8 @@ pub struct AppThemeColors {
     pub subnote: Color,        // Subnotes category color
     pub highlight_fg: Color, // Text on highlighted bg
     pub highlight_bg: Color, // Selection highlight background
+    pub selection_indicator: Color, // Selection marker
+    pub hint_bar_style: HintBarStyle,
 }
 ```
 
@@ -218,7 +221,6 @@ impl AppThemeColors {
     pub fn preview_bg_style(&self) -> Style;      // Preview pane style
     pub fn title_bar_bg_style(&self) -> Style;    // Title bar style
     pub fn hint_line_bg_style(&self) -> Style;    // Hint line style
-    pub fn pane_bg(&self) -> Option<Color>;        // Pane background
 }
 ```
 
@@ -255,17 +257,11 @@ Only needed if the theme should be bundled into the binary and available without
        MyNewTheme,
    }
    ```
-2. Add palette entry in `src/graf/themes.rs`:
-   ```rust
-   const PALETTES: [GraphThemePalette; 18] = [
-       // ... existing (currently 18 entries — see note below) ...
-       GraphThemePalette { /* my new palette */ },
-   ];
-   ```
-3. Add parse/display mapping in `Theme::from_str()` and `Theme::fmt()` in `src/config/types.rs`.
-4. Build and test — theme is auto-detected from config and applied on startup.
+2. Add a palette and its `theme_colors()` mapping in `src/config/themes.rs`.
+3. Add parse/display mapping and update `Theme::BUILTIN_NAMES` in `src/config/types.rs` so the switcher includes it.
+4. Update theme-count references and tests, then build and test.
 
-> **Note:** The `Theme` enum has 19 variants but `PALETTES` in `src/graf/themes.rs:43` has 18 entries (`Material` falls back to a default-generated palette at runtime). When adding a new built-in theme, increment the array size to `19` (or `N+1`) and add a matching palette entry unless the theme is deliberately reusing a fallback.
+> `Theme` has 19 variants: Default uses generated colors; the other 18 have explicit palettes, including Material. Graph rendering consumes clin's resolved colors through `src/graf_adapter.rs`.
 
 ---
 
@@ -279,7 +275,7 @@ See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 
 ## Statusline Interaction
 
-Custom statusline text (configured via `[statusline]` in `config.toml`) uses the active theme in every `hint_bar_style`. `classic` is the default; the remaining built-in styles are `sharp`, `rounded`, `slanted`, `bubbles`, `blur`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, and `hexagon`.
+Custom statusline text (configured via `[statusline]` in `config.toml`) uses the active theme in every `hint_bar_style`. `classic` is the default; the remaining built-in styles are `sharp`, `rounded`, `slanted`, `bubbles`, `blurred`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, and `hexagon`.
 
 ---
 ## Connections

@@ -2,7 +2,7 @@
 
 ## Overview
 
-A modal built-in editor with find popup, soft-wrap, sidebars with wikilink
+A built-in title/body editor with find popup, soft-wrap, sidebars with wikilink
 previews, and external-editor handoff. `Esc` saves once when returning to
 notes list.
 
@@ -26,20 +26,19 @@ Body mutations schedule Markdown preview from `EditorDocument::revision()`.
 never schedule body preview work. Initial open and explicit preview toggles
 remain immediate.
 
-## Modes
+## Focus and Preview
 
-The `EditMode` enum (READ/EDIT) is defined in `src/editor.rs`:
+The current editor has **Title**, **Body**, and visible **Sidebar** focus; it has no READ/EDIT modal state or `EditMode` enum. Typing edits the focused text field directly. `Ctrl+t` cycles focus; `Tab` inserts a tab in the body. Presets change navigation outside text inputs, not the body editor.
 
-- **READ mode** — view-only rendered markdown. Supports select and clipboard operations (yank/copy). Navigate with `j`/`k`, `PageUp`/`PageDown`, `G`/`gg`.
-- **EDIT mode** — text insertion enabled. Press `e`/`i` to enter, `Esc` steps back: EDIT→READ→list.
+`Ctrl+p` toggles the Markdown preview and `F11` expands it. `Esc` first closes an active popup/link preview; otherwise it saves and returns directly to List. `Ctrl+s` saves without leaving.
 
-The `edit_mode_highlight` config option (`EditorConfig.edit_mode_highlight`, default `true`) controls visual highlighting of the active mode. A source-line map keeps READ and EDIT scroll positions in sync.
+`edit_mode_highlight` (default `true`) controls Markdown syntax highlighting over the editable body, despite its historical name. `ghost_syntax` dims Markdown delimiters, and `extended_markdown_features` enables additional syntax forms.
 
 ## Text Selection and Clipboard
 
 Keyboard selection: hold `Shift` while moving the cursor (arrows, Home/End,
 PageUp/PageDown; `Ctrl+Shift+Arrow` selects word-wise) to extend a selection,
-then use the copy/cut keybinds (`Ctrl+Shift+C`/`Ctrl+Shift+X` by default).
+then use the copy/cut keybinds (`Ctrl+c`/`Ctrl+x` by default). `Ctrl+v` pastes, `Ctrl+z` undoes, and `Ctrl+y` or `Ctrl+Shift+z` redoes.
 Mouse drag selects and copies immediately by default;
 `EditorConfig.copy_on_select` (bool, default `true`) set to `false` keeps the
 selection instead so it can be copied with the copy keybind.
@@ -51,7 +50,7 @@ A custom find popup replaces the legacy textarea search. State is stored in the 
 
 ## Soft Wrap
 
-`EditorConfig.soft_wrap` (bool, default `false`) controls soft-wrapping of the editor body. Toggle via the command palette.
+`EditorConfig.soft_wrap` (bool, default `false`) controls soft-wrapping of the editor body. Toggle with `F10`. With soft wrap enabled, `F9` cycles left/center/right/justified text alignment.
 
 ## Zen Mode
 
@@ -81,7 +80,7 @@ while older text above and all text below the current paragraph are dimmed.
 
 ## Sidebars + Wikilink Previews
 
-The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. Cycle focus with `Tab` to reach sidebars.
+The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. `Ctrl+o` toggles Outline, `Ctrl+b` toggles Links, and `Ctrl+t` cycles focus to a visible sidebar. `Alt+l` previews the link under the cursor.
 
 ## External Editor
 
@@ -109,7 +108,10 @@ The `[editor]` section in `config.toml`:
 | `date_format` | String | `"%Y-%m-%d %H:%M"` | Format for insert-date action |
 | `soft_wrap` | bool | `false` | Soft-wrap the editor body |
 | `copy_on_select` | bool | `true` | Copy to clipboard immediately when a mouse drag selects text |
-| `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
+| `edit_mode_highlight` | `bool` | `true` | Apply Markdown highlighting to the editable body |
+| `ghost_syntax` | `bool` | `true` | Dim Markdown delimiters |
+| `extended_markdown_features` | `bool` | `true` | Highlight extended Markdown syntax |
+| `text_align` | `enum` | `"left"` | Soft-wrapped text alignment: left, center, right, justified |
 | `zen_padding_percent` | `u16` | `15` | Zen-mode padding per side, percent of width (max 45) |
 | `zen_hide_line_numbers` | `bool` | `true` | Hide line numbers while zen mode is active |
 | `zen_hide_scrollbar` | `bool` | `true` | Hide scrollbar while zen mode is active |
@@ -134,6 +136,12 @@ zen_focus_dimming = false
 zen_focus_unit = "paragraph"
 zen_focus_context = 3
 ```
+
+## Draft Recovery and Encrypted Notes
+
+Editor mutations attempt to write an encrypted draft to `<vault>/.clin/editor_draft.bin`. Startup attempts to recover it into the note, then removes the readable draft even if decoding or saving fails. This is best-effort recovery, not a guarantee against every crash or disk-write failure.
+
+`.clin` notes cannot be edited directly: use **Decrypt Note** from the palette first. Draft writes exclude `.clin` IDs; encryption uses the application-wide key outside the vault. See [ENCRYPTION.md](ENCRYPTION.md).
 
 ## Connections
 

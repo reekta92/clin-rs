@@ -6,7 +6,7 @@ Technical docs for the note template system — reusable templates with variable
 
 ## Overview
 
-Templates allow users to create notes from predefined structures. In native storage, templates live in its `templates/` directory; for a custom vault, they live in `<vault>/.clin/templates/`. Templates can include dynamic variables (`{date}`, `{time}`, etc.) that are substituted at creation time.
+Templates allow users to create notes from predefined structures. Templates live in `<vault>/.clin/templates/` for both default and custom storage. Templates can include dynamic variables (`{date}`, `{time}`, etc.) that are substituted at creation time.
 
 **Source:** `src/templates.rs` — `Template`, `TemplateSummary`, `Storage` templates API
 
@@ -18,10 +18,10 @@ Templates allow users to create notes from predefined structures. In native stor
 
 ## Directory
 
-Native storage:
+All vaults:
 
 ```text
-<native-storage>/templates/
+<vault>/.clin/templates/
 ├── default.toml     (auto-loaded on new note if present)
 ├── meeting.toml
 ├── todo.toml
@@ -29,7 +29,7 @@ Native storage:
 └── ... (any .toml file)
 ```
 
-For a custom vault, use `<vault>/.clin/templates/` instead. Create templates there manually or with `clin templates init`.
+Create templates there manually or with `clin templates init`. The `[features] templates` flag controls the picker and `clin templates` commands; those commands report an error when disabled.
 
 ---
 
@@ -130,7 +130,7 @@ impl TemplateVariables {
 
 ## Default Template
 
-If a template file named `default.toml` exists in the templates directory, it is automatically used when creating a new note via `a` (without opening the template picker).
+If a template file named `default.toml` exists in the templates directory, the TUI note-creation flow uses it when templates are enabled. The default create-note key is `n`; the default template-picker key is `t`.
 
 ---
 
@@ -140,7 +140,7 @@ If a template file named `default.toml` exists in the templates directory, it is
 |---|---|
 | `clin templates list` | List all available templates |
 | `clin templates init` | Create meeting, todo, and journal example templates |
-| `clin notes new -t <name> [title]` | Create a new note from a specific template |
+| `clin notes new -t <display-name> [title]` | Insert a template's literal body, then open the TUI unless `--no-tui` or `--body` is supplied |
 
 ---
 
@@ -149,7 +149,7 @@ If a template file named `default.toml` exists in the templates directory, it is
 ### From TUI
 
 ```
-1. Press `a` on folder → creates note from default template (if any)
+1. Press `n` on folder → note creation uses default template (if any)
    OR press `t` → template picker popup
 2. Use popup search bar to filter templates (Tab switches Search/Results focus)
 3. Select template with up/down in Results and press Enter
@@ -159,14 +159,24 @@ If a template file named `default.toml` exists in the templates directory, it is
 ### From CLI
 
 ```bash
-# Create a note from "meeting" template
-clin notes new -t meeting "Weekly Standup"
+# Initialize example templates and inspect their display names
+clin templates init
+clin templates list
 
-# Create with default template
-clin notes new "My Note"
+# CLI matches the exact display name, not the filename stem
+clin notes new -t "Meeting Notes" --no-tui "Weekly Standup"
+
+# Create a blank note; CLI does not load default.toml automatically
+clin notes new --no-tui "My Note"
 ```
 
 ---
+
+### Current CLI Limitations
+
+The CLI matches the template's `name` exactly (for example `"Meeting Notes"`, not `meeting`). It copies `[content].template` literally: variables remain `{date}`, `{time}`, etc., and `[title].template` is not used. An omitted title becomes `"New Note"`; `--body` overrides template content. The TUI picker renders both title and body with variable substitution.
+
+Use the TUI picker when you need rendered template variables. These are current implementation limits, not intended guarantees for future versions.
 
 ## Storage Templates API
 

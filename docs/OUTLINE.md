@@ -49,12 +49,12 @@ The following default actions are supported and configured in the active presetâ
 |---|---|---|
 | `move_up` | `k`, `Up` | Move selection to previous visible node |
 | `move_down` | `j`, `Down` | Move selection to next visible node |
-| `toggle_collapse` | `Tab`, `Left`, `Right` | Toggle expand/collapse state of the selected header |
+| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l` | Toggle expand/collapse state of the selected header |
 | `expand_all` | `e` | Expand all headers |
 | `collapse_all` | `c` | Collapse all headers (keeps note title expanded) |
-| `open` | `Enter` | Jump to the selected section's source line in the Editor |
-| `back` | `Esc` | Return to the previous view mode |
-| `help` | `?`, `F1` | Open the help screen at the Outline tab |
+| `open` | `Enter`, `o` | Jump to the selected section's source line in the Editor |
+| `back` | `Esc`, `q` | Return to the previous view mode |
+| `help` | `?`, `F1` | Open contextual help (Outline currently maps to Notes; no separate Outline tab exists) |
 
 ---
 

@@ -790,6 +790,19 @@ fn about_help_text(
         theme,
         tab,
     ));
+    rows.push(about_cli_row(
+        "clin --vault <PATH>",
+        "Override vault for this run",
+        theme,
+        tab,
+    ));
+    rows.push(about_cli_row(
+        "clin --setup",
+        "Force setup wizard",
+        theme,
+        tab,
+    ));
+    rows.push(about_cli_row("clin --version", "Show version", theme, tab));
     rows.push(about_cli_row("clin --help", "Show CLI help", theme, tab));
     rows.push(help_empty_row(tab));
     rows.push(about_cli_row(
@@ -799,14 +812,20 @@ fn about_help_text(
         tab,
     ));
     rows.push(about_cli_row(
-        "clin notes new [TITLE]",
-        "Create note + open TUI",
+        "clin notes new [OPTIONS] [TITLE]",
+        "Create note; --body/--no-tui skips TUI",
         theme,
         tab,
     ));
     rows.push(about_cli_row(
         "clin notes open <TITLE>",
         "Open existing note",
+        theme,
+        tab,
+    ));
+    rows.push(about_cli_row(
+        "clin notes cat <TITLE>",
+        "Print note body to stdout",
         theme,
         tab,
     ));
@@ -888,13 +907,20 @@ fn about_help_text(
     ));
     rows.push(about_cli_row(
         "clin config edit",
-        "Open config in $EDITOR",
+        "Open config in $VISUAL or $EDITOR",
         theme,
         tab,
     ));
     rows.push(about_cli_row(
         "clin config reset",
         "Reset config to defaults",
+        theme,
+        tab,
+    ));
+    rows.push(help_empty_row(tab));
+    rows.push(about_cli_row(
+        "clin cache reset",
+        "Remove current vault's note-summary cache",
         theme,
         tab,
     ));

@@ -40,7 +40,7 @@ Canvas files are JSON with a `.canvas` extension. Schema:
 | `group` | `GroupNode` | Container with label; visually groups child nodes |
 | `image` | `FileNode` | References an image file by path (rendered as a `file` type node in JSON); renders using terminal graphics (Sixel/Kitty) if supported, or as a filled block/icon placeholder |
 
-All nodes share fields: `id` (UUID), `x`, `y`, `width`, `height`, `color` (optional hex/rgb/named).
+All nodes share fields: `id` (string; clin creates UUIDs), `x`, `y`, `width`, `height`, `color` (optional color string). Text/file/link nodes also support an optional `title`; text nodes support `shape` (`rectangle`, `diamond`, `circle`, `cylinder`, `stadium`). Canvas data adds `orientation` (`topDown`, `leftRight`, `rightLeft`, `downTop`).
 
 ### Edge Schema
 
@@ -55,12 +55,15 @@ pub struct CanvasEdge {
     pub to_side: Option<String>,
     pub label: Option<String>,
     pub color: Option<String>,
+    pub style: EdgeStyle, // solid (default), dashed, dotted, thick
 }
 ```
 
 ### Obsidian Compatibility
 
-The `.canvas` format matches Obsidian's canvas JSON spec exactly. Files created by clin can be opened in Obsidian and vice versa. `CanvasNode` variants map 1:1 to Obsidian's node types.
+The four node types and common node/edge fields follow Obsidian's JSON Canvas format. Image nodes are `file` nodes, not a fifth serialized type. Pinstar adds titles, text-node shapes, orientation, and edge styles.
+
+Compatibility is not a guarantee of lossless round-tripping every Obsidian property: the typed schema does not retain arbitrary unknown fields (for example unsupported edge-end or group-background properties). Back up externally authored canvas files before editing them in clin.
 
 ---
 
@@ -89,9 +92,9 @@ The `.canvas` format matches Obsidian's canvas JSON spec exactly. Files created 
 | Action | Gesture |
 |---|---|
 | Select node | Left-click on node |
-| Select group | Left-click on empty area, drag rectangle |
+| Rectangle-select nodes | Right-click-drag |
 | Move node | Left-click-drag on node body |
-| Pan canvas | Left-click-drag on empty space (or Middle-click-drag, or Ctrl+left-drag) |
+| Pan canvas | Left-click-drag on empty space or middle-click-drag |
 | Zoom | Scroll wheel (zooms to cursor) |
 | Resize node | Drag bottom-right corner handle |
 | Context menu | Right-click on node or empty space |
@@ -106,11 +109,14 @@ The `.canvas` format matches Obsidian's canvas JSON spec exactly. Files created 
 | `+` / `-` | Zoom in / out |
 | `a` | Open context menu (add node / edge) |
 | `Enter` | Edit selected text node |
-| `Delete` | Delete selected node / edge |
+| `x` | Delete selected node(s) |
+| `d` | Start connection deletion |
 | `Esc` | Deselect / exit canvas |
 | `Ctrl+S` | Save canvas |
-| `Ctrl+G` | Toggle grid |
-| `Tab` | Toggle between canvas view and raw JSON editor |
+| `Shift+G` | Toggle grid |
+| `Ctrl+e` | Show/hide raw JSON editor pane |
+| `Tab` / `Shift+Tab` | Cycle focus between visible panes |
+| `Ctrl+z` / `Ctrl+y` | Undo / redo |
 | `?` / `F1` | Open help |
 
 ---
@@ -128,7 +134,8 @@ pub struct PinstarState {
     pub viewport_x: f64,
     pub viewport_y: f64,
     pub zoom: f64,
-    pub selected_node_id: Option<String>,
+    pub selection: Selection<String>,
+    pub selected_edge_id: Option<String>,
     pub floating_editor: Option<TextArea<'static>>,
     pub raw_editor: TextArea<'static>,
     pub editor_focus: bool,
@@ -139,7 +146,7 @@ pub struct PinstarState {
     pub deleting_connection_source_id: Option<String>,
     pub show_editor_pane: bool,
     pub drag_captured_nodes: HashSet<String>,
-    pub grid: CanvasGridState,
+    pub show_grid: bool,
     pub mouse_selecting: bool,
     pub mouse_dragged: bool,
     pub help_requested: bool,
@@ -154,7 +161,7 @@ pub struct PinstarContextMenu {
     pub x: u16,
     pub y: u16,
     pub selected: usize,
-    pub items: Vec<String>,
+    pub items: Vec<MenuItemSpec>,
     pub menu_type: PinstarMenuType,  // Canvas, Editor, ColorPicker
 }
 ```
@@ -202,10 +209,10 @@ Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's 
 - Viewport transform: screen coordinates = (world - viewport) * zoom
 - Nodes are drawn as bordered rectangles with type-specific labels
 - Edges are drawn as lines between node centers at specified sides
-- Shared adaptive dot grid is drawn when `grid.visible` is enabled
+- Upstream grid is drawn when `show_grid` is enabled
 - Context menu renders as a popup at cursor position
 - Floating text editor renders within the selected text node area
-- Raw JSON editor is available via `Tab` toggle — full TextArea with entire canvas JSON
+- Raw JSON editor is shown/hidden with `Ctrl+e`; `Tab` changes focus — full TextArea with entire canvas JSON
 
 ---
 
@@ -214,4 +221,4 @@ Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — overall state machine and event loop
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateCanvasAction` (Ctrl+P → New Canvas)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — data flow and storage overview
-- [ENCRYPTION.md](ENCRYPTION.md) — canvas files are not encrypted; only `.clin` notes are
+- [ENCRYPTION.md](ENCRYPTION.md) — canvas uses plaintext JSON; generic note-encryption conversion is not a supported canvas workflow

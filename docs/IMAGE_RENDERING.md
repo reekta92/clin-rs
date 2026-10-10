@@ -2,7 +2,7 @@
 
 ## Overview
 
-Native pixel image rendering via the `ratatui_image` crate. The protocol is auto-detected at startup from sixel, kitty, iTerm, or halfblocks (picker initialized in `src/lib.rs:785`).
+Native pixel image rendering via the `ratatui_image` crate. The protocol is auto-detected at startup from sixel, kitty, iTerm, or halfblocks (picker initialized during application startup).
 
 **Source:** `src/image_render/` (`mod.rs`, `cache.rs`, `worker.rs`)
 
@@ -10,28 +10,28 @@ Native pixel image rendering via the `ratatui_image` crate. The protocol is auto
 
 The image rendering pipeline consists of three layers:
 
-- **ImageKey** (`mod.rs`) — composite key of `{ path, mtime }` used for cache lookups and staleness checks.
-- **ImageCache** (`cache.rs`) — LRU cache with methods `request`, `install_decoded`, `get_proto`, `evict_stale`. Decoded images are stored by key and evicted when the cache exceeds its configured entry count.
-- **Background worker** (`worker.rs::spawn()`) — spawns a thread communicating via `(tx, rx)` channels, processing `ImageJob::Decode` requests and returning `DecodedImage` results. A `TRANSFORM_SETTLE = 150ms` debounce prevents redundant decode requests during rapid view changes.
+- **Cache key** — image `PathBuf`; modification time is not part of the key. Replacing an image at the same path can leave cached pixels until the entry is evicted or the view cache is recreated.
+- **ImageCache** (`cache.rs`) — per-view LRU with `request`, `install_decoded`, and `get_proto`. Entries start pending, then receive a terminal-protocol renderer; capacity is at least one entry.
+- **Background worker** (`worker.rs::spawn()`) — consumes `ImageJob { key, max_dim }`, decodes/downscales the image, and returns `Result<DecodedImage>`. It drains queued jobs after each decode; the worker has no 150 ms debounce. Call sites set decode bounds; there is no `[image] max_dimension` config key.
 
 ## Integration Points
 
 | Location | Usage |
 |---|---|
-| `src/ui/edit_view.rs:382-385` | Editor preview pane |
-| `src/ui/list_view.rs:1752-1797` | Notes list preview pane |
-| `src/draw/render.rs`, upstream `pinstar` crate (`render.rs`, `images` feature) | Canvas/draw image nodes |
-| `src/app/loading.rs:839` | `install_image` helper |
-| `src/app/notes.rs:919-921` | View-level `ImageCache` initialization |
-| `src/app/views.rs:174` | Per-view `ImageCache` creation with `config.image.cache_size` |
+| `src/ui/edit_view.rs` | Markdown editor preview images |
+| `src/ui/list_view.rs` | Notes list previews, including image files |
+| upstream `pinstar` crate (`images` feature), `src/pinstar_adapter.rs` | Canvas image file nodes |
+| `src/app/loading.rs` | Install decoded images into active view caches |
+| `src/app/notes.rs`, `src/app/views.rs` | Per-view cache initialization |
+
+Draw v2 stores strokes, shapes, and text only. Legacy Draw image records are dropped during migration; Draw is not an image-rendering integration.
 
 ## Configuration
 
-The `[image]` section in `config.toml`:
+Use `[features] images` for the master toggle (default `true`, restart required). The `[image]` section configures rendering and attachment storage:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | bool | `true` | Master toggle for native pixel image rendering |
 | `cache_size` | usize | `32` | LRU cache entry count |
 | `preview_rows` | u8 | `8` | Rows occupied by preview images |
 | `attachments_subdir` | String | `"attachments"` | Subdirectory for pasted/imported image attachments |
@@ -39,8 +39,10 @@ The `[image]` section in `config.toml`:
 Example:
 
 ```toml
+[features]
+images = true
+
 [image]
-enabled = true
 cache_size = 32
 preview_rows = 8
 attachments_subdir = "attachments"
@@ -48,10 +50,10 @@ attachments_subdir = "attachments"
 
 ## Fallbacks
 
-When the terminal supports no pixel protocol, images fall back to placeholder blocks/icons (the existing behavior). When `enabled = false`, no decode work is scheduled and all images render as placeholders.
+When no pixel protocol is available, the picker can use halfblocks. Without an initialized picker, while decoding, or when `[features] images = false`, views use textual/placeholder fallbacks. Legacy `[image] enabled` is migrated and then ignored.
 
 ## Connections
 
 - [CANVAS.md](CANVAS.md) — image nodes on canvas
-- [DRAW.md](DRAW.md) — image rendering in draw view
+- [DRAW.md](DRAW.md) — Draw v2 schema and legacy image migration
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full configuration reference

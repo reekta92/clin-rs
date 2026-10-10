@@ -36,14 +36,15 @@ Located on the right side, the preview pane shows the diff for the currently sel
 - **Stage file**: Select a file from unstaged or untracked changes and press the stage shortcut to move it to staged changes.
 - **Unstage file**: Select a file from staged changes and press the unstage shortcut to return it to unstaged changes.
 - **Stage all changes**: Use a single action to stage all modified and untracked files at once.
-- **Pull from remote**: Fetch and merge the latest changes from the configured remote repository.
+- **Pull from remote**: Fetch and fast-forward the current branch from the configured remote. Diverged history aborts with `Merge required - pull aborted. Resolve manually.`; clin does not create merge commits.
 - **Commit Mode**: Pressing the commit shortcut opens an input mode where you can enter a commit message. Confirming the message creates a new commit with the staged changes.
 
 ### Settings and Automation
 The Backup view includes a settings popup (`EditSettings`) for configuring automation and remote synchronization:
-- **Auto-backup on Save**: Automatically create a commit whenever a note is saved.
+- **Save-triggered backups**: Current save/create paths queue backups whenever `[features] backup` is enabled. The `backup_on_save` setting is stored in the UI/config but is not checked by those paths; setting it to `false` does **not** stop these backups.
 - **Auto-backup on Quit**: Ensure all changes are committed when exiting the application.
-- **Auto-push**: Automatically push commits to a remote repository.
+- **Interval**: `auto_backup_interval` schedules backup jobs in minutes.
+- **Auto-push**: Automatically push backup commits to a remote repository when enabled.
 - **Remote Sync**: Configure the `remote_url` and `remote_name` (default: `origin`) for synchronizing with platforms like GitHub or GitLab.
 
 ---
@@ -53,13 +54,27 @@ The Backup view includes a settings popup (`EditSettings`) for configuring autom
 Backup settings can be configured in your `config.toml` under the `[backup]` section:
 
 ```toml
+[features]
+backup = true
+
 [backup]
-enabled = true
 backup_on_save = true
 backup_on_quit = true
 auto_push = false
 remote_url = "https://github.com/user/my-notes.git"
 remote_name = "origin"
 ```
+
+`[features] backup` defaults to `true`. Disable it and restart to stop the worker and hide the dashboard. Legacy `[backup] enabled` is migrated and then ignored.
+
+## Worker and Safety Limits
+
+`src/backup/worker.rs` owns background Git work. Save/interval jobs coalesce within a two-second window; quit flush bypasses that delay, with a bounded 15-second wait. Automatic backup initializes a Git repository if needed, stages **all** non-ignored changes, commits, and optionally pushes. It is not restricted to the note that triggered the job.
+
+**Protect vault data before pulling or publishing:**
+
+- The fast-forward pull uses a **forced checkout**, which can overwrite local working-tree changes. Commit or separately back up changes before pulling.
+- Git history keeps prior plaintext note content even after the current file is encrypted or deleted. Encryption is not retroactive; review history before pushing to a remote.
+- The encryption key lives outside the vault and is not included by normal vault backup. Back it up securely and separately.
 
 For a full list of options, see the [Configuration Reference](CONFIG_REFERENCE.md).

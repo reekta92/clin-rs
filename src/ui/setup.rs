@@ -31,7 +31,7 @@ A terminal note-taking app with `inline code`, **bold**, and _italics_.
 - Tags and folders
 - Encryption & backups
 
-> Your notes, encrypted at rest.
+> Encrypt individual notes from the command palette.
 
 ```rust
 fn main() {

@@ -2,13 +2,13 @@
 
 ## Overview
 
-The help view provides a 3-pane layout: a left pane with a keybind table for the active scope, a right-top pane with the tab description and popup accordion, and a right-bottom pane with curated tips. Users can press `?` or `F1` from any view to open help.
+The help view provides a 3-pane layout: a left pane with a keybind table for the active scope, a right-top pane with the tab description and popup accordion, and a right-bottom pane with curated tips. `F1` opens contextual help outside Setup; `?` is a navigation-view help binding, not a global shortcut inside text inputs. Closing Help restores the previous view.
 
 **Source:** `src/ui/help.rs`, `src/ui/help_content.rs`, `src/events/help.rs`, `src/keybinds/help_meta.rs`
 
 ## Tabs
 
-The help view has 8 tabs in order:
+The help view has up to 8 tabs in order. Disabled-feature tabs are omitted:
 
 | # | Tab | Description |
 |---|---|---|
@@ -21,7 +21,7 @@ The help view has 8 tabs in order:
 | 7 | **Templates** | Reusable note templates with variable substitution |
 | 8 | **About** | Application metadata, config paths, CLI reference |
 
-Digits `1`–`7` jump directly to the first seven tabs; the eighth tab (About) is reached via `Tab`/`Right`.
+Digits `1`–`8` jump to visible tabs by position; `Tab`/`Right` and `Shift+Tab`/`Left` cycle them. If a custom help binding matches a digit, it takes precedence.
 
 ## Keybind Index
 
@@ -39,14 +39,16 @@ The info pane (upper-right) shows the active tab's description plus a popup-help
 
 | Keybind | Scope | Description |
 |---|---|---|
-| `keybinds.show` | Global | Open help view |
-| `keybinds.next_tab` | `[help]` | Next tab |
-| `keybinds.prev_tab` | `[help]` | Previous tab |
-| `keybinds.scroll_up` | `[help]` | Scroll up |
-| `keybinds.scroll_down` | `[help]` | Scroll down |
-| `keybinds.search` | `[help]` | Search help content |
+| `F1` | Global | Open contextual help (except Setup) |
+| `close` | `[help]` | Close help and restore previous view |
+| `next_tab` | `[help]` | Next tab |
+| `prev_tab` | `[help]` | Previous tab |
+| `scroll_up` | `[help]` | Previous page |
+| `scroll_down` | `[help]` | Next page |
+| `search` | `[help]` | Search help content |
+| `reroll` | `[help]` | Refresh suggested tips |
 
-The digit-jump shortcuts (`1`–`8`) are fixed and not configurable in keybind files.
+Digit jumps (`1`–`8`) and popup accordion keys (`n`/`N`) are fallback handlers, not separate configurable actions. Bare `q`/`Esc` always close Help after any active search popup is handled.
 
 ## Connections
 
