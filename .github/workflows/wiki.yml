@@ -25,7 +25,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Test wiki generation
@@ -39,7 +39,7 @@ jobs:
       group: wiki-publish
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Always publish current main, even when an older run was queued.
           ref: main
