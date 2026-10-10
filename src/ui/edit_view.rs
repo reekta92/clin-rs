@@ -280,7 +280,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 Padding::new(1, 0, 0, 0)
             })
             .style(app.app_theme.preview_bg_style().fg(app.app_theme.text));
-        
+
         app.editor.frontmatter_rect = block.inner(metadata_area);
         super::render_textarea_with_theme(
             frame,
