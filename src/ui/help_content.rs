@@ -554,98 +554,98 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
 const NOTES_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Command Palette",
-        body: "Press {list:OpenCommandPalette} to open the **Command Palette** — a fuzzy launcher that runs any action by name without remembering its key. Type to filter the list; ``Tab`` / ``Shift+Tab`` cycle the available category tabs (All, Notes, Import, Append, Views, Settings). Move with ``Up`` / ``Down`` (wraps around) and run the highlighted action with ``Enter``; ``Esc`` closes. The palette opens scoped to the selected note, so note-specific actions apply to it.",
+        body: "Press {list:OpenCommandPalette} for **Command Palette**. Type to filter; ``Tab``/``Shift+Tab`` cycle tabs. Arrows move, ``Enter`` runs, ``Esc`` closes.",
     },
     PopupHelp {
         name: "Tags",
-        body: "Press {list:ManageTags} to open the **Tag Manager** for the selected note. Add tags as a comma-separated list in the input; ``Tab`` accepts the current suggestion or, once the list is empty, moves focus to the all-tags list (``Shift+Tab`` reverses). In the all-tags list, ``k`` / ``j`` or arrows move and ``d`` / ``Delete`` removes a tag. Use **Select Mode** (``{list:ToggleSelectMode}``) then ``{list:ManageTags}`` to batch-tag multiple notes. In Select Mode, ``{list:RemoveTagsFromSelected}`` opens a popup to remove tags from all selected notes. Removing a tag asks for confirmation first.",
+        body: "Press {list:ManageTags} for **Tag Manager**. Type comma-separated tags; ``Tab`` accepts or focuses list. Arrows move, ``d`` removes. Use **Select Mode** ({list:ToggleSelectMode}) then {list:ManageTags} to batch-tag. {list:RemoveTagsFromSelected} batch-removes.",
     },
     PopupHelp {
         name: "Subnotes",
-        body: "Press {list:ManageSubnotes} to open the **Subnotes** manager — child notes attached to the selected note. Subnotes saved under encrypted parents use encryption; plaintext-parent subnotes use only XOR obfuscation. In the list pane, ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits it; ``Tab`` cycles focus list → title → content. ``Ctrl+e`` hands the current subnote to your external editor. Notes that carry subnotes show a ⧉ marker in the notes list. Closing the popup auto-saves whenever anything changed.",
+        body: "Press {list:ManageSubnotes} for **Subnotes**. Arrows move, ``n`` adds, ``d`` removes, ``Enter`` edits. ``Tab`` cycles focus, ``Ctrl+e`` opens external editor. Auto-saves on close. Parents show ⧉.",
     },
     PopupHelp {
         name: "Search",
-        body: "Press {list:Search} for **full-vault search** — it matches note titles and also greps note bodies, grouping content hits per note. Type to search live; ``Tab`` toggles between the input and the results. In the results, ``j`` / ``k`` or arrows move, ``l`` / ``Space`` expands a note's matched lines, and ``Enter`` jumps to the selected note. ``Esc`` cancels and returns to the list.",
+        body: "Press {list:Search} for **Vault Search** (titles & bodies). ``Tab`` toggles input/results. Arrows move, ``Space`` expands lines, ``Enter`` jumps to note, ``Esc`` closes.",
     },
     PopupHelp {
         name: "Trash",
-        body: "Press {list:OpenTrash} to open the **Trash** view and recover or permanently destroy deleted notes. Move with ``k`` / ``Up`` and ``j`` / ``Down``; ``r`` or ``Enter`` restores the selected note, ``d`` / ``Delete`` deletes it permanently, and ``E`` empties the whole trash. Restore, permanent delete, and empty each ask for confirmation before acting. ``Esc`` closes the view; restoring into an otherwise-empty trash closes it automatically.",
+        body: "Press {list:OpenTrash} for **Trash**. Arrows move, ``r``/``Enter`` restores, ``d`` deletes permanently, ``E`` empties all. ``Esc`` closes.",
     },
     PopupHelp {
         name: "Outline",
-        body: "Open the note's **Outline** to browse its markdown headers as a collapsible tree. Move with {outline:MoveUp} / {outline:MoveDown}, fold or unfold a section with {outline:ToggleCollapse}, and expand or collapse every heading at once with {outline:ExpandAll} / {outline:CollapseAll}. Press {outline:Open} on a heading to jump straight to that line in the editor, {outline:Back} to return to the note, or {outline:Help} for an in-view key guide.",
+        body: "**Outline** shows markdown headers. Move: {outline:MoveUp}/{outline:MoveDown}. Toggle fold: {outline:ToggleCollapse}. Fold all: {outline:CollapseAll}/{outline:ExpandAll}. {outline:Open} jumps to line.",
     },
 ];
 
 const EDITOR_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Subnotes",
-        body: "Press {edit:ManageSubnotes} while editing to open the **Subnotes** manager without leaving the editor — attach child notes to the note you are editing. Plaintext-parent subnotes use only XOR obfuscation, not encryption. In the list pane ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits; ``Tab`` cycles focus list → title → content and ``Ctrl+e`` hands the current subnote to your external editor. Closing the popup auto-saves whenever anything changed; notes carrying subnotes show a ⧉ marker in the list.",
+        body: "Press {edit:ManageSubnotes} for **Subnotes** in editor. Arrows move, ``n`` adds, ``d`` removes, ``Enter`` edits. ``Tab`` cycles focus, ``Ctrl+e`` external editor. Auto-saves on close.",
     },
     PopupHelp {
         name: "Context Menu",
-        body: "``Right-click`` the title or body to open the **Context Menu** with clipboard actions — Copy, Cut, Paste, Select All — applied to whichever field is focused. Move with ``k`` / ``j`` or arrows, run an item with ``Enter``, and ``Esc`` closes. The markdown preview is an inline toggle pane, not a popup.",
+        body: "``Right-click`` for **Context Menu** (Copy, Cut, Paste, Select All). Arrows move, ``Enter`` runs, ``Esc`` closes.",
     },
     PopupHelp {
         name: "Find in File",
-        body: "Press {edit:Find} to open the **Find in File** overlay — a header-bar search that matches text across the current note. Type to filter live; ``Up`` / ``Down`` or ``Tab`` / ``Shift+Tab`` cycle through matches, and ``Enter`` jumps the cursor to the selected result. ``Esc`` closes the overlay.",
+        body: "Press {edit:Find} for **Find in File**. Type to filter; ``Up``/``Down`` cycle matches, ``Enter`` jumps to result, ``Esc`` closes.",
     },
     PopupHelp {
         name: "Outline",
-        body: "Press {edit:ToggleOutline} to dock an **Outline** sidebar listing the note's markdown headers as a collapsible tree. Use {edit:CycleFocus} to move focus into the pane, ``k`` / ``j`` or arrows to select a header, and ``Enter`` to jump the cursor to that line. {outline:ExpandAll} / {outline:CollapseAll} fold or unfold every heading at once.",
+        body: "Press {edit:ToggleOutline} for **Outline** sidebar. {edit:CycleFocus} focuses pane. Arrows select, ``Enter`` jumps. Fold all: {outline:CollapseAll}/{outline:ExpandAll}.",
     },
     PopupHelp {
         name: "Links",
-        body: "Press {edit:ToggleLinks} to dock a **Links** sidebar listing outgoing and incoming links for the current note. ``k`` / ``j`` or arrows move between links and ``Enter`` opens the selected note in the editor.",
+        body: "Press {edit:ToggleLinks} for **Links** sidebar. Arrows move, ``Enter`` opens selected note.",
     },
 ];
 
 const GRAPH_POPUPS: &[PopupHelp] = &[PopupHelp {
     name: "Search",
-    body: "Press {graph:ToggleSearch} to open the **Search** overlay and jump to any node by title or tag. Type to filter live (``Backspace`` / ``Delete`` edit, ``Ctrl+u`` clears, arrows move the cursor); ``Up`` / ``Down`` or ``Tab`` / ``Shift+Tab`` move between matches and ``Enter`` centers the canvas on the selected node and closes the overlay. ``Esc`` cancels. The minimap, legend, grid, status bar, and preview are separate inline toggles, each with its own key in the table.",
+    body: "Press {graph:ToggleSearch} for **Search**. Type to filter; ``Up``/``Down`` move. ``Enter`` centers canvas on node. ``Esc`` closes.",
 }];
 
 const DRAW_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Shape Selector",
-        body: "Press {draw:ToggleShapeSelector} to open the **Shape Selector** and choose a shape. ``Up`` / ``Down`` cycle the shape types, ``Enter`` confirms and switches to the Shape tool (then click-drag on the canvas to draw it), and ``Esc`` cancels. The pen, text, and eraser tools each have their own key in the table.",
+        body: "Press {draw:ToggleShapeSelector} for **Shape Selector**. ``Up``/``Down`` cycle, ``Enter`` confirms shape. Click-drag to draw.",
     },
     PopupHelp {
         name: "Text Editor",
-        body: "Double-click an existing text label in Cursor mode to open the **Text Editor**. Type to edit; ``Enter`` saves one draw change and writes the ``.draw`` file; ``Esc`` discards. To create text, pick Text tool and left-click empty canvas.",
+        body: "Double-click text in Cursor mode for **Text Editor**. Type to edit, ``Enter`` saves, ``Esc`` discards.",
     },
 ];
 
 const CANVAS_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Context Menu",
-        body: "Press {canvas:OpenContextMenu} to open the **Context Menu** for the selected node — or for the canvas when nothing is selected. ``k`` / ``j`` or arrows move, ``Enter`` runs the item, ``Esc`` closes. Actions include editing, renaming, connecting, recoloring, and deleting the focused node.",
+        body: "Press {canvas:OpenContextMenu} for **Context Menu**. Arrows move, ``Enter`` runs action, ``Esc`` closes.",
     },
     PopupHelp {
         name: "Node Editor",
-        body: "Press {canvas:EditOrConnect} on a selected node to open its **floating editor** and edit the node's text in place — every keystroke autosaves. Close it with ``Esc`` (the CloseEditor key). If a connection is already in progress, this same key completes the edge to the target node instead.",
+        body: "Press {canvas:EditOrConnect} to open **floating editor**. Type to edit (autosaves), ``Esc`` closes. Also completes connections.",
     },
     PopupHelp {
         name: "Editor Pane & Rename",
-        body: "Press {canvas:ToggleEditorPane} to toggle a side **editor pane** showing the selected node's full raw text; {canvas:CycleFocus} moves the cursor into it. A **rename popup** (type a new node ID, ``Enter`` confirms, ``Esc`` cancels) is reached from the context menu.",
+        body: "Press {canvas:ToggleEditorPane} for side **editor pane**. {canvas:CycleFocus} moves focus into it.",
     },
 ];
 
 const BACKUP_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Commit Message",
-        body: "Press {backup:EnterCommit} to open the **commit-message editor** and describe the staged changes. Type your message, then ``Enter`` (ConfirmCommit) commits — empty messages are rejected. ``Esc`` (CancelCommit) returns to the dashboard without committing. The diff pane beside it scrolls with its own keys.",
+        body: "Press {backup:EnterCommit} for **commit editor**. Type message, ``Enter`` commits. ``Esc`` cancels.",
     },
     PopupHelp {
         name: "Settings",
-        body: "Press {backup:OpenSettings} to open the **backup settings** editor and toggle auto-backup inline. ``Tab`` / ``Shift+Tab`` (NextField / PrevField) move between fields; ``Enter`` (ActivateField) flips a toggle or opens a text field (remote URL / name) for typing. Choose **Save** to persist and close, or ``Esc`` (CloseSettings) to discard.",
+        body: "Press {backup:OpenSettings} for **backup settings**. ``Tab`` moves, ``Enter`` toggles/edits. Save to persist, ``Esc`` discards.",
     },
 ];
 
 const TEMPLATES_POPUPS: &[PopupHelp] = &[PopupHelp {
     name: "Template Picker",
-    body: "Press {list:NewFromTemplate} to open the **template picker** and start a new note from a template. Type to search (``Tab`` swaps focus between the search box and the results); in the results ``Up`` / ``Down`` move and ``Enter`` generates a new note with date tokens filled. From the results, ``Space`` edits a template, ``d`` deletes one (asks confirmation), ``n`` creates a new template, and ``?`` jumps to template help.",
+    body: "Press {list:NewFromTemplate} for **template picker**. Type to search, ``Tab`` switches focus. Arrows move, ``Enter`` creates note. In results: ``Space`` edits, ``d`` deletes, ``n`` creates template.",
 }];
 #[cfg(test)]
 mod tests {

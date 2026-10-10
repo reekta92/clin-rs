@@ -1162,17 +1162,12 @@ fn draw_help_info_pane(
     if !popups.is_empty() {
         let active = active.min(popups.len() - 1);
         lines.push(Line::default());
-        lines.push(Line::from(Span::styled(
-            "Popups & Overlays",
-            Style::default()
-                .fg(theme.heading)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::default());
-        // Name list — all names always visible; active marked and highlighted.
-        for (i, p) in popups.iter().enumerate() {
+
+        // Render popups/overlays as horizontal chevrons
+        let mut chevron_spans = Vec::new();
+        for i in 0..popups.len() {
             let is_active = i == active;
-            let marker = if is_active { "▼ " } else { "› " };
+            let marker = if is_active { "▼" } else { "›" };
             let style = if is_active {
                 Style::default()
                     .fg(theme.accent)
@@ -1180,14 +1175,22 @@ fn draw_help_info_pane(
             } else {
                 Style::default().fg(theme.muted)
             };
-            lines.push(Line::from(Span::styled(
-                format!("{marker}{}", p.name),
-                style,
-            )));
+
+            if i > 0 {
+                chevron_spans.push(Span::raw(" "));
+            }
+            chevron_spans.push(Span::styled(marker, style));
         }
-        lines.push(Line::default());
-        // Only the active popup's description renders.
+        lines.push(Line::from(chevron_spans));
+
+        // Active popup name and description
         let p = &popups[active];
+        lines.push(Line::from(Span::styled(
+            p.name,
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        )));
         lines.push(Line::from(render_tip_body(p.body, keybinds, theme)));
     }
 
