@@ -2621,10 +2621,10 @@ word_goal = 1200
         };
         let mut app = App::new(storage).expect("value is present");
 
-        app.adjust_calendar_height(-20);
+        app.adjust_calendar_height_to(0);
         assert_eq!(app.list.calendar_height, 9);
 
-        app.adjust_calendar_height(50);
+        app.adjust_calendar_height_to(50);
         assert_eq!(app.list.calendar_height, 20);
     }
 

@@ -1626,7 +1626,7 @@ where
             match ev {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     let handled = match app.mode {
-                        ViewMode::List => handle_list_keys(app, key),
+                        ViewMode::List => handle_list_keys(app, key, area),
                         ViewMode::Help => {
                             handle_help_keys(app, key);
                             false

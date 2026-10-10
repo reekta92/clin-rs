@@ -123,18 +123,46 @@ impl App {
         }
     }
 
-    pub fn adjust_preview_width(&mut self, delta: f32) {
-        self.adjust_preview_width_to(self.list.preview_width_ratio + delta);
-        self.persist_list_layout();
+    pub fn adjust_preview_width(&mut self, delta: i16, terminal_area: ratatui::layout::Rect) {
+        if terminal_area.width == 0 || self.preview_fullscreen {
+            return;
+        }
+        let (_, preview, _) = crate::ui::list_view_layout(
+            terminal_area,
+            self.list.preview_enabled,
+            self.preview_position,
+            self.list.calendar_enabled,
+            self.preview_fullscreen,
+            self.list.preview_width_ratio,
+            self.list.calendar_height,
+            self.config.list.calendar_position,
+        );
+        if let Some(preview) = preview {
+            let width = preview.width.saturating_add_signed(delta);
+            self.adjust_preview_width_to(width as f32 / terminal_area.width as f32);
+            self.persist_list_layout();
+        }
     }
 
     pub fn adjust_preview_width_to(&mut self, ratio: f32) {
         self.list.preview_width_ratio = ratio.clamp(0.2, 0.8);
     }
 
-    pub fn adjust_calendar_height(&mut self, delta: i16) {
-        self.adjust_calendar_height_to(self.list.calendar_height.saturating_add_signed(delta));
-        self.persist_list_layout();
+    pub fn adjust_calendar_height(&mut self, delta: i16, terminal_area: ratatui::layout::Rect) {
+        let (_, _, calendar) = crate::ui::list_view_layout(
+            terminal_area,
+            self.list.preview_enabled,
+            self.preview_position,
+            self.list.calendar_enabled,
+            self.preview_fullscreen,
+            self.list.preview_width_ratio,
+            self.list.calendar_height,
+            self.config.list.calendar_position,
+        );
+        if let Some(calendar) = calendar {
+            self.adjust_calendar_height_to(calendar.height.saturating_add_signed(delta));
+            self.persist_list_layout();
+        }
     }
 
     pub fn adjust_calendar_height_to(&mut self, height: u16) {
