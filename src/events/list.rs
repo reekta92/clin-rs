@@ -7,7 +7,7 @@ use crate::list_view::ListMode;
 
 use super::contains_cell;
 
-pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+pub fn handle_list_keys(app: &mut App, key: KeyEvent, terminal_area: Rect) -> bool {
     // Snap-only: first key after scrollbar pan snaps viewport back to
     // selection and is consumed.
     if app.list.list_viewport_offset.take().is_some() {
@@ -19,43 +19,29 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.toggle_layout_edit();
                 return false;
             }
-            KeyCode::Left => {
+            KeyCode::Left | KeyCode::Char('h' | 'H') => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    0.02
+                    1
                 } else {
-                    -0.02
+                    -1
                 };
-                app.adjust_preview_width(delta);
+                app.adjust_preview_width(delta, terminal_area);
             }
-            KeyCode::Right => {
+            KeyCode::Right | KeyCode::Char('l' | 'L') => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    -0.02
+                    -1
                 } else {
-                    0.02
+                    1
                 };
-                app.adjust_preview_width(delta);
+                app.adjust_preview_width(delta, terminal_area);
             }
-            KeyCode::Up => app.adjust_calendar_height(1),
-            KeyCode::Down => app.adjust_calendar_height(-1),
+            KeyCode::Up | KeyCode::Char('k' | 'K') => {
+                app.adjust_calendar_height(1, terminal_area);
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') => {
+                app.adjust_calendar_height(-1, terminal_area);
+            }
             KeyCode::Char('s') | KeyCode::Char('S') => app.swap_preview_position(),
-            KeyCode::Char('h') | KeyCode::Char('H') => {
-                let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    0.02
-                } else {
-                    -0.02
-                };
-                app.adjust_preview_width(delta);
-            }
-            KeyCode::Char('l') | KeyCode::Char('L') => {
-                let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    -0.02
-                } else {
-                    0.02
-                };
-                app.adjust_preview_width(delta);
-            }
-            KeyCode::Char('k') | KeyCode::Char('K') => app.adjust_calendar_height(1),
-            KeyCode::Char('j') | KeyCode::Char('J') => app.adjust_calendar_height(-1),
             KeyCode::Char('c') | KeyCode::Char('C') => app.swap_calendar_position(),
             KeyCode::Tab => app.swap_section_order(),
             KeyCode::Char(' ') => {
@@ -805,13 +791,21 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         let current = app.list.list_state.selected().unwrap_or(0);
         app.list.list_state.select(Some(current.saturating_sub(1)));
 
-        handle_list_keys(app, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        handle_list_keys(
+            app,
+            KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+            terminal_area,
+        );
         return;
     }
 
     if mouse_event.kind == MouseEventKind::ScrollDown {
         app.list.list_viewport_offset = None;
-        handle_list_keys(app, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        handle_list_keys(
+            app,
+            KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+            terminal_area,
+        );
         return;
     }
 
@@ -1283,21 +1277,21 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
                 let area_right = terminal_area.x.saturating_add(terminal_area.width);
                 let preview_cols = match app.preview_position {
                     crate::config::PreviewPosition::Right => {
-                        area_right.saturating_sub(mouse.column)
+                        area_right.saturating_sub(mouse.column).saturating_sub(1)
                     }
                     crate::config::PreviewPosition::Left => {
                         mouse.column.saturating_sub(terminal_area.x)
                     }
                 };
-                let ratio = preview_cols as f32 / terminal_area.width as f32;
-                app.adjust_preview_width_to(ratio);
+                if terminal_area.width > 0 {
+                    let ratio = preview_cols as f32 / terminal_area.width as f32;
+                    app.adjust_preview_width_to(ratio);
+                }
             }
             Some(crate::app::LayoutDrag::HDivider) => {
                 let new_h = match app.config.list.calendar_position {
                     crate::config::CalendarPosition::Bottom => col_bot.saturating_sub(mouse.row),
-                    crate::config::CalendarPosition::Top => {
-                        mouse.row.saturating_sub(col_top).saturating_add(1)
-                    }
+                    crate::config::CalendarPosition::Top => mouse.row.saturating_sub(col_top),
                 };
                 app.adjust_calendar_height_to(new_h);
             }

@@ -11,7 +11,7 @@ use ratatui::{
 /// handler can hit-test without re-running layout math.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ScrollbarMeta {
-    pub track: Rect,         // rightmost 1-column gutter of the scrollable inner area
+    pub track: Rect,         // 1-column gutter or shared preview divider
     pub content_len: usize,  // total scrollable units
     pub viewport_len: usize, // visible units
 }
@@ -23,6 +23,15 @@ pub fn track_rect(area: Rect) -> Rect {
         y: area.y,
         width: 1,
         height: area.height,
+    }
+}
+
+/// Use the preview divider as the track when present, otherwise the usual gutter.
+/// Keep the track aligned with the scrollable pane, not adjacent calendar rows.
+pub fn pane_track_rect(area: Rect, divider: Option<Rect>) -> Rect {
+    match divider {
+        Some(divider) => Rect::new(divider.x, area.y, divider.width.min(1), area.height),
+        None => track_rect(area),
     }
 }
 
@@ -76,6 +85,7 @@ pub fn draw_scrollbar(
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         )
+        .track_symbol(Some("│"))
         .track_style(Style::default().fg(theme.muted))
         .begin_symbol(None)
         .end_symbol(None);
@@ -164,6 +174,49 @@ mod tests {
             track: Rect::new(79, cy, 1, ch),
             content_len,
             viewport_len,
+        }
+    }
+
+    #[test]
+    fn pane_track_uses_divider_column_and_pane_height() {
+        let pane = Rect::new(10, 6, 30, 12);
+        for divider in [Rect::new(9, 1, 1, 24), Rect::new(40, 1, 1, 24)] {
+            assert_eq!(
+                pane_track_rect(pane, Some(divider)),
+                Rect::new(divider.x, 6, 1, 12),
+            );
+        }
+        assert_eq!(pane_track_rect(pane, None), track_rect(pane));
+    }
+
+    #[test]
+    fn divider_remains_when_scrollbar_does_not_overflow() {
+        for content_len in [0, 10, 11] {
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(3, 10)).unwrap();
+            terminal
+                .draw(|frame| {
+                    let divider = Rect::new(1, 0, 1, 10);
+                    crate::ui::draw_dim_vline(frame, divider, AppThemeColors::default().muted);
+                    draw_scrollbar(
+                        frame,
+                        divider,
+                        content_len,
+                        10,
+                        0,
+                        content_len.saturating_sub(10),
+                        &AppThemeColors::default(),
+                    );
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            assert_eq!(
+                buffer.cell((1, 0)).unwrap().symbol(),
+                if content_len > 10 { "█" } else { "│" }
+            );
+            assert_eq!(buffer.cell((1, 9)).unwrap().symbol(), "│");
+            assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), " ");
+            assert_eq!(buffer.cell((2, 0)).unwrap().symbol(), " ");
         }
     }
 

@@ -121,6 +121,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::ManageSubnotes => meta("Editing", "Manage subnotes"),
         EditAction::ToggleMarkdownPreview => meta("Preview", "Toggle markdown preview"),
         EditAction::TogglePreviewFullscreen => meta("Preview", "Toggle preview fullscreen"),
+        EditAction::ToggleFrontmatter => meta("Display", "Toggle editable YAML frontmatter"),
         EditAction::ToggleZenMode => meta("Display", "Toggle zen mode (hide bars, pad text)"),
         EditAction::ToggleWrap => meta("Editing", "Toggle word wrap (editor and preview)"),
         EditAction::PreviewPageUp => meta("Preview", "Page preview up"),

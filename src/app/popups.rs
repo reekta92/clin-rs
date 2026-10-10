@@ -84,6 +84,9 @@ impl App {
     }
 
     fn open_template_path_in_editor(&mut self, path: &std::path::Path) {
+        if !self.save_before_editor_switch() {
+            return;
+        }
         if self.editor.external_editor_enabled {
             self.open_path_in_external_editor(path);
             self.sync_template_filename(path);
@@ -101,6 +104,7 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = None;
+        self.editor.reset_frontmatter(None, "");
         self.editor.template_edit_path = Some(path.to_path_buf());
         self.editor.title_editor = make_title_editor(
             &format!(

@@ -18,7 +18,11 @@ pub(crate) fn run_editor_session<B: ratatui::backend::Backend>(
 where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
-    let mut focus = EditFocus::Body;
+    let mut focus = if app.editor.frontmatter_visible {
+        EditFocus::Frontmatter
+    } else {
+        EditFocus::Body
+    };
     let mut mouse_selection = MouseTextSelection::default();
     let mut dirty = true;
     if let Some(change) = app.editor.body.take_change() {
@@ -73,21 +77,34 @@ where
         for event in coalesce_editor_events(pending) {
             let body_rev_before = app.editor.body.revision();
             let title_before = crate::events::get_title_text(&app.editor.title_editor).into_owned();
+            let frontmatter_before = app.editor.frontmatter_text();
+            let note_before = app.editor.editing_id.clone();
+            let saved_before = app.editor.last_saved_time;
 
             dirty |= dispatch_editor_event(terminal, app, event, &mut focus, &mut mouse_selection)?;
 
             let body_rev_after = app.editor.body.revision();
             let title_after = crate::events::get_title_text(&app.editor.title_editor).into_owned();
 
-            if body_rev_before != body_rev_after || title_before != title_after {
+            if body_rev_before != body_rev_after
+                || title_before != title_after
+                || frontmatter_before != app.editor.frontmatter_text()
+            {
+                *app.editor.modified_status_cache.borrow_mut() = None;
                 if body_rev_before != body_rev_after
                     && let Some(change) = app.editor.body.take_change()
                 {
                     synchronize_source_highlight(app, change);
                 }
-                app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
-                app.editor.autosave_timer =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+                if app.mode == ViewMode::Edit
+                    && app.editor.editing_id == note_before
+                    && app.editor.last_saved_time == saved_before
+                {
+                    app.write_draft();
+                    app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+                    app.editor.autosave_timer =
+                        Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+                }
                 dirty = true;
             }
             if app.mode != ViewMode::Edit || app.should_quit {
@@ -157,12 +174,15 @@ where
             // Ctrl+C copies when a text selection is active; otherwise it
             // force-quits (terminals always deliver the plain key).
             let has_selection = match *focus {
+                EditFocus::Frontmatter => app.editor.frontmatter_editor.has_selection(),
                 EditFocus::Title => app.editor.title_editor.has_selection(),
                 EditFocus::Body => app.editor.body.has_selection(),
                 EditFocus::Sidebar => false,
             };
             if has_selection {
-                let notice = if *focus == EditFocus::Title {
+                let notice = if *focus == EditFocus::Frontmatter {
+                    copy_mouse_selection(&mut app.editor.frontmatter_editor)
+                } else if *focus == EditFocus::Title {
                     copy_mouse_selection(&mut app.editor.title_editor)
                 } else {
                     copy_mouse_selection(&mut app.editor.body)
@@ -172,7 +192,9 @@ where
                 }
                 Ok(true)
             } else {
-                let _ = app.autosave();
+                if app.autosave().is_err() {
+                    return Ok(true);
+                }
                 crate::force_quit()
             }
         }

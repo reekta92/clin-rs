@@ -25,6 +25,8 @@ pub(crate) mod editor_document;
 pub(crate) mod editor_session;
 pub mod event_source;
 pub mod frontmatter;
+#[cfg(test)]
+mod frontmatter_tests;
 pub mod fsutil;
 pub mod goals;
 pub mod graf_adapter;
@@ -1624,7 +1626,7 @@ where
             match ev {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     let handled = match app.mode {
-                        ViewMode::List => handle_list_keys(app, key),
+                        ViewMode::List => handle_list_keys(app, key, area),
                         ViewMode::Help => {
                             handle_help_keys(app, key);
                             false

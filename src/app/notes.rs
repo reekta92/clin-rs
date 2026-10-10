@@ -309,7 +309,14 @@ impl App {
         }
     }
 
+    pub(crate) fn save_before_editor_switch(&mut self) -> bool {
+        self.mode != ViewMode::Edit || self.editor.editing_id.is_none() || self.autosave().is_ok()
+    }
+
     pub fn open_note_at_line(&mut self, note_id: &str, line_number: Option<usize>) {
+        if !self.save_before_editor_switch() {
+            return;
+        }
         if note_id.ends_with(".draw") {
             self.open_draw_view();
             return;
@@ -400,8 +407,71 @@ impl App {
         }
     }
 
+    pub(crate) fn restore_pending_editor_draft(&mut self) -> bool {
+        let Ok(Some(draft)) = self.storage.read_editor_draft() else {
+            return false;
+        };
+        if !Storage::supports_frontmatter(&draft.id) {
+            return false;
+        }
+        self.load_and_open_note(&draft.id, None);
+        if self.editor.editing_id.as_deref() == Some(&draft.id) {
+            self.set_temporary_status_static(
+                "Recovered unsaved draft; repair or save before switching notes",
+            );
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
-        if let Ok(note) = self.storage.load_note(note_id) {
+        let draft = self
+            .storage
+            .read_editor_draft()
+            .ok()
+            .flatten()
+            .filter(|draft| draft.id == note_id);
+        let loaded = self.storage.load_note_for_edit(note_id).or_else(|error| {
+            let Some(draft) = &draft else {
+                return Err(error);
+            };
+            let header = draft
+                .frontmatter
+                .as_ref()
+                .and_then(|edit| edit.original.clone());
+            Ok((
+                Note {
+                    title: draft.title.clone(),
+                    content: draft.content.clone(),
+                    updated_at: now_unix_secs(),
+                    tags: vec![],
+                },
+                header,
+            ))
+        });
+        if let Ok((mut note, header)) = loaded {
+            self.editor.reset_frontmatter(header, &note.title);
+            let mut recovered = false;
+            if let Some(draft) = draft {
+                note.title = draft.title;
+                note.content = draft.content;
+                if let Some(edit) = draft.frontmatter {
+                    self.editor.frontmatter_original = edit.original;
+                    self.editor.frontmatter_saved = edit.saved_text;
+                    self.editor.frontmatter_saved_title = edit.saved_title;
+                    self.editor.frontmatter_editor =
+                        ratatui_textarea::TextArea::from(edit.text.lines());
+                    self.editor.frontmatter_visible = true;
+                }
+                recovered = true;
+            }
+            self.editor.autosave_status = if recovered {
+                crate::editor::AutosaveStatus::Unsaved
+            } else {
+                crate::editor::AutosaveStatus::Saved
+            };
+            self.editor.autosave_timer = None;
             self.editor.editing_id = Some(note_id.to_string());
             self.editor.initial_word_count = crate::goals::count_words(&note.content);
             self.editor.title_editor = make_title_editor(
@@ -417,7 +487,8 @@ impl App {
                 ));
             }
             self.editor.body = body;
-            let (fm, _) = crate::frontmatter::parse(&note.content);
+            let fm =
+                crate::frontmatter::parse_yaml(&self.editor.frontmatter_text()).unwrap_or_default();
             self.editor.text_align = fm.text_align.unwrap_or(self.config.editor.text_align);
             self.apply_editor_prefs();
             self.rebuild_outline();
@@ -613,6 +684,9 @@ impl App {
     }
 
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
+        if !self.save_before_editor_switch() {
+            return;
+        }
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
@@ -647,6 +721,7 @@ impl App {
 
         self.mode = ViewMode::Edit;
 
+        self.editor.reset_frontmatter(None, &title);
         self.editor.editing_id = Some(id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
@@ -687,6 +762,9 @@ impl App {
         editor_title: String,
         content: String,
     ) {
+        if !self.save_before_editor_switch() {
+            return;
+        }
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() && !Self::is_virtual_path(folder) {
             new_id = format!("{folder}/{new_id}");
@@ -718,6 +796,7 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
+        self.editor.reset_frontmatter(None, &editor_title);
         self.editor.title_editor = make_title_editor(
             &editor_title,
             self.app_theme.highlight_fg,
@@ -730,6 +809,7 @@ impl App {
     }
 
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
+        self.editor.reset_frontmatter(None, "");
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
             if self.editor.template_edit_path.is_some() {
@@ -1156,6 +1236,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
+        self.editor.reset_frontmatter(None, &title);
         self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
         self.set_default_status();

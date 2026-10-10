@@ -2854,6 +2854,62 @@ mod markdown_highlight_tests {
     }
 
     #[test]
+    fn editor_preview_scrollbar_shares_divider() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+        app.editor.body = EditorDocument::from_lines((0..100).map(|i| format!("line {i}")));
+        app.editor.sidebar = crate::editor::EditSidebar::None;
+        app.config.ui.scrollbars = true;
+        app.zen_mode = false;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).expect("terminal");
+        for position in [
+            crate::config::PreviewPosition::Left,
+            crate::config::PreviewPosition::Right,
+        ] {
+            app.preview_position = position;
+            app.editor.editor_preview_enabled = true;
+            terminal
+                .draw(|frame| {
+                    super::edit_view::draw_edit_view(
+                        frame,
+                        &mut app,
+                        crate::editor::EditFocus::Body,
+                    )
+                })
+                .expect("render");
+            let track = app.editor.last_scroll.expect("editor scrollbar").track;
+            let width = app.editor.last_preview_pane_width;
+            let x = match position {
+                crate::config::PreviewPosition::Left => width,
+                crate::config::PreviewPosition::Right => 80 - width - 1,
+            };
+            assert_eq!(track.x, x);
+            let buffer = terminal.backend().buffer();
+            assert_eq!(buffer.cell((x, track.y)).unwrap().symbol(), "█");
+            assert_eq!(buffer.cell((x, track.bottom() - 1)).unwrap().symbol(), "│");
+            let old_gutter = match position {
+                crate::config::PreviewPosition::Left => 79,
+                crate::config::PreviewPosition::Right => x - 1,
+            };
+            for row in track.y..track.bottom() {
+                assert_ne!(buffer.cell((old_gutter, row)).unwrap().symbol(), "█");
+            }
+            app.editor.editor_preview_enabled = false;
+            terminal
+                .draw(|frame| {
+                    super::edit_view::draw_edit_view(
+                        frame,
+                        &mut app,
+                        crate::editor::EditFocus::Body,
+                    )
+                })
+                .expect("render");
+            assert_eq!(app.editor.last_scroll.unwrap().track.x, 79);
+        }
+    }
+
+    #[test]
     fn aligned_cursor_target_compensates_shift() {
         use crate::config::TextAlignment;
         use crate::editor::EditorVisualRow;

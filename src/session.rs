@@ -35,6 +35,9 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
         app.messages
             .push(msg, crate::app::messages::MessageSeverity::Fatal);
     }
+    if !first_run && !force_setup && app.restore_pending_editor_draft() {
+        return Ok(app);
+    }
     if first_run || force_setup {
         app.open_setup_view();
     }

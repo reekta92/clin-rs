@@ -257,7 +257,50 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         app.editor.header_title_rect = center_area;
     }
-    let body_area = outer_chunks[1];
+    let content_area = outer_chunks[1];
+    let metadata_height = app.editor.frontmatter_height(content_area.height);
+    let metadata_area = Rect::new(
+        content_area.x,
+        content_area.y,
+        content_area.width,
+        metadata_height,
+    );
+    app.editor.frontmatter_rect = Rect::default();
+    if metadata_height > 0 {
+        let block = Block::default()
+            .borders(if metadata_height >= 3 {
+                Borders::BOTTOM
+            } else {
+                Borders::NONE
+            })
+            .border_style(Style::default().fg(app.app_theme.muted))
+            .padding(if metadata_height >= 3 {
+                Padding::new(1, 0, 1, 0)
+            } else {
+                Padding::new(1, 0, 0, 0)
+            })
+            .style(app.app_theme.preview_bg_style().fg(app.app_theme.text));
+
+        app.editor.frontmatter_rect = block.inner(metadata_area);
+        super::render_textarea_with_theme(
+            frame,
+            &mut app.editor.frontmatter_editor,
+            metadata_area,
+            &app.app_theme,
+            focus == EditFocus::Frontmatter,
+            false,
+            block,
+            app.app_theme.preview_bg_style().fg(app.app_theme.text),
+        );
+        app.editor.frontmatter_viewport = super::refresh_textarea_viewport(
+            &app.editor.frontmatter_editor,
+            app.editor.frontmatter_viewport.0,
+            app.editor.frontmatter_viewport.1,
+            metadata_area,
+            false,
+        );
+    }
+    let body_area = crate::events::edit_body_area(area, metadata_height);
     let hint_area = outer_chunks[2];
 
     let layout = crate::events::compute_edit_layout(
@@ -283,6 +326,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let sidebar_area = layout.sidebar;
     let preview_area_rect = layout.preview;
     let splitter_area = layout.splitter;
+    if let Some(splitter) = splitter_area {
+        draw_dim_vline(frame, splitter, app.app_theme.muted);
+    }
 
     let editor_container = layout.body;
 
@@ -307,16 +353,19 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             // (src/ui/mod.rs:1516), which derives visible rows from
             // block.inner(area).
             let viewport_len = editor_container.height.saturating_sub(1) as usize;
-            let area = editor_container;
+            let track = crate::ui::scrollbar::pane_track_rect(
+                editor_container,
+                splitter_area.filter(|_| preview_area_rect.is_some()),
+            );
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(area),
+                track,
                 content_len,
                 viewport_len,
             };
             app.editor.last_scroll = Some(meta);
             crate::ui::scrollbar::draw_scrollbar(
                 frame,
-                area,
+                track,
                 content_len,
                 viewport_len,
                 app.editor.body_viewport_row as usize,
@@ -447,6 +496,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 kb.display_edit(EditAction::ToggleMarkdownPreview),
                 "preview",
             ),
+            (
+                kb.display_edit(EditAction::ToggleFrontmatter),
+                "frontmatter",
+            ),
             (kb.display_edit(EditAction::ToggleOutline), "outline"),
             (kb.display_edit(EditAction::ToggleLinks), "links"),
             (kb.display_edit(EditAction::Find), "find"),
@@ -478,9 +531,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             &app.app_theme,
         );
         draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
-    }
-    if let Some(splitter_area) = splitter_area {
-        draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {

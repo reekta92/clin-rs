@@ -988,6 +988,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.list.calendar_height,
         app.config.list.calendar_position,
     );
+    let divider_area = preview_area
+        .filter(|_| !app.preview_fullscreen)
+        .map(|preview| {
+            let x = if preview.x < list_area.x {
+                preview.right()
+            } else {
+                preview.x.saturating_sub(1)
+            };
+            Rect::new(x, preview.y, 1, preview.height)
+        });
+    if let Some(divider) = divider_area {
+        draw_dim_vline(frame, divider, app.app_theme.muted);
+    }
+    let scroll_track = crate::ui::scrollbar::pane_track_rect(list_area, divider_area);
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
         app.list.last_preview_pane_height = p.height;
@@ -1374,7 +1388,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
             if len > 0 && rows > 0 {
                 let meta = crate::ui::scrollbar::ScrollbarMeta {
-                    track: crate::ui::scrollbar::track_rect(list_area),
+                    track: scroll_track,
                     content_len: total_rows,
                     viewport_len: rows,
                 };
@@ -1384,7 +1398,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 } else if app.config.ui.scrollbars {
                     crate::ui::scrollbar::draw_scrollbar(
                         frame,
-                        list_area,
+                        scroll_track,
                         meta.content_len,
                         meta.viewport_len,
                         app.list.grid_scroll,
@@ -1500,7 +1514,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.render_stateful_widget(list, list_area, &mut rel_state);
             let content_len = total_len;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(list_area),
+                track: scroll_track,
                 content_len,
                 viewport_len,
             };
@@ -1513,7 +1527,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 };
                 crate::ui::scrollbar::draw_scrollbar(
                     frame,
-                    list_area,
+                    scroll_track,
                     content_len,
                     viewport_len,
                     pos,
@@ -1859,41 +1873,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         &app.app_theme,
     );
     draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
-    if app.list.preview_enabled && !app.preview_fullscreen {
-        let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
-        let constraints = match app.preview_position {
-            crate::config::PreviewPosition::Left => [
-                Constraint::Ratio(ratio_num, 100),
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ],
-            crate::config::PreviewPosition::Right => [
-                Constraint::Min(0),
-                Constraint::Length(1),
-                Constraint::Ratio(ratio_num, 100),
-            ],
-        };
-        let full_cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(chunks[1]);
-        if app.layout_edit {
-            let divider_area = full_cols[1];
-            let accent = app.app_theme.heading;
-            let buf = frame.buffer_mut();
-            for row in divider_area.top()..divider_area.bottom() {
-                if let Some(cell) = buf.cell_mut((divider_area.x, row)) {
-                    cell.set_char('║');
-                    cell.set_fg(accent);
-                }
-            }
-            let mid_row = divider_area.top() + divider_area.height / 2;
-            if let Some(cell) = buf.cell_mut((divider_area.x, mid_row)) {
-                cell.set_char('⇄');
+    if app.layout_edit
+        && let Some(divider_area) = divider_area
+    {
+        let accent = app.app_theme.heading;
+        let buf = frame.buffer_mut();
+        for row in divider_area.top()..divider_area.bottom() {
+            if let Some(cell) = buf.cell_mut((divider_area.x, row)) {
+                cell.set_char('║');
                 cell.set_fg(accent);
             }
-        } else {
-            draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+        }
+        let mid_row = divider_area.top() + divider_area.height / 2;
+        if let Some(cell) = buf.cell_mut((divider_area.x, mid_row)) {
+            cell.set_char('⇄');
+            cell.set_fg(accent);
         }
     }
     if app.layout_edit && app.list.calendar_enabled {
@@ -1943,11 +1937,12 @@ pub(crate) fn list_view_layout(
     }
 
     let (list_column, preview_area) = if preview_enabled {
-        let ratio_num = (preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
+        let preview_width =
+            (chunks[1].width as f32 * preview_width_ratio.clamp(0.2, 0.8)).round() as u16;
         let (constraints, list_idx, p_idx) = match preview_position {
             crate::config::PreviewPosition::Left => (
                 [
-                    Constraint::Ratio(ratio_num, 100),
+                    Constraint::Length(preview_width),
                     Constraint::Length(1),
                     Constraint::Min(0),
                 ],
@@ -1958,7 +1953,7 @@ pub(crate) fn list_view_layout(
                 [
                     Constraint::Min(0),
                     Constraint::Length(1),
-                    Constraint::Ratio(ratio_num, 100),
+                    Constraint::Length(preview_width),
                 ],
                 0,
                 2,
@@ -2286,7 +2281,9 @@ mod tests {
     use crate::app::ViewMode;
     use crate::config::CalendarPosition;
     use crate::config::PreviewPosition;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
     use ratatui::{Terminal, backend::TestBackend};
 
     fn grid_test_app(items: usize) -> (tempfile::TempDir, App) {
@@ -2334,6 +2331,123 @@ mod tests {
             row,
             modifiers: KeyModifiers::NONE,
         }
+    }
+
+    #[test]
+    fn preview_scrollbar_shares_divider_in_list_and_grid() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        for layout in [
+            crate::config::NotesLayout::Tree,
+            crate::config::NotesLayout::Grid,
+        ] {
+            for position in [PreviewPosition::Left, PreviewPosition::Right] {
+                for calendar in [
+                    None,
+                    Some(CalendarPosition::Top),
+                    Some(CalendarPosition::Bottom),
+                ] {
+                    let (_temp_dir, mut app) = grid_test_app(200);
+                    app.list.notes_layout = layout.clone();
+                    app.list.preview_enabled = true;
+                    app.preview_position = position;
+                    app.list.calendar_enabled = calendar.is_some();
+                    app.config.list.calendar_position =
+                        calendar.unwrap_or(CalendarPosition::Bottom);
+                    let mut terminal = Terminal::new(TestBackend::new(80, 32)).unwrap();
+                    draw_grid(&mut terminal, &mut app);
+                    let (list, preview, _) = list_view_layout(
+                        Rect::new(0, 0, 80, 32),
+                        true,
+                        position,
+                        calendar.is_some(),
+                        false,
+                        app.list.preview_width_ratio,
+                        app.list.calendar_height,
+                        app.config.list.calendar_position,
+                    );
+                    let preview = preview.unwrap();
+                    let meta = app.list.last_scroll.unwrap();
+                    let divider_x = match position {
+                        PreviewPosition::Left => preview.right(),
+                        PreviewPosition::Right => preview.x - 1,
+                    };
+                    assert_eq!(meta.track, Rect::new(divider_x, list.y, 1, list.height));
+                    let buffer = terminal.backend().buffer();
+                    assert_eq!(buffer.cell((divider_x, list.y)).unwrap().symbol(), "█");
+                    assert_eq!(
+                        buffer
+                            .cell((divider_x, meta.track.bottom() - 1))
+                            .unwrap()
+                            .symbol(),
+                        "│"
+                    );
+                    // The former gutter must no longer contain a second scrollbar.
+                    for row in list.y..list.bottom() {
+                        assert_ne!(buffer.cell((list.right() - 1, row)).unwrap().symbol(), "█");
+                    }
+                    crate::events::handle_list_mouse(
+                        &mut app,
+                        mouse(
+                            MouseEventKind::Down(MouseButton::Left),
+                            divider_x,
+                            meta.track.bottom() - 1,
+                        ),
+                        Rect::new(0, 0, 80, 32),
+                    );
+                    assert!(app.list.scroll_drag.is_some());
+                    if layout == crate::config::NotesLayout::Grid {
+                        assert_eq!(app.list.grid_scroll, meta.content_len - meta.viewport_len);
+                    } else {
+                        assert_eq!(app.list.visual_index, meta.content_len - 1);
+                    }
+                    // Preview off restores the ordinary right-edge gutter.
+                    app.list.preview_enabled = false;
+                    draw_grid(&mut terminal, &mut app);
+                    assert_eq!(app.list.last_scroll.unwrap().track.x, 79);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn preview_divider_keeps_resize_handle_and_disabled_scrollbar() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(200);
+        app.list.preview_enabled = true;
+        let mut terminal = Terminal::new(TestBackend::new(80, 32)).unwrap();
+        app.config.ui.scrollbars = false;
+        draw_grid(&mut terminal, &mut app);
+        let track = app.list.last_scroll.unwrap().track;
+        assert_eq!(
+            terminal
+                .backend()
+                .buffer()
+                .cell((track.x, track.y))
+                .unwrap()
+                .symbol(),
+            "│"
+        );
+        app.config.ui.scrollbars = true;
+        app.layout_edit = true;
+        draw_grid(&mut terminal, &mut app);
+        assert_eq!(
+            terminal
+                .backend()
+                .buffer()
+                .cell((track.x, track.y))
+                .unwrap()
+                .symbol(),
+            "║"
+        );
+        assert_eq!(
+            terminal
+                .backend()
+                .buffer()
+                .cell((track.x, track.y + track.height / 2))
+                .unwrap()
+                .symbol(),
+            "⇄"
+        );
     }
 
     #[test]
@@ -2642,6 +2756,209 @@ mod tests {
                 next_name: Some("other".to_string()),
             })
         );
+    }
+
+    fn layout_edit_areas(app: &App, area: Rect) -> (Rect, Option<Rect>, Option<Rect>) {
+        list_view_layout(
+            area,
+            app.list.preview_enabled,
+            app.preview_position,
+            app.list.calendar_enabled,
+            app.preview_fullscreen,
+            app.list.preview_width_ratio,
+            app.list.calendar_height,
+            app.config.list.calendar_position,
+        )
+    }
+
+    #[test]
+    fn layout_edit_width_keys_move_one_column() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.layout_edit = true;
+        app.list.preview_enabled = true;
+        app.list.calendar_enabled = true;
+        for width in [40, 79, 80, 101, 137, 240, 401] {
+            let area = Rect::new(7, 3, width, 40);
+            let min_width = (width as f32 * 0.2).round() as u16;
+            let max_width = (width as f32 * 0.8).round() as u16;
+            for position in [PreviewPosition::Left, PreviewPosition::Right] {
+                app.preview_position = position;
+                for ratio in [0.2, 0.437, 0.8] {
+                    for (key, direction) in [
+                        (KeyCode::Left, -1),
+                        (KeyCode::Char('h'), -1),
+                        (KeyCode::Char('H'), -1),
+                        (KeyCode::Right, 1),
+                        (KeyCode::Char('l'), 1),
+                        (KeyCode::Char('L'), 1),
+                    ] {
+                        app.list.preview_width_ratio = ratio;
+                        for _ in 0..4 {
+                            let (list_before, preview_before, calendar_before) =
+                                layout_edit_areas(&app, area);
+                            let before = preview_before.unwrap().width;
+                            crate::events::handle_list_keys(
+                                &mut app,
+                                KeyEvent::new(key, KeyModifiers::NONE),
+                                area,
+                            );
+                            let (list_after, preview_after, calendar_after) =
+                                layout_edit_areas(&app, area);
+                            let delta = if position == PreviewPosition::Left {
+                                direction
+                            } else {
+                                -direction
+                            };
+                            let expected = before
+                                .saturating_add_signed(delta)
+                                .clamp(min_width, max_width);
+                            assert_eq!(
+                                preview_after.unwrap().width,
+                                expected,
+                                "width={width}, position={position:?}, key={key:?}"
+                            );
+                            assert_eq!(list_after.width + expected, list_before.width + before);
+                            assert_eq!(calendar_after.unwrap().width, list_after.width);
+                            assert_eq!(
+                                calendar_after.unwrap().height,
+                                calendar_before.unwrap().height
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn layout_edit_height_keys_move_one_row() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.layout_edit = true;
+        app.list.calendar_enabled = true;
+        for height in [16, 24, 40] {
+            let area = Rect::new(7, 3, 137, height);
+            let max_height = height.saturating_sub(7).min(20);
+            for position in [CalendarPosition::Top, CalendarPosition::Bottom] {
+                app.config.list.calendar_position = position;
+                for initial_height in [9, 14, 20] {
+                    for (key, delta) in [
+                        (KeyCode::Up, 1),
+                        (KeyCode::Char('k'), 1),
+                        (KeyCode::Char('K'), 1),
+                        (KeyCode::Down, -1),
+                        (KeyCode::Char('j'), -1),
+                        (KeyCode::Char('J'), -1),
+                    ] {
+                        app.list.calendar_height = initial_height;
+                        for _ in 0..4 {
+                            let (list_before, _, calendar_before) = layout_edit_areas(&app, area);
+                            let before = calendar_before.unwrap().height;
+                            crate::events::handle_list_keys(
+                                &mut app,
+                                KeyEvent::new(key, KeyModifiers::NONE),
+                                area,
+                            );
+                            let (list_after, _, calendar_after) = layout_edit_areas(&app, area);
+                            let expected = before.saturating_add_signed(delta).clamp(9, max_height);
+                            assert_eq!(
+                                calendar_after.unwrap().height,
+                                expected,
+                                "height={height}, position={position:?}, key={key:?}"
+                            );
+                            assert_eq!(list_after.height + expected, list_before.height + before);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn layout_edit_mouse_dividers_track_individual_cells() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.layout_edit = true;
+        app.list.preview_enabled = true;
+        app.list.calendar_enabled = true;
+        for width in [80, 137, 320] {
+            let area = Rect::new(7, 3, width, 40);
+            for position in [PreviewPosition::Left, PreviewPosition::Right] {
+                app.preview_position = position;
+                app.list.preview_width_ratio = 0.437;
+                let (list, preview, _) = layout_edit_areas(&app, area);
+                let divider = if position == PreviewPosition::Left {
+                    preview.unwrap().right()
+                } else {
+                    list.right()
+                };
+                crate::events::handle_list_mouse(
+                    &mut app,
+                    mouse(MouseEventKind::Down(MouseButton::Left), divider, list.y + 1),
+                    area,
+                );
+                for x in [divider, divider - 1, divider, divider + 1] {
+                    crate::events::handle_list_mouse(
+                        &mut app,
+                        mouse(MouseEventKind::Drag(MouseButton::Left), x, list.y + 1),
+                        area,
+                    );
+                    let (list, preview, _) = layout_edit_areas(&app, area);
+                    let actual = if position == PreviewPosition::Left {
+                        preview.unwrap().right()
+                    } else {
+                        list.right()
+                    };
+                    assert_eq!(actual, x);
+                }
+                crate::events::handle_list_mouse(
+                    &mut app,
+                    mouse(
+                        MouseEventKind::Up(MouseButton::Left),
+                        divider + 1,
+                        list.y + 1,
+                    ),
+                    area,
+                );
+            }
+            for position in [CalendarPosition::Top, CalendarPosition::Bottom] {
+                app.config.list.calendar_position = position;
+                app.list.calendar_height = 14;
+                let (list, _, calendar) = layout_edit_areas(&app, area);
+                let calendar = calendar.unwrap();
+                let divider = if position == CalendarPosition::Top {
+                    calendar.bottom()
+                } else {
+                    calendar.y
+                };
+                let x = list.x + 3;
+                crate::events::handle_list_mouse(
+                    &mut app,
+                    mouse(MouseEventKind::Down(MouseButton::Left), x, divider),
+                    area,
+                );
+                for y in [divider, divider - 1, divider, divider + 1] {
+                    crate::events::handle_list_mouse(
+                        &mut app,
+                        mouse(MouseEventKind::Drag(MouseButton::Left), x, y),
+                        area,
+                    );
+                    let calendar = layout_edit_areas(&app, area).2.unwrap();
+                    let actual = if position == CalendarPosition::Top {
+                        calendar.bottom()
+                    } else {
+                        calendar.y
+                    };
+                    assert_eq!(actual, y);
+                }
+                crate::events::handle_list_mouse(
+                    &mut app,
+                    mouse(MouseEventKind::Up(MouseButton::Left), x, divider + 1),
+                    area,
+                );
+            }
+        }
     }
 
     #[test]

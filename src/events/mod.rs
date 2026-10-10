@@ -290,6 +290,10 @@ pub fn handle_bracketed_paste(
     // 5. Per view mode
     match app.mode {
         ViewMode::Edit => match focus {
+            EditFocus::Frontmatter => {
+                app.editor.frontmatter_editor.insert_str(&data);
+                true
+            }
             EditFocus::Title => {
                 let normalized = data.replace(['\r', '\n'], " ");
                 app.editor.title_editor.insert_str(normalized);
@@ -568,6 +572,23 @@ pub fn compute_edit_layout(
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(crate) fn edit_body_area(area: Rect, frontmatter_height: u16) -> Rect {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .split(area);
+    let mut body = chunks[1];
+    let reserved = frontmatter_height.min(body.height);
+    body.y += reserved;
+    body.height -= reserved;
+    body
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn edit_view_input_areas(
     area: Rect,
     fullscreen: bool,
@@ -579,19 +600,34 @@ pub fn edit_view_input_areas(
     header_title_rect: Rect,
     zen_padding: u16,
 ) -> (Rect, Rect, Option<Rect>) {
-    // Outer vertical split (pad / body / footer) to find the body area.
-    // This matches the layout used by draw_edit_view.
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // header
-            Constraint::Length(1), // spacer (matches draw_edit_view)
-            Constraint::Min(8),    // body
-            Constraint::Length(1), // hint bar
-        ])
-        .split(area);
+    edit_view_input_areas_with_frontmatter(
+        area,
+        fullscreen,
+        md_preview,
+        line_count,
+        show_line_numbers,
+        sidebar,
+        sidebar_position,
+        header_title_rect,
+        zen_padding,
+        0,
+    )
+}
 
-    let body_area = chunks[2];
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn edit_view_input_areas_with_frontmatter(
+    area: Rect,
+    fullscreen: bool,
+    md_preview: bool,
+    line_count: usize,
+    show_line_numbers: bool,
+    sidebar: crate::editor::EditSidebar,
+    sidebar_position: crate::config::PreviewPosition,
+    header_title_rect: Rect,
+    zen_padding: u16,
+    frontmatter_height: u16,
+) -> (Rect, Rect, Option<Rect>) {
+    let body_area = edit_body_area(area, frontmatter_height);
 
     let layout = compute_edit_layout(
         body_area,
@@ -627,17 +663,17 @@ pub fn edit_view_md_preview_area(
     preview_position: crate::config::PreviewPosition,
     zen_padding: u16,
 ) -> Option<Rect> {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // header
-            Constraint::Length(1), // spacer (matches draw_edit_view)
-            Constraint::Min(8),    // body
-            Constraint::Length(1), // hint bar
-        ])
-        .split(area);
+    edit_view_md_preview_area_with_frontmatter(area, sidebar, preview_position, zen_padding, 0)
+}
 
-    let body_area = chunks[2];
+pub(crate) fn edit_view_md_preview_area_with_frontmatter(
+    area: Rect,
+    sidebar: crate::editor::EditSidebar,
+    preview_position: crate::config::PreviewPosition,
+    zen_padding: u16,
+    frontmatter_height: u16,
+) -> Option<Rect> {
+    let body_area = edit_body_area(area, frontmatter_height);
 
     let layout = compute_edit_layout(
         body_area,

@@ -123,18 +123,46 @@ impl App {
         }
     }
 
-    pub fn adjust_preview_width(&mut self, delta: f32) {
-        self.adjust_preview_width_to(self.list.preview_width_ratio + delta);
-        self.persist_list_layout();
+    pub fn adjust_preview_width(&mut self, delta: i16, terminal_area: ratatui::layout::Rect) {
+        if terminal_area.width == 0 || self.preview_fullscreen {
+            return;
+        }
+        let (_, preview, _) = crate::ui::list_view_layout(
+            terminal_area,
+            self.list.preview_enabled,
+            self.preview_position,
+            self.list.calendar_enabled,
+            self.preview_fullscreen,
+            self.list.preview_width_ratio,
+            self.list.calendar_height,
+            self.config.list.calendar_position,
+        );
+        if let Some(preview) = preview {
+            let width = preview.width.saturating_add_signed(delta);
+            self.adjust_preview_width_to(width as f32 / terminal_area.width as f32);
+            self.persist_list_layout();
+        }
     }
 
     pub fn adjust_preview_width_to(&mut self, ratio: f32) {
         self.list.preview_width_ratio = ratio.clamp(0.2, 0.8);
     }
 
-    pub fn adjust_calendar_height(&mut self, delta: i16) {
-        self.adjust_calendar_height_to(self.list.calendar_height.saturating_add_signed(delta));
-        self.persist_list_layout();
+    pub fn adjust_calendar_height(&mut self, delta: i16, terminal_area: ratatui::layout::Rect) {
+        let (_, _, calendar) = crate::ui::list_view_layout(
+            terminal_area,
+            self.list.preview_enabled,
+            self.preview_position,
+            self.list.calendar_enabled,
+            self.preview_fullscreen,
+            self.list.preview_width_ratio,
+            self.list.calendar_height,
+            self.config.list.calendar_position,
+        );
+        if let Some(calendar) = calendar {
+            self.adjust_calendar_height_to(calendar.height.saturating_add_signed(delta));
+            self.persist_list_layout();
+        }
     }
 
     pub fn adjust_calendar_height_to(&mut self, height: u16) {
@@ -375,17 +403,30 @@ impl App {
         }
 
         let new_align = self.editor.text_align.cycle();
-        self.editor.text_align = new_align;
-
-        // Persist to frontmatter of current note.
-        if let Some(note_id) = self.editor.editing_id.clone()
-            && let Ok(mut note) = self.storage.load_note(&note_id)
+        if self
+            .editor
+            .editing_id
+            .as_deref()
+            .is_some_and(Storage::supports_frontmatter)
         {
-            let (mut fm, body) = crate::frontmatter::parse(&note.content);
+            let mut fm = match crate::frontmatter::parse_yaml(&self.editor.frontmatter_text()) {
+                Ok(fm) => fm,
+                Err(e) => {
+                    self.set_temporary_status(&format!("Invalid frontmatter YAML: {e}"));
+                    return;
+                }
+            };
             fm.text_align = Some(new_align);
-            note.content = crate::frontmatter::serialize(&fm, body);
-            let _ = self.storage.save_note(&note_id, &note);
+            if let Ok(yaml) = serde_yaml_ng::to_string(&fm) {
+                self.editor.frontmatter_editor = ratatui_textarea::TextArea::from(yaml.lines());
+                self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+                self.write_draft();
+                if self.autosave().is_err() {
+                    return;
+                }
+            }
         }
+        self.editor.text_align = new_align;
 
         if self.mode == ViewMode::Edit {
             self.update_editor_markdown_preview();
