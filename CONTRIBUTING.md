@@ -38,6 +38,28 @@ This produces:
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 
+## Documentation and Wiki
+
+The [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) is generated from all root-level Markdown files and `docs/**/*.md`. Update these source files through the usual pull request process; do not edit generated wiki pages directly, because the next sync overwrites those edits. Local `development/` files and graphify artifacts are not published.
+
+`.github/workflows/wiki.yml` tests the generator on documentation pull requests and publishes after relevant changes reach `main`. Maintainers can also run **Actions → Sync Wiki → Run workflow** on `main`. New documentation files are discovered automatically; removed files are removed from the wiki. Handwritten pages outside the generated page names are preserved.
+
+Publication uses the existing `BOT_TOKEN` repository secret, which must have Git write access to `reekta92/clin-rs.wiki.git`. Keep this credential in Actions secrets, never in source files. The workflow never exposes it to pull request jobs.
+
+Run the generator tests locally:
+
+```bash
+python3 -m unittest discover -s .github/scripts -p 'test_sync_wiki.py' -v
+```
+
+To preview generated pages in a separate wiki checkout without publishing:
+
+```bash
+git clone git@github.com:reekta92/clin-rs.wiki.git /tmp/clin-wiki
+python3 .github/scripts/sync_wiki.py /tmp/clin-wiki --revision "$(git rev-parse HEAD)"
+git -C /tmp/clin-wiki diff
+```
+
 ## Pull Requests
 
 1. Create a feature branch from `main`

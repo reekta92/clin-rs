@@ -1,0 +1,71 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.md'
+      - 'docs/**'
+      - '.github/scripts/sync_wiki.py'
+      - '.github/scripts/test_sync_wiki.py'
+      - '.github/workflows/wiki.yml'
+  pull_request:
+    paths:
+      - '*.md'
+      - 'docs/**'
+      - '.github/scripts/sync_wiki.py'
+      - '.github/scripts/test_sync_wiki.py'
+      - '.github/workflows/wiki.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test wiki generation
+        run: python3 -m unittest discover -s .github/scripts -p 'test_sync_wiki.py' -v
+
+  publish:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'reekta92/clin-rs'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: wiki-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Always publish current main, even when an older run was queued.
+          ref: main
+          persist-credentials: false
+      - name: Publish documentation
+        env:
+          GH_TOKEN: ${{ secrets.BOT_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN}" ]]; then
+            echo '::error::BOT_TOKEN must have write access to the wiki repository.'
+            exit 1
+          fi
+          gh auth setup-git
+          wiki="${RUNNER_TEMP}/clin-wiki"
+          git clone "https://github.com/${GITHUB_REPOSITORY}.wiki.git" "$wiki"
+          revision="$(git rev-parse HEAD)"
+          python3 .github/scripts/sync_wiki.py "$wiki" --revision "$revision"
+          git -C "$wiki" add --all
+          if git -C "$wiki" diff --cached --quiet; then
+            echo 'Wiki already up to date.'
+            exit 0
+          fi
+          git -C "$wiki" -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "docs: sync wiki from ${revision}"
+          # Normal push protects concurrent manual wiki edits; conflicts fail safely.
+          git -C "$wiki" push origin HEAD

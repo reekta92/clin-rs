@@ -2,6 +2,8 @@
 
 Welcome to clin-rs technical documentation. This index lists all documentation files with brief descriptions.
 
+These documents are also available in the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki), automatically synced from `main`. Edit repository source files to update the wiki.
+
 For installation, quickstart, and general project info, see the [README.md](../README.md).
 
 ---

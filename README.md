@@ -463,7 +463,7 @@ clin --help                       Show help
 
 ## Documentation
 
-Full technical documentation lives in [`docs/`](docs/INDEX.md):
+Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all project documentation, with page navigation and search. The wiki automatically syncs from `main`; source files live in [`docs/`](docs/INDEX.md) and the repository root.
 
 - [Architecture](docs/ARCHITECTURE.md) — system overview, event loop, threading model
 - [List View](docs/LIST_VIEW.md) — notes list view: Grid/Tree layout, format chooser, preview pane
