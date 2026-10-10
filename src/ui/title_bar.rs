@@ -210,15 +210,25 @@ pub fn build_tab_spans(
     icons_only: bool,
     icon_mode: crate::config::IconMode,
 ) -> Vec<Span<'static>> {
-    let active_style = Style::default()
-        .fg(theme.accent)
-        .add_modifier(Modifier::BOLD);
     let inactive_style = Style::default().fg(theme.muted);
     let mut spans = Vec::with_capacity(tabs.len() * 2);
     for (i, (label, glyph)) in tabs.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw(" "));
         }
+        
+        let active_color = match *label {
+            "Vault" => theme.folder,
+            "Pinned" => theme.pinned,
+            "Smart" => theme.smart,
+            "Subnotes" => theme.subnote,
+            _ => theme.accent,
+        };
+        
+        let active_style = Style::default()
+            .fg(active_color)
+            .add_modifier(Modifier::BOLD);
+
         let style = if i == active {
             active_style
         } else if Some(i) == hovered {
