@@ -34,8 +34,8 @@ pub(crate) struct GridTileSpec<'a> {
 pub(crate) fn grid_dims(area: Rect, top_margin: u16) -> (usize, usize) {
     let cols = ((area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP)) / (GRID_TILE_W + GRID_GAP))
         .max(1) as usize;
-    let rows = ((area.height.saturating_sub(top_margin + GRID_GAP)) / (GRID_TILE_H + GRID_GAP))
-        as usize;
+    let rows =
+        ((area.height.saturating_sub(top_margin + GRID_GAP)) / (GRID_TILE_H + GRID_GAP)) as usize;
     (cols, rows)
 }
 
@@ -1041,7 +1041,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .find(|n| n.id == parent_id)
                         .map(|n| n.title.clone())
                         .unwrap_or_else(|| parent_id.to_string());
-                    spans.push(Span::styled(format!(" {}", label), Style::default().fg(app.app_theme.fg)));
+                    spans.push(Span::styled(
+                        format!(" {}", label),
+                        Style::default().fg(app.app_theme.fg),
+                    ));
                 }
             } else {
                 if !app.list.grid_folder.is_empty() {
@@ -1059,7 +1062,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             spans.push(Span::raw(" "));
                             offset += 1;
                         }
-                        
+
                         let part_w = part.chars().count() as u16;
                         if !current_path.is_empty() {
                             current_path.push('/');
