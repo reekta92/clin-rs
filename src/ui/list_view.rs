@@ -31,19 +31,19 @@ pub(crate) struct GridTileSpec<'a> {
 }
 
 /// Columns/rows of grid tiles that fit in `area`; columns always >= 1.
-pub(crate) fn grid_dims(area: Rect) -> (usize, usize) {
+pub(crate) fn grid_dims(area: Rect, top_margin: u16) -> (usize, usize) {
     let cols = ((area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP)) / (GRID_TILE_W + GRID_GAP))
         .max(1) as usize;
-    let rows = ((area.height.saturating_sub(GRID_TOP_MARGIN + GRID_GAP)) / (GRID_TILE_H + GRID_GAP))
+    let rows = ((area.height.saturating_sub(top_margin + GRID_GAP)) / (GRID_TILE_H + GRID_GAP))
         as usize;
     (cols, rows)
 }
 
 /// Tile rect for grid cell (`col`, `row`) inside `area`.
-pub(crate) fn grid_tile_rect(area: Rect, col: usize, row: usize) -> Rect {
+pub(crate) fn grid_tile_rect(area: Rect, col: usize, row: usize, top_margin: u16) -> Rect {
     Rect::new(
         area.x + GRID_LEFT_MARGIN + (col as u16) * (GRID_TILE_W + GRID_GAP),
-        area.y + GRID_TOP_MARGIN + (row as u16) * (GRID_TILE_H + GRID_GAP),
+        area.y + top_margin + (row as u16) * (GRID_TILE_H + GRID_GAP),
         GRID_TILE_W,
         GRID_TILE_H,
     )
@@ -1008,36 +1008,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder);
             let mut spans = Vec::new();
             if is_pinned {
-                spans.push(Span::styled(
-                    format!(
-                        " {} Pinned",
-                        crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.pinned)
-                        .add_modifier(Modifier::BOLD),
-                ));
+                // Removed Pinned title
             } else if is_smart {
-                let smart_icon =
-                    crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
-                let smart_text = format!(" {smart_icon} Smart");
-                let smart_w = smart_text.chars().count() as u16;
-                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
-                    row == list_area.y + 1
-                        && col >= list_area.x
-                        && col < list_area.x + smart_w
-                        && app.list.grid_folder != VIRTUAL_SMART_PATH
-                });
-                spans.push(Span::styled(
-                    smart_text,
-                    if is_hovered {
-                        app.app_theme.hover_style()
-                    } else {
-                        Style::default()
-                            .fg(app.app_theme.smart)
-                            .add_modifier(Modifier::BOLD)
-                    },
-                ));
                 if app.list.grid_folder.starts_with('@') {
                     let label = if app.list.grid_folder == "@today" {
                         "Today"
@@ -1055,35 +1027,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         &app.list.grid_folder
                     };
                     spans.push(Span::styled(
-                        " / ",
-                        Style::default().fg(app.app_theme.muted),
-                    ));
-                    spans.push(Span::styled(
-                        label.to_string(),
+                        format!(" {}", label),
                         Style::default().fg(app.app_theme.fg),
                     ));
                 }
             } else if is_subnotes {
-                let sub_icon =
-                    crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", app.config.ui.icon_mode);
-                let sub_text = format!(" {sub_icon} Subnotes");
-                let sub_w = sub_text.chars().count() as u16;
-                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
-                    row == list_area.y + 1
-                        && col >= list_area.x
-                        && col < list_area.x + sub_w
-                        && app.list.grid_folder != VIRTUAL_SUBNOTES_PATH
-                });
-                spans.push(Span::styled(
-                    sub_text,
-                    if is_hovered {
-                        app.app_theme.hover_style()
-                    } else {
-                        Style::default()
-                            .fg(app.app_theme.subnote)
-                            .add_modifier(Modifier::BOLD)
-                    },
-                ));
                 if crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder) {
                     let parent_id =
                         crate::app::App::subnotes_parent_id_from_grid_path(&app.list.grid_folder);
@@ -1093,43 +1041,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .find(|n| n.id == parent_id)
                         .map(|n| n.title.clone())
                         .unwrap_or_else(|| parent_id.to_string());
-                    spans.push(Span::styled(
-                        " / ",
-                        Style::default().fg(app.app_theme.muted),
-                    ));
-                    spans.push(Span::styled(label, Style::default().fg(app.app_theme.fg)));
+                    spans.push(Span::styled(format!(" {}", label), Style::default().fg(app.app_theme.fg)));
                 }
             } else {
-                let vault_icon =
-                    crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode);
-                let vault_text = format!(" {vault_icon} Vault");
-                let vault_w = vault_text.chars().count() as u16;
-                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
-                    row == list_area.y + 1
-                        && col >= list_area.x
-                        && col < list_area.x + vault_w
-                        && !app.list.grid_folder.is_empty()
-                });
-                spans.push(Span::styled(
-                    vault_text,
-                    if is_hovered {
-                        app.app_theme.hover_style()
-                    } else {
-                        Style::default()
-                            .fg(app.app_theme.folder)
-                            .add_modifier(Modifier::BOLD)
-                    },
-                ));
                 if !app.list.grid_folder.is_empty() {
                     let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
                     let mut current_path = String::new();
-                    let mut offset = list_area.x + vault_w;
+                    let mut offset = list_area.x;
                     for (part_idx, part) in parts.iter().enumerate() {
-                        spans.push(Span::styled(
-                            " / ",
-                            Style::default().fg(app.app_theme.muted),
-                        ));
-                        offset += 3;
+                        if part_idx > 0 {
+                            spans.push(Span::styled(
+                                " / ",
+                                Style::default().fg(app.app_theme.muted),
+                            ));
+                            offset += 3;
+                        } else {
+                            spans.push(Span::raw(" "));
+                            offset += 1;
+                        }
+                        
                         let part_w = part.chars().count() as u16;
                         if !current_path.is_empty() {
                             current_path.push('/');
@@ -1155,11 +1085,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
                 }
             }
-            let dir_rect = Rect::new(list_area.x, list_area.y + 1, list_area.width, 1);
-            frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
+            let has_breadcrumbs = !spans.is_empty();
+            let top_margin = if has_breadcrumbs { GRID_TOP_MARGIN } else { 1 };
+
+            if has_breadcrumbs {
+                let dir_rect = Rect::new(list_area.x, list_area.y + 1, list_area.width, 1);
+                frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
+            }
 
             // --- columns / visible rows ---
-            let (cols, rows) = grid_dims(list_area);
+            let (cols, rows) = grid_dims(list_area, top_margin);
             app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
 
             let len = app.list.visual_list.len();
@@ -1193,7 +1128,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 let row = i / cols;
                 let col = i % cols;
-                let tile_rect = grid_tile_rect(list_area, col, row);
+                let tile_rect = grid_tile_rect(list_area, col, row, top_margin);
                 let is_selected = vi == app.list.visual_index;
                 let in_selection = app.list.selected_indices.contains(&vi);
                 let is_hovered = app

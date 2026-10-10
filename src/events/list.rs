@@ -892,34 +892,17 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 let is_smart = app.list.grid_folder == crate::app::VIRTUAL_SMART_PATH
                     || app.list.grid_folder.starts_with('@');
                 if is_smart {
-                    let offset = list_area.x;
-                    let smart_icon =
-                        crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
-                    let smart_text = format!(" {smart_icon} Smart");
-                    let smart_w = smart_text.chars().count() as u16;
-                    if mouse_event.column >= offset && mouse_event.column < offset + smart_w {
-                        app.list.grid_folder = crate::app::VIRTUAL_SMART_PATH.to_string();
-                        app.list.visual_index = 0;
-                        app.refresh_visual_list();
-                        return;
-                    }
+                    // Smart title is no longer rendered at root. If there's a label, we don't have a root click target.
                 } else if app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH {
                     let mut offset = list_area.x;
-                    let vault_text = " \u{f07b} Vault";
-                    let vault_w = vault_text.chars().count() as u16;
-                    if mouse_event.column >= offset && mouse_event.column < offset + vault_w {
-                        app.list.grid_folder = String::new();
-                        app.list.visual_index = 0;
-                        app.refresh_visual_list();
-                        return;
-                    }
-                    offset += vault_w;
                     if !app.list.grid_folder.is_empty() {
+                        offset += 1; // space padding we added
                         let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
                         let mut current_path = String::new();
-                        for part in parts {
-                            // " / "
-                            offset += 3;
+                        for (part_idx, part) in parts.into_iter().enumerate() {
+                            if part_idx > 0 {
+                                offset += 3; // " / "
+                            }
                             let part_w = part.chars().count() as u16;
                             if !current_path.is_empty() {
                                 current_path.push('/');

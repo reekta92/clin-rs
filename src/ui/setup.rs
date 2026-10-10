@@ -459,13 +459,13 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                 },
             ];
 
-            let (cols, rows) = grid_dims(inner);
+            let (cols, rows) = grid_dims(inner, 3);
             for (i, spec) in samples.iter().copied().enumerate() {
                 let (c, r) = (i % cols, i / cols);
                 if r >= rows {
                     break;
                 }
-                render_grid_tile(buf, grid_tile_rect(inner, c, r), spec, theme, icon_mode);
+                render_grid_tile(buf, grid_tile_rect(inner, c, r, 3), spec, theme, icon_mode);
             }
         } else {
             // Tree: the same List the notes view renders (see
