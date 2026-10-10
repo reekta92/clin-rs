@@ -25,6 +25,8 @@ pub(crate) mod editor_document;
 pub(crate) mod editor_session;
 pub mod event_source;
 pub mod frontmatter;
+#[cfg(test)]
+mod frontmatter_tests;
 pub mod fsutil;
 pub mod goals;
 pub mod graf_adapter;

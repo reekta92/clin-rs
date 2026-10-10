@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditFocus {
+    Frontmatter,
     Title,
     Body,
     Sidebar,
@@ -89,6 +90,13 @@ pub struct NoteEditor {
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
     pub title_editor: TextArea<'static>,
+    pub frontmatter_editor: TextArea<'static>,
+    pub frontmatter_visible: bool,
+    pub frontmatter_original: Option<String>,
+    pub frontmatter_saved: String,
+    pub frontmatter_saved_title: String,
+    pub frontmatter_rect: ratatui::layout::Rect,
+    pub frontmatter_viewport: (u16, u16),
     pub(crate) body: EditorDocument,
     pub external_editor_enabled: bool,
     pub external_editor: Option<String>,
@@ -163,6 +171,13 @@ impl Default for NoteEditor {
             initial_word_count: 0,
             template_edit_path: None,
             title_editor: TextArea::default(),
+            frontmatter_editor: TextArea::default(),
+            frontmatter_visible: false,
+            frontmatter_original: None,
+            frontmatter_saved: String::new(),
+            frontmatter_saved_title: String::new(),
+            frontmatter_rect: ratatui::layout::Rect::default(),
+            frontmatter_viewport: (0, 0),
             body: EditorDocument::default(),
             external_editor_enabled: false,
             external_editor: None,
@@ -225,6 +240,79 @@ impl Default for NoteEditor {
 }
 
 impl NoteEditor {
+    pub fn reset_frontmatter(&mut self, header: Option<String>, title: &str) {
+        self.frontmatter_editor = TextArea::from(header.as_deref().unwrap_or_default().lines());
+        self.frontmatter_saved = self.frontmatter_text();
+        self.frontmatter_original = header;
+        self.frontmatter_saved_title = title.to_string();
+        self.frontmatter_visible = false;
+        self.frontmatter_rect = ratatui::layout::Rect::default();
+        self.frontmatter_viewport = (0, 0);
+    }
+
+    pub fn finish_frontmatter_save(&mut self, header: Option<String>, title: &str) {
+        let text = self.frontmatter_text();
+        let replacement = if self.frontmatter_original.is_none() && text.is_empty() {
+            header.clone()
+        } else if title != self.frontmatter_saved_title {
+            crate::frontmatter::parse_yaml(&text)
+                .ok()
+                .and_then(|mut fm| {
+                    if fm.title.as_deref() == Some(title) {
+                        return None;
+                    }
+                    fm.title = Some(title.to_string());
+                    serde_yaml_ng::to_string(&fm).ok()
+                })
+        } else {
+            None
+        };
+        if let Some(yaml) = replacement {
+            let cursor = self.frontmatter_editor.cursor();
+            self.frontmatter_editor = TextArea::from(yaml.lines());
+            self.frontmatter_editor
+                .move_cursor(ratatui_textarea::CursorMove::Jump(
+                    cursor.0 as u16,
+                    cursor.1 as u16,
+                ));
+        }
+        self.frontmatter_original = header;
+        self.frontmatter_saved = self.frontmatter_text();
+        self.frontmatter_saved_title = title.to_string();
+    }
+
+    pub fn frontmatter_text(&self) -> String {
+        self.frontmatter_editor.lines().join("\n")
+    }
+
+    pub fn frontmatter_changed(&self) -> bool {
+        self.frontmatter_text() != self.frontmatter_saved
+    }
+
+    pub fn frontmatter_edit(&self) -> crate::frontmatter::FrontmatterEdit {
+        crate::frontmatter::FrontmatterEdit {
+            text: self.frontmatter_text(),
+            original: self.frontmatter_original.clone(),
+            saved_text: self.frontmatter_saved.clone(),
+            saved_title: self.frontmatter_saved_title.clone(),
+        }
+    }
+
+    pub fn frontmatter_height(&self, height: u16) -> u16 {
+        if !self.frontmatter_visible {
+            return 0;
+        }
+        let wanted = self
+            .frontmatter_editor
+            .lines()
+            .len()
+            .saturating_add(2)
+            .min(u16::MAX as usize) as u16;
+        wanted
+            .min((height / 3).max(3))
+            .min(if height > 1 { height - 1 } else { height })
+    }
+
     pub fn new() -> Self {
         Self::default()
     }

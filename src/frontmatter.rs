@@ -21,6 +21,80 @@ pub struct Frontmatter {
     pub extra: serde_yaml_ng::Mapping,
 }
 
+/// Raw text and the disk header it was based on. Kept in encrypted drafts too.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrontmatterEdit {
+    pub text: String,
+    pub original: Option<String>,
+    pub saved_text: String,
+    pub saved_title: String,
+}
+
+impl FrontmatterEdit {
+    /// The same title precedence applies to live saves and draft recovery.
+    pub fn parse_with_title(&self, title: &str) -> anyhow::Result<(Frontmatter, String)> {
+        let fm = parse_yaml(&self.text)?;
+        let title = title.trim();
+        let title = if title.is_empty() {
+            "Untitled note"
+        } else {
+            title
+        };
+        let previous = parse_yaml(&self.saved_text).unwrap_or_default();
+        let title = if !self.text.trim().is_empty() && fm.title != previous.title {
+            let yaml_title = fm
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .unwrap_or("Untitled note");
+            anyhow::ensure!(
+                title == self.saved_title || title == yaml_title,
+                "Title changed in both fields; make their values agree before saving"
+            );
+            yaml_title.to_string()
+        } else {
+            title.to_string()
+        };
+        Ok((fm, title))
+    }
+}
+
+/// Split framing even when YAML is invalid, so the editor can repair it.
+pub fn split_raw(content: &str) -> (Option<&str>, &str) {
+    let start = if content.starts_with("---\r\n") {
+        5
+    } else if content.starts_with("---\n") {
+        4
+    } else {
+        return (None, content);
+    };
+    let mut offset = start;
+    for line in content[start..].split_inclusive('\n') {
+        if line.trim_end_matches(['\r', '\n']) == "---" {
+            return (
+                Some(content[start..offset].trim_end_matches(['\r', '\n'])),
+                &content[offset + line.len()..],
+            );
+        }
+        offset += line.len();
+    }
+    // Without a closing delimiter this may be a Markdown horizontal rule.
+    // Preserve the existing body-only reader behavior instead of swallowing it.
+    (None, content)
+}
+
+pub fn parse_yaml(text: &str) -> anyhow::Result<Frontmatter> {
+    if text.trim().is_empty() {
+        return Ok(Frontmatter::default());
+    }
+    // Mapping deserialization rejects duplicate keys and non-mapping documents.
+    let mapping: serde_yaml_ng::Mapping = serde_yaml_ng::from_str(text)?;
+    Ok(serde_yaml_ng::from_value(serde_yaml_ng::Value::Mapping(
+        mapping,
+    ))?)
+}
+
 pub fn parse(content: &str) -> (Frontmatter, &str) {
     if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
         return (Frontmatter::default(), content);

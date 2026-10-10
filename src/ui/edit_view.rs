@@ -257,7 +257,48 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         app.editor.header_title_rect = center_area;
     }
-    let body_area = outer_chunks[1];
+    let content_area = outer_chunks[1];
+    let metadata_height = app.editor.frontmatter_height(content_area.height);
+    let metadata_area = Rect::new(
+        content_area.x,
+        content_area.y,
+        content_area.width,
+        metadata_height,
+    );
+    app.editor.frontmatter_rect = Rect::default();
+    if metadata_height > 0 {
+        let block = Block::default()
+            .borders(if metadata_height >= 3 {
+                Borders::TOP | Borders::BOTTOM
+            } else {
+                Borders::NONE
+            })
+            .style(app.app_theme.bg_style());
+        let block = if metadata_height >= 3 {
+            block.title(" Frontmatter (YAML) · generated fields may be rewritten on save ")
+        } else {
+            block
+        };
+        app.editor.frontmatter_rect = block.inner(metadata_area);
+        super::render_textarea_with_theme(
+            frame,
+            &mut app.editor.frontmatter_editor,
+            metadata_area,
+            &app.app_theme,
+            focus == EditFocus::Frontmatter,
+            false,
+            block,
+            app.app_theme.bg_style(),
+        );
+        app.editor.frontmatter_viewport = super::refresh_textarea_viewport(
+            &app.editor.frontmatter_editor,
+            app.editor.frontmatter_viewport.0,
+            app.editor.frontmatter_viewport.1,
+            metadata_area,
+            false,
+        );
+    }
+    let body_area = crate::events::edit_body_area(area, metadata_height);
     let hint_area = outer_chunks[2];
 
     let layout = crate::events::compute_edit_layout(
@@ -446,6 +487,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             (
                 kb.display_edit(EditAction::ToggleMarkdownPreview),
                 "preview",
+            ),
+            (
+                kb.display_edit(EditAction::ToggleFrontmatter),
+                "frontmatter",
             ),
             (kb.display_edit(EditAction::ToggleOutline), "outline"),
             (kb.display_edit(EditAction::ToggleLinks), "links"),

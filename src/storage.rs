@@ -250,6 +250,14 @@ fn migrate_legacy_default_vault(new: &Path, warnings: &mut Vec<String>) {
 
 use crate::fsutil::remove_file_if_exists;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct EditorDraft {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub frontmatter: Option<frontmatter::FrontmatterEdit>,
+}
+
 impl Storage {
     pub fn init() -> (Result<Self>, Vec<String>) {
         let (config_res, mut warnings) = ClinConfig::load();
@@ -759,6 +767,14 @@ impl Storage {
         (keybinds, warnings)
     }
 
+    pub(crate) fn supports_frontmatter(id: &str) -> bool {
+        // New Markdown notes have an extensionless UUID until their first save.
+        matches!(
+            Path::new(id).extension().and_then(|ext| ext.to_str()),
+            None | Some("md" | "txt")
+        )
+    }
+
     pub fn note_path(&self, id: &str) -> PathBuf {
         self.validate_path_within_notes_dir(id)
             .unwrap_or_else(|| self.notes_dir.join("invalid"))
@@ -1204,6 +1220,51 @@ impl Storage {
         }
     }
 
+    pub fn load_note_for_edit(&self, id: &str) -> Result<(Note, Option<String>)> {
+        let path = self.note_path(id);
+        // Header and body must come from one read, not two racing snapshots.
+        let text = fs::read_to_string(&path).context("failed to read plain note")?;
+        let (header, body) = frontmatter::split_raw(&text);
+        let fm = header
+            .and_then(|text| frontmatter::parse_yaml(text).ok())
+            .unwrap_or_default();
+        Ok((
+            Self::plain_note(&path, fm, body),
+            header.map(str::to_string),
+        ))
+    }
+
+    fn plain_note(path: &Path, fm: frontmatter::Frontmatter, body: &str) -> Note {
+        let title = fm.title.unwrap_or_else(|| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("Untitled note")
+                .to_string()
+        });
+        let updated_at = fm.updated_at.unwrap_or_else(|| {
+            fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |duration| duration.as_secs())
+        });
+        Note {
+            title,
+            content: body.to_string(),
+            updated_at,
+            tags: fm.tags,
+        }
+    }
+
+    pub fn load_frontmatter_text(&self, id: &str) -> Result<Option<String>> {
+        let path = self.note_path(id);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let text = fs::read_to_string(path)?;
+        Ok(frontmatter::split_raw(&text).0.map(str::to_string))
+    }
+
     pub fn load_note(&self, id: &str) -> Result<Note> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -1233,31 +1294,7 @@ impl Storage {
             let file_content = fs::read_to_string(&path).context("failed to read plain note")?;
             let (fm, plain_content) = frontmatter::parse(&file_content);
 
-            let title = if let Some(t) = fm.title {
-                t
-            } else {
-                path.file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Untitled note")
-                    .to_string()
-            };
-
-            let updated_at = if let Some(ua) = fm.updated_at {
-                ua
-            } else {
-                fs::metadata(&path)
-                    .and_then(|m| m.modified())
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map_or(0, |d| d.as_secs())
-            };
-
-            Ok(Note {
-                title,
-                content: plain_content.to_string(),
-                updated_at,
-                tags: fm.tags,
-            })
+            Ok(Self::plain_note(&path, fm, plain_content))
         }
     }
     pub fn editor_draft_path(&self) -> PathBuf {
@@ -1265,10 +1302,28 @@ impl Storage {
     }
 
     pub fn write_editor_draft(&mut self, id: &str, title: &str, content: &str) -> Result<()> {
+        self.write_editor_draft_with_frontmatter(id, title, content, None)
+    }
+
+    pub(crate) fn write_editor_draft_with_frontmatter(
+        &mut self,
+        id: &str,
+        title: &str,
+        content: &str,
+        frontmatter: Option<frontmatter::FrontmatterEdit>,
+    ) -> Result<()> {
         self.ensure_key()?;
-        let draft = (id.to_string(), title.to_string(), content.to_string());
-        let bytes = bincode::serde::encode_to_vec(&draft, bincode::config::standard())
-            .context("failed to encode draft")?;
+        let draft = EditorDraft {
+            id: id.to_string(),
+            title: title.to_string(),
+            content: content.to_string(),
+            frontmatter,
+        };
+        let mut bytes = b"CLIN-DRAFT-2\n".to_vec();
+        bytes.extend(
+            bincode::serde::encode_to_vec(&draft, bincode::config::standard())
+                .context("failed to encode draft")?,
+        );
         let encrypted = self.encrypt(&bytes)?;
         let path = self.editor_draft_path();
         if let Some(parent) = path.parent() {
@@ -1282,45 +1337,99 @@ impl Storage {
         let _ = fs::remove_file(self.editor_draft_path());
     }
 
-    pub fn recover_editor_draft(&mut self) -> Result<()> {
+    pub(crate) fn read_editor_draft(&mut self) -> Result<Option<EditorDraft>> {
         let path = self.editor_draft_path();
         if !path.exists() {
+            return Ok(None);
+        }
+        self.ensure_key()?;
+        let decrypted = self.decrypt(&fs::read(path)?)?;
+        if let Some(bytes) = decrypted.strip_prefix(b"CLIN-DRAFT-2\n") {
+            let (draft, _) = bincode::serde::decode_from_slice(bytes, bincode::config::standard())?;
+            Ok(Some(draft))
+        } else {
+            let ((id, title, body), _) = bincode::serde::decode_from_slice::<
+                (String, String, String),
+                _,
+            >(&decrypted, bincode::config::standard())?;
+            Ok(Some(EditorDraft {
+                id,
+                title,
+                content: body,
+                frontmatter: None,
+            }))
+        }
+    }
+
+    pub fn recover_editor_draft(&mut self) -> Result<()> {
+        let Some(EditorDraft {
+            id,
+            title,
+            content,
+            frontmatter: header,
+        }) = self.read_editor_draft()?
+        else {
+            return Ok(());
+        };
+        if id.ends_with(".clin") {
             return Ok(());
         }
-        let encrypted = match fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(_) => return Ok(()),
-        };
-        self.ensure_key()?;
-        if let Ok(decrypted) = self.decrypt(&encrypted)
-            && let Ok((draft, _)) = bincode::serde::decode_from_slice::<(String, String, String), _>(
-                &decrypted,
-                bincode::config::standard(),
-            )
-        {
-            let mut note = self.load_note(&draft.0).unwrap_or_else(|_| Note {
-                title: draft.1.clone(),
-                content: String::new(),
-                updated_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                tags: vec![],
-            });
-            if note.title != draft.1 || note.content != draft.2 {
-                note.title = draft.1;
-                note.content = draft.2;
-                note.updated_at = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let _ = self.save_note(&draft.0, &note);
+        let mut note = self.load_note(&id).unwrap_or_else(|_| Note {
+            title: title.clone(),
+            content: String::new(),
+            updated_at: 0,
+            tags: vec![],
+        });
+        note.title = title;
+        note.content = content;
+        note.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if let Some(edit) = header {
+            // Keep invalid/conflicting drafts for repair when this note is reopened.
+            let Ok((_, title)) = edit.parse_with_title(&note.title) else {
+                return Ok(());
+            };
+            note.title = title;
+            if self.save_note_with_frontmatter(&id, &note, &edit).is_err() {
+                return Ok(());
             }
+        } else {
+            self.save_note(&id, &note)?;
         }
         self.delete_editor_draft();
         Ok(())
     }
+
     pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
+        self.save_note_inner(id, note, None)
+    }
+
+    pub fn save_note_with_frontmatter(
+        &mut self,
+        id: &str,
+        note: &Note,
+        edit: &frontmatter::FrontmatterEdit,
+    ) -> Result<String> {
+        anyhow::ensure!(
+            Self::supports_frontmatter(id),
+            "Frontmatter editing requires an ordinary note"
+        );
+        let fm = frontmatter::parse_yaml(&edit.text).context("Invalid frontmatter YAML")?;
+        anyhow::ensure!(
+            self.load_frontmatter_text(id)? == edit.original,
+            "Frontmatter changed on disk; resolve the conflict before saving (draft retained)"
+        );
+        self.save_note_inner(id, note, Some(fm))
+    }
+
+    fn save_note_inner(
+        &mut self,
+        id: &str,
+        note: &Note,
+        header: Option<frontmatter::Frontmatter>,
+    ) -> Result<String> {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
@@ -1348,16 +1457,19 @@ impl Storage {
             .map(|s| s.pinned)
             .unwrap_or(false);
         let links = extract_wikilinks(&note.content);
-        let fm = frontmatter::Frontmatter {
-            title: Some(note.title.clone()),
-            updated_at: Some(note.updated_at),
+        let mut fm = header.unwrap_or_else(|| frontmatter::Frontmatter {
             tags: note.tags.clone(),
             pinned: existing_pinned,
-            links: Some(links),
-            original_ext: None,
             text_align: existing_text_align(&old_path),
             extra: existing_extra_frontmatter(&old_path),
-        };
+            ..Default::default()
+        });
+        fm.title = Some(note.title.clone());
+        fm.updated_at = Some(note.updated_at);
+        fm.links = Some(links);
+        fm.original_ext = None;
+        // Fail before touching the file, rather than silently dropping metadata.
+        serde_yaml_ng::to_string(&fm).context("failed to serialize frontmatter")?;
 
         let target_path = self.note_path(&target_id);
         if let Some(parent) = target_path.parent() {

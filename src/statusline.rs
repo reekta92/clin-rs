@@ -894,7 +894,9 @@ impl StatuslineContext<'_> {
                                         crate::events::get_title_text(&app.editor.title_editor);
                                     let mut memo = self.edit_memo.borrow_mut();
                                     let content = memo.content(app);
-                                    current_title != note.title || content != note.content
+                                    current_title != note.title
+                                        || content != note.content
+                                        || app.editor.frontmatter_changed()
                                 } else {
                                     false
                                 }

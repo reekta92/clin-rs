@@ -3,12 +3,13 @@ use crate::app::{App, EditFocus, EditSidebar};
 use crate::keybinds::EditAction;
 use crate::text_edit::{MouseTextSelection, apply_text_shortcuts, update_selection_for_move};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 use ratatui_textarea::Input;
 
 use super::{
-    contains_cell, edit_view_input_areas, edit_view_md_preview_area, get_title_text,
-    make_title_editor, move_textarea_cursor_to_mouse,
+    contains_cell, edit_view_input_areas_with_frontmatter,
+    edit_view_md_preview_area_with_frontmatter, get_title_text, make_title_editor,
+    move_textarea_cursor_to_mouse,
 };
 
 fn leave_editor(app: &mut App, focus: &mut EditFocus) {
@@ -204,8 +205,30 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         .resolve_edit(&mut app.seq_matcher, key, seq, counts)
     {
         crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
+            EditAction::ToggleFrontmatter => {
+                let supported = app
+                    .editor
+                    .editing_id
+                    .as_deref()
+                    .is_some_and(crate::storage::Storage::supports_frontmatter);
+                if !supported {
+                    app.set_temporary_status_static(
+                        "Frontmatter is available for ordinary notes only",
+                    );
+                    return false;
+                }
+                app.editor.frontmatter_visible = !app.editor.frontmatter_visible;
+                *focus = if app.editor.frontmatter_visible {
+                    EditFocus::Frontmatter
+                } else {
+                    EditFocus::Body
+                };
+                return false;
+            }
             EditAction::CycleFocus => {
                 *focus = match *focus {
+                    EditFocus::Frontmatter => EditFocus::Body,
+                    EditFocus::Title if app.editor.frontmatter_visible => EditFocus::Frontmatter,
                     EditFocus::Title => EditFocus::Body,
                     EditFocus::Body => {
                         if app.editor.sidebar != EditSidebar::None {
@@ -259,6 +282,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::PreviewLink => {
+                if *focus == EditFocus::Frontmatter {
+                    return false;
+                }
                 app.open_link_preview();
                 return false;
             }
@@ -279,6 +305,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::PasteImage => {
+                if *focus == EditFocus::Frontmatter {
+                    return false;
+                }
                 if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import")
                 {
                     return false;
@@ -290,6 +319,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertImageFromFile => {
+                if *focus == EditFocus::Frontmatter {
+                    return false;
+                }
                 if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import")
                 {
                     return false;
@@ -301,6 +333,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::GoToLine => {
+                *focus = EditFocus::Body;
                 app.editor.go_to_line_input = if app.editor.go_to_line_input.is_some() {
                     None
                 } else {
@@ -313,6 +346,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     .format(&app.config.editor.date_format)
                     .to_string();
                 match *focus {
+                    EditFocus::Frontmatter => {
+                        let _ = app.editor.frontmatter_editor.insert_str(&s);
+                    }
                     EditFocus::Title => {
                         let _ = app.editor.title_editor.insert_str(&s);
                     }
@@ -340,6 +376,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
             EditAction::InsertTab => {
                 match *focus {
+                    EditFocus::Frontmatter => {
+                        let _ = app.editor.frontmatter_editor.insert_str("\t");
+                    }
                     EditFocus::Title => {
                         let _ = app.editor.title_editor.insert_str("\t");
                     }
@@ -354,6 +393,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Find => {
+                *focus = EditFocus::Body;
                 let theme = &app.app_theme;
                 let mut popup = crate::ui::quick_search::QuickSearch::new("Find", theme);
                 let query_lower = popup.query().to_lowercase();
@@ -377,6 +417,17 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     }
 
     match *focus {
+        EditFocus::Frontmatter => {
+            app.seq_matcher.clear();
+            let before = app.editor.frontmatter_text();
+            update_selection_for_move(&mut app.editor.frontmatter_editor, &key);
+            if !apply_text_shortcuts(&app.keybinds, &mut app.editor.frontmatter_editor, key) {
+                app.editor.frontmatter_editor.input(Input::from(key));
+            }
+            if app.editor.frontmatter_text() != before {
+                *app.editor.modified_status_cache.borrow_mut() = None;
+            }
+        }
         EditFocus::Sidebar => {
             app.seq_matcher.clear();
             if app
@@ -429,7 +480,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     app.app_theme.highlight_bg,
                 );
             }
-            app.write_draft();
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
@@ -438,13 +488,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.body, key) {
                 if app.editor.body.revision() != revision {
                     app.request_editor_preview_update();
-                    app.write_draft();
                 }
                 return false;
             }
             if app.editor.body.input(Input::from(key)).content_changed {
                 app.request_editor_preview_update();
-                app.write_draft();
             }
         }
     }
@@ -515,7 +563,53 @@ pub(crate) fn handle_edit_mouse(
         return;
     }
 
-    let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
+    let metadata_inner = app.editor.frontmatter_rect;
+    let over_metadata = app.editor.frontmatter_visible
+        && contains_cell(metadata_inner, mouse_event.column, mouse_event.row);
+    let metadata_drag = *focus == EditFocus::Frontmatter && mouse_selection.active;
+    if over_metadata || metadata_drag {
+        match mouse_event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                *focus = EditFocus::Frontmatter;
+                move_textarea_cursor_to_mouse(
+                    &mut app.editor.frontmatter_editor,
+                    metadata_inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                    app.editor.frontmatter_viewport.0 as usize,
+                    app.editor.frontmatter_viewport.1 as usize,
+                );
+                mouse_selection.begin(&mut app.editor.frontmatter_editor);
+            }
+            MouseEventKind::Drag(MouseButton::Left) if metadata_drag => {
+                mouse_selection.mark_drag();
+                move_textarea_cursor_to_mouse(
+                    &mut app.editor.frontmatter_editor,
+                    metadata_inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                    app.editor.frontmatter_viewport.0 as usize,
+                    app.editor.frontmatter_viewport.1 as usize,
+                );
+            }
+            MouseEventKind::Up(MouseButton::Left) if metadata_drag => {
+                if let Some(notice) = mouse_selection.finish(
+                    &mut app.editor.frontmatter_editor,
+                    app.config.editor.copy_on_select,
+                ) {
+                    app.set_temporary_status(notice);
+                }
+            }
+            MouseEventKind::ScrollDown => app.editor.frontmatter_editor.scroll((3, 0)),
+            MouseEventKind::ScrollUp => app.editor.frontmatter_editor.scroll((-3, 0)),
+            _ => {}
+        }
+        return;
+    }
+    let frontmatter_height = app
+        .editor
+        .frontmatter_height(terminal_area.height.saturating_sub(2));
+    let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas_with_frontmatter(
         terminal_area,
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
@@ -525,24 +619,21 @@ pub(crate) fn handle_edit_mouse(
         app.preview_position,
         app.editor.header_title_rect,
         app.zen_padding(),
+        frontmatter_height,
     );
 
     let md_area = if app.preview_fullscreen {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ])
-            .split(terminal_area);
-        Some(chunks[1])
+        Some(crate::events::edit_body_area(
+            terminal_area,
+            frontmatter_height,
+        ))
     } else if app.editor.editor_preview_enabled {
-        edit_view_md_preview_area(
+        edit_view_md_preview_area_with_frontmatter(
             terminal_area,
             app.editor.sidebar,
             app.preview_position,
             app.zen_padding(),
+            frontmatter_height,
         )
     } else {
         None

@@ -375,17 +375,30 @@ impl App {
         }
 
         let new_align = self.editor.text_align.cycle();
-        self.editor.text_align = new_align;
-
-        // Persist to frontmatter of current note.
-        if let Some(note_id) = self.editor.editing_id.clone()
-            && let Ok(mut note) = self.storage.load_note(&note_id)
+        if self
+            .editor
+            .editing_id
+            .as_deref()
+            .is_some_and(Storage::supports_frontmatter)
         {
-            let (mut fm, body) = crate::frontmatter::parse(&note.content);
+            let mut fm = match crate::frontmatter::parse_yaml(&self.editor.frontmatter_text()) {
+                Ok(fm) => fm,
+                Err(e) => {
+                    self.set_temporary_status(&format!("Invalid frontmatter YAML: {e}"));
+                    return;
+                }
+            };
             fm.text_align = Some(new_align);
-            note.content = crate::frontmatter::serialize(&fm, body);
-            let _ = self.storage.save_note(&note_id, &note);
+            if let Ok(yaml) = serde_yaml_ng::to_string(&fm) {
+                self.editor.frontmatter_editor = ratatui_textarea::TextArea::from(yaml.lines());
+                self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+                self.write_draft();
+                if self.autosave().is_err() {
+                    return;
+                }
+            }
         }
+        self.editor.text_align = new_align;
 
         if self.mode == ViewMode::Edit {
             self.update_editor_markdown_preview();
