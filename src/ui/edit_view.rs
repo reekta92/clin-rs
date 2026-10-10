@@ -269,16 +269,18 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if metadata_height > 0 {
         let block = Block::default()
             .borders(if metadata_height >= 3 {
-                Borders::TOP | Borders::BOTTOM
+                Borders::BOTTOM
             } else {
                 Borders::NONE
             })
-            .style(app.app_theme.bg_style());
-        let block = if metadata_height >= 3 {
-            block.title(" Frontmatter (YAML) · generated fields may be rewritten on save ")
-        } else {
-            block
-        };
+            .border_style(Style::default().fg(app.app_theme.muted))
+            .padding(if metadata_height >= 3 {
+                Padding::new(1, 0, 1, 0)
+            } else {
+                Padding::new(1, 0, 0, 0)
+            })
+            .style(app.app_theme.preview_bg_style().fg(app.app_theme.text));
+        
         app.editor.frontmatter_rect = block.inner(metadata_area);
         super::render_textarea_with_theme(
             frame,
@@ -288,7 +290,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             focus == EditFocus::Frontmatter,
             false,
             block,
-            app.app_theme.bg_style(),
+            app.app_theme.preview_bg_style().fg(app.app_theme.text),
         );
         app.editor.frontmatter_viewport = super::refresh_textarea_viewport(
             &app.editor.frontmatter_editor,
