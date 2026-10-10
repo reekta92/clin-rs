@@ -291,9 +291,11 @@ mod tests {
 
     #[test]
     fn outline_scrollbar_shares_content_divider() {
-        let content = (0..100)
-            .map(|i| format!("# Heading {i}\n\ntext\n\n"))
-            .collect::<String>();
+        use std::fmt::Write;
+        let mut content = String::new();
+        for i in 0..100 {
+            let _ = write!(content, "# Heading {i}\n\ntext\n\n");
+        }
         let mut state = OutlineState::new(
             "note.md".into(),
             "Note",
