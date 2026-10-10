@@ -216,7 +216,7 @@ pub fn build_tab_spans(
         if i > 0 {
             spans.push(Span::raw(" "));
         }
-        
+
         let active_color = match *label {
             "Vault" => theme.folder,
             "Pinned" => theme.pinned,
@@ -224,7 +224,7 @@ pub fn build_tab_spans(
             "Subnotes" => theme.subnote,
             _ => theme.accent,
         };
-        
+
         let active_style = Style::default()
             .fg(active_color)
             .add_modifier(Modifier::BOLD);
