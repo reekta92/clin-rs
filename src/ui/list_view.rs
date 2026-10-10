@@ -1046,46 +1046,44 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         Style::default().fg(app.app_theme.fg),
                     ));
                 }
-            } else {
-                if !app.list.grid_folder.is_empty() {
-                    let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
-                    let mut current_path = String::new();
-                    let mut offset = list_area.x;
-                    for (part_idx, part) in parts.iter().enumerate() {
-                        if part_idx > 0 {
-                            spans.push(Span::styled(
-                                " / ",
-                                Style::default().fg(app.app_theme.muted),
-                            ));
-                            offset += 3;
-                        } else {
-                            spans.push(Span::raw(" "));
-                            offset += 1;
-                        }
-
-                        let part_w = part.chars().count() as u16;
-                        if !current_path.is_empty() {
-                            current_path.push('/');
-                        }
-                        current_path.push_str(part);
-
-                        let is_part_hovered = app.mouse_pos.is_some_and(|(col, row)| {
-                            row == list_area.y + 1
-                                && col >= offset
-                                && col < offset + part_w
-                                && part_idx < parts.len() - 1
-                        });
-
+            } else if !app.list.grid_folder.is_empty() {
+                let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
+                let mut current_path = String::new();
+                let mut offset = list_area.x;
+                for (part_idx, part) in parts.iter().enumerate() {
+                    if part_idx > 0 {
                         spans.push(Span::styled(
-                            part.to_string(),
-                            if is_part_hovered {
-                                app.app_theme.hover_style()
-                            } else {
-                                Style::default().fg(app.app_theme.fg)
-                            },
+                            " / ",
+                            Style::default().fg(app.app_theme.muted),
                         ));
-                        offset += part_w;
+                        offset += 3;
+                    } else {
+                        spans.push(Span::raw(" "));
+                        offset += 1;
                     }
+
+                    let part_w = part.chars().count() as u16;
+                    if !current_path.is_empty() {
+                        current_path.push('/');
+                    }
+                    current_path.push_str(part);
+
+                    let is_part_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                        row == list_area.y + 1
+                            && col >= offset
+                            && col < offset + part_w
+                            && part_idx < parts.len() - 1
+                    });
+
+                    spans.push(Span::styled(
+                        part.to_string(),
+                        if is_part_hovered {
+                            app.app_theme.hover_style()
+                        } else {
+                            Style::default().fg(app.app_theme.fg)
+                        },
+                    ));
+                    offset += part_w;
                 }
             }
             let has_breadcrumbs = !spans.is_empty();
