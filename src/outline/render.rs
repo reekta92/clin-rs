@@ -184,10 +184,13 @@ pub fn draw_outline(
             state.mouse_pos,
             theme.hover_style(),
         );
+        // Paint the divider first so the scrollbar thumb remains visible on it.
+        crate::ui::draw_dim_vline(frame, sep_area, theme.muted);
+        let track = crate::ui::scrollbar::pane_track_rect(left_area, Some(sep_area));
         let content_len = visible.len();
         let viewport_len = left_area.height as usize;
         state.last_tree_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-            track: crate::ui::scrollbar::track_rect(left_area),
+            track,
             content_len,
             viewport_len,
         });
@@ -196,7 +199,7 @@ pub fn draw_outline(
             // so we pass the raw scroll offset directly.
             crate::ui::scrollbar::draw_scrollbar(
                 frame,
-                left_area,
+                track,
                 content_len,
                 viewport_len,
                 state.tree_scroll_offset,
@@ -204,8 +207,6 @@ pub fn draw_outline(
                 theme,
             );
         }
-        // Draw vertical separator
-        crate::ui::draw_dim_vline(frame, sep_area, theme.muted);
 
         // Draw Right Side Pane: Full content of selected node
         if !state.nodes.is_empty() && state.selected < state.nodes.len() {
@@ -287,6 +288,54 @@ mod tests {
     use super::*;
     use crate::keybinds::KeyMatcher;
     use ratatui::backend::TestBackend;
+
+    #[test]
+    fn outline_scrollbar_shares_content_divider() {
+        let content = (0..100)
+            .map(|i| format!("# Heading {i}\n\ntext\n\n"))
+            .collect::<String>();
+        let mut state = OutlineState::new(
+            "note.md".into(),
+            "Note",
+            &content,
+            Keybinds::default(),
+            KeyMatcher::new(),
+        );
+        let mut terminal = ratatui::Terminal::new(TestBackend::new(80, 20)).unwrap();
+        let theme = AppThemeColors::default();
+        let mut config = crate::config::ClinConfig::default();
+        config.ui.scrollbars = true;
+        terminal
+            .draw(|frame| {
+                draw_outline(
+                    frame,
+                    frame.area(),
+                    &mut state,
+                    &theme,
+                    &Keybinds::default(),
+                    &config,
+                    None,
+                )
+            })
+            .unwrap();
+        let meta = state.last_tree_scroll.unwrap();
+        assert_eq!(meta.track.x, state.tree_list_rect.right());
+        let buffer = terminal.backend().buffer();
+        assert_eq!(
+            buffer.cell((meta.track.x, meta.track.y)).unwrap().symbol(),
+            "█"
+        );
+        assert_eq!(
+            buffer
+                .cell((meta.track.x, meta.track.bottom() - 1))
+                .unwrap()
+                .symbol(),
+            "│"
+        );
+        for row in meta.track.y..meta.track.bottom() {
+            assert_ne!(buffer.cell((meta.track.x - 1, row)).unwrap().symbol(), "█");
+        }
+    }
 
     #[test]
     fn outline_selected_row_has_no_ascii_marker() {

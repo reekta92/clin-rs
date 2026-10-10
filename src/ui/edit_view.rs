@@ -326,6 +326,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let sidebar_area = layout.sidebar;
     let preview_area_rect = layout.preview;
     let splitter_area = layout.splitter;
+    if let Some(splitter) = splitter_area {
+        draw_dim_vline(frame, splitter, app.app_theme.muted);
+    }
 
     let editor_container = layout.body;
 
@@ -350,16 +353,19 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             // (src/ui/mod.rs:1516), which derives visible rows from
             // block.inner(area).
             let viewport_len = editor_container.height.saturating_sub(1) as usize;
-            let area = editor_container;
+            let track = crate::ui::scrollbar::pane_track_rect(
+                editor_container,
+                splitter_area.filter(|_| preview_area_rect.is_some()),
+            );
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(area),
+                track,
                 content_len,
                 viewport_len,
             };
             app.editor.last_scroll = Some(meta);
             crate::ui::scrollbar::draw_scrollbar(
                 frame,
-                area,
+                track,
                 content_len,
                 viewport_len,
                 app.editor.body_viewport_row as usize,
@@ -525,9 +531,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             &app.app_theme,
         );
         draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
-    }
-    if let Some(splitter_area) = splitter_area {
-        draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
