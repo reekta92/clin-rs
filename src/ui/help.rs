@@ -1149,7 +1149,6 @@ fn draw_help_info_pane(
             .fg(theme.heading)
             .add_modifier(Modifier::BOLD),
     )));
-    lines.push(Line::default());
 
     // Description
     lines.push(Line::from(Span::styled(
@@ -1170,7 +1169,7 @@ fn draw_help_info_pane(
             let marker = if is_active { "▼" } else { "›" };
             let style = if is_active {
                 Style::default()
-                    .fg(theme.accent)
+                    .fg(theme.success)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.muted)
@@ -1188,7 +1187,7 @@ fn draw_help_info_pane(
         lines.push(Line::from(Span::styled(
             p.name,
             Style::default()
-                .fg(theme.accent)
+                .fg(theme.success)
                 .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(render_tip_body(p.body, keybinds, theme)));
