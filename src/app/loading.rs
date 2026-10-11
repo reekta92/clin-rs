@@ -1856,6 +1856,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (temp_dir, App::new(storage).unwrap())
     }

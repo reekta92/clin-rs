@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::time::{Duration, Instant};
 
-const NOTE_CACHE_VERSION: u16 = 3;
+const NOTE_CACHE_VERSION: u16 = 4;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct PersistedNoteCache {
@@ -687,6 +687,7 @@ mod tests {
             key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

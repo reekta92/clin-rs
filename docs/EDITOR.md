@@ -28,7 +28,7 @@ remain immediate.
 
 ## Focus and Preview
 
-The current editor has **Title**, **Body**, and visible **Sidebar** focus; it has no READ/EDIT modal state or `EditMode` enum. Typing edits the focused text field directly. `Ctrl+t` cycles focus; `Tab` inserts a tab in the body. Presets change navigation outside text inputs, not the body editor.
+The editor has **Title**, optional **Frontmatter**, **Body**, and visible **Sidebar** focus; it has no READ/EDIT modal state or `EditMode` enum. Typing edits the focused text field directly. `Ctrl+t` cycles focus, skipping hidden fields; `Tab` inserts a tab in text fields. Presets change navigation outside text inputs, not the body editor.
 
 `Ctrl+p` toggles the Markdown preview and `F11` expands it. `Esc` first closes an active popup/link preview; otherwise it saves and returns directly to List. `Ctrl+s` saves without leaving.
 
@@ -81,6 +81,65 @@ while older text above and all text below the current paragraph are dimmed.
 ## Sidebars + Wikilink Previews
 
 The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. `Ctrl+o` toggles Outline, `Ctrl+b` toggles Links, and `Ctrl+t` cycles focus to a visible sidebar. `Alt+l` previews the link under the cursor.
+
+## Editable Frontmatter
+
+`F7` (`toggle_frontmatter` in the edit keymap, remappable) shows a scrollable
+**Frontmatter (YAML)** field above the body and focuses it immediately. Press it
+again to hide the field and return to Body. Hiding does not discard pending
+changes. Each newly opened note starts with the field hidden; a recovered
+unsaved metadata draft opens it for correction. Explicitly opened frontmatter
+remains visible in zen mode and alongside preview/sidebars.
+
+Edit YAML contents without the surrounding `---` delimiters. Add, change, or
+remove arbitrary custom fields, including lists and nested mappings. Selection,
+clipboard shortcuts, Unicode input, multiline paste, and undo/redo use the
+focused field. Find and go-to-line remain body-only. Frontmatter does not enter
+Markdown preview, outline, body line numbering, wikilinks, or writing word counts.
+
+Save, autosave, and Esc save metadata and body together. YAML must be a mapping
+with unique keys; managed fields must have their expected types. `updated_at`
+accepts a nonnegative Unix timestamp, an RFC 3339 timestamp, or an ISO date
+(`YYYY-MM-DD`, interpreted as midnight UTC). Invalid YAML
+blocks saving and leaving the note, without modifying its file or reporting
+Saved. The raw pending text is kept in an encrypted recovery draft. Startup restores
+an unsaved draft into Edit view for correction, even if its new note was never
+saved to disk. If the disk header changed while
+metadata was being edited, saving refuses to overwrite it and retains the draft;
+resolve that conflict before retrying. There is no automatic merge UI.
+
+All fields can be added, changed, or removed, including `title`, `tags`, `pinned`,
+`text_align`, `updated_at`, `links`, and `original_ext`. Explicit YAML edits are
+saved as written, without regenerating managed fields during that save. A YAML
+title change updates the title control after a successful save; if both fields
+have conflicting pending title changes, make their values agree before saving.
+Removing `title` falls back to the filename without renaming the note. Clearing
+the YAML field removes the header, unless the title control also has a pending
+change.
+
+Saves preserve user-field order, comments, quotes, nested YAML, blank lines, and
+LF/CRLF header line endings. Body-only saves do not add absent managed fields to
+existing notes. Automatic updates patch only values that actually change, in
+place; unrelated fields are never reserialized. If a syntax edit would change
+unrelated YAML semantics (for example, a managed value shared through an anchor),
+saving refuses it rather than silently rewriting the document. Edit the affected
+fields explicitly to resolve it.
+
+Use `[notes.frontmatter]` to control automatic managed-field writes. Disabled
+fields are left untouched, not removed; explicit YAML edits still work. Choose
+`updated_at = "unix"`, `"iso8601"` (UTC RFC 3339), or `"none"`. Enabled fields
+already present can be refreshed on later body saves, so disable `links` or
+`updated_at` when maintaining those fields manually. New notes and encryption
+conversion may add enabled managed fields. See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md#notesfrontmatter).
+
+Body-only and non-title metadata edits keep the filename even with the default
+`rename_on_title_change = true`. Set it to `false` in `[notes]` to retain stable
+filenames such as `CL-01.md` on actual title changes too. Existing broken
+wikilinks are not migrated or repaired.
+Only ordinary `.md`/`.txt` notes in the built-in editor support the toggle;
+templates, canvas/draw, and external editing remain unchanged. `.clin` notes
+still require decryption before editing, and note-file frontmatter remains
+plaintext.
 
 ## External Editor
 
@@ -139,7 +198,7 @@ zen_focus_context = 3
 
 ## Draft Recovery and Encrypted Notes
 
-Editor mutations attempt to write an encrypted draft to `<vault>/.clin/editor_draft.bin`. Startup attempts to recover it into the note, then removes the readable draft even if decoding or saving fails. This is best-effort recovery, not a guarantee against every crash or disk-write failure.
+Editor mutations attempt to write an encrypted draft to `<vault>/.clin/editor_draft.bin`. Startup attempts to recover it into the note. A draft is removed only after a successful save; invalid YAML, title conflicts, or a changed disk header restores the pending draft into Edit view on startup. Legacy title/body drafts remain readable. This is best-effort recovery, not a guarantee against every crash or disk-write failure.
 
 `.clin` notes cannot be edited directly: use **Decrypt Note** from the palette first. Draft writes exclude `.clin` IDs; encryption uses the application-wide key outside the vault. See [ENCRYPTION.md](ENCRYPTION.md).
 

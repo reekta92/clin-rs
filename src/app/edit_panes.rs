@@ -150,7 +150,9 @@ impl App {
             }
             EditSidebar::Links => {
                 if let Some(item) = self.editor.links.get(self.editor.sidebar_selected).cloned() {
-                    let _ = self.autosave();
+                    if self.autosave().is_err() {
+                        return false;
+                    }
                     self.open_note_at_line(&item.id, None);
                     true
                 } else {

@@ -1098,6 +1098,8 @@ impl App {
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
+        self.storage.rename_on_title_change = self.config.notes.rename_on_title_change;
+        self.storage.frontmatter_policy = self.config.notes.frontmatter;
         self.preview_wrap = self.config.core.preview_wrap;
         let mut theme_warnings = Vec::new();
         self.app_theme =
@@ -1668,9 +1670,11 @@ impl App {
                 if let Some(timer) = self.editor.autosave_timer
                     && now >= timer
                 {
-                    let _ = self.autosave();
-                    self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
-                    self.editor.last_saved_time = Some(std::time::Instant::now());
+                    if self.autosave().is_ok() {
+                        self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                        self.editor.last_saved_time = Some(std::time::Instant::now());
+                    }
+                    // A failed buffer stays unsaved; retry on mutation or explicit Save.
                     self.editor.autosave_timer = None;
                     dirty = true;
                 }
@@ -1696,7 +1700,10 @@ impl App {
             let title = crate::events::get_title_text(&self.editor.title_editor)
                 .trim()
                 .to_string();
-            let _ = self.storage.write_editor_draft(id, &title, &content);
+            let header = Storage::supports_frontmatter(id).then(|| self.editor.frontmatter_edit());
+            let _ = self
+                .storage
+                .write_editor_draft_with_frontmatter(id, &title, &content, header);
         }
     }
 
@@ -1754,15 +1761,50 @@ impl App {
             .map(|n| (n.updated_at, n.tags))
             .unwrap_or_else(|_| (now_unix_secs(), Vec::new()));
 
-        let note = Note {
+        let mut note = Note {
             title,
             content,
             updated_at,
             tags,
         };
-        match self.storage.save_note(&id, &note) {
+        let result = (|| -> anyhow::Result<String> {
+            if Storage::supports_frontmatter(&id) {
+                let edit = self.editor.frontmatter_edit();
+                let (fm, title) = edit
+                    .parse_with_title(&note.title)
+                    .map_err(|e| anyhow::anyhow!("Frontmatter cannot be saved: {e}"))?;
+                if self.editor.frontmatter_changed() {
+                    note.title = title;
+                    note.tags = fm.tags.clone();
+                    return self.storage.save_note_with_frontmatter(&id, &note, &edit);
+                }
+            }
+            self.storage.save_note(&id, &note)
+        })();
+        match result {
             Ok(saved_id) => {
                 self.editor.editing_id = Some(saved_id.clone());
+                if Storage::supports_frontmatter(&id) {
+                    if let Ok(saved) = self.storage.load_note(&saved_id) {
+                        note.title = saved.title;
+                    }
+                    let header = self.storage.load_frontmatter_text(&saved_id).ok().flatten();
+                    self.editor.finish_frontmatter_save(header, &note.title);
+                    if crate::events::get_title_text(&self.editor.title_editor) != note.title {
+                        self.editor.title_editor = make_title_editor(
+                            &note.title,
+                            self.app_theme.highlight_fg,
+                            self.app_theme.highlight_bg,
+                        );
+                    }
+                    let fm = self
+                        .editor
+                        .frontmatter_original
+                        .as_deref()
+                        .and_then(|text| crate::frontmatter::parse_yaml(text).ok())
+                        .unwrap_or_default();
+                    self.editor.text_align = fm.text_align.unwrap_or(self.config.editor.text_align);
+                }
                 self.enqueue_backup(format!("auto: {}", note.title));
 
                 let current_words = crate::goals::count_words(&note.content);
@@ -1789,6 +1831,9 @@ impl App {
                     self.set_temporary_status(&format!("Failed to save local state: {error}"));
                 }
                 self.storage.delete_editor_draft();
+                self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                self.editor.last_saved_time = Some(std::time::Instant::now());
+                self.editor.autosave_timer = None;
                 Ok(())
             }
             Err(e) => {
@@ -2057,6 +2102,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
@@ -2097,6 +2143,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2158,6 +2205,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2195,6 +2243,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.external_editor_enabled = false;
@@ -2268,6 +2317,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2371,6 +2421,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2410,6 +2461,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2497,6 +2549,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2539,6 +2592,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2578,13 +2632,14 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
-        app.adjust_calendar_height(-20);
+        app.adjust_calendar_height_to(0);
         assert_eq!(app.list.calendar_height, 9);
 
-        app.adjust_calendar_height(50);
+        app.adjust_calendar_height_to(50);
         assert_eq!(app.list.calendar_height, 20);
     }
 
@@ -2609,6 +2664,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2656,6 +2712,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2723,6 +2780,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Write default config
         std::fs::write(&config_path, crate::config::merge::default_config_content())

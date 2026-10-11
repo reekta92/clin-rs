@@ -311,12 +311,14 @@ pub struct BackupConfig {
 #[serde(default)]
 pub struct NotesConfig {
     pub rename_on_title_change: bool,
+    pub frontmatter: crate::frontmatter::WritePolicy,
 }
 
 impl Default for NotesConfig {
     fn default() -> Self {
         Self {
             rename_on_title_change: true,
+            frontmatter: crate::frontmatter::WritePolicy::default(),
         }
     }
 }

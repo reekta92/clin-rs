@@ -425,7 +425,47 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `rename_on_title_change` | `bool` | `true` | Sync the note's filename to its `title:` frontmatter on every save. Set to `false` to keep filenames stable (e.g. when the vault is shared with Obsidian, where filenames are the `[[wikilink]]` targets) |
+| `rename_on_title_change` | `bool` | `true` | Rename the file only when its title actually changes. Body-only saves, other metadata changes, and removing `title` keep the filename. Set to `false` to keep filenames stable even on title changes; new notes still receive title-derived filenames |
+
+### `[notes.frontmatter]`
+
+Controls automatic writes of managed YAML fields. Explicit edits in the `F7`
+frontmatter field are always saved, including managed-field additions/removals.
+Disabled fields are neither generated nor updated; existing values are preserved.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `title` | `bool` | `true` | Write the note title automatically |
+| `tags` | `bool` | `true` | Write note tags automatically |
+| `pinned` | `bool` | `true` | Include pinning metadata in generated headers |
+| `links` | `bool` | `true` | Write derived wikilink targets, deduplicated in first-seen order |
+| `original_ext` | `bool` | `true` | Record the extension during encryption; without it, decryption defaults to `.md` |
+| `text_align` | `bool` | `true` | Include per-note alignment in generated headers when present |
+| `updated_at` | `String` | `"unix"` | `"unix"` for seconds since Unix epoch, `"iso8601"` for UTC RFC 3339, or `"none"` to stop automatic timestamp writes |
+
+For an existing note, a body-only save updates enabled fields already present
+but does not inject missing fields. Actual title/tag changes may add those
+fields when enabled. New notes and encryption/decryption conversion generate
+enabled managed fields while preserving unrelated YAML. Pin/alignment actions
+are explicit metadata edits and still persist when automatic output is disabled.
+Missing `links` are derived in memory from the body; missing `updated_at` falls
+back to the file modification time for plain notes. Settings reload with config.
+
+```toml
+[notes]
+rename_on_title_change = false
+
+[notes.frontmatter]
+links = false
+original_ext = false
+updated_at = "iso8601"
+```
+
+Automatic updates preserve field order and formatting outside changed values.
+To stop generating derived data entirely, use `updated_at = "none"` too. Existing
+fields are not deleted automatically; remove them once using `F7`. Disabling
+`original_ext` for a `.txt`, `.canvas`, or `.draw` note means decryption cannot
+recover its original extension unless an existing `original_ext` value remains.
 
 ### `[goals]`
 

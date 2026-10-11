@@ -2,7 +2,7 @@
 
 This document details the editor-style keybind presets available in clin-rs: Helix, Vim, and Emacs.
 
-These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, search boxes, templates, tag managers, and popups).
+These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, frontmatter YAML editor, search boxes, templates, tag managers, and popups).
 
 ---
 

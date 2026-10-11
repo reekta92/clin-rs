@@ -29,6 +29,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let lines = vec![
@@ -83,6 +84,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(storage_b.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_b.config_dir.clone()).unwrap();
@@ -156,6 +158,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(storage_c.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_c.config_dir.clone()).unwrap();
@@ -227,6 +230,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Generate 5000-line synthetic markdown
