@@ -241,7 +241,13 @@ impl Default for NoteEditor {
 
 impl NoteEditor {
     pub fn reset_frontmatter(&mut self, header: Option<String>, title: &str) {
-        self.frontmatter_editor = TextArea::from(header.as_deref().unwrap_or_default().lines());
+        self.frontmatter_editor = TextArea::from(
+            header
+                .as_deref()
+                .unwrap_or_default()
+                .replace("\r\n", "\n")
+                .split('\n'),
+        );
         self.frontmatter_saved = self.frontmatter_text();
         self.frontmatter_original = header;
         self.frontmatter_saved_title = title.to_string();
@@ -251,25 +257,11 @@ impl NoteEditor {
     }
 
     pub fn finish_frontmatter_save(&mut self, header: Option<String>, title: &str) {
-        let text = self.frontmatter_text();
-        let replacement = if self.frontmatter_original.is_none() && text.is_empty() {
-            header.clone()
-        } else if title != self.frontmatter_saved_title {
-            crate::frontmatter::parse_yaml(&text)
-                .ok()
-                .and_then(|mut fm| {
-                    if fm.title.as_deref() == Some(title) {
-                        return None;
-                    }
-                    fm.title = Some(title.to_string());
-                    serde_yaml_ng::to_string(&fm).ok()
-                })
-        } else {
-            None
-        };
-        if let Some(yaml) = replacement {
+        let yaml = header.as_deref().unwrap_or_default();
+        let yaml = yaml.replace("\r\n", "\n");
+        if self.frontmatter_text() != yaml {
             let cursor = self.frontmatter_editor.cursor();
-            self.frontmatter_editor = TextArea::from(yaml.lines());
+            self.frontmatter_editor = TextArea::from(yaml.split('\n'));
             self.frontmatter_editor
                 .move_cursor(ratatui_textarea::CursorMove::Jump(
                     cursor.0 as u16,

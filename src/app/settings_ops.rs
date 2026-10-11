@@ -409,21 +409,27 @@ impl App {
             .as_deref()
             .is_some_and(Storage::supports_frontmatter)
         {
-            let mut fm = match crate::frontmatter::parse_yaml(&self.editor.frontmatter_text()) {
-                Ok(fm) => fm,
+            let result = (|| -> anyhow::Result<String> {
+                let text = self.editor.frontmatter_text();
+                crate::frontmatter::parse_yaml(&text)?;
+                let updates = serde_yaml_ng::Mapping::from_iter([(
+                    "text_align".into(),
+                    serde_yaml_ng::to_value(new_align)?,
+                )]);
+                crate::frontmatter::patch_yaml(&text, updates)
+            })();
+            let yaml = match result {
+                Ok(yaml) => yaml,
                 Err(e) => {
-                    self.set_temporary_status(&format!("Invalid frontmatter YAML: {e}"));
+                    self.set_temporary_status(&format!("Cannot update frontmatter: {e}"));
                     return;
                 }
             };
-            fm.text_align = Some(new_align);
-            if let Ok(yaml) = serde_yaml_ng::to_string(&fm) {
-                self.editor.frontmatter_editor = ratatui_textarea::TextArea::from(yaml.lines());
-                self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
-                self.write_draft();
-                if self.autosave().is_err() {
-                    return;
-                }
+            self.editor.frontmatter_editor = ratatui_textarea::TextArea::from(yaml.split('\n'));
+            self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+            self.write_draft();
+            if self.autosave().is_err() {
+                return;
             }
         }
         self.editor.text_align = new_align;
@@ -1135,6 +1141,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         App::new(storage).unwrap()
     }
@@ -1523,6 +1530,7 @@ mod tests {
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).unwrap();
         let mut state =

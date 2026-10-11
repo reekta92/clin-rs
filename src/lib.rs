@@ -1766,6 +1766,7 @@ mod tests {
             key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).unwrap();
         app.mode = ViewMode::List;

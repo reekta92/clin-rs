@@ -98,7 +98,9 @@ focused field. Find and go-to-line remain body-only. Frontmatter does not enter
 Markdown preview, outline, body line numbering, wikilinks, or writing word counts.
 
 Save, autosave, and Esc save metadata and body together. YAML must be a mapping
-with unique keys; managed fields must have their existing types. Invalid YAML
+with unique keys; managed fields must have their expected types. `updated_at`
+accepts a nonnegative Unix timestamp, an RFC 3339 timestamp, or an ISO date
+(`YYYY-MM-DD`, interpreted as midnight UTC). Invalid YAML
 blocks saving and leaving the note, without modifying its file or reporting
 Saved. The raw pending text is kept in an encrypted recovery draft. Startup restores
 an unsaved draft into Edit view for correction, even if its new note was never
@@ -106,21 +108,34 @@ saved to disk. If the disk header changed while
 metadata was being edited, saving refuses to overwrite it and retains the draft;
 resolve that conflict before retrying. There is no automatic merge UI.
 
-Custom-field removals persist. `title`, `tags`, `pinned`, and `text_align` can also
-be edited. A YAML title change updates the title control after a successful save;
-if both fields have conflicting pending title changes, make their values agree
-before saving. Clearing the field clears custom properties, tags, pinning, and
-per-note alignment, but keeps the title control's value.
+All fields can be added, changed, or removed, including `title`, `tags`, `pinned`,
+`text_align`, `updated_at`, `links`, and `original_ext`. Explicit YAML edits are
+saved as written, without regenerating managed fields during that save. A YAML
+title change updates the title control after a successful save; if both fields
+have conflicting pending title changes, make their values agree before saving.
+Removing `title` falls back to the filename without renaming the note. Clearing
+the YAML field removes the header, unless the title control also has a pending
+change.
 
-`updated_at`, `links`, and `original_ext` retain Clin's existing managed-field
-save rules and may be regenerated rather than accepting a manual value. YAML
-serialization can normalize field order, quotes, whitespace, and comments;
-this is not a formatting-preserving properties editor. Whole-file external
-editing and configurable managed-field output are not part of this toggle.
+Saves preserve user-field order, comments, quotes, nested YAML, blank lines, and
+LF/CRLF header line endings. Body-only saves do not add absent managed fields to
+existing notes. Automatic updates patch only values that actually change, in
+place; unrelated fields are never reserialized. If a syntax edit would change
+unrelated YAML semantics (for example, a managed value shared through an anchor),
+saving refuses it rather than silently rewriting the document. Edit the affected
+fields explicitly to resolve it.
 
-For vaults whose wikilinks use stable filenames such as `[[CL-01]]`, set
-`rename_on_title_change = false` in `[notes]` to keep those filenames on title
-changes. This feature does not change that setting or migrate broken links.
+Use `[notes.frontmatter]` to control automatic managed-field writes. Disabled
+fields are left untouched, not removed; explicit YAML edits still work. Choose
+`updated_at = "unix"`, `"iso8601"` (UTC RFC 3339), or `"none"`. Enabled fields
+already present can be refreshed on later body saves, so disable `links` or
+`updated_at` when maintaining those fields manually. New notes and encryption
+conversion may add enabled managed fields. See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md#notesfrontmatter).
+
+Body-only and non-title metadata edits keep the filename even with the default
+`rename_on_title_change = true`. Set it to `false` in `[notes]` to retain stable
+filenames such as `CL-01.md` on actual title changes too. Existing broken
+wikilinks are not migrated or repaired.
 Only ordinary `.md`/`.txt` notes in the built-in editor support the toggle;
 templates, canvas/draw, and external editing remain unchanged. `.clin` notes
 still require decryption before editing, and note-file frontmatter remains

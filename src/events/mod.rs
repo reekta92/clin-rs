@@ -2089,6 +2089,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.data_dir,
@@ -2453,6 +2454,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
@@ -2540,6 +2542,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
@@ -2636,6 +2639,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor
@@ -2780,6 +2784,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.body =
@@ -2844,6 +2849,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(&storage.data_dir).unwrap();
         std::fs::create_dir_all(&storage.config_dir).unwrap();

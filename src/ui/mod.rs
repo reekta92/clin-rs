@@ -2850,6 +2850,7 @@ mod markdown_highlight_tests {
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

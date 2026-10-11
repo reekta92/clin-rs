@@ -80,6 +80,14 @@ Encrypted `.clin` files have two sections:
 └──────────────────────────────────────────┘
 ```
 
+Header generation honors `[notes.frontmatter]` and preserves unrelated user
+YAML, comments, and field order through encryption/decryption. Disabled managed
+fields are not added or updated. If `links` is absent, summaries derive links
+from the decrypted payload rather than treating the note as unlinked. If
+`original_ext` is absent, decryption uses `.md`; disabling it can therefore lose
+the original `.txt`, `.canvas`, or `.draw` extension. Pinning edits only the
+plaintext header and preserves the existing encrypted payload.
+
 **Magic:** `CLIN1` (5 bytes) — identifies the encrypted payload start
 
 **Nonce:** 12 fresh random bytes per encryption (uniqueness is probabilistic)

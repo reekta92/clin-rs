@@ -1454,6 +1454,27 @@ max_nodes = 42
     }
 
     #[test]
+    fn notes_frontmatter_policy_roundtrips_and_rejects_unknown_formats() {
+        let text = "[notes.frontmatter]\ntitle = false\ntags = false\npinned = false\nlinks = false\noriginal_ext = false\ntext_align = false\nupdated_at = 'none'\n";
+        let parsed: ClinConfig = toml::from_str(text).unwrap();
+        assert!(!parsed.notes.frontmatter.title);
+        assert!(!parsed.notes.frontmatter.links);
+        assert_eq!(
+            parsed.notes.frontmatter.updated_at,
+            crate::frontmatter::TimestampFormat::None
+        );
+        let saved = toml::to_string(&parsed).unwrap();
+        let reloaded: ClinConfig = toml::from_str(&saved).unwrap();
+        assert_eq!(parsed.notes, reloaded.notes);
+        assert!(toml::from_str::<ClinConfig>("[notes.frontmatter]\nupdated_at = 'typo'").is_err());
+        let empty: ClinConfig = toml::from_str("").unwrap();
+        assert_eq!(
+            empty.notes.frontmatter,
+            crate::frontmatter::WritePolicy::default()
+        );
+    }
+
+    #[test]
     fn notes_config_parses_rename_on_title_change() {
         let parsed: ClinConfig =
             toml::from_str("[notes]\nrename_on_title_change = false\n").unwrap();

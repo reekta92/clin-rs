@@ -1681,6 +1681,7 @@ mod tests {
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About, &storage);
         let displays: Vec<&str> = rows.iter().map(|row| row.display.as_str()).collect();

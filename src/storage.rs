@@ -69,6 +69,7 @@ pub(crate) struct VaultScan {
 
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
     let mut links = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     let mut cursor = 0;
     while let Some(start_offset) = content[cursor..].find("[[") {
         let absolute_start = cursor + start_offset;
@@ -82,8 +83,9 @@ pub fn extract_wikilinks(content: &str) -> Vec<String> {
                 None => inner_text,
             };
 
-            if !link_part.is_empty() && !link_part.contains(']') {
-                links.push(link_part.trim().to_string());
+            let link_part = link_part.trim();
+            if !link_part.is_empty() && !link_part.contains(']') && seen.insert(link_part) {
+                links.push(link_part.to_string());
             }
             cursor = absolute_end + 2;
         } else {
@@ -111,51 +113,55 @@ pub struct Storage {
     pub skip_dir_patterns: Vec<regex::Regex>,
     #[zeroize(skip)]
     pub rename_on_title_change: bool,
+    #[zeroize(skip)]
+    pub frontmatter_policy: frontmatter::WritePolicy,
 }
 
-pub(crate) fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
-    if !bytes.starts_with(b"---\n") && !bytes.starts_with(b"---\r\n") {
+fn split_raw_payload(bytes: &[u8]) -> (Option<&str>, &[u8]) {
+    let start = if bytes.starts_with(b"---\r\n") {
+        5
+    } else if bytes.starts_with(b"---\n") {
+        4
+    } else {
         return (None, bytes);
-    }
-
-    let end_marker = b"\n---";
-    if let Some(end_idx) = bytes[3..]
-        .windows(end_marker.len())
-        .position(|w| w == end_marker)
-    {
-        let fm_bytes = &bytes[3..3 + end_idx];
-        let remaining_start = 3 + end_idx + end_marker.len();
-        let mut content_start = remaining_start;
-
-        if bytes[remaining_start..].starts_with(b"\r\n") {
-            content_start += 2;
-        } else if bytes[remaining_start..].starts_with(b"\n") {
-            content_start += 1;
+    };
+    let mut offset = start;
+    for line in bytes[start..].split_inclusive(|b| *b == b'\n') {
+        if line == b"---\n" || line == b"---\r\n" || line == b"---" {
+            if let Ok(header) = std::str::from_utf8(&bytes[start..offset]) {
+                let header = header
+                    .strip_suffix("\r\n")
+                    .or_else(|| header.strip_suffix('\n'))
+                    .unwrap_or(header);
+                return (Some(header), &bytes[offset + line.len()..]);
+            }
+            break;
         }
-
-        if let Ok(fm_str) = std::str::from_utf8(fm_bytes)
-            && let Ok(fm) = serde_yaml_ng::from_str::<frontmatter::Frontmatter>(fm_str)
-        {
-            return (Some(fm), &bytes[content_start..]);
-        }
+        offset += line.len();
     }
-
     (None, bytes)
 }
 
-fn existing_extra_frontmatter(path: &std::path::Path) -> serde_yaml_ng::Mapping {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| split_frontmatter_payload(&bytes).0)
-        .map(|fm| fm.extra)
-        .unwrap_or_default()
+pub(crate) fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
+    let (header, payload) = split_raw_payload(bytes);
+    match header.and_then(|text| frontmatter::parse_yaml(text).ok()) {
+        Some(fm) => (Some(fm), payload),
+        None => (None, bytes),
+    }
 }
 
-fn existing_text_align(path: &std::path::Path) -> Option<crate::config::TextAlignment> {
-    std::fs::read(path)
-        .ok()
-        .and_then(|bytes| split_frontmatter_payload(&bytes).0)
-        .and_then(|fm| fm.text_align)
+fn read_frontmatter(path: &Path) -> Result<(Option<String>, &'static str)> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((None, "\n")),
+        Err(e) => return Err(e).context("failed to read frontmatter"),
+    };
+    let newline = if bytes.starts_with(b"---\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
+    Ok((split_raw_payload(&bytes).0.map(str::to_string), newline))
 }
 
 /// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
@@ -483,6 +489,7 @@ impl Storage {
             key,
             skip_dir_patterns,
             rename_on_title_change: bootstrap.notes.rename_on_title_change,
+            frontmatter_policy: bootstrap.notes.frontmatter,
         };
         storage.migrate_native_subnotes_metadata()?;
         storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
@@ -586,25 +593,28 @@ impl Storage {
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_string());
-        let existing_pinned = self
-            .load_note_summary(id)
-            .map(|s| s.pinned)
-            .unwrap_or(false);
+        let (header, newline) = read_frontmatter(&old_path)?;
+        let fm = header
+            .as_deref()
+            .map(frontmatter::parse_yaml)
+            .transpose()?
+            .unwrap_or_default();
         let fm = frontmatter::Frontmatter {
             title: Some(note.title.clone()),
             updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
-            pinned: existing_pinned,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
-            text_align: existing_text_align(&old_path),
-            extra: existing_extra_frontmatter(&old_path),
+            ..fm
         };
+        let yaml = frontmatter::patch_yaml(
+            header.as_deref().unwrap_or_default(),
+            self.frontmatter_policy.values(&fm)?,
+        )?;
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
         let encrypted = self.encrypt(&bytes)?;
-        let fm_string = frontmatter::serialize(&fm, "");
-        let mut final_output = fm_string.into_bytes();
+        let mut final_output = frontmatter::frame(Some(&yaml), "", newline).into_bytes();
         final_output.extend_from_slice(&encrypted);
 
         crate::fsutil::atomic_write(&target_path, &final_output)
@@ -630,6 +640,13 @@ impl Storage {
         let orig_ext = fm_opt
             .and_then(|fm| fm.original_ext)
             .unwrap_or_else(|| "md".to_string());
+        anyhow::ensure!(
+            !orig_ext.is_empty()
+                && !orig_ext.contains(['/', '\\'])
+                && orig_ext != "."
+                && orig_ext != "..",
+            "original_ext must be a file extension, not a path"
+        );
 
         let note = self.load_note(id)?;
 
@@ -654,27 +671,30 @@ impl Storage {
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).context("failed to create note directory")?;
         }
-        let existing_pinned = self
-            .load_note_summary(id)
-            .map(|s| s.pinned)
-            .unwrap_or(false);
-
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
         if is_raw {
             crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
                 .context("failed to write decrypted note")?;
         } else {
+            let (header, newline) = read_frontmatter(&old_path)?;
+            let fm = header
+                .as_deref()
+                .map(frontmatter::parse_yaml)
+                .transpose()?
+                .unwrap_or_default();
             let fm = frontmatter::Frontmatter {
                 title: Some(note.title.clone()),
                 updated_at: Some(note.updated_at),
                 tags: note.tags.clone(),
-                pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
-                text_align: existing_text_align(&old_path),
-                extra: existing_extra_frontmatter(&old_path),
+                ..fm
             };
-            let final_content = frontmatter::serialize(&fm, &note.content);
+            let yaml = frontmatter::patch_yaml(
+                header.as_deref().unwrap_or_default(),
+                self.frontmatter_policy.values(&fm)?,
+            )?;
+            let final_content = frontmatter::frame(Some(&yaml), &note.content, newline);
             crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
                 .context("failed to write decrypted note")?;
         }
@@ -1108,7 +1128,11 @@ impl Storage {
             let (fm, payload) = split_frontmatter_payload(&file_content);
 
             if let Some(ref fm_val) = fm
-                && let (Some(title), Some(updated_at)) = (fm_val.title.clone(), fm_val.updated_at)
+                && let (Some(title), Some(updated_at), Some(links)) = (
+                    fm_val.title.clone(),
+                    fm_val.updated_at,
+                    fm_val.links.clone(),
+                )
             {
                 return Ok(NoteSummary {
                     id: id.to_string(),
@@ -1117,7 +1141,7 @@ impl Storage {
                     folder,
                     tags: fm_val.tags.clone(),
                     pinned: fm_val.pinned,
-                    links: fm_val.links.clone().unwrap_or_default(),
+                    links,
                     size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
                 });
             }
@@ -1128,7 +1152,13 @@ impl Storage {
                     .context("failed to decode note")?;
 
             let (tags, pinned, links) = fm
-                .map(|f| (f.tags, f.pinned, f.links.unwrap_or_default()))
+                .map(|f| {
+                    (
+                        f.tags,
+                        f.pinned,
+                        f.links.unwrap_or_else(|| extract_wikilinks(&note.content)),
+                    )
+                })
                 .unwrap_or_else(|| (note.tags.clone(), false, extract_wikilinks(&note.content)));
 
             Ok(NoteSummary {
@@ -1416,19 +1446,19 @@ impl Storage {
             Self::supports_frontmatter(id),
             "Frontmatter editing requires an ordinary note"
         );
-        let fm = frontmatter::parse_yaml(&edit.text).context("Invalid frontmatter YAML")?;
+        frontmatter::parse_yaml(&edit.text).context("Invalid frontmatter YAML")?;
         anyhow::ensure!(
             self.load_frontmatter_text(id)? == edit.original,
             "Frontmatter changed on disk; resolve the conflict before saving (draft retained)"
         );
-        self.save_note_inner(id, note, Some(fm))
+        self.save_note_inner(id, note, Some(edit))
     }
 
     fn save_note_inner(
         &mut self,
         id: &str,
         note: &Note,
-        header: Option<frontmatter::Frontmatter>,
+        header: Option<&frontmatter::FrontmatterEdit>,
     ) -> Result<String> {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -1444,32 +1474,66 @@ impl Storage {
             "md"
         };
 
-        // Keep the note's existing filename unless title→filename syncing is
-        // enabled or the note is new (its file does not exist yet).
-        let target_id = if self.rename_on_title_change || !old_path.exists() {
+        let existing = self.load_note_summary(id).ok();
+        let title_changed = existing.as_ref().is_some_and(|old| old.title != note.title);
+        // Body/metadata edits must not rename stable wikilink targets.
+        let target_id = if (self.rename_on_title_change && title_changed) || !old_path.exists() {
             let preferred_stem = self.note_file_stem_from_title(&note.title);
             self.unique_note_id(&preferred_stem, target_ext, id)
         } else {
             id.to_string()
         };
-        let existing_pinned = self
-            .load_note_summary(id)
-            .map(|s| s.pinned)
-            .unwrap_or(false);
-        let links = extract_wikilinks(&note.content);
-        let mut fm = header.unwrap_or_else(|| frontmatter::Frontmatter {
-            tags: note.tags.clone(),
-            pinned: existing_pinned,
-            text_align: existing_text_align(&old_path),
-            extra: existing_extra_frontmatter(&old_path),
-            ..Default::default()
-        });
-        fm.title = Some(note.title.clone());
-        fm.updated_at = Some(note.updated_at);
-        fm.links = Some(links);
-        fm.original_ext = None;
-        // Fail before touching the file, rather than silently dropping metadata.
-        serde_yaml_ng::to_string(&fm).context("failed to serialize frontmatter")?;
+        let (yaml, newline) = if target_ext == "canvas" || target_ext == "draw" {
+            (String::new(), "\n")
+        } else {
+            let (original, newline) = read_frontmatter(&old_path)?;
+            let yaml = if let Some(edit) = header {
+                // Explicit YAML edits (including managed-field removals) win.
+                let mut updates = serde_yaml_ng::Mapping::new();
+                if note.title != edit.saved_title {
+                    updates.insert("title".into(), note.title.clone().into());
+                }
+                let text = edit.text.replace("\r\n", "\n");
+                let text = if newline == "\r\n" {
+                    text.replace('\n', "\r\n")
+                } else {
+                    text
+                };
+                frontmatter::patch_yaml(&text, updates)?
+            } else {
+                let fm = original
+                    .as_deref()
+                    .map(frontmatter::parse_yaml)
+                    .transpose()
+                    .context("Invalid frontmatter YAML; repair it in the frontmatter editor")?
+                    .unwrap_or_default();
+                let tags_changed = existing.as_ref().is_some_and(|old| old.tags != note.tags);
+                let generated = frontmatter::Frontmatter {
+                    title: Some(note.title.clone()),
+                    updated_at: Some(note.updated_at),
+                    tags: note.tags.clone(),
+                    links: Some(extract_wikilinks(&note.content)),
+                    ..fm
+                };
+                let mut updates = self.frontmatter_policy.values(&generated)?;
+                // On existing notes, don't inject absent fields during a body save.
+                if old_path.exists() {
+                    let present: serde_yaml_ng::Mapping = original
+                        .as_deref()
+                        .filter(|s| !s.trim().is_empty())
+                        .map(serde_yaml_ng::from_str)
+                        .transpose()?
+                        .unwrap_or_default();
+                    updates.retain(|key, _| {
+                        present.contains_key(key)
+                            || (key.as_str() == Some("title") && title_changed)
+                            || (key.as_str() == Some("tags") && tags_changed)
+                    });
+                }
+                frontmatter::patch_yaml(original.as_deref().unwrap_or_default(), updates)?
+            };
+            (yaml, newline)
+        };
 
         let target_path = self.note_path(&target_id);
         if let Some(parent) = target_path.parent() {
@@ -1481,8 +1545,7 @@ impl Storage {
                 .context("failed to encode note")?;
             let encrypted = self.encrypt(&bytes)?;
 
-            let fm_string = frontmatter::serialize(&fm, "");
-            let mut final_output = fm_string.into_bytes();
+            let mut final_output = frontmatter::frame(Some(&yaml), "", newline).into_bytes();
             final_output.extend_from_slice(&encrypted);
 
             crate::fsutil::atomic_write(&target_path, &final_output)
@@ -1491,7 +1554,7 @@ impl Storage {
             crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
                 .context("failed to write note")?;
         } else {
-            let final_content = frontmatter::serialize(&fm, &note.content);
+            let final_content = frontmatter::frame(Some(&yaml), &note.content, newline);
             crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
                 .context("failed to write plain note")?;
         }
@@ -1579,9 +1642,7 @@ impl Storage {
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).context("failed to create note directory")?;
         }
-        if source_path.exists() {
-            let _ = fs::copy(&source_path, &target_path);
-        }
+        fs::copy(&source_path, &target_path).context("failed to copy note metadata")?;
 
         self.save_note(&initial_id, &new_note)
     }
@@ -1696,33 +1757,25 @@ impl Storage {
             anyhow::bail!("Cannot pin image files");
         }
 
-        if ext == "clin" {
-            let file_content = fs::read(&path).context("failed to read note")?;
-            let (fm_opt, payload) = split_frontmatter_payload(&file_content);
-            let mut fm = fm_opt.unwrap_or_default();
-            fm.pinned = !fm.pinned;
-            let new_pinned = fm.pinned;
-
-            let plain = self.decrypt(payload)?;
-            let fm_string = frontmatter::serialize(&fm, "");
-            let mut final_output = fm_string.into_bytes();
-
-            let encrypted = self.encrypt(plain.as_slice())?;
-            final_output.extend_from_slice(&encrypted);
-
-            crate::fsutil::atomic_write(&path, &final_output).context("failed to write note")?;
-            Ok(new_pinned)
+        let bytes = fs::read(&path).context("failed to read note")?;
+        let (header, payload) = split_raw_payload(&bytes);
+        let fm = frontmatter::parse_yaml(header.unwrap_or_default())?;
+        let pinned = !fm.pinned;
+        let updates = serde_yaml_ng::Mapping::from_iter([("pinned".into(), pinned.into())]);
+        let yaml = frontmatter::patch_yaml(header.unwrap_or_default(), updates)?;
+        let newline = if bytes.starts_with(b"---\r\n") {
+            "\r\n"
         } else {
-            let content = fs::read_to_string(&path).context("failed to read note")?;
-            let (mut fm, body) = frontmatter::parse(&content);
-            fm.pinned = !fm.pinned;
-            let new_pinned = fm.pinned;
-
-            let new_content = frontmatter::serialize(&fm, body);
-            crate::fsutil::atomic_write(&path, new_content.as_bytes())
-                .context("failed to write note")?;
-            Ok(new_pinned)
+            "\n"
+        };
+        let mut output = frontmatter::frame(Some(&yaml), "", newline).into_bytes();
+        // Pinning changes only plaintext metadata; retain the encrypted payload.
+        if ext == "clin" {
+            self.decrypt(payload)?;
         }
+        output.extend_from_slice(payload);
+        crate::fsutil::atomic_write(&path, &output).context("failed to write note")?;
+        Ok(pinned)
     }
 
     pub fn new_note_id(&self) -> String {
@@ -2281,6 +2334,7 @@ impl Storage {
             key: <[u8; 32]>::default(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 }
@@ -2408,6 +2462,7 @@ mod tests {
             key,
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let plaintext = b"Secret Message";
@@ -2437,6 +2492,7 @@ mod tests {
             key: <[u8; 32]>::default(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Truncated payload: valid magic but no nonce/ciphertext
         let truncated = b"CLIN1";
@@ -2456,6 +2512,7 @@ mod tests {
             key: <[u8; 32]>::default(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "Test content for duplicate";
@@ -2516,6 +2573,7 @@ mod tests {
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -2525,9 +2583,11 @@ mod tests {
         let mut note = storage.load_note("obsidian.md")?;
         note.content = "edited body".to_string();
         let saved_id = storage.save_note("obsidian.md", &note)?;
+        assert_eq!(saved_id, "obsidian.md", "body edits must not rename notes");
         let saved_path = storage.note_path(&saved_id);
 
         let saved = fs::read_to_string(&saved_path)?;
+        assert_eq!(saved, content.replace("---\nbody", "---\nedited body"));
         assert!(saved.contains("type: knowledge_concept"));
         assert!(saved.contains("confidence: 0.9"));
         assert!(saved.contains("sources:"));
@@ -2552,6 +2612,7 @@ mod tests {
             key: core::array::from_fn(|_| 0),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         fs::write(
@@ -2590,6 +2651,7 @@ mod tests {
             key: core::array::from_fn(|_| 0),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: false,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         fs::write(
@@ -2625,6 +2687,7 @@ mod tests {
             key: core::array::from_fn(|_| 0),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: false,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Extension-less transient id, file absent: creation path must still
@@ -2654,6 +2717,7 @@ mod tests {
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -2688,6 +2752,7 @@ mod tests {
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -2724,6 +2789,7 @@ mod tests {
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // 1. Plain note subnotes
@@ -2841,6 +2907,7 @@ mod tests {
             key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Subnotes metadata is always owned by the storage root.
         fs::create_dir_all(storage.data_dir.join(".clin"))?;
@@ -2879,6 +2946,7 @@ mod tests {
             key: <[u8; 32]>::default(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Create an unreadable .md file
@@ -2926,6 +2994,7 @@ mod tests {
             key: <[u8; 32]>::default(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Write a binary PDF file with non-UTF-8 bytes
@@ -2978,6 +3047,7 @@ mod tests {
             key: <[u8; 32]>::default(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let preset = crate::config::KeybindPreset::Vim;
         let path = storage.keybinds_path_for_preset(preset);

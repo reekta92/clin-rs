@@ -23,9 +23,12 @@ fn app() -> (tempfile::TempDir, App) {
         key: [42; 32],
         skip_dir_patterns: vec![],
         rename_on_title_change: false,
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     };
     let mut app = App::new(storage).unwrap();
     app.editor.external_editor_enabled = false;
+    // Other app tests rewrite the process-wide config. Keep this fixture isolated.
+    app.config_mtime = Some(std::time::SystemTime::now() + std::time::Duration::from_secs(3600));
     (dir, app)
 }
 
@@ -36,11 +39,264 @@ fn open(app: &mut App, text: &str) {
 }
 
 fn set_yaml(app: &mut App, text: &str) {
-    app.editor.frontmatter_editor = TextArea::from(text.lines());
+    app.editor.frontmatter_editor = TextArea::from(text.split('\n'));
 }
 
 fn key(app: &mut App, focus: &mut EditFocus, code: KeyCode, modifiers: KeyModifiers) {
     crate::handle_edit_keys(app, KeyEvent::new(code, modifiers), focus);
+}
+
+#[test]
+fn frontmatter_body_save_keeps_stable_filename_and_exact_header() {
+    let (_dir, mut app) = app();
+    app.storage.rename_on_title_change = true;
+    let header = "# user fields first\nid: 'CL-01'  # stable\nsources: [\"[[other]]\", 'x']\n\ntitle: \"Claim\" # keep quoting\ndescription: |\n  first line\n  second line\nsettings: &defaults {level: 2}\ncopy: *defaults\n\n";
+    open(&mut app, &format!("---\n{header}---\nBody"));
+    app.editor.body =
+        crate::editor_document::EditorDocument::from_text("Edited [[other]] [[other]]");
+    app.autosave().unwrap();
+    assert_eq!(app.editor.editing_id.as_deref(), Some("CL-01.md"));
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap(),
+        format!("---\n{header}---\nEdited [[other]] [[other]]")
+    );
+    assert_eq!(
+        app.storage.load_note_summary("CL-01.md").unwrap().links,
+        ["other"]
+    );
+}
+
+#[test]
+fn frontmatter_patches_only_changed_managed_values() {
+    let input = "# first\nid: '001'\ntitle: Old # title comment\ncustom: {foo: 'bar'} # custom comment\nlinks: [old]\nlast: |\n  keep\n  lines";
+    let updates = serde_yaml_ng::from_str("title: New\nlinks: [new]").unwrap();
+    let output = frontmatter::patch_yaml(input, updates).unwrap();
+    assert!(output.starts_with("# first\nid: '001'\n"), "{output}");
+    assert!(output.contains("# title comment"), "{output}");
+    assert!(
+        output.contains("custom: {foo: 'bar'} # custom comment\n"),
+        "{output}"
+    );
+    assert!(output.ends_with("last: |\n  keep\n  lines"), "{output}");
+    let fm = frontmatter::parse_yaml(&output).unwrap();
+    assert_eq!(fm.title.as_deref(), Some("New"));
+    assert_eq!(fm.links.unwrap(), ["new"]);
+    let crlf = input.replace('\n', "\r\n");
+    let updates = serde_yaml_ng::from_str("title: New").unwrap();
+    let output = frontmatter::patch_yaml(&crlf, updates).unwrap();
+    assert!(!output.replace("\r\n", "").contains('\n'));
+}
+
+#[test]
+fn frontmatter_explicit_managed_edits_and_removals_stay_written() {
+    let (_dir, mut app) = app();
+    app.storage.rename_on_title_change = true;
+    open(
+        &mut app,
+        "---\ntitle: Claim\ntags: [old]\npinned: true\nupdated_at: 1\nlinks: [old]\noriginal_ext: txt\n---\n[[body-link]]",
+    );
+    let yaml = "custom: '001' # retain\nupdated_at: 2026-01-02\nlinks: [manual, manual]\noriginal_ext: custom\nnested: {x: 2}";
+    set_yaml(&mut app, yaml);
+    app.autosave().unwrap();
+    assert_eq!(app.editor.editing_id.as_deref(), Some("CL-01.md"));
+    assert_eq!(app.editor.frontmatter_text(), yaml);
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap(),
+        format!("---\n{yaml}\n---\n[[body-link]]")
+    );
+    set_yaml(&mut app, "custom: '001' # retain");
+    app.autosave().unwrap();
+    app.editor.body = crate::editor_document::EditorDocument::from_text("Next body");
+    app.autosave().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap(),
+        "---\ncustom: '001' # retain\n---\nNext body"
+    );
+}
+
+#[test]
+fn frontmatter_policy_controls_new_notes_and_existing_fields() {
+    use crate::frontmatter::TimestampFormat;
+    let (_dir, mut app) = app();
+    let config: crate::config::ClinConfig = toml::from_str(
+        "[notes.frontmatter]\nlinks = false\noriginal_ext = false\nupdated_at = 'iso8601'\n",
+    )
+    .unwrap();
+    app.storage.frontmatter_policy = config.notes.frontmatter;
+    let note = crate::storage::Note {
+        title: "Created".into(),
+        content: "[[x]] [[x]]".into(),
+        tags: vec![],
+        updated_at: 1_767_312_000,
+    };
+    let id = app.storage.save_note("new", &note).unwrap();
+    let text = std::fs::read_to_string(app.storage.note_path(&id)).unwrap();
+    assert!(!text.contains("links:"));
+    assert!(!text.contains("original_ext:"));
+    assert!(text.contains("2026-01-02T00:00:00Z"), "{text}");
+    assert_eq!(
+        app.storage.load_note(&id).unwrap().updated_at,
+        note.updated_at
+    );
+    assert_eq!(app.storage.load_note_summary(&id).unwrap().links, ["x"]);
+    app.storage.frontmatter_policy.updated_at = TimestampFormat::None;
+    let original = "---\nid: '01'\ntitle: Claim\nlinks: [manual, manual] # not derived\noriginal_ext: txt\nupdated_at: '2025-01-02'\n---\nBody";
+    open(&mut app, original);
+    app.editor.body = crate::editor_document::EditorDocument::from_text("New [[x]]");
+    app.autosave().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap(),
+        original.replace("---\nBody", "---\nNew [[x]]")
+    );
+}
+
+#[test]
+fn frontmatter_generated_links_are_unique_in_first_seen_order() {
+    assert_eq!(
+        crate::storage::extract_wikilinks("[[b]] [[a|alias]] [[b]] [[ a ]] [[ ]] [[c]]"),
+        ["b", "a", "c"]
+    );
+    let (_dir, mut app) = app();
+    open(
+        &mut app,
+        "---\nid: '01'\nlinks: [old]\n---\n[[b]] [[a]] [[b]]",
+    );
+    app.autosave().unwrap();
+    let text = std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap();
+    assert_eq!(frontmatter::parse(&text).0.links.unwrap(), ["b", "a"]);
+    assert!(text.starts_with("---\nid: '01'\n"));
+}
+
+#[test]
+fn frontmatter_pin_and_title_actions_preserve_user_layout() {
+    let (_dir, mut app) = app();
+    let header = "# custom\nid: '01'\ncustom: {foo: 'bar'}\ntitle: Claim\npinned: false";
+    open(&mut app, &format!("---\n{header}\n---\nBody"));
+    app.storage.toggle_pin("CL-01.md").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap(),
+        format!(
+            "---\n{}\n---\nBody",
+            header.replace("pinned: false", "pinned: true")
+        )
+    );
+    app.load_and_open_note("CL-01.md", None);
+    app.editor.title_editor = TextArea::from(["Renamed"]);
+    app.autosave().unwrap();
+    assert!(
+        app.editor
+            .frontmatter_text()
+            .starts_with("# custom\nid: '01'\ncustom: {foo: 'bar'}\n")
+    );
+}
+
+#[test]
+fn frontmatter_crlf_and_blank_lines_survive_body_and_metadata_saves() {
+    let (_dir, mut app) = app();
+    let original =
+        "---\r\nid: '01' # ID\r\n\r\ntitle: Claim\r\ncustom: [one, two]\r\n\r\n---\r\nBody";
+    open(&mut app, original);
+    app.editor.body = crate::editor_document::EditorDocument::from_text("Edited");
+    app.autosave().unwrap();
+    let text = std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap();
+    assert_eq!(text, original.replace("Body", "Edited"));
+    let yaml = "id: '01' # ID\n\ntitle: Claim\ncustom: [three, four]\n";
+    set_yaml(&mut app, yaml);
+    app.autosave().unwrap();
+    let text = std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap();
+    assert_eq!(
+        text,
+        format!("---\r\n{}\r\n---\r\nEdited", yaml.replace('\n', "\r\n"))
+    );
+}
+
+#[test]
+fn frontmatter_can_disable_all_automatic_output() {
+    let (_dir, mut app) = app();
+    let config: crate::config::ClinConfig = toml::from_str("[notes.frontmatter]\ntitle = false\ntags = false\npinned = false\nlinks = false\noriginal_ext = false\ntext_align = false\nupdated_at = 'none'\n").unwrap();
+    app.storage.frontmatter_policy = config.notes.frontmatter;
+    let note = crate::storage::Note {
+        title: "Plain".into(),
+        content: "[[x]]".into(),
+        tags: vec![],
+        updated_at: 42,
+    };
+    let id = app.storage.save_note("new", &note).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path(&id)).unwrap(),
+        note.content
+    );
+    open(&mut app, "---\nid: '01'\n---\nBody");
+    set_yaml(
+        &mut app,
+        "id: '01'\ntitle: Explicit\nlinks: [custom]\nupdated_at: 2026-01-02",
+    );
+    app.autosave().unwrap();
+    app.editor.body = crate::editor_document::EditorDocument::from_text("Edited");
+    app.autosave().unwrap();
+    assert_eq!(
+        app.editor.frontmatter_text(),
+        "id: '01'\ntitle: Explicit\nlinks: [custom]\nupdated_at: 2026-01-02"
+    );
+}
+
+#[test]
+fn frontmatter_encrypt_decrypt_duplicate_and_alignment_keep_custom_yaml() {
+    let (_dir, mut app) = app();
+    app.storage.frontmatter_policy.links = false;
+    let custom = "# vault properties\nid: '001'\ncustom: {x: 'quoted'} # comment\ndetails: |\n  line one\n  line two\n";
+    open(
+        &mut app,
+        &format!("---\n{custom}title: Claim\n---\n[[target]] [[target]]"),
+    );
+    let encrypted = app.storage.encrypt_note("CL-01.md").unwrap();
+    let summary = app.storage.load_note_summary(&encrypted).unwrap();
+    assert_eq!(summary.links, ["target"]);
+    let decrypted = app.storage.decrypt_note(&encrypted).unwrap();
+    let text = std::fs::read_to_string(app.storage.note_path(&decrypted)).unwrap();
+    assert!(text.starts_with(&format!("---\n{custom}")), "{text}");
+    assert!(!text.contains("links:"));
+    let copied = app.storage.duplicate_note(&decrypted, "").unwrap();
+    let text = std::fs::read_to_string(app.storage.note_path(&copied)).unwrap();
+    assert!(text.starts_with(&format!("---\n{custom}")), "{text}");
+    app.load_and_open_note(&decrypted, None);
+    app.config.editor.soft_wrap = true;
+    app.apply_editor_prefs();
+    app.cycle_text_alignment();
+    let text = std::fs::read_to_string(app.storage.note_path(&decrypted)).unwrap();
+    assert!(text.starts_with(&format!("---\n{custom}")), "{text}");
+}
+
+#[test]
+fn frontmatter_unsafe_anchor_changes_fail_before_writing() {
+    let (_dir, mut app) = app();
+    let original = "---\ntitle: &name Claim\nalias: *name\n---\nBody";
+    open(&mut app, original);
+    app.editor.title_editor = TextArea::from(["New title"]);
+    app.write_draft();
+    assert!(app.autosave().is_err());
+    assert_eq!(
+        std::fs::read_to_string(app.storage.note_path("CL-01.md")).unwrap(),
+        original
+    );
+    assert!(app.storage.editor_draft_path().exists());
+}
+
+#[test]
+fn frontmatter_original_ext_can_be_disabled_during_encryption() {
+    let (_dir, mut app) = app();
+    app.storage.frontmatter_policy.original_ext = false;
+    std::fs::write(
+        app.storage.note_path("note.txt"),
+        "---\nid: '01'\n---\nBody",
+    )
+    .unwrap();
+    let encrypted = app.storage.encrypt_note("note.txt").unwrap();
+    let bytes = std::fs::read(app.storage.note_path(&encrypted)).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("original_ext:"));
+    let decrypted = app.storage.decrypt_note(&encrypted).unwrap();
+    assert!(decrypted.ends_with(".md"));
+    assert_eq!(app.storage.load_note(&decrypted).unwrap().content, "Body");
 }
 
 #[test]

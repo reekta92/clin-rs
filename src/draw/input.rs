@@ -1234,6 +1234,7 @@ mod tests {
             key: [0; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(&storage.notes_dir).unwrap();
         (

@@ -460,8 +460,9 @@ impl App {
                     self.editor.frontmatter_original = edit.original;
                     self.editor.frontmatter_saved = edit.saved_text;
                     self.editor.frontmatter_saved_title = edit.saved_title;
-                    self.editor.frontmatter_editor =
-                        ratatui_textarea::TextArea::from(edit.text.lines());
+                    self.editor.frontmatter_editor = ratatui_textarea::TextArea::from(
+                        edit.text.replace("\r\n", "\n").split('\n'),
+                    );
                     self.editor.frontmatter_visible = true;
                 }
                 recovered = true;

@@ -1098,6 +1098,8 @@ impl App {
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
+        self.storage.rename_on_title_change = self.config.notes.rename_on_title_change;
+        self.storage.frontmatter_policy = self.config.notes.frontmatter;
         self.preview_wrap = self.config.core.preview_wrap;
         let mut theme_warnings = Vec::new();
         self.app_theme =
@@ -1783,6 +1785,9 @@ impl App {
             Ok(saved_id) => {
                 self.editor.editing_id = Some(saved_id.clone());
                 if Storage::supports_frontmatter(&id) {
+                    if let Ok(saved) = self.storage.load_note(&saved_id) {
+                        note.title = saved.title;
+                    }
                     let header = self.storage.load_frontmatter_text(&saved_id).ok().flatten();
                     self.editor.finish_frontmatter_save(header, &note.title);
                     if crate::events::get_title_text(&self.editor.title_editor) != note.title {
@@ -2097,6 +2102,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
@@ -2137,6 +2143,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2198,6 +2205,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2235,6 +2243,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.external_editor_enabled = false;
@@ -2308,6 +2317,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2411,6 +2421,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2450,6 +2461,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2537,6 +2549,7 @@ mod tests {
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2579,6 +2592,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2618,6 +2632,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2649,6 +2664,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2696,6 +2712,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2763,6 +2780,7 @@ word_goal = 1200
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Write default config
         std::fs::write(&config_path, crate::config::merge::default_config_content())
