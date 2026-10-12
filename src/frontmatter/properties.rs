@@ -182,7 +182,7 @@ impl<'de> Visitor<'de> for BoundedValue<'_> {
     }
 }
 
-fn replacement_node(value: &Value) -> Result<yaml_edit::YamlNode> {
+pub(crate) fn replacement_node(value: &Value) -> Result<yaml_edit::YamlNode> {
     match value {
         Value::Sequence(values) => {
             let sequence = yaml_edit::Sequence::new_flow();
