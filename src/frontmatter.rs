@@ -1,3 +1,5 @@
+pub mod properties;
+
 use crate::config::TextAlignment;
 use serde::{Deserialize, Serialize};
 

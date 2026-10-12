@@ -106,6 +106,22 @@ impl Storage {
         })
     }
 
+    pub fn save_properties(
+        &self,
+        baseline: &DocumentSnapshot,
+        changes: &[(String, Option<serde_yaml_ng::Value>)],
+    ) -> Result<DocumentSnapshot> {
+        if !Path::new(baseline.id())
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        {
+            bail!("note properties can only be edited on Markdown files");
+        }
+        let updated = crate::frontmatter::properties::edit_properties(baseline.source(), changes)?;
+        self.save_document(baseline, &updated)
+    }
+
     /// Publish a new document without replacing an existing file, even on collision.
     pub fn create_document(&self, id: &str, source: &str) -> Result<DocumentSnapshot> {
         let path = self.document_path(id)?;
@@ -234,6 +250,40 @@ mod tests {
             "# external\nviews: []\n"
         );
         assert!(!dir.path().join("Wrong.md").exists());
+    }
+
+    #[test]
+    fn property_edits_do_not_rename_or_inject_clin_fields() {
+        use serde_yaml_ng::Value;
+        let (dir, storage) = vault();
+        let original = "---\n# Keep\ntitle: 123\nother: 'exact'\n---\nBody\n";
+        let snapshot = storage.create_document("original.md", original).unwrap();
+        let updated = storage
+            .save_properties(
+                &snapshot,
+                &[("title".into(), Some(Value::String("Different".into())))],
+            )
+            .unwrap();
+        assert_eq!(updated.id(), "original.md");
+        assert!(updated.source().contains("# Keep\n"));
+        assert!(updated.source().contains("other: 'exact'\n---\nBody\n"));
+        assert!(!updated.source().contains("updated_at:"));
+        assert!(!dir.path().join("Different.md").exists());
+        assert!(
+            storage
+                .save_properties(&snapshot, &[("title".into(), Some(Value::Null))])
+                .is_err()
+        );
+        assert_eq!(
+            fs::read_to_string(dir.path().join("original.md")).unwrap(),
+            updated.source()
+        );
+        let base = storage.create_document("view.base", "views: []\n").unwrap();
+        assert!(
+            storage
+                .save_properties(&base, &[("title".into(), Some(Value::Null))])
+                .is_err()
+        );
     }
 
     #[test]

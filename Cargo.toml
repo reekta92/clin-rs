@@ -130,6 +130,7 @@ same-file = "1"
 rayon = "1.12"
 regex = "1"
 strum = { version = "0.28", features = ["derive"] }
+yaml-edit = { version = "0.3.2", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"
