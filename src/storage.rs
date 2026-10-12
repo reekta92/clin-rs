@@ -1,4 +1,5 @@
 pub mod documents;
+pub mod metadata;
 
 use crate::config::ClinConfig;
 use rand::RngExt;
@@ -60,6 +61,14 @@ pub struct FileStamp {
 pub(crate) struct NoteFileEntry {
     pub id: String,
     pub stamp: FileStamp,
+}
+
+enum VaultScanPolicy {
+    Notes {
+        include_hidden: bool,
+        include_all_files: bool,
+    },
+    PublicFiles,
 }
 
 pub(crate) struct VaultScan {
@@ -852,46 +861,11 @@ impl Storage {
         include_hidden: bool,
         include_all_files: bool,
     ) -> Result<Vec<String>> {
-        let mut ids = Vec::new();
-        let mut dirs_to_visit = vec![self.notes_dir.clone()];
-
-        while let Some(dir) = dirs_to_visit.pop() {
-            for entry in fs::read_dir(&dir).context("failed reading directory")? {
-                let entry = entry.context("failed to read entry")?;
-                let path = entry.path();
-
-                if path.is_dir()
-                    && path
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .is_some_and(|n| include_hidden || !n.starts_with('.'))
-                {
-                    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    if self.skip_dir_patterns.iter().any(|re| re.is_match(name)) {
-                        continue;
-                    }
-                    dirs_to_visit.push(path);
-                } else {
-                    let accepted = if include_all_files {
-                        path.is_file()
-                    } else {
-                        path.extension()
-                            .and_then(|e| e.to_str())
-                            .is_some_and(|ext| {
-                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
-                                    || crate::storage::is_image_ext(ext)
-                            })
-                    };
-                    if accepted
-                        && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
-                        && let Some(rel_str) = rel_path.to_str()
-                    {
-                        ids.push(rel_str.to_string());
-                    }
-                }
-            }
+        let scan = self.scan_vault(include_hidden, include_all_files)?;
+        if !scan.complete {
+            anyhow::bail!("vault scan incomplete: {}", scan.warnings.join("; "));
         }
-        Ok(ids)
+        Ok(scan.files.into_iter().map(|file| file.id).collect())
     }
 
     fn migrate_extensions(&self) {
@@ -940,6 +914,21 @@ impl Storage {
         include_hidden: bool,
         include_all_files: bool,
     ) -> Result<VaultScan> {
+        self.scan_vault_with_policy(VaultScanPolicy::Notes {
+            include_hidden,
+            include_all_files,
+        })
+    }
+
+    fn scan_vault_with_policy(&self, policy: VaultScanPolicy) -> Result<VaultScan> {
+        let public_dataset = matches!(policy, VaultScanPolicy::PublicFiles);
+        let (include_hidden, include_all_files) = match policy {
+            VaultScanPolicy::Notes {
+                include_hidden,
+                include_all_files,
+            } => (include_hidden, include_all_files),
+            VaultScanPolicy::PublicFiles => (false, true),
+        };
         let mut files = Vec::new();
         let mut folders = Vec::new();
         let mut warnings = Vec::new();
@@ -992,7 +981,13 @@ impl Storage {
                     None => continue,
                 };
 
-                if !include_hidden && file_name.starts_with('.') {
+                if (!include_hidden && file_name.starts_with('.'))
+                    || (public_dataset
+                        && path
+                            .extension()
+                            .and_then(|ext| ext.to_str())
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("clin")))
+                {
                     continue;
                 }
 
@@ -1004,11 +999,24 @@ impl Storage {
                     Err(_) => continue,
                 };
 
-                if path.is_dir() {
-                    if self
-                        .skip_dir_patterns
-                        .iter()
-                        .any(|re| re.is_match(file_name))
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(error) => {
+                        complete = false;
+                        warnings.push(format!("Failed file type for {}: {error}", path.display()));
+                        continue;
+                    }
+                };
+                // Never recurse through directory symlinks; Bases also excludes file aliases.
+                if file_type.is_symlink() && (public_dataset || path.is_dir()) {
+                    continue;
+                }
+                if file_type.is_dir() {
+                    if !public_dataset
+                        && self
+                            .skip_dir_patterns
+                            .iter()
+                            .any(|re| re.is_match(file_name))
                     {
                         continue;
                     }

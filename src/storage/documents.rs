@@ -3,7 +3,20 @@
 use super::Storage;
 use anyhow::{Context, Result, bail};
 use std::fs;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+
+pub(crate) fn read_bounded_text(path: &Path, max_bytes: usize) -> Result<String> {
+    let file = fs::File::open(path).context("failed to open document")?;
+    let mut source = String::new();
+    file.take(max_bytes as u64 + 1)
+        .read_to_string(&mut source)
+        .context("failed to read UTF-8 document")?;
+    if source.len() > max_bytes {
+        bail!("document exceeds {max_bytes}-byte safety limit");
+    }
+    Ok(source)
+}
 
 #[derive(Clone, Debug)]
 pub struct DocumentSnapshot {
@@ -76,7 +89,7 @@ impl Storage {
 
     pub fn load_document(&self, id: &str) -> Result<DocumentSnapshot> {
         let path = self.document_path(id)?;
-        let source = fs::read_to_string(&path).context("failed to read plaintext document")?;
+        let source = read_bounded_text(&path, 16 * 1024 * 1024)?;
         Ok(DocumentSnapshot {
             id: id.to_owned(),
             source,
@@ -90,7 +103,7 @@ impl Storage {
         source: &str,
     ) -> Result<DocumentSnapshot> {
         let path = self.document_path(baseline.id())?;
-        let current = fs::read_to_string(&path).context("failed to reread document")?;
+        let current = read_bounded_text(&path, 16 * 1024 * 1024)?;
         if current != baseline.source() {
             bail!("document changed on disk; reload before saving");
         }
@@ -117,6 +130,12 @@ impl Storage {
             .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
         {
             bail!("note properties can only be edited on Markdown files");
+        }
+        let types = self.load_property_types()?;
+        for (key, value) in changes {
+            if let Some(value) = value {
+                types.validate(key, value)?;
+            }
         }
         let updated = crate::frontmatter::properties::edit_properties(baseline.source(), changes)?;
         self.save_document(baseline, &updated)
@@ -284,6 +303,56 @@ mod tests {
                 .save_properties(&base, &[("title".into(), Some(Value::Null))])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn invalid_declared_type_is_rejected_before_property_write() {
+        let (dir, storage) = vault();
+        fs::create_dir(dir.path().join(".obsidian")).unwrap();
+        fs::write(
+            dir.path().join(".obsidian/types.json"),
+            r#"{"types":{"done":"checkbox"}}"#,
+        )
+        .unwrap();
+        let snapshot = storage
+            .create_document("a.md", "---\ndone: false\n---\nBody")
+            .unwrap();
+        assert!(
+            storage
+                .save_properties(
+                    &snapshot,
+                    &[(
+                        "done".into(),
+                        Some(serde_yaml_ng::Value::String("true".into()))
+                    )]
+                )
+                .is_err()
+        );
+        assert_eq!(
+            storage.load_document("a.md").unwrap().source(),
+            snapshot.source()
+        );
+        assert!(
+            storage
+                .save_properties(
+                    &snapshot,
+                    &[("done".into(), Some(serde_yaml_ng::Value::Bool(true)))]
+                )
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn text_reads_are_bounded_and_invalid_utf8_is_rejected() {
+        let (dir, storage) = vault();
+        fs::write(dir.path().join("large.md"), b"abcdef").unwrap();
+        assert!(read_bounded_text(&dir.path().join("large.md"), 5).is_err());
+        assert_eq!(
+            read_bounded_text(&dir.path().join("large.md"), 6).unwrap(),
+            "abcdef"
+        );
+        fs::write(dir.path().join("bad.md"), [0xff]).unwrap();
+        assert!(storage.load_document("bad.md").is_err());
     }
 
     #[test]
