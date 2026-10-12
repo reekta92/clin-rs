@@ -310,6 +310,10 @@ impl App {
     }
 
     pub fn open_note_at_line(&mut self, note_id: &str, line_number: Option<usize>) {
+        if note_id.ends_with(".base") {
+            self.open_bases_view(note_id, None);
+            return;
+        }
         if note_id.ends_with(".draw") {
             self.open_draw_view();
             return;

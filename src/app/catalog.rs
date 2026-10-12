@@ -166,7 +166,7 @@ pub(crate) fn load_persisted_note_cache(
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
-            let accepted = matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+            let accepted = matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas" | "base")
                 || crate::storage::is_image_ext(ext);
             if !accepted {
                 continue;

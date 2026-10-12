@@ -1255,6 +1255,16 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
                     app.close_canvas_view();
                 }
             }
+            ViewKind::Bases => {
+                if matches!(other, OverlayResult::Exit) {
+                    if let Some(worker) = app.bases_worker.as_mut() {
+                        worker.cancel();
+                    }
+                    app.bases_state = None;
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                    app.set_default_status();
+                }
+            }
             ViewKind::Backup => {
                 if matches!(other, OverlayResult::Exit) {
                     app.reload_config();
@@ -1305,6 +1315,7 @@ where
             prev_mode = app.mode;
             continue;
         }
+        app.poll_bases();
         let msgs_before = app.messages.messages.len();
         while let Ok(msg) = app.message_rx.try_recv() {
             app.messages.push(msg.text, msg.severity);
@@ -1639,6 +1650,7 @@ where
                         }
                         ViewMode::Graph
                         | ViewMode::Canvas
+                        | ViewMode::Bases
                         | ViewMode::Draw
                         | ViewMode::Backup
                         | ViewMode::Outline => match OverlayState::take(app) {
@@ -1685,6 +1697,7 @@ where
                         }
                         ViewMode::Graph
                         | ViewMode::Canvas
+                        | ViewMode::Bases
                         | ViewMode::Draw
                         | ViewMode::Backup
                         | ViewMode::Outline => {

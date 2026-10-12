@@ -59,6 +59,43 @@ impl App {
         self.status_until = None;
     }
 
+    pub fn open_bases_view(&mut self, id: &str, named_view: Option<String>) {
+        if self.feature_disabled(
+            self.config.features.bases_view.is_enabled(),
+            "Bases",
+            "bases_view",
+        ) {
+            return;
+        }
+        if self.bases_worker.is_none() {
+            match crate::bases::worker::BasesWorker::new(self.storage.clone()) {
+                Ok(worker) => self.bases_worker = Some(worker),
+                Err(error) => {
+                    self.set_temporary_status(&format!("Failed to start Bases worker: {error}"));
+                    return;
+                }
+            }
+        }
+        let mut state = crate::bases::state::BasesState::new(id.to_owned(), named_view);
+        state.refresh(self, false);
+        self.bases_state = Some(state);
+        if self.mode != ViewMode::Bases {
+            self.return_mode = Some(self.mode);
+        }
+        self.mode = ViewMode::Bases;
+        self.set_default_status();
+    }
+
+    pub fn poll_bases(&mut self) -> bool {
+        if let Some(loaded) = self.bases_worker.as_mut().and_then(|worker| worker.poll()) {
+            if let Some(state) = &mut self.bases_state {
+                state.install(loaded);
+            }
+            return true;
+        }
+        false
+    }
+
     pub fn open_graph_view(&mut self) {
         if self.feature_disabled(
             self.config.features.graph_view.is_enabled(),

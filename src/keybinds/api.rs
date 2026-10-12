@@ -1,6 +1,7 @@
 use super::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
-    KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction, SetupAction,
+    BackupAction, BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction,
+    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction,
+    SetupAction,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
@@ -148,6 +149,14 @@ keybind_resolve!(canvas, CanvasAction, resolve_canvas, true);
 keybind_resolve!(backup, BackupAction, resolve_backup, true);
 keybind_resolve!(outline, OutlineAction, resolve_outline, true);
 keybind_resolve!(setup, SetupAction, resolve_setup, false);
+keybind_resolve!(bases, BasesAction, resolve_bases, true);
+keybind_scope!(
+    bases,
+    BasesAction,
+    matches_bases,
+    bases_keys_display,
+    display_bases
+);
 
 impl Keybinds {
     pub fn load_layered(
@@ -175,6 +184,7 @@ impl Keybinds {
         merge_section(&mut keybinds.backup, &toml.backup, warnings);
         merge_section(&mut keybinds.outline, &toml.outline, warnings);
         merge_section(&mut keybinds.setup, &toml.setup, warnings);
+        merge_section(&mut keybinds.bases, &toml.bases, warnings);
         Ok(keybinds)
     }
 
@@ -202,6 +212,7 @@ impl Keybinds {
             backup: section_to_toml(&self.backup),
             outline: section_to_toml(&self.outline),
             setup: section_to_toml(&self.setup),
+            bases: section_to_toml(&self.bases),
         }
     }
 

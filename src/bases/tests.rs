@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::sync::atomic::AtomicBool;
 
-fn vault() -> (tempfile::TempDir, Storage) {
+pub(super) fn vault() -> (tempfile::TempDir, Storage) {
     let dir = tempfile::tempdir().unwrap();
     let storage = Storage {
         data_dir: dir.path().to_owned(),

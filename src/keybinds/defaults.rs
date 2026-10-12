@@ -1,6 +1,6 @@
 use super::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
-    Keybinds, ListAction, OutlineAction, SetupAction,
+    BackupAction, BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction,
+    KeyCombo, Keybinds, ListAction, OutlineAction, SetupAction,
 };
 use crate::config::KeybindPreset;
 
@@ -261,6 +261,35 @@ const DEFAULT_OUTLINE: &[(OutlineAction, &[&str])] = &[
     (OutlineAction::Help, &["?"]),
 ];
 
+const DEFAULT_BASES: &[(BasesAction, &[&str])] = &[
+    (BasesAction::Back, &["Esc", "q"]),
+    (BasesAction::Help, &["?"]),
+    (BasesAction::MoveUp, &["k", "Up"]),
+    (BasesAction::MoveDown, &["j", "Down"]),
+    (BasesAction::MoveLeft, &["h", "Left"]),
+    (BasesAction::MoveRight, &["l", "Right"]),
+    (BasesAction::PageUp, &["PageUp", "Ctrl+u"]),
+    (BasesAction::PageDown, &["PageDown", "Ctrl+d"]),
+    (BasesAction::First, &["Home"]),
+    (BasesAction::Last, &["End"]),
+    (BasesAction::Open, &["Enter"]),
+    (BasesAction::Refresh, &["r"]),
+    (BasesAction::NextView, &["Tab"]),
+    (BasesAction::PreviousView, &["BackTab"]),
+    (BasesAction::Edit, &["e", "F2"]),
+    (BasesAction::Clear, &["Delete"]),
+    (BasesAction::Copy, &["y"]),
+    (BasesAction::Paste, &["p"]),
+    (BasesAction::ToggleSelect, &["Space"]),
+    (BasesAction::SelectAll, &["Ctrl+a"]),
+    (BasesAction::Undo, &["u"]),
+    (BasesAction::Redo, &["Ctrl+r"]),
+    (BasesAction::Configure, &[":", "Ctrl+p"]),
+    (BasesAction::NewNote, &["n"]),
+    (BasesAction::Export, &["x"]),
+    (BasesAction::MoveToGroup, &["m"]),
+];
+
 const DEFAULT_SETUP: &[(SetupAction, &[&str])] = &[
     (SetupAction::Up, &["Up", "k"]),
     (SetupAction::Down, &["Down", "j"]),
@@ -282,6 +311,7 @@ impl Default for Keybinds {
             backup: build(DEFAULT_BACKUP),
             outline: build(DEFAULT_OUTLINE),
             setup: build(DEFAULT_SETUP),
+            bases: build(DEFAULT_BASES),
         }
     }
 }

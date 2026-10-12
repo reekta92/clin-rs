@@ -301,6 +301,7 @@ impl StatuslineContext<'_> {
                     ViewMode::Graph => "Graph",
                     ViewMode::Draw => "Draw",
                     ViewMode::Canvas => "Canvas",
+                    ViewMode::Bases => "Bases",
                     ViewMode::Backup => "Backup",
                     ViewMode::Outline => "Outline",
                     ViewMode::Setup => "Setup",
@@ -460,6 +461,7 @@ impl StatuslineContext<'_> {
                     ViewMode::Graph => "Graph".to_string(),
                     ViewMode::Draw => "Draw".to_string(),
                     ViewMode::Canvas => "Canvas".to_string(),
+                    ViewMode::Bases => "Bases".to_string(),
                     ViewMode::Backup => "Backup".to_string(),
                     ViewMode::Outline => self.outline.map_or_else(
                         || "Outline".to_string(),
@@ -1935,6 +1937,7 @@ pub fn effective_templates(cfg: &StatuslineConfig, view: ViewMode) -> Statusline
         ViewMode::Graph => cfg.graph.as_ref(),
         ViewMode::Draw => cfg.draw.as_ref(),
         ViewMode::Canvas => cfg.canvas.as_ref(),
+        ViewMode::Bases => None,
         ViewMode::Backup => cfg.backup.as_ref(),
         ViewMode::Outline => cfg.outline.as_ref(),
         ViewMode::Setup => None,

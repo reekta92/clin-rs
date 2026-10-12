@@ -276,6 +276,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 app.canvas_state = Some(canvas);
             }
         }
+        ViewMode::Bases => {
+            if let Some(mut bases) = app.bases_state.take() {
+                bases.overlay_render(frame, frame.area(), app);
+                app.bases_state = Some(bases);
+            }
+        }
         ViewMode::Backup => {
             if let Some(mut backup) = app.backup_state.take() {
                 let outer = Layout::default()

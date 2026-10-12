@@ -368,6 +368,49 @@ pub enum OutlineAction {
     strum::EnumIter,
 )]
 #[serde(rename_all = "snake_case")]
+pub enum BasesAction {
+    Back,
+    Help,
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
+    PageUp,
+    PageDown,
+    First,
+    Last,
+    Open,
+    Refresh,
+    NextView,
+    PreviousView,
+    Edit,
+    Clear,
+    Copy,
+    Paste,
+    ToggleSelect,
+    SelectAll,
+    Undo,
+    Redo,
+    Configure,
+    NewNote,
+    Export,
+    MoveToGroup,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum SetupAction {
     Up,
     Down,

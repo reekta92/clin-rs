@@ -34,6 +34,8 @@ pub struct KeybindsToml {
     pub outline: BTreeMap<OutlineAction, Vec<String>>,
     #[serde(default)]
     pub setup: BTreeMap<SetupAction, Vec<String>>,
+    #[serde(default)]
+    pub bases: BTreeMap<BasesAction, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,4 +49,5 @@ pub struct Keybinds {
     pub backup: HashMap<BackupAction, Vec<KeyCombo>>,
     pub outline: HashMap<OutlineAction, Vec<KeyCombo>>,
     pub setup: HashMap<SetupAction, Vec<KeyCombo>>,
+    pub bases: HashMap<BasesAction, Vec<KeyCombo>>,
 }

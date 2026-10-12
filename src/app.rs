@@ -282,6 +282,7 @@ pub enum ViewMode {
     Graph,
     Draw,
     Canvas,
+    Bases,
     Backup,
     Outline,
     Setup,
@@ -299,6 +300,7 @@ impl ViewMode {
             ViewMode::Graph => Some(HelpTab::Graph),
             ViewMode::Draw => Some(HelpTab::Draw),
             ViewMode::Canvas => Some(HelpTab::Canvas),
+            ViewMode::Bases => Some(HelpTab::Notes),
             ViewMode::Backup => Some(HelpTab::Backup),
             ViewMode::Outline => Some(HelpTab::Notes), // no Outline tab; matches existing OutlineAction::Help target
             ViewMode::Help => None,
@@ -431,6 +433,8 @@ pub struct App {
     pub(crate) setup_rebootstrap: Option<crate::setup::SetupRebootstrapRequest>,
     pub config_errors: Vec<String>,
     pub canvas_state: Option<crate::pinstar_adapter::PinstarPlugin>,
+    pub bases_state: Option<crate::bases::state::BasesState>,
+    pub bases_worker: Option<crate::bases::worker::BasesWorker>,
     pub config: crate::config::ClinConfig,
     pub catalog_cmd_tx: std::sync::mpsc::SyncSender<crate::app::catalog::CatalogCommand>,
     pub catalog_event_rx: std::sync::mpsc::Receiver<crate::app::catalog::CatalogEvent>,
@@ -696,6 +700,8 @@ impl App {
             return_mode: None,
             app_theme,
             canvas_state: None,
+            bases_state: None,
+            bases_worker: None,
             config: bootstrap_config,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
@@ -970,6 +976,8 @@ impl App {
             return_mode: None,
             app_theme,
             canvas_state: None,
+            bases_state: None,
+            bases_worker: None,
             config: bootstrap_config,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
@@ -1956,6 +1964,9 @@ pub(crate) fn strip_deleted_feature_keybinds(
     }
     if features.canvas_view.is_deleted() {
         keybinds.canvas.clear();
+    }
+    if features.bases_view.is_deleted() {
+        keybinds.bases.clear();
     }
     if features.outline_view.is_deleted() {
         keybinds

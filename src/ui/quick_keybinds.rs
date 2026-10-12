@@ -41,6 +41,7 @@ fn view_name(mode: ViewMode) -> &'static str {
         ViewMode::Graph => "Graph",
         ViewMode::Draw => "Draw",
         ViewMode::Canvas => "Canvas",
+        ViewMode::Bases => "Bases",
         ViewMode::Backup => "Backup",
         ViewMode::Outline => "Outline",
         ViewMode::Setup => "Setup",
@@ -87,6 +88,10 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         ViewMode::Canvas => scope_keybind_lines::<crate::keybinds::CanvasAction>(
             &app.keybinds,
             Keybinds::canvas_keys_display,
+        ),
+        ViewMode::Bases => scope_keybind_lines::<crate::keybinds::BasesAction>(
+            &app.keybinds,
+            Keybinds::bases_keys_display,
         ),
         ViewMode::Backup => scope_keybind_lines::<crate::keybinds::BackupAction>(
             &app.keybinds,

@@ -693,6 +693,7 @@ impl<'de> serde::Deserialize<'de> for FeatureState {
 pub struct FeaturesConfig {
     pub graph_view: FeatureState,
     pub canvas_view: FeatureState,
+    pub bases_view: FeatureState,
     pub draw_view: FeatureState,
     pub outline_view: FeatureState,
     pub help_view: FeatureState,
@@ -714,6 +715,7 @@ impl Default for FeaturesConfig {
         Self {
             graph_view: FeatureState::Enabled,
             canvas_view: FeatureState::Enabled,
+            bases_view: FeatureState::Enabled,
             draw_view: FeatureState::Enabled,
             outline_view: FeatureState::Enabled,
             help_view: FeatureState::Enabled,
@@ -735,6 +737,7 @@ impl FeaturesConfig {
     pub fn file_view_enabled(&self, path: impl AsRef<std::path::Path>) -> bool {
         let ext = path.as_ref().extension().and_then(|e| e.to_str());
         match ext {
+            Some("base") => self.bases_view.is_enabled(),
             Some("draw") => self.draw_view.is_enabled(),
             Some("canvas") | Some("pinstar") => self.canvas_view.is_enabled(),
             _ => true,

@@ -1029,7 +1029,7 @@ impl Storage {
                         path.extension()
                             .and_then(|e| e.to_str())
                             .is_some_and(|ext| {
-                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas" | "base")
                                     || crate::storage::is_image_ext(ext)
                             })
                     };
