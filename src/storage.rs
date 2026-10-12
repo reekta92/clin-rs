@@ -1,3 +1,5 @@
+pub mod documents;
+
 use crate::config::ClinConfig;
 use rand::RngExt;
 const FILE_MAGIC: &[u8; 5] = b"CLIN1";
@@ -1207,6 +1209,9 @@ impl Storage {
     pub fn load_note(&self, id: &str) -> Result<Note> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext.eq_ignore_ascii_case("base") {
+            anyhow::bail!("Bases files must be loaded through document storage");
+        }
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
@@ -1323,6 +1328,9 @@ impl Storage {
     pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if old_ext.eq_ignore_ascii_case("base") {
+            anyhow::bail!("Bases files must be saved through document storage");
+        }
 
         let target_ext = if old_ext == "clin"
             || old_ext == "txt"
@@ -1407,6 +1415,9 @@ impl Storage {
             .and_then(|e| e.to_str())
             .unwrap_or("");
 
+        if old_ext.eq_ignore_ascii_case("base") {
+            return self.rename_document(id, new_title);
+        }
         if crate::storage::is_image_ext(old_ext) {
             let preferred_stem = self.note_file_stem_from_title(new_title);
             let target_id = self.unique_note_id(&preferred_stem, old_ext, id);
@@ -1432,6 +1443,9 @@ impl Storage {
             .and_then(|e| e.to_str())
             .unwrap_or("md");
 
+        if source_ext.eq_ignore_ascii_case("base") {
+            return self.duplicate_document(id, target_folder);
+        }
         if crate::storage::is_image_ext(source_ext) {
             let new_id = self.new_note_id();
             let initial_id = if target_folder.is_empty() {
@@ -1578,6 +1592,13 @@ impl Storage {
     }
 
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
+        if Path::new(id)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("base"))
+        {
+            anyhow::bail!("Bases files cannot contain clin pin metadata");
+        }
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         if crate::storage::is_image_ext(ext) {

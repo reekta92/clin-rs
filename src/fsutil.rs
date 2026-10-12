@@ -6,13 +6,14 @@ use std::path::{Path, PathBuf};
 /// Core atomic write: write data to a temp file in the same directory,
 /// sync it (unix only), optionally set permissions (unix only), then
 /// atomically rename over `path`.
-fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>) -> Result<()> {
+fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
         ".{}.{}.tmp",
         path.file_name().and_then(|s| s.to_str()).unwrap_or("tmp"),
         uuid::Uuid::new_v4()
     ));
+    let _guard = TempFileGuard::new(tmp.clone());
     fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
 
     #[cfg(unix)]
@@ -32,21 +33,39 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>) -> Result<()> 
     #[cfg(not(unix))]
     let _ = mode;
 
-    fs::rename(&tmp, path).with_context(|| {
-        format!(
-            "failed to rename temp file {} to {}",
-            tmp.display(),
-            path.display()
-        )
-    })?;
+    if replace {
+        fs::rename(&tmp, path)
+    } else {
+        // A hard link publishes complete bytes without overwriting a competing file.
+        fs::hard_link(&tmp, path)
+    }
+    .with_context(|| format!("failed to publish {}", path.display()))?;
     Ok(())
 }
 
 /// Write `data` to `path` atomically using a temp file + rename.
 /// On unix the temp file is synced before rename; permissions are umask-default.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
-    atomic_write_impl(path, data, None)
+    atomic_write_impl(path, data, None, true)
 }
+
+/// Publish complete bytes as a new file; never replace an existing destination.
+pub fn atomic_create(path: &Path, data: &[u8]) -> Result<()> {
+    atomic_write_impl(path, data, None, false)
+}
+
+/// Replace an existing file while preserving its Unix permission bits.
+pub fn atomic_write_preserving_permissions(path: &Path, data: &[u8]) -> Result<()> {
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(fs::metadata(path)?.permissions().mode())
+    };
+    #[cfg(not(unix))]
+    let mode = None;
+    atomic_write_impl(path, data, mode, true)
+}
+
 /// Write the string `s` to `path` atomically via [`atomic_write`].
 pub fn atomic_write_str(path: &Path, s: &str) -> Result<()> {
     atomic_write(path, s.as_bytes())
@@ -55,7 +74,7 @@ pub fn atomic_write_str(path: &Path, s: &str) -> Result<()> {
 /// Like [`atomic_write`] but sets file permissions to `mode` before syncing.
 #[cfg(unix)]
 pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()> {
-    atomic_write_impl(path, data, Some(mode))
+    atomic_write_impl(path, data, Some(mode), true)
 }
 
 /// Best-effort removal of orphaned clin plaintext temp files from a previous
@@ -245,6 +264,16 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn atomic_create_does_not_replace_or_leave_temp_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data.base");
+        atomic_create(&path, b"original").unwrap();
+        assert!(atomic_create(&path, b"replacement").is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"original");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]
