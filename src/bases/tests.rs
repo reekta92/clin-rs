@@ -356,9 +356,42 @@ fn native_regex_replace_split_captures_flags_and_utf16() {
     ] {
         assert_eq!(evaluate(&metadata, source).unwrap(), expected, "{source}");
     }
-    assert!(evaluate(&metadata, r#"/a/v.matches('a')"#).is_err());
+    assert_eq!(
+        evaluate(&metadata, r#"/a/v.matches('a')"#).unwrap(),
+        Value::Boolean(true)
+    );
+    for (source, expected) in [
+        (r#"/[\p{ASCII}&&\p{Letter}]/v.matches('a')"#, true),
+        (r#"/\uD800/u.matches('\uD800')"#, true),
+        (r#"/\uD83D\uDE00/u.matches('😀')"#, true),
+        (r#"/k/i.matches('\u212A')"#, false),
+        (r#"/k/iu.matches('\u212A')"#, true),
+        (r#"/\w/u.matches('é')"#, false),
+        (r#"/\bélan/u.matches('élan')"#, false),
+    ] {
+        assert_eq!(
+            evaluate(&metadata, source).unwrap(),
+            Value::Boolean(expected),
+            "{source}"
+        );
+    }
+    assert_eq!(
+        evaluate(
+            &metadata,
+            r#"'John Smith'.replace(/(?<first>\w+) (?<last>\w+)/,'$<last>, $<first>')"#
+        )
+        .unwrap(),
+        Value::text("Smith, John")
+    );
+    assert!(evaluate(&metadata, r#"/(?i)a/.matches('a')"#).is_err());
     // Backtracking cannot stall the worker indefinitely on imported adversarial expressions.
+    let started = std::time::Instant::now();
     assert!(evaluate(&metadata, r#"/(a+)+\1$/.matches('a'.repeat(80)+'b')"#).is_err());
+    assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    assert_eq!(
+        evaluate(&metadata, r#"/a/.matches('a')"#).unwrap(),
+        Value::Boolean(true)
+    );
 }
 
 #[test]
