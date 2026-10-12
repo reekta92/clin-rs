@@ -314,14 +314,22 @@ fn markdown_metadata(content: &str) -> MarkdownMetadata {
     let mut options = Options::default();
     options.extension.wikilinks_title_after_pipe = true;
     let root = parse_document(&arena, content, &options);
+    let mut line_starts = vec![0];
+    line_starts.extend(content.match_indices('\n').map(|(offset, _)| offset + 1));
     let mut metadata = MarkdownMetadata::default();
     for node in root.descendants() {
         let data = node.data.borrow();
         match &data.value {
             NodeValue::WikiLink(link) => {
-                let embedded = node.previous_sibling().is_some_and(|previous| {
-                    matches!(&previous.data.borrow().value, NodeValue::Text(text) if text.ends_with('!'))
-                });
+                let embedded = line_starts
+                    .get(data.sourcepos.start.line.saturating_sub(1))
+                    .and_then(|line| {
+                        line.checked_add(data.sourcepos.start.column.saturating_sub(1))
+                    })
+                    .and_then(|start| start.checked_sub(1))
+                    .is_some_and(|bang| {
+                        content.as_bytes().get(bang) == Some(&b'!') && !is_escaped(content, bang)
+                    });
                 if embedded {
                     metadata.embeds.push(link.url.clone());
                 } else {
@@ -343,6 +351,20 @@ fn markdown_metadata(content: &str) -> MarkdownMetadata {
                 });
                 if !in_link {
                     collect_inline_tags(text, &mut metadata.tags);
+                    let start = line_starts
+                        .get(data.sourcepos.start.line.saturating_sub(1))
+                        .and_then(|line| {
+                            line.checked_add(data.sourcepos.start.column.saturating_sub(1))
+                        });
+                    let end = line_starts
+                        .get(data.sourcepos.end.line.saturating_sub(1))
+                        .and_then(|line| line.checked_add(data.sourcepos.end.column));
+                    if let Some(raw) = start
+                        .zip(end)
+                        .and_then(|(start, end)| content.get(start..end))
+                    {
+                        collect_text_embeds(raw, &mut metadata.embeds);
+                    }
                 }
             }
             _ => {}
@@ -351,6 +373,36 @@ fn markdown_metadata(content: &str) -> MarkdownMetadata {
     deduplicate(&mut metadata.links);
     deduplicate(&mut metadata.embeds);
     metadata
+}
+
+fn is_escaped(source: &str, offset: usize) -> bool {
+    source.as_bytes()[..offset]
+        .iter()
+        .rev()
+        .take_while(|byte| **byte == b'\\')
+        .count()
+        % 2
+        != 0
+}
+
+fn collect_text_embeds(mut source: &str, embeds: &mut Vec<String>) {
+    // Comrak leaves Obsidian bang-wikilinks in text; AST source ranges exclude code and labels.
+    while let Some(start) = source.find("![[") {
+        let target_start = start + 3;
+        let Some(end) = source[target_start..]
+            .find("]]")
+            .map(|end| target_start + end)
+        else {
+            break;
+        };
+        if !is_escaped(source, start) {
+            let target = source[target_start..end].split('|').next().unwrap_or("");
+            if !target.is_empty() && !target.contains(['\n', '\r']) {
+                embeds.push(target.to_owned());
+            }
+        }
+        source = &source[end + 2..];
+    }
 }
 
 fn is_external(target: &str) -> bool {
@@ -550,6 +602,23 @@ mod tests {
         assert!(snapshot.resolve_link("a.md", "../outside.md").is_none());
         assert!(snapshot.resolve_link("a.md", "%2e%2e/outside.md").is_none());
         assert!(snapshot.resolve_link("a.md", "/outside.md").is_none());
+    }
+
+    #[test]
+    fn wiki_only_embeds_use_source_ranges_and_respect_escaping_and_code() {
+        let metadata = markdown_metadata(
+            r"![[cover.png]] ![[note#Heading|alias]] \![[escaped.png]] `![[code.png]]`
+[![[label.png]]](https://example.test)
+```
+![[fenced.png]]
+```
+",
+        );
+        assert_eq!(metadata.embeds, ["cover.png", "note#Heading"]);
+        assert!(metadata.links.contains(&"escaped.png".to_owned()));
+        let metadata = markdown_metadata(r"\![[note]] ![[other]]");
+        assert_eq!(metadata.embeds, ["other"]);
+        assert!(metadata.links.contains(&"note".to_owned()));
     }
 
     #[test]
