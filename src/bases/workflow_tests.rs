@@ -107,7 +107,16 @@ fn typed_edit_undo_redo_and_verbatim_source_handoff_are_public_only() {
     assert_eq!(result.rows.len(), 1);
     assert_eq!(result.rows[0].id, "public.md");
     assert!(!render(&mut app).contains("private.clin"));
-    key(&mut app, KeyCode::Char('l'));
+    event(
+        &mut app,
+        Event::Mouse(crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 25,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_eq!(app.bases_state.as_ref().unwrap().column, 1);
     key(&mut app, KeyCode::Char('e'));
     wait(&mut app, |app| {
         app.bases_state.as_ref().unwrap().dialog.is_some()
@@ -168,6 +177,122 @@ fn typed_edit_undo_redo_and_verbatim_source_handoff_are_public_only() {
         key(&mut app, KeyCode::Char('q')),
         OverlayResult::Exit
     ));
+}
+
+#[test]
+fn table_labels_summaries_and_reopening_preserve_native_return_mode() {
+    let (_root, mut app) = fixture();
+    let previous = app.bases_state.as_ref().unwrap().previous_mode;
+    app.open_bases_view("board.base", None);
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    assert_eq!(app.bases_state.as_ref().unwrap().previous_mode, previous);
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base,"properties: {score: {displayName: Rating}}\nfilters: file.ext == 'md'\nviews: [{type: table, name: Scores, order: [file.name, score], groupBy: {property: file.ext}, summaries: {score: Sum}}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    let screen = render(&mut app);
+    assert!(screen.contains("Rating"));
+    assert_eq!(
+        screen.matches("Σ 2").count(),
+        2,
+        "group and view summaries must both remain visible"
+    );
+}
+
+#[test]
+fn kanban_navigation_crosses_columns_and_retains_empty_group_focus() {
+    let (_root, mut app) = fixture();
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base,"filters: file.ext == 'md'\nviews: [{type: kanban, name: Board, order: [file.name], groupBy: {property: status}, groupOrder: [A, Empty, B]}]\n").unwrap();
+    let public = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(
+            &public,
+            &public.source().replace("score: 2", "score: 2\r\nstatus: A"),
+        )
+        .unwrap();
+    app.storage
+        .create_document("b.md", "---\nstatus: B\n---\nB body\n")
+        .unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    assert!(render(&mut app).contains("Empty"));
+    key(&mut app, KeyCode::Char('j'));
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "public.md"
+    );
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Char('j'));
+    }
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "public.md"
+    );
+    key(&mut app, KeyCode::Char('l'));
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().focused_group(),
+        Some((1, None))
+    );
+    key(&mut app, KeyCode::Char('l'));
+    key(&mut app, KeyCode::Char('j'));
+    assert_eq!(app.bases_state.as_ref().unwrap().row().unwrap().id, "b.md");
+    key(&mut app, KeyCode::Char('h'));
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().focused_group(),
+        Some((1, None))
+    );
+    key(&mut app, KeyCode::Char('h'));
+    key(&mut app, KeyCode::Char('j'));
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "public.md"
+    );
+}
+
+#[test]
+fn multiline_formula_input_applies_once_and_invalid_input_retains_source() {
+    let (_root, mut app) = fixture();
+    key(&mut app, KeyCode::Char(':'));
+    for _ in 0..10 {
+        key(&mut app, KeyCode::Char('j'));
+    }
+    key(&mut app, KeyCode::Enter);
+    event(&mut app, Event::Paste("Total = 1".into()));
+    event(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)),
+    );
+    event(&mut app, Event::Paste("+ 2".into()));
+    key(&mut app, KeyCode::Enter);
+    wait(&mut app, |app| {
+        app.bases_state
+            .as_ref()
+            .is_some_and(|state| state.write_task.is_none() && !state.loading)
+    });
+    let source = app.storage.load_document("board.base").unwrap();
+    let doc = super::format::BaseDocument::parse(source.source()).unwrap();
+    assert!(
+        doc.config.formulas.contains_key("Total"),
+        "status: {}; source: {}",
+        app.status,
+        source.source()
+    );
+    assert_eq!(doc.config.formulas["Total"], "1\n+ 2");
+    key(&mut app, KeyCode::Char(':'));
+    for _ in 0..10 {
+        key(&mut app, KeyCode::Char('j'));
+    }
+    key(&mut app, KeyCode::Enter);
+    event(&mut app, Event::Paste("Total = console.log(1)".into()));
+    key(&mut app, KeyCode::Enter);
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_some());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        source.source()
+    );
+    key(&mut app, KeyCode::Esc);
 }
 
 #[test]

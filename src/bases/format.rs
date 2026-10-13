@@ -320,7 +320,10 @@ impl BaseDocument {
                 .context("could not create formulas mapping")?
         };
         if let Some(expression) = expression {
-            formulas.set(name, expression);
+            formulas.set(
+                replacement_node(&Value::String(name.into()))?,
+                replacement_node(&Value::String(expression.into()))?,
+            );
         } else {
             formulas.remove(name);
         }
@@ -339,7 +342,7 @@ impl BaseDocument {
         let views = root.get_sequence("views").context("missing views list")?;
         let mapping = yaml_edit::Mapping::new_flow();
         mapping.set("type", layout.name());
-        mapping.set("name", name);
+        mapping.set("name", replacement_node(&Value::String(name.into()))?);
         let order = yaml_edit::Sequence::new_flow();
         order.push("file.name");
         mapping.set("order", order);

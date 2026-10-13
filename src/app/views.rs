@@ -77,7 +77,13 @@ impl App {
             }
         }
         let mut state = crate::bases::state::BasesState::new(id.to_owned(), named_view);
-        state.previous_mode = self.mode;
+        state.previous_mode = if self.mode == ViewMode::Bases {
+            self.bases_state
+                .as_ref()
+                .map_or(ViewMode::List, |current| current.previous_mode)
+        } else {
+            self.mode
+        };
         state.refresh(self, false);
         self.bases_state = Some(state);
         if self.mode != ViewMode::Bases {

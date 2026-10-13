@@ -81,6 +81,64 @@ impl BasesState {
             loaded.document.config.views[loaded.view].layout.clone()
         })
     }
+    pub(super) fn focused_group(&self) -> Option<(usize, Option<usize>)> {
+        let result = self.result()?;
+        match *self.items.get(self.selected)? {
+            Item::Group(index) => Some((index, None)),
+            Item::Row(row) => result.groups.iter().enumerate().find_map(|(index, group)| {
+                group
+                    .rows
+                    .iter()
+                    .position(|candidate| *candidate == row)
+                    .map(|position| (index, Some(position)))
+            }),
+        }
+    }
+    pub(super) fn move_group(&mut self, right: bool, count: usize) {
+        let Some((current, position)) = self.focused_group() else {
+            return;
+        };
+        let result = self.result().expect("focused group has result");
+        let next = if right {
+            current
+                .saturating_add(count)
+                .min(result.groups.len().saturating_sub(1))
+        } else {
+            current.saturating_sub(count)
+        };
+        let target = position.and_then(|position| {
+            let rows = &result.groups[next].rows;
+            rows.get(position.min(rows.len().saturating_sub(1)))
+                .copied()
+        });
+        if let Some(index) = self.items.iter().position(|item| match (*item, target) {
+            (Item::Row(row), Some(target)) => row == target,
+            (Item::Group(group), None) => group == next,
+            _ => false,
+        }) {
+            self.selected = index;
+        }
+    }
+    pub(super) fn move_row(&mut self, down: bool, count: usize) {
+        let (first, last) = if matches!(self.layout(), Layout::Kanban) {
+            self.focused_group()
+                .and_then(|(group, _)| {
+                    let first = self
+                        .items
+                        .iter()
+                        .position(|item| matches!(item,Item::Group(index) if *index==group))?;
+                    Some((first, first + self.result()?.groups[group].rows.len()))
+                })
+                .unwrap_or((0, self.items.len().saturating_sub(1)))
+        } else {
+            (0, self.items.len().saturating_sub(1))
+        };
+        self.selected = if down {
+            self.selected.saturating_add(count).min(last)
+        } else {
+            self.selected.saturating_sub(count).max(first)
+        };
+    }
     pub fn install(&mut self, loaded: anyhow::Result<LoadedBase>) {
         let previous = self.row().map(|row| row.id.clone());
         self.loading = false;

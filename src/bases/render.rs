@@ -72,7 +72,8 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
     let card = matches!(state.layout(), Layout::Cards);
     let item_height = if card { 4 } else { 1 };
     let header = usize::from(matches!(state.layout(), Layout::Table));
-    let visible = (usize::from(area.height).saturating_sub(header) / item_height).max(1);
+    let footer = usize::from(header > 0 && !result.summaries.is_empty());
+    let visible = (usize::from(area.height).saturating_sub(header + footer) / item_height).max(1);
     if state.selected < state.offset {
         state.offset = state.selected;
     }
@@ -101,22 +102,41 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
             .skip(state.offset)
             .take(visible)
             .map(|(position, item)| {
-                state.hit_rows.push((
-                    Rect::new(
-                        area.x,
+                for column in 0..columns.len() {
+                    let rect = Rect::new(
+                        area.x + (column * 20) as u16,
                         area.y + header as u16 + (position - state.offset) as u16,
-                        area.width,
+                        20,
                         1,
-                    ),
-                    position,
-                    start_column,
-                ));
+                    )
+                    .intersection(area);
+                    state.hit_rows.push((rect, position, start_column + column));
+                }
                 match item {
-                    Item::Group(index) => Row::new([Cell::from(format!(
-                        "{} ({} files)",
-                        display(&result.groups[index].value),
-                        result.groups[index].rows.len()
-                    ))])
+                    Item::Group(index) => Row::new(
+                        columns
+                            .iter()
+                            .enumerate()
+                            .map(|(column, key)| {
+                                let group = &result.groups[index];
+                                let summary = group
+                                    .summaries
+                                    .get(*key)
+                                    .map(|value| format!("Σ {}", display(value)))
+                                    .unwrap_or_default();
+                                let text = if column == 0 {
+                                    format!(
+                                        "{} ({} files) {summary}",
+                                        display(&group.value),
+                                        group.rows.len()
+                                    )
+                                } else {
+                                    summary
+                                };
+                                Cell::from(text)
+                            })
+                            .collect::<Vec<_>>(),
+                    )
                     .style(
                         Style::default()
                             .fg(theme.heading)
@@ -147,18 +167,37 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
                 }
             })
             .collect::<Vec<_>>();
-        frame.render_widget(
-            Table::new(rows, columns.iter().map(|_| Constraint::Length(19)))
-                .header(
-                    Row::new(columns.iter().map(|column| Cell::from((*column).clone()))).style(
-                        Style::default()
-                            .fg(theme.heading)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                )
-                .column_spacing(1),
-            area,
-        );
+        let table = Table::new(rows, columns.iter().map(|_| Constraint::Length(19)))
+            .header(
+                Row::new(columns.iter().map(|column| {
+                    Cell::from(sanitize_for_terminal(
+                        loaded.document.config.labels.get(*column).unwrap_or(column),
+                    ))
+                }))
+                .style(
+                    Style::default()
+                        .fg(theme.heading)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            )
+            .column_spacing(1);
+        let table = if footer > 0 {
+            table.footer(
+                Row::new(columns.iter().map(|column| {
+                    Cell::from(
+                        result
+                            .summaries
+                            .get(*column)
+                            .map(|value| format!("Σ {}", display(value)))
+                            .unwrap_or_default(),
+                    )
+                }))
+                .style(Style::default().fg(theme.heading)),
+            )
+        } else {
+            table
+        };
+        frame.render_widget(table, area);
     } else {
         for (position, item) in state
             .items
@@ -210,17 +249,7 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
         );
         return;
     }
-    let active = state
-        .items
-        .get(state.selected)
-        .and_then(|item| match item {
-            Item::Group(group) => Some(*group),
-            Item::Row(row) => result
-                .groups
-                .iter()
-                .position(|group| group.rows.contains(row)),
-        })
-        .unwrap_or(0);
+    let active = state.focused_group().map_or(0, |(group, _)| group);
     let count = (usize::from(area.width) / 26).max(1);
     let first = active.saturating_sub(count - 1);
     let width = area.width / count as u16;

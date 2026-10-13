@@ -120,11 +120,8 @@ impl OverlayView for BasesState {
                 }
             }
             BasesAction::Help => return Ok(OverlayResult::OpenHelp(crate::app::HelpTab::Bases)),
-            BasesAction::MoveUp => self.selected = self.selected.saturating_sub(count as usize),
-            BasesAction::MoveDown => {
-                self.selected =
-                    (self.selected + count as usize).min(self.items.len().saturating_sub(1))
-            }
+            BasesAction::MoveUp => self.move_row(false, count as usize),
+            BasesAction::MoveDown => self.move_row(true, count as usize),
             BasesAction::First => self.selected = 0,
             BasesAction::Last => self.selected = self.items.len().saturating_sub(1),
             BasesAction::PageUp => {
@@ -136,6 +133,11 @@ impl OverlayView for BasesState {
                 self.selected = (self.selected
                     + usize::from(self.body_area.height).saturating_sub(1))
                 .min(self.items.len().saturating_sub(1))
+            }
+            BasesAction::MoveLeft | BasesAction::MoveRight
+                if matches!(self.layout(), super::format::Layout::Kanban) =>
+            {
+                self.move_group(matches!(action, BasesAction::MoveRight), count as usize)
             }
             BasesAction::MoveLeft => self.column = self.column.saturating_sub(count as usize),
             BasesAction::MoveRight => {

@@ -115,11 +115,11 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
 const BASES_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Configuration",
-        body: "Press {bases:Configure}; choose a field with arrows and Enter. Enter YAML where requested. Ctrl+Enter applies changes; Esc cancels.",
+        body: "Press {bases:Configure}; choose a field with arrows and Enter. Enter YAML where requested. Enter applies changes; Shift+Enter inserts a newline; Esc cancels.",
     },
     PopupHelp {
         name: "Property editor",
-        body: "Press {bases:Edit} for typed property input. Ctrl+Enter applies to selected rows; Esc cancels. Stale source and invalid types reject writes.",
+        body: "Press {bases:Edit} for typed property input. Enter applies to selected rows; Shift+Enter inserts a newline; Esc cancels. Stale source and invalid types reject writes.",
     },
 ];
 const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
