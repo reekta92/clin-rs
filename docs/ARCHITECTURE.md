@@ -16,6 +16,7 @@ pub enum ViewMode {
     Graph,   // Force-directed graph (graf)
     Draw,    // Freehand drawing canvas
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
+    Bases,   // Public-only .base queries and native authoring
     Backup,  // Git backup dashboard
     Outline,  // Header-based note outline
     Setup,   // First-run setup wizard
@@ -29,6 +30,9 @@ List  ──Enter──► Edit
 List  ──Ctrl+G─► Graph
 List  ──Enter──► Draw    (on .draw file)
 List  ──Enter──► Canvas  (on .canvas file)
+List  ──Enter──► Bases   (on .base file)
+Bases ──Back───► previous view
+Bases ──Enter──► public source editor / native image popup
 Edit  ──Esc───► List
 Graph ──Esc───► List
 Draw  ──Esc───► List
@@ -43,7 +47,7 @@ Backup ──Esc───► List
 Outline ──Esc───► List
 ```
 
-Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Backup, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
+Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Bases, Backup, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
 
 ---
 
@@ -98,14 +102,16 @@ loop resumes.
 
 ### Sub-view Overlays (OverlayView trait)
 
-Five sub-views (Graph, Draw, Canvas, Backup, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
+Six sub-views (Graph, Draw, Canvas, Bases, Backup, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
 
 - [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
 - [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
 
 Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawAppState>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Backup/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
 
-No sub-view takes terminal ownership or runs a separate event loop.
+Bases stores its original return mode on `BasesState`, preserving it through
+public-source handoff and reopening. No sub-view takes terminal ownership or
+runs a separate event loop.
 
 ---
 

@@ -15,6 +15,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 
 ## Views
 
+- [BASES.md](BASES.md) — In-progress native Bases: public queries, guarded editing, Kanban workflows, safety and remaining work
 - [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree layout, note format chooser, preview pane
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
 - [BACKUP.md](BACKUP.md) — Git-based backup dashboard: vault state (staged/unstaged/untracked), history, diff preview, automation settings
@@ -48,6 +49,7 @@ docs/
 ├── INDEX.md              ← You are here
 ├── ARCHITECTURE.md       System overview
 ├── DEPENDENCY_PATCHES.md Compatibility forks and dependency safety
+├── BASES.md              Native Bases implementation and current limits
 ├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
 ├── HELP.md               Help: 3-pane, 8 tabs, keybind index, tips, popup accordion
