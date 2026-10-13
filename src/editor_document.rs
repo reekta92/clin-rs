@@ -52,6 +52,17 @@ impl EditorDocument {
         }
     }
 
+    /// Public source editing retains trailing empty lines; normal note serialization stays unchanged.
+    pub(crate) fn from_source(content: &str) -> Self {
+        let normalized = content.replace("\r\n", "\n");
+        Self {
+            textarea: TextArea::from(normalized.split('\n').map(String::from).collect::<Vec<_>>()),
+            revision: 0,
+            snapshot: Some(Arc::from(normalized)),
+            change: Some(DocumentChange::Full),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn from_lines(lines: impl IntoIterator<Item = String>) -> Self {
         let textarea = TextArea::from(lines.into_iter().collect::<Vec<_>>());
@@ -282,6 +293,26 @@ fn compose_change(previous: Option<DocumentChange>, next: DocumentChange) -> Doc
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn public_source_retains_trailing_lines_during_edits_and_undo() {
+        for source in [
+            "",
+            "Body",
+            "Body\n",
+            "Body\n\n",
+            "---\r\nscore: 2\r\n---\r\nBody\r\n\r\n",
+        ] {
+            let normalized = source.replace("\r\n", "\n");
+            let mut doc = super::EditorDocument::from_source(source);
+            assert_eq!(doc.text(), normalized);
+            assert_eq!(doc.snapshot().as_ref(), normalized);
+            doc.insert_str("New ");
+            assert_eq!(doc.text(), format!("New {normalized}"));
+            doc.undo();
+            assert_eq!(doc.text(), normalized);
+        }
+    }
+
     use super::*;
 
     fn assert_parity(document: &EditorDocument, textarea: &TextArea<'static>) {

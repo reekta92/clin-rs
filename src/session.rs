@@ -23,7 +23,12 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
         Ok(s) => (s, None),
         Err(e) => (crate::storage::Storage::new_fallback(), Some(e.to_string())),
     };
-    let mut app = App::new_deferred(storage)?;
+    // Explicit title lookup needs a complete catalog before entering the event loop.
+    let mut app = if open_title.is_some() {
+        App::new(storage)?
+    } else {
+        App::new_deferred(storage)?
+    };
     let _ = app.storage.recover_editor_draft();
     for w in init_warnings {
         app.messages

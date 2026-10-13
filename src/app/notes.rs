@@ -412,7 +412,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.body = EditorDocument::from_text(&snapshot.source().replace("\r\n", "\n"));
+        self.editor.body = EditorDocument::from_source(snapshot.source());
         self.editor.public_document = Some(snapshot);
         self.editor.editor_preview_enabled = false;
         self.editor.md_preview_renderer = None;
