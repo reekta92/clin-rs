@@ -1774,6 +1774,10 @@ impl App {
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
+        if self.editor.public_document.is_some() {
+            self.editor.md_preview_renderer = None;
+            return;
+        }
         if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }

@@ -129,6 +129,7 @@ pub struct NoteEditor {
     pub autosave_timer: Option<Instant>,
     pub last_saved_time: Option<Instant>,
     pub editing_id: Option<String>,
+    pub public_document: Option<crate::storage::documents::DocumentSnapshot>,
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
     pub title_editor: TextArea<'static>,
@@ -204,6 +205,7 @@ impl Default for NoteEditor {
             autosave_timer: None,
             last_saved_time: None,
             editing_id: None,
+            public_document: None,
             initial_word_count: 0,
             template_edit_path: None,
             title_editor: TextArea::default(),
@@ -270,6 +272,18 @@ impl Default for NoteEditor {
 }
 
 impl NoteEditor {
+    pub fn public_document_source(&self) -> Option<String> {
+        let baseline = self.public_document.as_ref()?;
+        let content = self.body.lines().join("\n");
+        if baseline.source().replace("\r\n", "\n") == content {
+            return Some(baseline.source().to_owned());
+        }
+        Some(if baseline.source().contains("\r\n") {
+            content.replace('\n', "\r\n")
+        } else {
+            content
+        })
+    }
     pub fn new() -> Self {
         Self::default()
     }

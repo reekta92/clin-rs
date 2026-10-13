@@ -404,8 +404,35 @@ impl App {
         }
     }
 
+    pub fn open_public_document(&mut self, snapshot: crate::storage::documents::DocumentSnapshot) {
+        self.editor.editing_id = Some(snapshot.id().to_owned());
+        self.editor.template_edit_path = None;
+        self.editor.title_editor = make_title_editor(
+            snapshot.id(),
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
+        self.editor.body = EditorDocument::from_text(&snapshot.source().replace("\r\n", "\n"));
+        self.editor.public_document = Some(snapshot);
+        self.editor.editor_preview_enabled = false;
+        self.editor.md_preview_renderer = None;
+        self.editor.link_preview_renderer = None;
+        self.editor.link_preview_target = None;
+        self.editor.link_preview_error = None;
+        self.editor.link_preview = false;
+        self.editor.links.clear();
+        self.preview_fullscreen = false;
+        self.rebuild_outline();
+        self.return_mode = Some(self.mode);
+        self.mode = ViewMode::Edit;
+        self.set_temporary_status_static(
+            "Verbatim public source editor; filename unchanged. Return to Bases for live view.",
+        );
+    }
+
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
+            self.editor.public_document = None;
             self.editor.editing_id = Some(note_id.to_string());
             self.editor.initial_word_count = crate::goals::count_words(&note.content);
             self.editor.title_editor = make_title_editor(
@@ -736,6 +763,7 @@ impl App {
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
+            self.editor.public_document = None;
             if self.editor.template_edit_path.is_some() {
                 self.refresh_template_popup();
             }
@@ -770,12 +798,19 @@ impl App {
                 }
             }
             self.mode = return_to;
+            if return_to == ViewMode::Bases
+                && let Some(mut state) = self.bases_state.take()
+            {
+                state.refresh(self, true);
+                self.bases_state = Some(state);
+            }
             self.set_default_status();
 
             return;
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
+        self.editor.public_document = None;
         if self.editor.template_edit_path.is_some() {
             self.refresh_template_popup();
         }

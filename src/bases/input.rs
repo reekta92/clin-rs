@@ -65,6 +65,9 @@ impl OverlayView for BasesState {
             Paragraph::new(hints).style(app.app_theme.hint_line_bg_style()),
             chunks[2],
         );
+        if let Some(dialog) = self.dialog.as_mut() {
+            dialog.render(frame, area, app);
+        }
     }
     fn overlay_handle_event(
         &mut self,
@@ -72,6 +75,9 @@ impl OverlayView for BasesState {
         app: &mut App,
         _area: Rect,
     ) -> anyhow::Result<OverlayResult> {
+        if self.dialog_event(&event, app) {
+            return Ok(OverlayResult::Continue);
+        }
         let action = match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => {
                 match app.keybinds.resolve_bases(
@@ -106,7 +112,13 @@ impl OverlayView for BasesState {
             return Ok(OverlayResult::Continue);
         };
         match action {
-            BasesAction::Back => return Ok(OverlayResult::Exit),
+            BasesAction::Back => {
+                if self.write_task.as_ref().is_some_and(|task| task.writing) {
+                    app.set_temporary_status_static("Write in progress; wait before leaving Bases");
+                } else {
+                    return Ok(OverlayResult::Exit);
+                }
+            }
             BasesAction::Help => return Ok(OverlayResult::OpenHelp(crate::app::HelpTab::Notes)),
             BasesAction::MoveUp => self.selected = self.selected.saturating_sub(count as usize),
             BasesAction::MoveDown => {
@@ -159,7 +171,73 @@ impl OverlayView for BasesState {
                     self.selected_ids = result.rows.iter().map(|row| row.id.clone()).collect();
                 }
             }
-            _ => app.set_temporary_status_static("Bases authoring controls are not wired yet"),
+            BasesAction::Edit
+            | BasesAction::Clear
+            | BasesAction::Paste
+            | BasesAction::MoveToGroup => {
+                use super::authoring::EditIntent;
+                let intent = match action {
+                    BasesAction::Clear => Some(EditIntent::Clear),
+                    BasesAction::Paste => {
+                        crate::text_edit::read_system_clipboard().map(EditIntent::Paste)
+                    }
+                    BasesAction::MoveToGroup => {
+                        self.dialog = Some(super::authoring::Dialog::prompt(
+                            super::authoring::Target::MoveGroup,
+                            "Move selected notes to group",
+                            "Editable group property value; blank clears group",
+                            "",
+                        ));
+                        None
+                    }
+                    _ => Some(EditIntent::Edit),
+                };
+                if let Some(intent) = intent
+                    && let Err(error) = self.start_edit(app, intent)
+                {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::Undo | BasesAction::Redo => {
+                if let Err(error) = self.replay(app, matches!(action, BasesAction::Redo)) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::Configure => {
+                self.dialog = Some(super::authoring::Dialog::Menu { selected: 0 })
+            }
+            BasesAction::NewNote => {
+                self.dialog = Some(super::authoring::Dialog::prompt(
+                    super::authoring::Target::NewNote,
+                    "New note",
+                    "Vault-relative path ending in .md",
+                    "New note.md",
+                ))
+            }
+            BasesAction::Export => {
+                self.dialog = Some(super::authoring::Dialog::prompt(
+                    super::authoring::Target::Export,
+                    "Export visible results",
+                    "Vault-relative .csv or .md; spreadsheet formulas escaped in CSV",
+                    "Results.csv",
+                ))
+            }
+            BasesAction::Copy => {
+                if let Some(value) = self.row().and_then(|row| {
+                    self.loaded
+                        .as_ref()
+                        .and_then(|loaded| loaded.columns.get(self.column))
+                        .and_then(|column| row.values.get(column))
+                }) {
+                    crate::text_edit::write_system_clipboard(&value.to_text().display());
+                    app.set_temporary_status_static("Copied cell");
+                }
+            }
+            BasesAction::Open => {
+                if let Err(error) = self.open_row(app) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
         }
         Ok(OverlayResult::Continue)
     }

@@ -77,6 +77,7 @@ impl App {
             }
         }
         let mut state = crate::bases::state::BasesState::new(id.to_owned(), named_view);
+        state.previous_mode = self.mode;
         state.refresh(self, false);
         self.bases_state = Some(state);
         if self.mode != ViewMode::Bases {
@@ -87,13 +88,18 @@ impl App {
     }
 
     pub fn poll_bases(&mut self) -> bool {
+        let mut dirty = false;
         if let Some(loaded) = self.bases_worker.as_mut().and_then(|worker| worker.poll()) {
             if let Some(state) = &mut self.bases_state {
                 state.install(loaded);
             }
-            return true;
+            dirty = true;
         }
-        false
+        if let Some(mut state) = self.bases_state.take() {
+            dirty |= state.poll_write(self);
+            self.bases_state = Some(state);
+        }
+        dirty
     }
 
     pub fn open_graph_view(&mut self) {

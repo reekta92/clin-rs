@@ -13,6 +13,7 @@ pub enum Item {
 
 pub struct BasesState {
     pub id: String,
+    pub previous_mode: crate::app::ViewMode,
     pub named_view: Option<String>,
     pub environment: Environment,
     pub loaded: Option<LoadedBase>,
@@ -26,6 +27,11 @@ pub struct BasesState {
     pub matcher: KeyMatcher,
     pub body_area: Rect,
     pub hit_rows: Vec<(Rect, usize, usize)>,
+    pub(super) dialog: Option<super::authoring::Dialog>,
+    pub(super) write_task: Option<super::write::WriteTask>,
+    pub(super) edit_intent: Option<super::authoring::EditIntent>,
+    pub(super) undo: Vec<super::edits::Transaction>,
+    pub(super) redo: Vec<super::edits::Transaction>,
 }
 impl BasesState {
     pub fn new(id: String, named_view: Option<String>) -> Self {
@@ -35,6 +41,7 @@ impl BasesState {
         };
         Self {
             id,
+            previous_mode: crate::app::ViewMode::List,
             named_view,
             environment,
             loaded: None,
@@ -48,10 +55,20 @@ impl BasesState {
             matcher: KeyMatcher::default(),
             body_area: Rect::default(),
             hit_rows: Vec::new(),
+            dialog: None,
+            write_task: None,
+            edit_intent: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
         }
     }
     pub fn result(&self) -> Option<&QueryResult> {
-        self.loaded.as_ref()?.result.as_ref().ok()
+        self.loaded
+            .as_ref()?
+            .result
+            .as_ref()
+            .ok()
+            .map(std::sync::Arc::as_ref)
     }
     pub fn row(&self) -> Option<&super::query::Row> {
         let Item::Row(index) = self.items.get(self.selected)? else {
@@ -84,8 +101,10 @@ impl BasesState {
                     } else {
                         self.items.extend((0..result.rows.len()).map(Item::Row));
                     }
+                    let live_ids: HashSet<_> =
+                        result.rows.iter().map(|row| row.id.as_str()).collect();
                     self.selected_ids
-                        .retain(|id| result.rows.iter().any(|row| &row.id == id));
+                        .retain(|id| live_ids.contains(id.as_str()));
                 } else if let Err(error) = &loaded.result {
                     self.error = Some(format!("{error:#}"));
                 }

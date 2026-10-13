@@ -20,7 +20,7 @@ pub struct LoadedBase {
     pub view: usize,
     pub columns: Vec<String>,
     pub metadata: Arc<VaultMetadata>,
-    pub result: Result<QueryResult>,
+    pub result: Result<Arc<QueryResult>>,
 }
 struct Request {
     generation: u64,
@@ -74,9 +74,11 @@ impl BasesWorker {
                         let columns = query
                             .as_ref()
                             .map_or_else(|_| Vec::new(), |query| query.columns.clone());
-                        let result = query.and_then(|query| {
-                            query.execute(&metadata, &request.environment, &request.cancelled)
-                        });
+                        let result = query
+                            .and_then(|query| {
+                                query.execute(&metadata, &request.environment, &request.cancelled)
+                            })
+                            .map(Arc::new);
                         Ok(LoadedBase {
                             snapshot,
                             document,

@@ -1260,8 +1260,11 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
                     if let Some(worker) = app.bases_worker.as_mut() {
                         worker.cancel();
                     }
-                    app.bases_state = None;
-                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                    app.mode = app
+                        .bases_state
+                        .take()
+                        .map_or(ViewMode::List, |state| state.previous_mode);
+                    app.return_mode = None;
                     app.set_default_status();
                 }
             }

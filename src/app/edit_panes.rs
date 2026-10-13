@@ -67,6 +67,10 @@ impl App {
 
     /// Outgoing/Forward links AND Incoming/Backlinks.
     pub fn compute_links(&self) -> Vec<LinkItem> {
+        // Source handoff must not reuse catalog resolution that can include encrypted notes.
+        if self.editor.public_document.is_some() {
+            return Vec::new();
+        }
         let mut items = Vec::new();
 
         // 1. Outgoing/Forward links

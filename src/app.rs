@@ -1697,6 +1697,14 @@ impl App {
     }
 
     pub fn write_draft(&mut self) {
+        if let Some(baseline) = self.editor.public_document.as_ref() {
+            if let Some(source) = self.editor.public_document_source()
+                && let Err(error) = self.storage.write_document_draft(baseline, &source)
+            {
+                self.set_temporary_status(&format!("Document draft failed: {error:#}"));
+            }
+            return;
+        }
         if let Some(id) = &self.editor.editing_id
             && !id.ends_with(".clin")
         {
@@ -1709,6 +1717,28 @@ impl App {
     }
 
     pub fn autosave(&mut self) -> Result<(), String> {
+        if let Some(baseline) = self.editor.public_document.as_ref() {
+            let source = self
+                .editor
+                .public_document_source()
+                .expect("public source baseline");
+            match self.storage.save_document(baseline, &source) {
+                Ok(snapshot) => {
+                    let cleanup = self.storage.clear_document_draft(&snapshot);
+                    self.editor.public_document = Some(snapshot);
+                    cleanup.map_err(|error| {
+                        format!("Document saved; draft cleanup failed: {error:#}")
+                    })?;
+                    self.request_notes_reconcile();
+                    return Ok(());
+                }
+                Err(error) => {
+                    let message = format!("Public document save failed: {error:#}");
+                    self.set_temporary_status(&message);
+                    return Err(message);
+                }
+            }
+        }
         let content = self.editor.body.lines().join("\n");
 
         if let Some(path) = &self.editor.template_edit_path
