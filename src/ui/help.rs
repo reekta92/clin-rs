@@ -28,6 +28,7 @@ pub fn help_tabs(
         (HelpTab::Backup, "Backup", "\u{f1d3}", "\u{1f4be}"),
         (HelpTab::Templates, "Templates", "\u{f15b}", "\u{1f4c4}"),
         (HelpTab::About, "About", "\u{f05a}", "\u{2139}"),
+        (HelpTab::Bases, "Bases", "\u{f0ce}", "\u{25a6}"),
     ];
     pairs
         .into_iter()
@@ -39,6 +40,7 @@ pub fn help_tabs(
 /// Whether a help tab's feature is enabled. Notes/Editor/About are always on.
 pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool {
     match tab {
+        HelpTab::Bases => f.bases_view.is_enabled(),
         HelpTab::Graph => f.graph_view.is_enabled(),
         HelpTab::Draw => f.draw_view.is_enabled(),
         HelpTab::Canvas => f.canvas_view.is_enabled(),
@@ -50,6 +52,7 @@ pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool
 
 fn help_tab_flag(tab: HelpTab) -> &'static str {
     match tab {
+        HelpTab::Bases => "bases_view",
         HelpTab::Graph => "graph_view",
         HelpTab::Draw => "draw_view",
         HelpTab::Canvas => "canvas_view",
@@ -432,6 +435,14 @@ pub fn help_text_for_tab(
         HelpTab::Editor => editor_help_text(keybinds, theme),
         HelpTab::Graph => graph_help_text(keybinds, theme),
         HelpTab::Draw => draw_help_text(keybinds, theme),
+        HelpTab::Bases => generate_scope_help(
+            keybinds,
+            theme,
+            tab,
+            help_meta::bases_group_order(),
+            help_meta::bases_action_meta,
+            |kb, a| kb.bases_keys_display(a),
+        ),
         HelpTab::Canvas => canvas_help_text(keybinds, theme),
         HelpTab::Backup => backup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme, tab, storage),
@@ -1211,6 +1222,7 @@ fn tab_display_name(tab: HelpTab) -> &'static str {
         HelpTab::Editor => "Editor",
         HelpTab::Graph => "Graph",
         HelpTab::Draw => "Draw",
+        HelpTab::Bases => "Bases",
         HelpTab::Canvas => "Canvas",
         HelpTab::Backup => "Backup",
         HelpTab::Templates => "Templates",
@@ -1475,6 +1487,9 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Quit" => kb.graph_keys_display(GraphAction::Quit),
             _ => format!("[ERR:{}]", token),
         },
+        "bases" => crate::keybinds::BasesAction::iter()
+            .find(|a| format!("{a:?}") == action)
+            .map_or_else(String::new, |a| kb.bases_keys_display(a)),
         "draw" => match action {
             "Quit" => kb.draw_keys_display(DrawAction::Quit),
             "Help" => kb.draw_keys_display(DrawAction::Help),
@@ -1622,6 +1637,30 @@ mod tests {
                 "no ERR in any span"
             );
         }
+    }
+
+    #[test]
+    fn bases_help_covers_actions_feature_gate_and_tab_navigation() {
+        let keybinds = crate::keybinds::Keybinds::default();
+        for action in crate::keybinds::BasesAction::iter() {
+            let token = format!("bases:{action:?}");
+            let display = keybinds.bases_keys_display(action);
+            assert!(!display.is_empty(), "{token}");
+            assert_eq!(resolve_tip_key(&token, &keybinds), display);
+            assert_ne!(help_meta::bases_action_meta(action).description, "");
+        }
+        let mut features = crate::config::FeaturesConfig::default();
+        assert!(help_tab_enabled(HelpTab::Bases, &features));
+        features.bases_view = crate::config::FeatureState::Disabled;
+        assert!(!help_tab_enabled(HelpTab::Bases, &features));
+        assert_eq!(HelpTab::from_index(HelpTab::Bases.index()), HelpTab::Bases);
+        assert_eq!(HelpTab::Bases.next().prev(), HelpTab::Bases);
+        assert_eq!(HelpTab::Bases.prev().next(), HelpTab::Bases);
+        assert!(crate::ui::help_content::tab_suggestions(HelpTab::Bases).len() >= 5);
+        assert_eq!(
+            crate::ui::help_content::tab_popup_descriptions(HelpTab::Bases).len(),
+            2
+        );
     }
 
     #[test]

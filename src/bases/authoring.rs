@@ -624,6 +624,11 @@ impl BasesState {
                     self.dialog = Some(Dialog::prompt(target, title, hint, ""));
                     keep = false;
                 }
+                (Dialog::Prompt { input, .. }, KeyCode::Enter)
+                    if key.modifiers.contains(KeyModifiers::SHIFT) =>
+                {
+                    input.insert_newline();
+                }
                 (Dialog::Prompt { target, input, .. }, KeyCode::Enter) => {
                     match self.submit(app, target, &input.lines().join("\n")) {
                         Ok(()) => keep = false,

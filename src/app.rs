@@ -300,7 +300,7 @@ impl ViewMode {
             ViewMode::Graph => Some(HelpTab::Graph),
             ViewMode::Draw => Some(HelpTab::Draw),
             ViewMode::Canvas => Some(HelpTab::Canvas),
-            ViewMode::Bases => Some(HelpTab::Notes),
+            ViewMode::Bases => Some(HelpTab::Bases),
             ViewMode::Backup => Some(HelpTab::Backup),
             ViewMode::Outline => Some(HelpTab::Notes), // no Outline tab; matches existing OutlineAction::Help target
             ViewMode::Help => None,
@@ -319,13 +319,15 @@ pub enum HelpTab {
     Backup,
     Templates,
     About,
+    Bases,
 }
 
 impl HelpTab {
     #[must_use]
     pub fn prev(self) -> Self {
         match self {
-            HelpTab::Notes => HelpTab::About,
+            HelpTab::Notes => HelpTab::Bases,
+            HelpTab::Bases => HelpTab::About,
             HelpTab::Editor => HelpTab::Notes,
             HelpTab::Graph => HelpTab::Editor,
             HelpTab::Draw => HelpTab::Graph,
@@ -346,7 +348,8 @@ impl HelpTab {
             HelpTab::Canvas => HelpTab::Backup,
             HelpTab::Backup => HelpTab::Templates,
             HelpTab::Templates => HelpTab::About,
-            HelpTab::About => HelpTab::Notes,
+            HelpTab::About => HelpTab::Bases,
+            HelpTab::Bases => HelpTab::Notes,
         }
     }
 
@@ -359,6 +362,7 @@ impl HelpTab {
             4 => HelpTab::Canvas,
             5 => HelpTab::Backup,
             6 => HelpTab::Templates,
+            8 => HelpTab::Bases,
             _ => HelpTab::About,
         }
     }
@@ -373,6 +377,7 @@ impl HelpTab {
             HelpTab::Backup => 5,
             HelpTab::Templates => 6,
             HelpTab::About => 7,
+            HelpTab::Bases => 8,
         }
     }
 }

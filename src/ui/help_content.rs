@@ -65,6 +65,9 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
         HelpTab::Editor => {
             "Write and edit the selected note's title and body. Switch focus between the title field and the markdown body, toggle a live markdown preview, dock outline and links sidebars, undo/redo edits, and hand off to an external editor like vim or nano. Changes auto-save when you return to the notes list."
         }
+        HelpTab::Bases => {
+            "Query public vault files through Obsidian-compatible .base documents. Switch saved Table, List, Cards and Kanban views, edit typed Markdown properties, author filters and formulas, and export visible results. Encrypted notes and virtual subnotes are excluded; file metadata and formulas are read-only. Writes check original bytes and preserve unrelated properties and note bodies."
+        }
         HelpTab::Graph => {
             "Visualize your notes as a force-directed graph of wikilinks and shared tags. Pan and zoom the canvas, search for nodes, open notes directly from the graph, and toggle a minimap, legend, grid, and preview to navigate large vaults visually."
         }
@@ -87,6 +90,38 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
 }
 
 /// Curated suggestion pool per tab (min 5 entries; most have 6–7 for variety).
+const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip(
+        "Saved views",
+        "Use {bases:NextView} and {bases:PreviousView} to switch saved views; {bases:Refresh} reloads public metadata.",
+    ),
+    tip(
+        "Typed edits",
+        "Select a property column and press {bases:Edit}. {bases:ToggleSelect} marks rows for bulk editing. File metadata and formula columns cannot be edited.",
+    ),
+    tip(
+        "Safe history",
+        "Use {bases:Undo} and {bases:Redo} for this session's document transactions. External changes reject replay rather than overwrite newer data.",
+    ),
+    tip(
+        "Authoring",
+        "Use {bases:Configure} to edit view layout, filters, grouping, manual order, sorts, formulas and summaries. Invalid expressions leave original configuration unchanged.",
+    ),
+    tip(
+        "Public exports",
+        "Use {bases:Export} for CSV or Markdown exports of visible results. Exports never overwrite existing files.",
+    ),
+];
+const BASES_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Configuration",
+        body: "Press {bases:Configure}; choose a field with arrows and Enter. Enter YAML where requested. Ctrl+Enter applies changes; Esc cancels.",
+    },
+    PopupHelp {
+        name: "Property editor",
+        body: "Press {bases:Edit} for typed property input. Ctrl+Enter applies to selected rows; Esc cancels. Stale source and invalid types reject writes.",
+    },
+];
 const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Command palette",
@@ -519,6 +554,7 @@ pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
         HelpTab::Editor => EDITOR_SUGGESTIONS,
         HelpTab::Graph => GRAPH_SUGGESTIONS,
         HelpTab::Draw => DRAW_SUGGESTIONS,
+        HelpTab::Bases => BASES_SUGGESTIONS,
         HelpTab::Canvas => CANVAS_SUGGESTIONS,
         HelpTab::Backup => BACKUP_SUGGESTIONS,
         HelpTab::Templates => TEMPLATES_SUGGESTIONS,
@@ -548,6 +584,7 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
         HelpTab::Editor => EDITOR_POPUPS,
         HelpTab::Graph => GRAPH_POPUPS,
         HelpTab::Draw => DRAW_POPUPS,
+        HelpTab::Bases => BASES_POPUPS,
         HelpTab::Canvas => CANVAS_POPUPS,
         HelpTab::Backup => BACKUP_POPUPS,
         HelpTab::Templates => TEMPLATES_POPUPS,
@@ -823,6 +860,7 @@ mod tests {
                 HelpTab::Editor => 5,
                 HelpTab::Graph => 1,
                 HelpTab::Draw => 2,
+                HelpTab::Bases => 2,
                 HelpTab::Canvas => 3,
                 HelpTab::Backup => 2,
                 HelpTab::Templates => 1,

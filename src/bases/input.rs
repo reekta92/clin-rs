@@ -119,7 +119,7 @@ impl OverlayView for BasesState {
                     return Ok(OverlayResult::Exit);
                 }
             }
-            BasesAction::Help => return Ok(OverlayResult::OpenHelp(crate::app::HelpTab::Notes)),
+            BasesAction::Help => return Ok(OverlayResult::OpenHelp(crate::app::HelpTab::Bases)),
             BasesAction::MoveUp => self.selected = self.selected.saturating_sub(count as usize),
             BasesAction::MoveDown => {
                 self.selected =

@@ -8,6 +8,52 @@ pub struct HelpMeta {
     pub description: &'static str,
 }
 
+pub fn bases_group_order() -> &'static [&'static str] {
+    &["Navigation", "Editing", "Authoring", "General"]
+}
+
+pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
+    use crate::keybinds::BasesAction::{
+        Back, Clear, Configure, Copy, Edit, Export, First, Help, Last, MoveDown, MoveLeft,
+        MoveRight, MoveToGroup, MoveUp, NewNote, NextView, Open, PageDown, PageUp, Paste,
+        PreviousView, Redo, Refresh, SelectAll, ToggleSelect, Undo,
+    };
+    match action {
+        Back => meta("General", "Return to previous view"),
+        Help => meta("General", "Bases help"),
+        Refresh => meta("General", "Reload public vault metadata and query"),
+        MoveUp => meta("Navigation", "Previous row"),
+        MoveDown => meta("Navigation", "Next row"),
+        MoveLeft => meta("Navigation", "Previous column"),
+        MoveRight => meta("Navigation", "Next column"),
+        PageUp => meta("Navigation", "Previous page"),
+        PageDown => meta("Navigation", "Next page"),
+        First => meta("Navigation", "First row"),
+        Last => meta("Navigation", "Last row"),
+        Open => meta("Navigation", "Open public document source"),
+        NextView => meta("Navigation", "Next saved view"),
+        PreviousView => meta("Navigation", "Previous saved view"),
+        Edit => meta("Editing", "Edit typed property on selected rows"),
+        Clear => meta("Editing", "Remove property from selected rows"),
+        Copy => meta("Editing", "Copy selected property values"),
+        Paste => meta("Editing", "Paste typed value into selected rows"),
+        ToggleSelect => meta("Editing", "Toggle row selection"),
+        SelectAll => meta("Editing", "Select all visible query rows"),
+        Undo => meta("Editing", "Undo guarded document transaction"),
+        Redo => meta("Editing", "Redo guarded document transaction"),
+        Configure => meta(
+            "Authoring",
+            "Configure views, filters, formulas and summaries",
+        ),
+        NewNote => meta("Authoring", "Create public Markdown note"),
+        Export => meta(
+            "Authoring",
+            "Export visible public results as CSV or Markdown",
+        ),
+        MoveToGroup => meta("Authoring", "Set grouping property on selected rows"),
+    }
+}
+
 const fn meta(group: &'static str, description: &'static str) -> HelpMeta {
     HelpMeta { group, description }
 }

@@ -18,3 +18,5 @@ mod write;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod workflow_tests;
