@@ -22,9 +22,13 @@ pub(crate) fn read_bounded_text(path: &Path, max_bytes: usize) -> Result<String>
 pub struct DocumentSnapshot {
     id: String,
     source: String,
+    recovery_id: uuid::Uuid,
 }
 
 impl DocumentSnapshot {
+    pub(crate) fn recovery_id(&self) -> uuid::Uuid {
+        self.recovery_id
+    }
     pub fn id(&self) -> &str {
         &self.id
     }
@@ -93,6 +97,7 @@ impl Storage {
         Ok(DocumentSnapshot {
             id: id.to_owned(),
             source,
+            recovery_id: uuid::Uuid::new_v4(),
         })
     }
 
@@ -102,6 +107,9 @@ impl Storage {
         baseline: &DocumentSnapshot,
         source: &str,
     ) -> Result<DocumentSnapshot> {
+        if source.len() > 16 * 1024 * 1024 {
+            bail!("document exceeds 16777216-byte safety limit");
+        }
         let path = self.document_path(baseline.id())?;
         let current = read_bounded_text(&path, 16 * 1024 * 1024)?;
         if current != baseline.source() {
@@ -116,6 +124,7 @@ impl Storage {
         Ok(DocumentSnapshot {
             id: baseline.id.clone(),
             source: source.to_owned(),
+            recovery_id: baseline.recovery_id,
         })
     }
 
@@ -143,6 +152,9 @@ impl Storage {
 
     /// Publish a new document without replacing an existing file, even on collision.
     pub fn create_document(&self, id: &str, source: &str) -> Result<DocumentSnapshot> {
+        if source.len() > 16 * 1024 * 1024 {
+            bail!("document exceeds 16777216-byte safety limit");
+        }
         let path = self.document_path(id)?;
         let parent = path.parent().context("document has no parent directory")?;
         fs::create_dir_all(parent).context("failed to create document directory")?;
@@ -150,6 +162,7 @@ impl Storage {
         Ok(DocumentSnapshot {
             id: id.to_owned(),
             source: source.to_owned(),
+            recovery_id: uuid::Uuid::new_v4(),
         })
     }
 

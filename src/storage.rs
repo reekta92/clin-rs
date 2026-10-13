@@ -1,3 +1,4 @@
+pub(crate) mod document_recovery;
 pub mod documents;
 pub mod metadata;
 
@@ -491,6 +492,12 @@ impl Storage {
         storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
         storage.migrate_extensions();
         storage.ensure_key()?;
+        match storage.recover_documents() {
+            Ok(recovery_warnings) => warnings.extend(recovery_warnings),
+            Err(error) => warnings.push(format!(
+                "Document recovery unavailable; records retained: {error:#}"
+            )),
+        }
         Ok(storage)
     }
     /// The canonical encryption-key path under `AppPaths::data_local_dir`.

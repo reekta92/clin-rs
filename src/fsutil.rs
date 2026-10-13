@@ -14,24 +14,28 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool)
         uuid::Uuid::new_v4()
     ));
     let _guard = TempFileGuard::new(tmp.clone());
-    fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
-
-    #[cfg(unix)]
-    if let Some(mode) = mode {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&tmp)?.permissions();
-        perms.set_mode(mode);
-        fs::set_permissions(&tmp, perms).context("failed to set permissions on temp file")?;
-    }
-
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::fs::File;
-        let f = File::open(&tmp).context("failed to open temp file for syncing")?;
-        f.sync_all().context("failed to sync temp file")?;
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(mode.unwrap_or(0o666));
     }
     #[cfg(not(unix))]
     let _ = mode;
+    let mut file = options
+        .open(&tmp)
+        .with_context(|| format!("failed to create {}", tmp.display()))?;
+    #[cfg(unix)]
+    if let Some(mode) = mode {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(mode))
+            .context("failed to set permissions on temp file")?;
+    }
+    std::io::Write::write_all(&mut file, data)
+        .with_context(|| format!("failed to write {}", tmp.display()))?;
+    file.sync_all().context("failed to sync temp file")?;
+    drop(file);
 
     if replace {
         fs::rename(&tmp, path)
@@ -40,6 +44,10 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool)
         fs::hard_link(&tmp, path)
     }
     .with_context(|| format!("failed to publish {}", path.display()))?;
+    #[cfg(unix)]
+    fs::File::open(parent)?
+        .sync_all()
+        .context("failed to sync publication directory")?;
     Ok(())
 }
 
@@ -75,6 +83,11 @@ pub fn atomic_write_str(path: &Path, s: &str) -> Result<()> {
 #[cfg(unix)]
 pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()> {
     atomic_write_impl(path, data, Some(mode), true)
+}
+
+#[cfg(not(unix))]
+pub fn atomic_write_with_mode(path: &Path, data: &[u8], _mode: u32) -> Result<()> {
+    atomic_write(path, data)
 }
 
 /// Best-effort removal of orphaned clin plaintext temp files from a previous
