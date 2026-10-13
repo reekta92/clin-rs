@@ -21,12 +21,14 @@ pub struct LoadedBase {
     pub columns: Vec<String>,
     pub metadata: Arc<VaultMetadata>,
     pub result: Result<Arc<QueryResult>>,
+    pub(super) group_ids: Vec<super::eval::Identity>,
 }
 struct Request {
     generation: u64,
     id: String,
     view: Option<String>,
     environment: Environment,
+    search: String,
     invalidate: bool,
     cancelled: Arc<AtomicBool>,
 }
@@ -76,10 +78,33 @@ impl BasesWorker {
                             .as_ref()
                             .map_or_else(|_| Vec::new(), |query| query.columns.clone());
                         let result = query
-                            .and_then(|query| {
+                            .and_then(|mut query| {
+                                query.set_search(&request.search)?;
                                 query.execute(&metadata, &request.environment, &request.cancelled)
                             })
                             .map(Arc::new);
+                        let group_ids = if let Ok(result) = &result {
+                            let formulas = super::eval::Formulas::default();
+                            let mut budget = super::eval::Budget::new();
+                            let mut evaluator = super::eval::Evaluator::new(
+                                &metadata,
+                                &formulas,
+                                "",
+                                &request.environment,
+                                &request.cancelled,
+                                &mut budget,
+                            );
+                            result
+                                .groups
+                                .iter()
+                                .map(|group| {
+                                    evaluator.step()?;
+                                    Ok(evaluator.identity(&group.value))
+                                })
+                                .collect::<Result<_>>()?
+                        } else {
+                            Vec::new()
+                        };
                         Ok(LoadedBase {
                             snapshot,
                             document,
@@ -87,6 +112,7 @@ impl BasesWorker {
                             columns,
                             metadata,
                             result,
+                            group_ids,
                         })
                     })();
                     if request.cancelled.load(Ordering::Relaxed) {
@@ -132,6 +158,7 @@ impl BasesWorker {
         id: &str,
         view: Option<String>,
         environment: Environment,
+        search: String,
         invalidate: bool,
     ) {
         self.cancel();
@@ -143,6 +170,7 @@ impl BasesWorker {
             id: id.into(),
             view,
             environment,
+            search,
             invalidate: self.metadata_dirty,
             cancelled: self.cancelled.clone(),
         });
@@ -203,12 +231,14 @@ mod tests {
             "test.base",
             Some("First".into()),
             Environment::default(),
+            "no matches".into(),
             false,
         );
         worker.request(
             "test.base",
             Some("Latest".into()),
             Environment::default(),
+            "public".into(),
             false,
         );
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);

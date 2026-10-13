@@ -100,6 +100,7 @@ pub struct Query {
     group_order: Option<Vec<serde_yaml_ng::Value>>,
     limit: Option<usize>,
     summaries: BTreeMap<String, Summary>,
+    search: String,
 }
 impl Query {
     pub fn compile(document: &BaseDocument, view_index: usize) -> Result<Self> {
@@ -170,7 +171,16 @@ impl Query {
             group_order: view.group_order.clone(),
             limit: view.limit,
             summaries,
+            search: String::new(),
         })
+    }
+
+    pub(crate) fn set_search(&mut self, text: &str) -> Result<()> {
+        if text.len() > 64 * 1024 {
+            bail!("Bases search exceeds 64 KiB limit");
+        }
+        self.search = text.to_lowercase();
+        Ok(())
     }
 
     pub fn execute(
@@ -205,7 +215,7 @@ impl Query {
                 {
                     return Ok(None);
                 }
-                let values = self
+                let values: BTreeMap<String, Value> = self
                     .projected
                     .iter()
                     .map(|property| {
@@ -217,6 +227,25 @@ impl Query {
                         ))
                     })
                     .collect::<Result<_>>()?;
+                if !self.search.is_empty() {
+                    let mut matches = false;
+                    for column in &self.columns {
+                        if matches!(values[column], Value::Null) {
+                            continue;
+                        }
+                        let text = values[column].to_text();
+                        for _ in &text.0 {
+                            evaluator.step()?;
+                        }
+                        if text.display().to_lowercase().contains(&self.search) {
+                            matches = true;
+                            break;
+                        }
+                    }
+                    if !matches {
+                        return Ok(None);
+                    }
+                }
                 Ok(Some(Row {
                     id: file.id.clone(),
                     values,

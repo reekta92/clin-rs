@@ -96,6 +96,10 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
         "Use {bases:NextView} and {bases:PreviousView} to switch saved views; {bases:Refresh} reloads public metadata.",
     ),
     tip(
+        "Find and fold",
+        "Use {bases:Search} to search displayed public properties. Enter keeps search and focuses a result; Esc restores previous search. {bases:ToggleGroup} or Enter on a grouped Table/List/Cards header collapses or expands its section.",
+    ),
+    tip(
         "Typed edits",
         "Select a property column and press {bases:Edit}. {bases:ToggleSelect} marks rows for bulk editing. File metadata and formula columns cannot be edited.",
     ),
@@ -113,6 +117,10 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
 ];
 const BASES_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Search",
+        body: "Press {bases:Search} for the Notes-style Find bar. Type literal text; arrows choose public results. Enter retains search, Esc restores previous search and focus. Clear input and Enter to show all query results again.",
+    },
     PopupHelp {
         name: "Configuration",
         body: "Press {bases:Configure}; choose a field with arrows and Enter. Enter YAML where requested. Enter applies changes; Shift+Enter inserts a newline; Esc cancels.",

@@ -288,6 +288,8 @@ const DEFAULT_BASES: &[(BasesAction, &[&str])] = &[
     (BasesAction::NewNote, &["n"]),
     (BasesAction::Export, &["x"]),
     (BasesAction::MoveToGroup, &["m"]),
+    (BasesAction::Search, &["/"]),
+    (BasesAction::ToggleGroup, &["z"]),
 ];
 
 const DEFAULT_SETUP: &[(SetupAction, &[&str])] = &[

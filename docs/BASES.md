@@ -17,7 +17,9 @@ Default bindings include:
 | --- | --- |
 | `h/j/k/l`, arrows | Navigate columns/rows; Kanban horizontal navigation crosses groups |
 | `Tab` / `Shift+Tab` | Next/previous saved view |
-| `Enter` | Open public Markdown/Bases source or a supported native image preview |
+| `Enter` | Open public source/native image; toggle a grouped Table/List/Cards header |
+| `/` | Search displayed public property values with the Notes-style Find bar |
+| `z` | Collapse/expand focused Table/List/Cards group |
 | `e` / `F2`, `Delete` | Edit/clear a note property |
 | `Space`, `Ctrl+a` | Toggle selection/select visible results |
 | `m` | Set grouping property on selected notes; blank clears the property |
@@ -27,6 +29,27 @@ Default bindings include:
 | `r`, `x`, `Esc` / `q` | Refresh, export, leave Bases |
 
 Prompts accept Enter to apply, Shift+Enter for a newline, and Esc to cancel.
+
+## Search and grouped sections
+
+Search uses the same themed Find bar, text input, keyboard routing, and mouse
+selection as Notes. Literal case-insensitive text matches displayed property and
+formula values, not note bodies or hidden sort/summary properties. Search runs in
+the cancellable query worker before sorting, grouping, limits, and summaries;
+explicit empty groups remain available. Input is bounded to 64 KiB and search
+work shares the formula evaluator's resource/cancellation budget.
+
+Enter keeps the search and focuses a selected public result. Esc restores the
+previous search and row/group focus. Clear input and press Enter to remove the
+search. Watcher refreshes and saved-view switching retain search text. Search is
+session-only: it never edits `.base` filters or public source bytes.
+
+Grouped Table, List, and Cards sections collapse with their header's Enter,
+mouse click, or the configured Toggle Group binding. Header focus uses theme
+selection colors; `[+]`/`[-]` show collapsed/expanded state. Collapse follows typed
+group identity across refresh and manual reordering, resets on saved-view or
+grouping-property changes, and never changes query rows, summaries, or exports.
+Choosing a search result expands its section. Kanban columns do not collapse.
 
 ## Kanban columns and cards
 
@@ -74,8 +97,8 @@ public image activation limits; remote image URLs are not fetched.
 ## Remaining implementation and evidence
 
 Live standalone/named/inline embeds, card cover/layout options, folder card moves,
-remaining native authoring/integration, and complete end-to-end performance
-acceptance remain unfinished. Existing 5,000-note indexing/query benchmarks and
+remaining native authoring/integration, comprehensive Notes-design alignment,
+and complete end-to-end performance acceptance remain unfinished. Existing 5,000-note indexing/query benchmarks and
 native workflow/PTY tests are stage-specific evidence, not full UI/refresh/memory
 acceptance or demonstrated Obsidian runtime parity.
 

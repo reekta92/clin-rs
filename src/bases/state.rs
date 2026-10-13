@@ -30,6 +30,11 @@ pub struct BasesState {
     pub(super) hit_groups: Vec<(Rect, usize)>,
     pub(super) drag: Option<Item>,
     pub(super) focus_id: Option<String>,
+    pub(super) focus_group: Option<super::eval::Identity>,
+    pub(super) search_text: String,
+    pub(super) search_popup: Option<crate::ui::quick_search::QuickSearch<usize>>,
+    pub(super) search_before: (String, Option<String>, Option<super::eval::Identity>),
+    collapsed_groups: HashSet<super::eval::Identity>,
     pub(super) dialog: Option<super::authoring::Dialog>,
     pub(super) write_task: Option<super::write::WriteTask>,
     pub(super) edit_intent: Option<super::authoring::EditIntent>,
@@ -61,6 +66,11 @@ impl BasesState {
             hit_groups: Vec::new(),
             drag: None,
             focus_id: None,
+            focus_group: None,
+            search_text: String::new(),
+            search_popup: None,
+            search_before: (String::new(), None, None),
+            collapsed_groups: HashSet::new(),
             dialog: None,
             write_task: None,
             edit_intent: None,
@@ -145,34 +155,122 @@ impl BasesState {
             self.selected.saturating_sub(count).max(first)
         };
     }
+    fn group_ids(&self) -> &[super::eval::Identity] {
+        self.loaded
+            .as_ref()
+            .map_or(&[], |loaded| loaded.group_ids.as_slice())
+    }
+    pub(super) fn group_identity(&self, index: usize) -> Option<super::eval::Identity> {
+        self.group_ids().get(index).cloned()
+    }
+    pub(super) fn group_collapsed(&self, index: usize) -> bool {
+        self.group_ids()
+            .get(index)
+            .is_some_and(|id| self.collapsed_groups.contains(id))
+    }
+    pub(super) fn toggle_group(&mut self) -> anyhow::Result<()> {
+        self.ensure_idle()?;
+        if matches!(self.layout(), Layout::Kanban) {
+            anyhow::bail!("Kanban columns do not collapse");
+        }
+        let (index, _) = self
+            .focused_group()
+            .ok_or_else(|| anyhow::anyhow!("select a grouped section"))?;
+        let id = self.group_ids()[index].clone();
+        if !self.collapsed_groups.remove(&id) {
+            self.collapsed_groups.insert(id.clone());
+        }
+        self.rebuild_items(None, Some(id));
+        Ok(())
+    }
+    pub(super) fn focus_search_row(&mut self, row: usize) {
+        let group = self.result().and_then(|result| {
+            result
+                .groups
+                .iter()
+                .position(|group| group.rows.contains(&row))
+        });
+        if let Some(id) = group.and_then(|index| self.group_ids().get(index)).cloned() {
+            self.collapsed_groups.remove(&id);
+        }
+        self.rebuild_items(None, None);
+        if let Some(position) = self
+            .items
+            .iter()
+            .position(|item| matches!(item,Item::Row(index) if *index==row))
+        {
+            self.selected = position;
+        }
+    }
+    pub(super) fn rebuild_items(
+        &mut self,
+        previous: Option<&str>,
+        previous_group: Option<super::eval::Identity>,
+    ) {
+        self.items.clear();
+        self.hit_rows.clear();
+        self.hit_groups.clear();
+        self.drag = None;
+        if let Some(loaded) = &self.loaded
+            && let Ok(result) = &loaded.result
+        {
+            if loaded.document.config.views[loaded.view].group_by.is_some() {
+                for (index, group) in result.groups.iter().enumerate() {
+                    self.items.push(Item::Group(index));
+                    if matches!(self.layout(), Layout::Kanban) || !self.group_collapsed(index) {
+                        self.items.extend(group.rows.iter().copied().map(Item::Row));
+                    }
+                }
+            } else {
+                self.items.extend((0..result.rows.len()).map(Item::Row));
+            }
+        }
+        let row = previous.and_then(|id| {
+            self.items.iter().position(|item| match item {
+                Item::Row(index) => self
+                    .result()
+                    .is_some_and(|result| result.rows[*index].id == id),
+                Item::Group(_) => false,
+            })
+        });
+        let group = previous_group
+            .and_then(|id| self.group_ids().iter().position(|group| *group == id))
+            .and_then(|index| {
+                self.items
+                    .iter()
+                    .position(|item| matches!(item,Item::Group(group) if *group==index))
+            });
+        self.selected = row
+            .or(group)
+            .unwrap_or(self.selected)
+            .min(self.items.len().saturating_sub(1));
+        self.offset = self.offset.min(self.items.len().saturating_sub(1));
+    }
     pub fn install(&mut self, loaded: anyhow::Result<LoadedBase>) {
         let previous = self
             .focus_id
             .take()
             .or_else(|| self.row().map(|row| row.id.clone()));
-        let formulas = super::eval::Formulas::compile(&std::collections::BTreeMap::new())
-            .expect("empty formulas are valid");
-        let cancelled = std::sync::atomic::AtomicBool::new(false);
-        let mut budget = super::eval::Budget::new();
-        let previous_group = if matches!(self.items.get(self.selected), Some(Item::Group(_))) {
+        let previous_group = self.focus_group.take().or_else(|| {
             self.focused_group()
-                .and_then(|(index, _)| self.result()?.groups.get(index))
-                .and_then(|group| {
-                    self.loaded.as_ref().map(|loaded| {
-                        super::eval::Evaluator::new(
-                            &loaded.metadata,
-                            &formulas,
-                            "",
-                            &self.environment,
-                            &cancelled,
-                            &mut budget,
-                        )
-                        .identity(&group.value)
-                    })
-                })
-        } else {
-            None
-        };
+                .and_then(|(index, _)| self.group_ids().get(index))
+                .cloned()
+        });
+        let same_grouping =
+            loaded
+                .as_ref()
+                .ok()
+                .zip(self.loaded.as_ref())
+                .is_some_and(|(next, old)| {
+                    let next = &next.document.config.views[next.view];
+                    let old = &old.document.config.views[old.view];
+                    next.name == old.name
+                        && next.group_by.as_ref().map(|group| &group.property)
+                            == old.group_by.as_ref().map(|group| &group.property)
+                });
+        if !same_grouping {
+            self.collapsed_groups.clear();
+        }
         self.drag = None;
         self.hit_groups.clear();
         self.hit_rows.clear();
@@ -186,14 +284,6 @@ impl BasesState {
             }
             Ok(loaded) => {
                 if let Ok(result) = &loaded.result {
-                    if loaded.document.config.views[loaded.view].group_by.is_some() {
-                        for (index, group) in result.groups.iter().enumerate() {
-                            self.items.push(Item::Group(index));
-                            self.items.extend(group.rows.iter().copied().map(Item::Row));
-                        }
-                    } else {
-                        self.items.extend((0..result.rows.len()).map(Item::Row));
-                    }
                     let live_ids: HashSet<_> =
                         result.rows.iter().map(|row| row.id.as_str()).collect();
                     self.selected_ids
@@ -204,31 +294,16 @@ impl BasesState {
                 self.loaded = Some(loaded);
             }
         }
-        self.selected = previous.as_ref().and_then(|id| self.items.iter().position(|item| matches!(item, Item::Row(index) if self.result().is_some_and(|result| result.rows[*index].id == *id)))).unwrap_or(self.selected).min(self.items.len().saturating_sub(1));
-        if previous.is_none()
-            && let Some(value) = previous_group
-            && let Some(index) = self.result().and_then(|result| {
-                self.loaded.as_ref().and_then(|loaded| {
-                    let evaluator = super::eval::Evaluator::new(
-                        &loaded.metadata,
-                        &formulas,
-                        "",
-                        &self.environment,
-                        &cancelled,
-                        &mut budget,
-                    );
-                    result
-                        .groups
-                        .iter()
-                        .position(|group| evaluator.identity(&group.value) == value)
-                })
-            })
-            && let Some(position) = self
-                .items
-                .iter()
-                .position(|item| matches!(item,Item::Group(group) if *group==index))
-        {
-            self.selected = position;
+        self.rebuild_items(previous.as_deref(), previous_group);
+        if let Some(popup) = self.search_popup.as_mut() {
+            popup.results = self
+                .loaded
+                .as_ref()
+                .and_then(|loaded| loaded.result.as_ref().ok())
+                .map_or_else(Vec::new, |result| (0..result.rows.len()).collect());
+            popup.selected = popup.selected.min(popup.results.len().saturating_sub(1));
+            popup.scroll_to_selected(10);
+            popup.info = Some(format!("{} matches", popup.results.len()));
         }
         self.column = self.column.min(
             self.loaded

@@ -27,11 +27,7 @@ fn item_line(state: &BasesState, item: Item) -> String {
         return String::new();
     };
     match item {
-        Item::Group(index) => format!(
-            "{} ({} files)",
-            display(&result.groups[index].value),
-            result.groups[index].rows.len()
-        ),
+        Item::Group(index) => group_line(state, index),
         Item::Row(index) => loaded
             .columns
             .iter()
@@ -44,6 +40,24 @@ fn item_line(state: &BasesState, item: Item) -> String {
             .collect::<Vec<_>>()
             .join("  ·  "),
     }
+}
+
+fn group_line(state: &BasesState, index: usize) -> String {
+    let group = &state.result().expect("group belongs to query").groups[index];
+    format!(
+        "[{}] {} ({} files)",
+        if state.group_collapsed(index) {
+            "+"
+        } else {
+            "-"
+        },
+        if matches!(group.value, Value::Null) {
+            "None".into()
+        } else {
+            display(&group.value)
+        },
+        group.rows.len()
+    )
 }
 
 pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
@@ -98,6 +112,18 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
             .skip(start_column)
             .take((usize::from(area.width) / 20).max(1))
             .collect();
+        for position in state.offset..state.items.len().min(state.offset + visible) {
+            for column in 0..columns.len() {
+                let rect = Rect::new(
+                    area.x + (column * 20) as u16,
+                    area.y + header as u16 + (position - state.offset) as u16,
+                    20,
+                    1,
+                )
+                .intersection(area);
+                state.hit_rows.push((rect, position, start_column + column));
+            }
+        }
         let rows = state
             .items
             .iter()
@@ -105,70 +131,56 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
             .enumerate()
             .skip(state.offset)
             .take(visible)
-            .map(|(position, item)| {
-                for column in 0..columns.len() {
-                    let rect = Rect::new(
-                        area.x + (column * 20) as u16,
-                        area.y + header as u16 + (position - state.offset) as u16,
-                        20,
-                        1,
-                    )
-                    .intersection(area);
-                    state.hit_rows.push((rect, position, start_column + column));
-                }
-                match item {
-                    Item::Group(index) => Row::new(
-                        columns
-                            .iter()
-                            .enumerate()
-                            .map(|(column, key)| {
-                                let group = &result.groups[index];
-                                let summary = group
-                                    .summaries
-                                    .get(*key)
-                                    .map(|value| format!("Σ {}", display(value)))
-                                    .unwrap_or_default();
-                                let text = if column == 0 {
-                                    format!(
-                                        "{} ({} files) {summary}",
-                                        display(&group.value),
-                                        group.rows.len()
-                                    )
-                                } else {
-                                    summary
-                                };
-                                Cell::from(text)
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                    .style(
-                        Style::default()
-                            .fg(theme.heading)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Item::Row(index) => Row::new(
-                        columns
-                            .iter()
-                            .enumerate()
-                            .map(|(column, key)| {
-                                let text = result.rows[index]
-                                    .values
-                                    .get(*key)
-                                    .map_or_else(String::new, display);
-                                let style = if position == state.selected
-                                    && column + start_column == selected_column
-                                {
-                                    selected_style
-                                } else if state.selected_ids.contains(&result.rows[index].id) {
-                                    Style::default().fg(theme.accent)
-                                } else {
-                                    Style::default().fg(theme.text)
-                                };
-                                Cell::from(text).style(style)
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                }
+            .map(|(position, item)| match item {
+                Item::Group(index) => Row::new(
+                    columns
+                        .iter()
+                        .enumerate()
+                        .map(|(column, key)| {
+                            let group = &result.groups[index];
+                            let summary = group
+                                .summaries
+                                .get(*key)
+                                .map(|value| format!("Σ {}", display(value)))
+                                .unwrap_or_default();
+                            let text = if column == 0 {
+                                format!("{} {summary}", group_line(state, index))
+                            } else {
+                                summary
+                            };
+                            Cell::from(text)
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .style(if position == state.selected {
+                    selected_style.add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                        .fg(theme.heading)
+                        .add_modifier(Modifier::BOLD)
+                }),
+                Item::Row(index) => Row::new(
+                    columns
+                        .iter()
+                        .enumerate()
+                        .map(|(column, key)| {
+                            let text = result.rows[index]
+                                .values
+                                .get(*key)
+                                .map_or_else(String::new, display);
+                            let style = if position == state.selected
+                                && column + start_column == selected_column
+                            {
+                                selected_style
+                            } else if state.selected_ids.contains(&result.rows[index].id) {
+                                Style::default().fg(theme.accent)
+                            } else {
+                                Style::default().fg(theme.text)
+                            };
+                            Cell::from(text).style(style)
+                        })
+                        .collect::<Vec<_>>(),
+                ),
             })
             .collect::<Vec<_>>();
         let table = Table::new(rows, columns.iter().map(|_| Constraint::Length(19)))
@@ -301,11 +313,13 @@ fn cards(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppTheme
         match state.items[*position] {
             Item::Group(_) => {
                 frame.render_widget(
-                    Paragraph::new(item_line(state, state.items[*position])).style(
+                    Paragraph::new(item_line(state, state.items[*position])).style(if selected {
+                        style.add_modifier(Modifier::BOLD)
+                    } else {
                         Style::default()
                             .fg(theme.heading)
-                            .add_modifier(Modifier::BOLD),
-                    ),
+                            .add_modifier(Modifier::BOLD)
+                    }),
                     *rect,
                 );
             }

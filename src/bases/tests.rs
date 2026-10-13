@@ -585,6 +585,58 @@ fn unsupported_views_html_and_malformed_metadata_are_explicit() {
 }
 
 #[test]
+fn public_search_precedes_limits_and_only_matches_displayed_values() {
+    let (_dir, metadata) = metadata();
+    let document=BaseDocument::parse("filters: 'price'\nviews: [{type: table, order: [file.name, status], sort: [{property: price, direction: ASC}], groupBy: {property: status}, groupOrder: [Open, Done, null], limit: 1, summaries: {price: Sum}}]\n").unwrap();
+    let mut query = Query::compile(&document, 0).unwrap();
+    query.set_search("DoNe").unwrap();
+    let result = query
+        .execute(&metadata, &environment(), &AtomicBool::new(false))
+        .unwrap();
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows[0].id, "b.md");
+    assert_eq!(result.matched, 1);
+    assert_eq!(result.summaries["price"], Value::Number(5.0));
+    assert_eq!(result.groups.len(), 3); // explicit empty columns remain
+    for text in ["Body", "secret.clin", "5", "null"] {
+        query.set_search(text).unwrap();
+        assert!(
+            query
+                .execute(&metadata, &environment(), &AtomicBool::new(false))
+                .unwrap()
+                .rows
+                .is_empty(),
+            "{text}"
+        );
+    }
+    query.set_search("").unwrap();
+    assert_eq!(
+        query
+            .execute(&metadata, &environment(), &AtomicBool::new(false))
+            .unwrap()
+            .matched,
+        3
+    );
+    assert!(query.set_search(&"x".repeat(64 * 1024 + 1)).is_err());
+    assert!(
+        query
+            .execute(&metadata, &environment(), &AtomicBool::new(true))
+            .is_err()
+    );
+    let document=BaseDocument::parse("filters: 'price'\nformulas: {label: 'if(status == \"Done\", \"Überraschung\", \"Other\")'}\nviews: [{type: cards, order: [formula.label]}]\n").unwrap();
+    let mut query = Query::compile(&document, 0).unwrap();
+    query.set_search("ÜBERRASCHUNG").unwrap();
+    assert_eq!(
+        query
+            .execute(&metadata, &environment(), &AtomicBool::new(false))
+            .unwrap()
+            .rows[0]
+            .id,
+        "b.md"
+    );
+}
+
+#[test]
 fn cancellation_and_random_seed_lifecycle() {
     let (_dir, metadata) = metadata();
     let document = BaseDocument::parse(

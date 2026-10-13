@@ -395,6 +395,8 @@ pub enum BasesAction {
     NewNote,
     Export,
     MoveToGroup,
+    Search,
+    ToggleGroup,
 }
 
 #[derive(

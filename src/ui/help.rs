@@ -1657,10 +1657,9 @@ mod tests {
         assert_eq!(HelpTab::Bases.next().prev(), HelpTab::Bases);
         assert_eq!(HelpTab::Bases.prev().next(), HelpTab::Bases);
         assert!(crate::ui::help_content::tab_suggestions(HelpTab::Bases).len() >= 5);
-        assert_eq!(
-            crate::ui::help_content::tab_popup_descriptions(HelpTab::Bases).len(),
-            2
-        );
+        let popups = crate::ui::help_content::tab_popup_descriptions(HelpTab::Bases);
+        assert_eq!(popups.len(), 3);
+        assert!(popups.iter().any(|popup| popup.name == "Search"));
     }
 
     #[test]

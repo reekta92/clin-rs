@@ -12,6 +12,7 @@ mod input;
 pub mod query;
 mod regexp;
 mod render;
+mod search;
 pub mod state;
 pub mod value;
 pub mod worker;

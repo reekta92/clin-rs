@@ -25,9 +25,17 @@ impl OverlayView for BasesState {
             loaded.document.config.views[loaded.view].name.as_str()
         });
         let title = format!(
-            "Bases · {} · {}{}",
+            "Bases · {} · {}{}{}",
             crate::fsutil::sanitize_for_terminal(&self.id),
             crate::fsutil::sanitize_for_terminal(view),
+            if self.search_text.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " · search: {}",
+                    crate::fsutil::sanitize_for_terminal(&self.search_text)
+                )
+            },
             if self.loading {
                 " · refreshing…"
             } else {
@@ -53,18 +61,20 @@ impl OverlayView for BasesState {
         );
         super::render::render(frame, chunks[1], self, &app.app_theme);
         let hints = format!(
-            "{} back  {} open  {} edit  {} views  {} config  {} refresh",
+            "{} back  {} open  {} edit  {} views  {} config  {} search  {} refresh",
             app.keybinds.display_bases(BasesAction::Back),
             app.keybinds.display_bases(BasesAction::Open),
             app.keybinds.display_bases(BasesAction::Edit),
             app.keybinds.display_bases(BasesAction::NextView),
             app.keybinds.display_bases(BasesAction::Configure),
+            app.keybinds.display_bases(BasesAction::Search),
             app.keybinds.display_bases(BasesAction::Refresh)
         );
         frame.render_widget(
             Paragraph::new(hints).style(app.app_theme.hint_line_bg_style()),
             chunks[2],
         );
+        self.render_search(frame, area, app);
         if let Some(dialog) = self.dialog.as_mut() {
             dialog.render(frame, area, app);
         }
@@ -73,8 +83,11 @@ impl OverlayView for BasesState {
         &mut self,
         event: Event,
         app: &mut App,
-        _area: Rect,
+        area: Rect,
     ) -> anyhow::Result<OverlayResult> {
+        if self.search_event(&event, app, area) {
+            return Ok(OverlayResult::Continue);
+        }
         if self.dialog_event(&event, app) {
             return Ok(OverlayResult::Continue);
         }
@@ -101,6 +114,17 @@ impl OverlayView for BasesState {
                     {
                         self.selected = *item;
                         self.column = *column;
+                        if !matches!(self.layout(), super::format::Layout::Kanban)
+                            && matches!(
+                                self.items.get(self.selected),
+                                Some(super::state::Item::Group(_))
+                            )
+                        {
+                            if let Err(error) = self.toggle_group() {
+                                app.set_temporary_status(&format!("Bases: {error:#}"));
+                            }
+                            return Ok(OverlayResult::Continue);
+                        }
                         if matches!(self.layout(), super::format::Layout::Kanban)
                             && !self.loading
                             && self.write_task.is_none()
@@ -263,8 +287,27 @@ impl OverlayView for BasesState {
                     app.set_temporary_status_static("Copied cell");
                 }
             }
+            BasesAction::Search => {
+                if let Err(error) = self.open_search(app) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::ToggleGroup => {
+                if let Err(error) = self.toggle_group() {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
             BasesAction::Open => {
-                if let Err(error) = self.open_row(app) {
+                let result = if matches!(
+                    self.items.get(self.selected),
+                    Some(super::state::Item::Group(_))
+                ) && !matches!(self.layout(), super::format::Layout::Kanban)
+                {
+                    self.toggle_group()
+                } else {
+                    self.open_row(app)
+                };
+                if let Err(error) = result {
                     app.set_temporary_status(&format!("Bases: {error:#}"));
                 }
             }
@@ -280,6 +323,7 @@ impl BasesState {
                 &self.id,
                 self.named_view.clone(),
                 self.environment.clone(),
+                self.search_text.clone(),
                 invalidate,
             );
             app.bases_refresh_requested = false;

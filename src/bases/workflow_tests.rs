@@ -555,6 +555,280 @@ fn kanban_link_groups_retarget_each_note_and_preserve_header_focus() {
 }
 
 #[test]
+fn grouped_layouts_collapse_with_keyboard_mouse_and_stable_refresh_focus() {
+    let (_root, mut app) = fixture();
+    app.storage
+        .create_document("other.md", "---\nscore: 5\n---\nOther\n")
+        .unwrap();
+    let baseline = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&baseline,"# retained\nplugin: {opaque: true}\nfilters: file.ext == 'md'\nviews:\n  - {type: table, name: Table, order: [file.name, score], groupBy: {property: score}, groupOrder: [2, 5, null]}\n  - {type: list, name: List, order: [file.name, score], groupBy: {property: score}, groupOrder: [2, 5, null]}\n  - {type: cards, name: Cards, order: [file.name, score], groupBy: {property: score}, groupOrder: [2, 5, null]}\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    idle(&mut app);
+    let source = app
+        .storage
+        .load_document("board.base")
+        .unwrap()
+        .source()
+        .to_owned();
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Home);
+        let count = app.bases_state.as_ref().unwrap().items.len();
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.bases_state.as_ref().unwrap().items.len(), count - 1);
+        assert!(app.bases_state.as_ref().unwrap().group_collapsed(0));
+        assert!(render(&mut app).contains("[+] 2"));
+        key(&mut app, KeyCode::Char('r'));
+        idle(&mut app);
+        assert!(app.bases_state.as_ref().unwrap().group_collapsed(0));
+        let state = app.bases_state.as_ref().unwrap();
+        assert!(matches!(
+            state.items[state.selected],
+            super::state::Item::Group(0)
+        ));
+        render(&mut app);
+        let state = app.bases_state.as_ref().unwrap();
+        let header = state
+            .hit_rows
+            .iter()
+            .find(|(_, index, _)| *index == state.selected)
+            .unwrap()
+            .0;
+        mouse(
+            &mut app,
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            header,
+        );
+        assert_eq!(app.bases_state.as_ref().unwrap().items.len(), count);
+        key(&mut app, KeyCode::Char('z'));
+        assert_eq!(app.bases_state.as_ref().unwrap().items.len(), count - 1);
+        key(&mut app, KeyCode::Tab);
+        idle(&mut app);
+        assert_eq!(app.bases_state.as_ref().unwrap().items.len(), count);
+    }
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        source
+    );
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Char('z'));
+    let baseline = app.storage.load_document("board.base").unwrap();
+    let document = super::format::BaseDocument::parse(baseline.source()).unwrap();
+    let source = document
+        .set_view_field(
+            0,
+            "groupOrder",
+            Some(&serde_yaml_ng::from_str("[5, 2, null]").unwrap()),
+        )
+        .unwrap();
+    app.storage
+        .save_document(&baseline, source.source())
+        .unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    idle(&mut app);
+    let state = app.bases_state.as_ref().unwrap();
+    assert!(
+        state.group_collapsed(1),
+        "layout {:?}, groups {:?}, collapsed {:?}",
+        state.layout(),
+        state
+            .result()
+            .unwrap()
+            .groups
+            .iter()
+            .map(|group| &group.value)
+            .collect::<Vec<_>>(),
+        (0..state.result().unwrap().groups.len())
+            .map(|group| state.group_collapsed(group))
+            .collect::<Vec<_>>()
+    );
+    assert!(!state.group_collapsed(0));
+    assert!(matches!(
+        state.items[state.selected],
+        super::state::Item::Group(1)
+    ));
+}
+
+#[test]
+fn search_reuses_notes_widget_for_every_layout_and_preserves_public_bytes() {
+    let (_root, mut app) = fixture();
+    app.storage
+        .create_document("other.md", "---\nscore: 5\n---\nUnique body text\n")
+        .unwrap();
+    let public = app
+        .storage
+        .load_document("public.md")
+        .unwrap()
+        .source()
+        .to_owned();
+    for layout in ["table", "list", "cards", "kanban"] {
+        let baseline = app.storage.load_document("board.base").unwrap();
+        app.storage.save_document(&baseline,&format!("filters: file.ext == 'md'\nviews: [{{type: {layout}, name: Native, order: [file.name, score], groupBy: {{property: score}}, groupOrder: [2, 5, null]}}]\n")).unwrap();
+        key(&mut app, KeyCode::Char('r'));
+        idle(&mut app);
+        let before = app
+            .storage
+            .load_document("board.base")
+            .unwrap()
+            .source()
+            .to_owned();
+        key(&mut app, KeyCode::Char('/'));
+        assert!(render(&mut app).contains("Find:"));
+        event(&mut app, Event::Paste("missing".into()));
+        key(&mut app, KeyCode::Enter); // response not installed: never select stale row
+        assert!(app.bases_state.as_ref().unwrap().search_popup.is_some());
+        app.bases_state
+            .as_mut()
+            .unwrap()
+            .search_popup
+            .as_mut()
+            .unwrap()
+            .input
+            .select_all();
+        event(&mut app, Event::Paste("PuB".into()));
+        event(&mut app, Event::Paste("LIC".into()));
+        idle(&mut app);
+        let state = app.bases_state.as_ref().unwrap();
+        assert_eq!(state.search_text, "PuBLIC");
+        assert_eq!(state.result().unwrap().rows.len(), 1);
+        assert_eq!(state.search_popup.as_ref().unwrap().query(), "PuBLIC");
+        assert!(!render(&mut app).contains("private.clin"));
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(
+            app.bases_state.as_ref().unwrap().row().unwrap().id,
+            "public.md"
+        );
+        assert!(app.bases_state.as_ref().unwrap().search_popup.is_none());
+        key(&mut app, KeyCode::Char('/'));
+        app.bases_state
+            .as_mut()
+            .unwrap()
+            .search_popup
+            .as_mut()
+            .unwrap()
+            .input
+            .select_all();
+        event(&mut app, Event::Paste("Unique body text".into()));
+        idle(&mut app);
+        assert!(
+            app.bases_state
+                .as_ref()
+                .unwrap()
+                .result()
+                .unwrap()
+                .rows
+                .is_empty()
+        );
+        assert!(render(&mut app).contains("No matches"));
+        key(&mut app, KeyCode::Esc);
+        idle(&mut app);
+        assert_eq!(app.bases_state.as_ref().unwrap().search_text, "PuBLIC");
+        assert_eq!(
+            app.bases_state.as_ref().unwrap().row().unwrap().id,
+            "public.md"
+        );
+        key(&mut app, KeyCode::Char('/'));
+        app.bases_state
+            .as_mut()
+            .unwrap()
+            .search_popup
+            .as_mut()
+            .unwrap()
+            .input
+            .select_all();
+        key(&mut app, KeyCode::Backspace);
+        idle(&mut app);
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.bases_state.as_ref().unwrap().search_text, "");
+        assert_eq!(
+            app.bases_state
+                .as_ref()
+                .unwrap()
+                .result()
+                .unwrap()
+                .rows
+                .len(),
+            2
+        );
+        assert_eq!(
+            app.storage.load_document("board.base").unwrap().source(),
+            before
+        );
+        assert_eq!(
+            app.storage.load_document("public.md").unwrap().source(),
+            public
+        );
+    }
+}
+
+#[test]
+fn search_restores_collapsed_header_and_survives_public_metadata_refresh() {
+    let (_root, mut app) = fixture();
+    let baseline = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&baseline,"filters: file.ext == 'md'\nviews: [{type: table, name: Native, order: [file.name], groupBy: {property: score}}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    idle(&mut app);
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Char('z'));
+    key(&mut app, KeyCode::Char('/'));
+    event(&mut app, Event::Paste("no matches".into()));
+    idle(&mut app);
+    key(&mut app, KeyCode::Esc);
+    idle(&mut app);
+    let state = app.bases_state.as_ref().unwrap();
+    assert!(state.group_collapsed(0));
+    assert!(matches!(
+        state.items[state.selected],
+        super::state::Item::Group(0)
+    ));
+    key(&mut app, KeyCode::Char('/'));
+    event(&mut app, Event::Paste("public".into()));
+    idle(&mut app);
+    key(&mut app, KeyCode::Enter);
+    assert!(!app.bases_state.as_ref().unwrap().group_collapsed(0));
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "public.md"
+    );
+    app.storage
+        .create_document("public-new.md", "---\nscore: 2\n---\nBody")
+        .unwrap();
+    app.invalidate_bases();
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state
+            .as_ref()
+            .unwrap()
+            .result()
+            .unwrap()
+            .rows
+            .len(),
+        2
+    );
+    assert_eq!(app.bases_state.as_ref().unwrap().search_text, "public");
+    key(&mut app, KeyCode::Char('/'));
+    let before = app
+        .bases_state
+        .as_ref()
+        .unwrap()
+        .search_popup
+        .as_ref()
+        .unwrap()
+        .query();
+    event(&mut app, Event::Paste("x".repeat(64 * 1024 + 1)));
+    assert_eq!(
+        app.bases_state
+            .as_ref()
+            .unwrap()
+            .search_popup
+            .as_ref()
+            .unwrap()
+            .query(),
+        before
+    );
+    assert!(app.status.contains("64 KiB"));
+}
+
+#[test]
 fn configuration_prompt_rejects_reloaded_source_instead_of_refreshing_baseline() {
     let (_root, mut app) = fixture();
     menu(&mut app, "Rename view");
