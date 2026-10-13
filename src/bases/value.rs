@@ -271,6 +271,54 @@ impl Value {
             _ => bail!("cannot convert {} to number", self.type_name()),
         }
     }
+    pub(crate) fn to_yaml(&self) -> Result<Yaml> {
+        Ok(match self {
+            Self::Null => Yaml::Null,
+            Self::Boolean(value) => Yaml::Bool(*value),
+            Self::Number(value) => serde_yaml_ng::to_value(value)?,
+            Self::String(value) => Yaml::String(
+                String::from_utf16(&value.0)
+                    .context("group contains an unpaired UTF-16 surrogate")?,
+            ),
+            Self::Date(value) => Yaml::String(value.to_rfc3339()),
+            Self::Link(link) => {
+                let target = String::from_utf16(&link.target.0)
+                    .context("link contains an unpaired UTF-16 surrogate")?;
+                let alias = link
+                    .display
+                    .as_ref()
+                    .map(|value| {
+                        String::from_utf16(&value.to_text().0)
+                            .context("link label contains an unpaired UTF-16 surrogate")
+                    })
+                    .transpose()?;
+                Yaml::String(format!(
+                    "[[{target}{}]]",
+                    alias.map_or_else(String::new, |alias| format!("|{alias}"))
+                ))
+            }
+            Self::File(id) | Self::Host(id) => Yaml::String(format!("[[{id}]]")),
+            Self::List(values) => {
+                Yaml::Sequence(values.iter().map(Self::to_yaml).collect::<Result<_>>()?)
+            }
+            Self::Object(values) => Yaml::Mapping(
+                values
+                    .iter()
+                    .map(|(key, value)| {
+                        Ok((
+                            Yaml::String(
+                                String::from_utf16(&key.0)
+                                    .context("group key contains an unpaired UTF-16 surrogate")?,
+                            ),
+                            value.to_yaml()?,
+                        ))
+                    })
+                    .collect::<Result<_>>()?,
+            ),
+            _ => bail!("{} group cannot be represented in YAML", self.type_name()),
+        })
+    }
+
     pub(crate) fn from_yaml(value: &Yaml, source: &str) -> Result<Self> {
         Ok(match value {
             Yaml::Null => Self::Null,

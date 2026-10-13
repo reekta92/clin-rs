@@ -49,6 +49,7 @@ fn item_line(state: &BasesState, item: Item) -> String {
 pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
     state.body_area = area;
     state.hit_rows.clear();
+    state.hit_groups.clear();
     if let Some(error) = &state.error {
         frame.render_widget(
             Paragraph::new(sanitize_for_terminal(error))
@@ -352,7 +353,7 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
     };
     if result.groups.is_empty() {
         frame.render_widget(
-            Paragraph::new("Kanban needs a groupBy property. Open configuration to choose one."),
+            Paragraph::new(if loaded.document.config.views[loaded.view].group_by.is_some() {"No visible columns. Open configuration to add a group or restore automatic order."}else{"Kanban needs a groupBy property. Open configuration to choose one."}),
             area,
         );
         return;
@@ -368,6 +369,18 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
             width,
             area.height,
         );
+        state.hit_groups.push((rect, group_index));
+        if let Some(position) = state
+            .items
+            .iter()
+            .position(|item| matches!(item,Item::Group(index) if *index==group_index))
+        {
+            state.hit_rows.push((
+                Rect::new(rect.x, rect.y, rect.width, 1),
+                position,
+                state.column,
+            ));
+        }
         let title = format!("{} ({})", display(&group.value), group.rows.len());
         let block = Block::default()
             .borders(Borders::ALL)
@@ -379,6 +392,20 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
             }));
         let inner = block.inner(rect);
         frame.render_widget(block, rect);
+        if rect.width >= 3
+            && loaded.document.config.views[loaded.view]
+                .group_by
+                .as_ref()
+                .is_some_and(|group| {
+                    group.property == "file.folder"
+                        || super::edits::property_key(&group.property).is_ok()
+                })
+        {
+            frame.render_widget(
+                Paragraph::new("+").style(Style::default().fg(theme.accent)),
+                Rect::new(rect.right().saturating_sub(2), rect.y, 1, 1),
+            );
+        }
         let selected_row = state
             .items
             .get(state.selected)

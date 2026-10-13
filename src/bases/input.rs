@@ -101,6 +101,34 @@ impl OverlayView for BasesState {
                     {
                         self.selected = *item;
                         self.column = *column;
+                        if matches!(self.layout(), super::format::Layout::Kanban)
+                            && !self.loading
+                            && self.write_task.is_none()
+                        {
+                            self.drag = self.items.get(self.selected).copied();
+                            if self.hit_groups.iter().any(|(rect, _)| {
+                                rect.y == mouse.row
+                                    && rect.width >= 3
+                                    && rect.right().saturating_sub(2) == mouse.column
+                            }) {
+                                self.drag = None;
+                                if let Err(error) = self.prompt_new_note() {
+                                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                                }
+                            }
+                        }
+                    }
+                    None
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    if let Some(item) = self.drag.take()
+                        && let Some((_, target)) = self
+                            .hit_groups
+                            .iter()
+                            .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
+                        && let Err(error) = self.drop_in_group(app, item, *target)
+                    {
+                        app.set_temporary_status(&format!("Bases: {error:#}"));
                     }
                     None
                 }
@@ -113,6 +141,9 @@ impl OverlayView for BasesState {
         };
         match action {
             BasesAction::Back => {
+                if self.drag.take().is_some() {
+                    return Ok(OverlayResult::Continue);
+                }
                 if self.write_task.as_ref().is_some_and(|task| task.writing) {
                     app.set_temporary_status_static("Write in progress; wait before leaving Bases");
                 } else {
@@ -209,12 +240,9 @@ impl OverlayView for BasesState {
                 self.dialog = Some(super::authoring::Dialog::Menu { selected: 0 })
             }
             BasesAction::NewNote => {
-                self.dialog = Some(super::authoring::Dialog::prompt(
-                    super::authoring::Target::NewNote,
-                    "New note",
-                    "Vault-relative path ending in .md",
-                    "New note.md",
-                ))
+                if let Err(error) = self.prompt_new_note() {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
             }
             BasesAction::Export => {
                 self.dialog = Some(super::authoring::Dialog::prompt(

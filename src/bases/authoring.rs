@@ -33,6 +33,7 @@ pub enum Command {
     RemoveView,
     NewNote,
     Export,
+    Group(super::groups::GroupAction),
 }
 pub const COMMANDS: &[(Command, &str, &str)] = &[
     (Command::View("name"), "Rename view", "View name"),
@@ -112,12 +113,48 @@ pub const COMMANDS: &[(Command, &str, &str)] = &[
         "Export visible rows",
         "Vault-relative .csv or .md path; existing files never overwritten",
     ),
+    (
+        Command::Group(super::groups::GroupAction::Add),
+        "Add empty group",
+        "YAML value for new group; null = None",
+    ),
+    (
+        Command::Group(super::groups::GroupAction::Hide),
+        "Hide focused group",
+        "",
+    ),
+    (
+        Command::Group(super::groups::GroupAction::Left),
+        "Move focused group left",
+        "",
+    ),
+    (
+        Command::Group(super::groups::GroupAction::Right),
+        "Move focused group right",
+        "",
+    ),
+    (
+        Command::Group(super::groups::GroupAction::Automatic),
+        "Automatic group order / show all",
+        "",
+    ),
+    (
+        Command::Group(super::groups::GroupAction::HideAll),
+        "Hide all groups",
+        "",
+    ),
 ];
 pub enum EditIntent {
     Edit,
     Clear,
     Paste(String),
     Move(String),
+    Group {
+        ids: Vec<String>,
+        value: Option<Value>,
+        metadata: std::sync::Arc<crate::storage::metadata::VaultMetadata>,
+        source: String,
+    },
 }
 pub enum Target {
     Cell {
@@ -125,10 +162,20 @@ pub enum Target {
         key: String,
         clear: bool,
     },
-    Config(Command),
-    NewNote,
+    Config {
+        command: Command,
+        baseline: DocumentSnapshot,
+        view: usize,
+    },
+    NewNote {
+        group: Option<(String, Option<Value>)>,
+    },
     Export,
     MoveGroup,
+    GroupOrder {
+        action: super::groups::GroupAction,
+        baseline: DocumentSnapshot,
+    },
 }
 pub enum Dialog {
     Image {
@@ -241,7 +288,7 @@ impl Dialog {
         }
     }
 }
-fn yaml_value(source: &str) -> Result<Value> {
+pub(super) fn yaml_value(source: &str) -> Result<Value> {
     let mapping = parse_mapping(&format!("value: {source}"))?;
     if mapping.len() != 1 {
         bail!("input must contain one YAML value");
@@ -337,7 +384,9 @@ pub fn configure(
             }
             document.remove_view(view)?
         }
-        Command::NewNote | Command::Export => bail!("not a configuration field"),
+        Command::NewNote | Command::Export | Command::Group(_) => {
+            bail!("not a configuration field")
+        }
     };
     for (index, view) in document.config.views.iter().enumerate() {
         if view.layout.supported() {
@@ -394,7 +443,8 @@ impl BasesState {
         self.ensure_idle()?;
         let loaded = self.loaded.as_ref().context("base has not loaded")?;
         let column = match &intent {
-            EditIntent::Move(_) => loaded.document.config.views[loaded.view]
+            EditIntent::Move(_) | EditIntent::Group { .. } => loaded.document.config.views
+                [loaded.view]
                 .group_by
                 .as_ref()
                 .context("view has no groupBy property")?
@@ -407,7 +457,9 @@ impl BasesState {
                 .clone(),
         };
         edits::property_key(&column)?;
-        let ids = if self.selected_ids.is_empty() {
+        let ids = if let EditIntent::Group { ids, .. } = &intent {
+            ids.clone()
+        } else if self.selected_ids.is_empty() {
             vec![self.row().context("select a note row")?.id.clone()]
         } else {
             self.result()
@@ -430,7 +482,7 @@ impl BasesState {
         ));
         Ok(())
     }
-    fn ensure_idle(&self) -> Result<()> {
+    pub(super) fn ensure_idle(&self) -> Result<()> {
         if self.write_task.is_some() {
             bail!("Bases write operation in progress");
         }
@@ -492,20 +544,53 @@ impl BasesState {
                             str::to_owned,
                         )
                     });
-                let target = Target::Cell {
-                    snapshots,
-                    key: key.clone(),
-                    clear: matches!(intent, EditIntent::Clear),
-                };
                 match intent {
+                    EditIntent::Group {
+                        value,
+                        metadata,
+                        source,
+                        ..
+                    } => {
+                        self.write_task = Some(WriteTask::spawn(
+                            app.storage.clone(),
+                            &app.notes_worker_pool,
+                            Operation::AssignGroup {
+                                snapshots,
+                                key,
+                                value,
+                                metadata,
+                                source,
+                            },
+                        ));
+                    }
+                    EditIntent::Move(source) if source.trim().is_empty() => {
+                        self.write_task = Some(WriteTask::spawn(
+                            app.storage.clone(),
+                            &app.notes_worker_pool,
+                            Operation::Commit {
+                                snapshots,
+                                key,
+                                value: None,
+                            },
+                        ));
+                    }
                     EditIntent::Paste(source) | EditIntent::Move(source) => {
+                        let target = Target::Cell {
+                            snapshots,
+                            key,
+                            clear: false,
+                        };
                         if let Err(error) = self.submit(app, &target, &source) {
                             app.set_temporary_status(&format!("Bases: {error:#}"));
                         }
                     }
                     EditIntent::Clear => {
                         self.dialog = Some(Dialog::prompt(
-                            target,
+                            Target::Cell {
+                                snapshots,
+                                key: key.clone(),
+                                clear: true,
+                            },
                             &format!("Clear {key}"),
                             "Type CLEAR; removes property from selected notes",
                             "",
@@ -513,7 +598,11 @@ impl BasesState {
                     }
                     EditIntent::Edit => {
                         self.dialog = Some(Dialog::prompt(
-                            target,
+                            Target::Cell {
+                                snapshots,
+                                key: key.clone(),
+                                clear: false,
+                            },
                             &format!("Edit {key}"),
                             "Declared text/date: literal text; other types: YAML value",
                             &initial,
@@ -552,6 +641,7 @@ impl BasesState {
                 app.set_temporary_status_static("Base configuration saved");
             }
             Ok(Outcome::Created(snapshot)) => {
+                self.focus_id = Some(snapshot.id().to_owned());
                 self.refresh(app, true);
                 app.request_notes_reconcile();
                 app.set_temporary_status(&format!("Created {}", snapshot.id()));
@@ -605,15 +695,27 @@ impl BasesState {
                     value,
                 }
             }
-            Target::Config(command) => {
-                let document = configure(&loaded.document, loaded.view, *command, source)?;
+            Target::Config {
+                command,
+                baseline,
+                view,
+            } => {
+                if loaded.snapshot.source() != baseline.source() {
+                    bail!("Bases document changed; close dialog and reload before authoring");
+                }
+                let document = configure(
+                    &BaseDocument::parse(baseline.source())?,
+                    *view,
+                    *command,
+                    source,
+                )?;
                 self.named_view = document
                     .config
                     .views
-                    .get(loaded.view)
+                    .get(*view)
                     .map(|view| view.name.clone());
                 Operation::Save {
-                    baseline: loaded.snapshot.clone(),
+                    baseline: baseline.clone(),
                     source: document.source().into(),
                 }
             }
@@ -621,14 +723,18 @@ impl BasesState {
                 self.start_edit(app, EditIntent::Move(source.into()))?;
                 return Ok(());
             }
-            Target::NewNote => {
-                if !source.ends_with(".md") {
-                    bail!("new note path must end in .md");
+            Target::NewNote { group } => Operation::CreateNote {
+                id: source.into(),
+                group: group.clone(),
+                metadata: loaded.metadata.clone(),
+                source: self.id.clone(),
+            },
+            Target::GroupOrder { action, baseline } => {
+                if loaded.snapshot.source() != baseline.source() {
+                    bail!("Bases document changed; close dialog and reload before authoring");
                 }
-                Operation::Create {
-                    id: source.into(),
-                    source: String::new(),
-                }
+                self.change_group_order(app, *action, source)?;
+                return Ok(());
             }
             Target::Export => {
                 let result = loaded
@@ -691,9 +797,45 @@ impl BasesState {
                 (Dialog::Menu { selected }, KeyCode::Enter) => {
                     let (command, title, hint) = COMMANDS[*selected];
                     let target = match command {
-                        Command::NewNote => Target::NewNote,
+                        Command::NewNote => {
+                            if let Err(error) = self.prompt_new_note() {
+                                app.set_temporary_status(&format!("Bases: {error:#}"));
+                                self.dialog = Some(dialog);
+                            }
+                            return true;
+                        }
                         Command::Export => Target::Export,
-                        _ => Target::Config(command),
+                        Command::Group(action) => {
+                            if !matches!(action, super::groups::GroupAction::Add) {
+                                match self.change_group_order(app, action, "") {
+                                    Ok(()) => {}
+                                    Err(error) => {
+                                        app.set_temporary_status(&format!("Bases: {error:#}"));
+                                        self.dialog = Some(dialog);
+                                    }
+                                }
+                                return true;
+                            }
+                            let Some(loaded) = &self.loaded else {
+                                self.dialog = Some(dialog);
+                                return true;
+                            };
+                            Target::GroupOrder {
+                                action,
+                                baseline: loaded.snapshot.clone(),
+                            }
+                        }
+                        _ => {
+                            let Some(loaded) = &self.loaded else {
+                                self.dialog = Some(dialog);
+                                return true;
+                            };
+                            Target::Config {
+                                command,
+                                baseline: loaded.snapshot.clone(),
+                                view: loaded.view,
+                            }
+                        }
                     };
                     self.dialog = Some(Dialog::prompt(target, title, hint, ""));
                     keep = false;

@@ -212,6 +212,14 @@ impl<'a> Evaluator<'a> {
         let Some(value) = file.properties()?.get(key) else {
             return Ok(Value::Null);
         };
+        self.property_value(id, key, value)
+    }
+    pub(crate) fn property_value(
+        &self,
+        id: &str,
+        key: &str,
+        value: &serde_yaml_ng::Value,
+    ) -> Result<Value> {
         if matches!(
             self.metadata.property_types.declared_type(key),
             Some("date" | "datetime")

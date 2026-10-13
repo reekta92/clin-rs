@@ -250,6 +250,462 @@ fn kanban_navigation_crosses_columns_and_retains_empty_group_focus() {
     );
 }
 
+fn idle(app: &mut App) {
+    wait(app, |app| {
+        app.bases_state
+            .as_ref()
+            .is_some_and(|state| state.write_task.is_none() && !state.loading)
+    });
+}
+fn board(app: &mut App, property: &str, order: &str) {
+    let baseline = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&baseline,&format!("# retained\nplugin: {{opaque: true}}\nfilters: file.ext == 'md'\nviews: [{{type: kanban, name: Board, order: [file.name], groupBy: {{property: {property}}}, groupOrder: {order}}}]\n")).unwrap();
+    key(app, KeyCode::Char('r'));
+    idle(app);
+}
+fn menu(app: &mut App, label: &str) {
+    key(app, KeyCode::Char(':'));
+    let index = super::authoring::COMMANDS
+        .iter()
+        .position(|(_, name, _)| *name == label)
+        .unwrap();
+    for _ in 0..index {
+        key(app, KeyCode::Down);
+    }
+    key(app, KeyCode::Enter);
+}
+fn prompt_text(app: &mut App, text: &str) {
+    if let Some(super::authoring::Dialog::Prompt { input, .. }) =
+        &mut app.bases_state.as_mut().unwrap().dialog
+    {
+        input.select_all();
+    } else {
+        panic!("expected prompt: {}", app.status);
+    }
+    event(app, Event::Paste(text.into()));
+    key(app, KeyCode::Enter);
+    idle(app);
+}
+fn mouse(app: &mut App, kind: crossterm::event::MouseEventKind, rect: Rect) {
+    event(
+        app,
+        Event::Mouse(crossterm::event::MouseEvent {
+            kind,
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+}
+fn drag_card(app: &mut App, id: &str, target: usize) {
+    render(app);
+    let state = app.bases_state.as_ref().unwrap();
+    let index=state.items.iter().position(|item|matches!(item,super::state::Item::Row(row) if state.result().unwrap().rows[*row].id==id)).unwrap();
+    let source = state
+        .hit_rows
+        .iter()
+        .find(|(_, item, _)| *item == index)
+        .unwrap()
+        .0;
+    let target = state
+        .hit_groups
+        .iter()
+        .find(|(_, group)| *group == target)
+        .unwrap()
+        .0;
+    mouse(
+        app,
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        source,
+    );
+    mouse(
+        app,
+        crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left),
+        target,
+    );
+    mouse(
+        app,
+        crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+        target,
+    );
+    idle(app);
+}
+fn properties(app: &App, id: &str) -> serde_yaml_ng::Mapping {
+    crate::frontmatter::properties::PropertyDocument::parse(
+        app.storage.load_document(id).unwrap().source(),
+    )
+    .unwrap()
+    .properties
+}
+
+#[test]
+fn kanban_drag_create_reorder_hide_and_add_use_guarded_public_writes() {
+    let (_root, mut app) = fixture();
+    let public = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(
+            &public,
+            &public.source().replace("score: 2", "score: 2\r\nstatus: A"),
+        )
+        .unwrap();
+    app.storage
+        .create_document("b.md", "---\nstatus: B\n---\nB body\n")
+        .unwrap();
+    board(&mut app, "status", "[A, Empty, B, null]");
+    let original = app
+        .storage
+        .load_document("public.md")
+        .unwrap()
+        .source()
+        .to_owned();
+    drag_card(&mut app, "public.md", 1);
+    assert_eq!(
+        properties(&app, "public.md")
+            .get("status")
+            .unwrap()
+            .as_str(),
+        Some("Empty")
+    );
+    assert!(
+        app.storage
+            .load_document("public.md")
+            .unwrap()
+            .source()
+            .ends_with("Public body\r\n\r\n")
+    );
+    key(&mut app, KeyCode::Char('u'));
+    idle(&mut app);
+    assert_eq!(
+        app.storage.load_document("public.md").unwrap().source(),
+        original
+    );
+    event(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+    );
+    idle(&mut app);
+    render(&mut app);
+    let column = app
+        .bases_state
+        .as_ref()
+        .unwrap()
+        .hit_groups
+        .iter()
+        .find(|(_, index)| *index == 1)
+        .unwrap()
+        .0;
+    mouse(
+        &mut app,
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        Rect::new(column.right() - 2, column.y, 1, 1),
+    );
+    prompt_text(&mut app, "created.md");
+    assert_eq!(
+        properties(&app, "created.md")
+            .get("status")
+            .unwrap()
+            .as_str(),
+        Some("Empty")
+    );
+    assert_eq!(properties(&app, "created.md").len(), 1);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "created.md"
+    );
+    menu(&mut app, "Move focused group right");
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().focused_group().unwrap().0,
+        2
+    );
+    menu(&mut app, "Hide focused group");
+    idle(&mut app);
+    assert!(
+        !app.bases_state
+            .as_ref()
+            .unwrap()
+            .result()
+            .unwrap()
+            .rows
+            .iter()
+            .any(|row| row.id == "created.md")
+    );
+    assert_eq!(
+        properties(&app, "created.md")
+            .get("status")
+            .unwrap()
+            .as_str(),
+        Some("Empty")
+    );
+    menu(&mut app, "Add empty group");
+    prompt_text(&mut app, "New");
+    assert!(
+        app.bases_state
+            .as_ref()
+            .unwrap()
+            .result()
+            .unwrap()
+            .groups
+            .iter()
+            .any(|group| group.value.to_text().display() == "New" && group.rows.is_empty())
+    );
+    menu(&mut app, "Hide all groups");
+    idle(&mut app);
+    assert!(render(&mut app).contains("No visible columns"));
+    menu(&mut app, "Automatic group order / show all");
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state
+            .as_ref()
+            .unwrap()
+            .result()
+            .unwrap()
+            .rows
+            .len(),
+        3
+    );
+    let source = app
+        .storage
+        .load_document("board.base")
+        .unwrap()
+        .source()
+        .to_owned();
+    assert!(source.contains("# retained") && source.contains("opaque: true"));
+    render(&mut app);
+    let columns = app.bases_state.as_ref().unwrap().hit_groups.clone();
+    mouse(
+        &mut app,
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        columns[0].0,
+    );
+    mouse(
+        &mut app,
+        crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left),
+        columns[1].0,
+    );
+    mouse(
+        &mut app,
+        crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+        columns[1].0,
+    );
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().focused_group(),
+        Some((1, None))
+    );
+    assert_eq!(
+        fs::read(app.storage.notes_dir.join("private.clin")).unwrap(),
+        b"not a public document"
+    );
+}
+
+#[test]
+fn kanban_link_groups_retarget_each_note_and_preserve_header_focus() {
+    let (_root, mut app) = fixture();
+    for (id, source) in [
+        ("a/ref.md", "A reference"),
+        ("b/ref.md", "B reference"),
+        ("a/card.md", "---\nref: '[[ref.md|A ref]]'\n---\nA card"),
+        ("b/card.md", "---\nref: '[[ref.md|B ref]]'\n---\nB card"),
+    ] {
+        app.storage.create_document(id, source).unwrap();
+    }
+    board(&mut app, "ref", "['[[a/ref.md]]', '[[b/ref.md]]', null]");
+    key(&mut app, KeyCode::Home);
+    menu(&mut app, "Move focused group right");
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().focused_group(),
+        Some((1, None))
+    );
+    drag_card(&mut app, "a/card.md", 0);
+    let reference = properties(&app, "a/card.md")
+        .get("ref")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(reference.contains("../b/ref.md") && reference.contains("B ref"));
+    let loaded = app.bases_state.as_ref().unwrap().loaded.as_ref().unwrap();
+    assert_eq!(
+        loaded
+            .metadata
+            .resolve_link("a/card.md", &reference)
+            .unwrap()
+            .id,
+        "b/ref.md"
+    );
+    key(&mut app, KeyCode::Char('n'));
+    prompt_text(&mut app, "a/created.md");
+    let reference = properties(&app, "a/created.md")
+        .get("ref")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let loaded = app.bases_state.as_ref().unwrap().loaded.as_ref().unwrap();
+    assert_eq!(
+        loaded
+            .metadata
+            .resolve_link("a/created.md", &reference)
+            .unwrap()
+            .id,
+        "b/ref.md"
+    );
+}
+
+#[test]
+fn configuration_prompt_rejects_reloaded_source_instead_of_refreshing_baseline() {
+    let (_root, mut app) = fixture();
+    menu(&mut app, "Rename view");
+    let baseline = app.storage.load_document("board.base").unwrap();
+    let external = baseline.source().replace("opaque: true", "opaque: false");
+    app.storage.save_document(&baseline, &external).unwrap();
+    app.invalidate_bases();
+    idle(&mut app);
+    prompt_text(&mut app, "My view");
+    assert!(app.status.contains("Bases document changed"));
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_some());
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        external
+    );
+}
+
+#[test]
+fn kanban_checkbox_moves_preserve_types_and_none_removes_property() {
+    let (_root, mut app) = fixture();
+    fs::create_dir_all(app.storage.notes_dir.join(".obsidian")).unwrap();
+    fs::write(
+        app.storage.notes_dir.join(".obsidian/types.json"),
+        r#"{"types":{"done":"checkbox"}}"#,
+    )
+    .unwrap();
+    let public = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(
+            &public,
+            &public
+                .source()
+                .replace("score: 2", "score: 2\r\ndone: false"),
+        )
+        .unwrap();
+    board(&mut app, "done", "[false, true, null]");
+    drag_card(&mut app, "public.md", 1);
+    assert_eq!(
+        properties(&app, "public.md").get("done").unwrap().as_bool(),
+        Some(true)
+    );
+    drag_card(&mut app, "public.md", 2);
+    assert!(!properties(&app, "public.md").contains_key("done"));
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Char('n'));
+    prompt_text(&mut app, "unchecked.md");
+    assert_eq!(
+        properties(&app, "unchecked.md")
+            .get("done")
+            .unwrap()
+            .as_bool(),
+        Some(false)
+    );
+    key(&mut app, KeyCode::Char('m'));
+    prompt_text(&mut app, "");
+    assert!(!properties(&app, "unchecked.md").contains_key("done"));
+}
+
+#[test]
+fn kanban_date_columns_and_folder_creation_retain_native_types() {
+    let (_root, mut app) = fixture();
+    fs::create_dir_all(app.storage.notes_dir.join(".obsidian")).unwrap();
+    fs::write(
+        app.storage.notes_dir.join(".obsidian/types.json"),
+        r#"{"types":{"when":"date"}}"#,
+    )
+    .unwrap();
+    let public = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(
+            &public,
+            &public
+                .source()
+                .replace("score: 2", "score: 2\r\nwhen: 2024-01-01"),
+        )
+        .unwrap();
+    board(&mut app, "when", "['2024-01-01', '2024-02-01']");
+    assert_eq!(
+        app.bases_state
+            .as_ref()
+            .unwrap()
+            .result()
+            .unwrap()
+            .rows
+            .len(),
+        1
+    );
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Char('l'));
+    key(&mut app, KeyCode::Char('n'));
+    prompt_text(&mut app, "february.md");
+    assert_eq!(
+        properties(&app, "february.md")
+            .get("when")
+            .unwrap()
+            .as_str(),
+        Some("2024-02-01")
+    );
+    drag_card(&mut app, "public.md", 1);
+    assert_eq!(
+        properties(&app, "public.md").get("when").unwrap().as_str(),
+        Some("2024-02-01")
+    );
+    board(&mut app, "file.folder", "[null, Drafts]");
+    key(&mut app, KeyCode::Home);
+    key(&mut app, KeyCode::Char('l'));
+    key(&mut app, KeyCode::Char('n'));
+    prompt_text(&mut app, "Drafts/created.md");
+    assert_eq!(
+        app.storage
+            .load_document("Drafts/created.md")
+            .unwrap()
+            .source(),
+        ""
+    );
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "Drafts/created.md"
+    );
+}
+
+#[test]
+fn kanban_readonly_groups_reject_column_mutation_but_allow_menu_order() {
+    let (_root, mut app) = fixture();
+    let baseline = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&baseline,"filters: file.ext == 'md'\nformulas: {Kind: file.ext}\nviews: [{type: kanban, name: Board, order: [file.name], groupBy: {property: formula.Kind}, groupOrder: [md, Empty]}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    idle(&mut app);
+    let original = app
+        .storage
+        .load_document("public.md")
+        .unwrap()
+        .source()
+        .to_owned();
+    key(&mut app, KeyCode::Char('n'));
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_none());
+    assert!(app.status.contains("read-only"));
+    drag_card(&mut app, "public.md", 1);
+    assert!(app.status.contains("read-only"));
+    assert_eq!(
+        app.storage.load_document("public.md").unwrap().source(),
+        original
+    );
+    menu(&mut app, "Move focused group right");
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().focused_group().unwrap().0,
+        1
+    );
+}
+
 #[test]
 fn multiline_formula_input_applies_once_and_invalid_input_retains_source() {
     let (_root, mut app) = fixture();

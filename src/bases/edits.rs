@@ -136,13 +136,121 @@ pub fn commit(
             Ok((snapshot, source))
         })
         .collect::<Result<Vec<_>>>()?;
-    let bytes: usize = plans
-        .iter()
-        .map(|(baseline, source)| baseline.source().len() + source.len())
-        .sum();
-    if bytes > MAX_HISTORY_BYTES {
-        bail!("bulk edit exceeds 32 MiB undo budget; original files retained");
-    }
+    apply(storage, plans, cancelled)
+}
+
+pub(super) fn retarget_group_links(
+    metadata: &VaultMetadata,
+    value: &Value,
+    from: &str,
+    to: &str,
+) -> Result<Value> {
+    Ok(match value {
+        Value::String(text) if text.starts_with("[[") && text.ends_with("]]") => {
+            let wiki = &text[2..text.len() - 2];
+            let (target, alias) = wiki
+                .split_once('|')
+                .map_or((wiki, None), |(target, alias)| (target, Some(alias)));
+            if let Some(file) = metadata.resolve_link(from, target) {
+                let directory = to.rsplit_once('/').map_or("", |(directory, _)| directory);
+                let folders: Vec<_> = directory
+                    .split('/')
+                    .filter(|part| !part.is_empty())
+                    .collect();
+                let path: Vec<_> = file.id.split('/').collect();
+                let common = folders
+                    .iter()
+                    .zip(&path)
+                    .take_while(|(left, right)| left == right)
+                    .count();
+                let relative = format!(
+                    "{}{}",
+                    if common == folders.len() {
+                        "./".into()
+                    } else {
+                        "../".repeat(folders.len() - common)
+                    },
+                    path[common..].join("/")
+                );
+                let relative = relative
+                    .replace('%', "%25")
+                    .replace('#', "%23")
+                    .replace('|', "%7C")
+                    .replace('[', "%5B")
+                    .replace(']', "%5D");
+                let anchor = target.split_once('#').map_or("", |(_, anchor)| anchor);
+                Value::String(format!(
+                    "[[{relative}{}{}]]",
+                    if anchor.is_empty() {
+                        String::new()
+                    } else {
+                        format!("#{anchor}")
+                    },
+                    alias.map_or_else(String::new, |alias| format!("|{alias}"))
+                ))
+            } else {
+                let directory = to.rsplit_once('/').map_or("", |(directory, _)| directory);
+                let destination = metadata
+                    .file(to)
+                    .or_else(|| metadata.files().find(|file| file.folder == directory))
+                    .map_or(to, |file| file.id.as_str());
+                if from != to && metadata.resolve_link(destination, target).is_some() {
+                    bail!(
+                        "unresolved group link would resolve differently in target note; original retained"
+                    );
+                }
+                value.clone()
+            }
+        }
+        Value::Sequence(values) => Value::Sequence(
+            values
+                .iter()
+                .map(|value| retarget_group_links(metadata, value, from, to))
+                .collect::<Result<_>>()?,
+        ),
+        Value::Mapping(values) => Value::Mapping(
+            values
+                .iter()
+                .map(|(key, value)| {
+                    Ok((
+                        key.clone(),
+                        retarget_group_links(metadata, value, from, to)?,
+                    ))
+                })
+                .collect::<Result<_>>()?,
+        ),
+        Value::Tagged(tagged) => {
+            let mut tagged = tagged.clone();
+            tagged.value = retarget_group_links(metadata, &tagged.value, from, to)?;
+            Value::Tagged(tagged)
+        }
+        _ => value.clone(),
+    })
+}
+
+pub(super) fn assign_group(
+    storage: &Storage,
+    metadata: &VaultMetadata,
+    snapshots: Vec<DocumentSnapshot>,
+    key: &str,
+    value: Option<&Value>,
+    source: &str,
+    cancelled: &AtomicBool,
+) -> Result<Transaction> {
+    let types = storage.load_property_types()?;
+    let plans = snapshots
+        .into_iter()
+        .map(|snapshot| {
+            let value = value
+                .map(|value| retarget_group_links(metadata, value, source, snapshot.id()))
+                .transpose()?;
+            if let Some(value) = &value {
+                types.validate(key, value)?;
+            }
+            let source = edit_properties(snapshot.source(), &[(key.to_owned(), value)])?;
+            Ok((snapshot, source))
+        })
+        .collect::<Result<_>>()?;
     apply(storage, plans, cancelled)
 }
 
@@ -151,6 +259,13 @@ fn apply(
     plans: Vec<(DocumentSnapshot, String)>,
     cancelled: &AtomicBool,
 ) -> Result<Transaction> {
+    let bytes: usize = plans
+        .iter()
+        .map(|(baseline, source)| baseline.source().len() + source.len())
+        .sum();
+    if bytes > MAX_HISTORY_BYTES {
+        bail!("bulk edit exceeds 32 MiB undo budget; original files retained");
+    }
     // Preflight every target. Each actual write rechecks baseline and uses permission-preserving atomic replacement.
     for (baseline, _) in &plans {
         if storage.load_document(baseline.id())?.source() != baseline.source() {

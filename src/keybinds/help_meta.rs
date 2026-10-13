@@ -45,12 +45,18 @@ pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
             "Authoring",
             "Configure views, filters, formulas and summaries",
         ),
-        NewNote => meta("Authoring", "Create public Markdown note"),
+        NewNote => meta(
+            "Authoring",
+            "Create public Markdown note in focused Kanban column",
+        ),
         Export => meta(
             "Authoring",
             "Export visible public results as CSV or Markdown",
         ),
-        MoveToGroup => meta("Authoring", "Set grouping property on selected rows"),
+        MoveToGroup => meta(
+            "Authoring",
+            "Set grouping property on selected rows; blank clears",
+        ),
     }
 }
 

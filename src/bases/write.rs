@@ -21,6 +21,13 @@ pub enum Operation {
         key: String,
         value: Option<Value>,
     },
+    AssignGroup {
+        snapshots: Vec<DocumentSnapshot>,
+        key: String,
+        value: Option<Value>,
+        metadata: Arc<VaultMetadata>,
+        source: String,
+    },
     Replay {
         transaction: Transaction,
         forward: bool,
@@ -29,8 +36,10 @@ pub enum Operation {
         baseline: DocumentSnapshot,
         source: String,
     },
-    Create {
+    CreateNote {
         id: String,
+        group: Option<(String, Option<Value>)>,
+        metadata: Arc<VaultMetadata>,
         source: String,
     },
     Export {
@@ -97,6 +106,22 @@ impl WriteTask {
                         value,
                     } => edits::commit(&storage, snapshots, &[(key, value)], &flag)
                         .map(Outcome::Changed),
+                    Operation::AssignGroup {
+                        snapshots,
+                        key,
+                        value,
+                        metadata,
+                        source,
+                    } => edits::assign_group(
+                        &storage,
+                        &metadata,
+                        snapshots,
+                        &key,
+                        value.as_ref(),
+                        &source,
+                        &flag,
+                    )
+                    .map(Outcome::Changed),
                     Operation::Replay {
                         transaction,
                         forward,
@@ -114,7 +139,50 @@ impl WriteTask {
                             after,
                         }))
                     }
-                    Operation::Create { id, source } => {
+                    Operation::CreateNote {
+                        id,
+                        group,
+                        metadata,
+                        source: origin,
+                    } => {
+                        if !id.ends_with(".md") {
+                            bail!("new note path must end in .md");
+                        }
+                        let mut source = String::new();
+                        if let Some((property, value)) = group {
+                            if property == "file.folder" {
+                                let folder = match value {
+                                    Some(Value::String(folder)) => folder,
+                                    None => String::new(),
+                                    _ => bail!("folder group must be text"),
+                                };
+                                let parent = std::path::Path::new(&id)
+                                    .parent()
+                                    .and_then(std::path::Path::to_str)
+                                    .unwrap_or("");
+                                if parent != folder.trim_matches('/') {
+                                    bail!("new note must stay in selected group folder");
+                                }
+                            } else {
+                                let key = edits::property_key(&property)?;
+                                let value = value
+                                    .as_ref()
+                                    .map(|value| {
+                                        edits::retarget_group_links(&metadata, value, &origin, &id)
+                                    })
+                                    .transpose()?;
+                                if let Some(value) = &value {
+                                    storage.load_property_types()?.validate(key, value)?;
+                                }
+                                source = crate::frontmatter::properties::edit_properties(
+                                    "",
+                                    &[(key.to_owned(), value)],
+                                )?;
+                            }
+                        }
+                        if flag.load(Ordering::Relaxed) {
+                            bail!("Bases operation cancelled");
+                        }
                         storage.create_document(&id, &source).map(Outcome::Created)
                     }
                     Operation::Export {

@@ -105,7 +105,7 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Authoring",
-        "Use {bases:Configure} to edit view layout, filters, grouping, manual order, sorts, formulas and summaries. Invalid expressions leave original configuration unchanged.",
+        "Use {bases:Configure} to edit layout, filters, grouping, sorts, formulas and summaries, or add/hide/reorder columns. Drag writable Kanban cards between columns. {bases:NewNote} creates in focused column. Invalid or stale edits retain original data.",
     ),
     tip(
         "Public exports",

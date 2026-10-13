@@ -27,6 +27,9 @@ pub struct BasesState {
     pub matcher: KeyMatcher,
     pub body_area: Rect,
     pub hit_rows: Vec<(Rect, usize, usize)>,
+    pub(super) hit_groups: Vec<(Rect, usize)>,
+    pub(super) drag: Option<Item>,
+    pub(super) focus_id: Option<String>,
     pub(super) dialog: Option<super::authoring::Dialog>,
     pub(super) write_task: Option<super::write::WriteTask>,
     pub(super) edit_intent: Option<super::authoring::EditIntent>,
@@ -55,6 +58,9 @@ impl BasesState {
             matcher: KeyMatcher::default(),
             body_area: Rect::default(),
             hit_rows: Vec::new(),
+            hit_groups: Vec::new(),
+            drag: None,
+            focus_id: None,
             dialog: None,
             write_task: None,
             edit_intent: None,
@@ -140,7 +146,36 @@ impl BasesState {
         };
     }
     pub fn install(&mut self, loaded: anyhow::Result<LoadedBase>) {
-        let previous = self.row().map(|row| row.id.clone());
+        let previous = self
+            .focus_id
+            .take()
+            .or_else(|| self.row().map(|row| row.id.clone()));
+        let formulas = super::eval::Formulas::compile(&std::collections::BTreeMap::new())
+            .expect("empty formulas are valid");
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+        let mut budget = super::eval::Budget::new();
+        let previous_group = if matches!(self.items.get(self.selected), Some(Item::Group(_))) {
+            self.focused_group()
+                .and_then(|(index, _)| self.result()?.groups.get(index))
+                .and_then(|group| {
+                    self.loaded.as_ref().map(|loaded| {
+                        super::eval::Evaluator::new(
+                            &loaded.metadata,
+                            &formulas,
+                            "",
+                            &self.environment,
+                            &cancelled,
+                            &mut budget,
+                        )
+                        .identity(&group.value)
+                    })
+                })
+        } else {
+            None
+        };
+        self.drag = None;
+        self.hit_groups.clear();
+        self.hit_rows.clear();
         self.loading = false;
         self.error = None;
         self.items.clear();
@@ -169,7 +204,32 @@ impl BasesState {
                 self.loaded = Some(loaded);
             }
         }
-        self.selected = previous.and_then(|id| self.items.iter().position(|item| matches!(item, Item::Row(index) if self.result().is_some_and(|result| result.rows[*index].id == id)))).unwrap_or(self.selected).min(self.items.len().saturating_sub(1));
+        self.selected = previous.as_ref().and_then(|id| self.items.iter().position(|item| matches!(item, Item::Row(index) if self.result().is_some_and(|result| result.rows[*index].id == *id)))).unwrap_or(self.selected).min(self.items.len().saturating_sub(1));
+        if previous.is_none()
+            && let Some(value) = previous_group
+            && let Some(index) = self.result().and_then(|result| {
+                self.loaded.as_ref().and_then(|loaded| {
+                    let evaluator = super::eval::Evaluator::new(
+                        &loaded.metadata,
+                        &formulas,
+                        "",
+                        &self.environment,
+                        &cancelled,
+                        &mut budget,
+                    );
+                    result
+                        .groups
+                        .iter()
+                        .position(|group| evaluator.identity(&group.value) == value)
+                })
+            })
+            && let Some(position) = self
+                .items
+                .iter()
+                .position(|item| matches!(item,Item::Group(group) if *group==index))
+        {
+            self.selected = position;
+        }
         self.column = self.column.min(
             self.loaded
                 .as_ref()

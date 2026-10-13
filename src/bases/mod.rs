@@ -7,6 +7,7 @@ pub mod eval;
 mod export;
 pub mod expr;
 pub mod format;
+mod groups;
 mod input;
 pub mod query;
 mod regexp;

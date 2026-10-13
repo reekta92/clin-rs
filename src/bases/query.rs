@@ -260,13 +260,43 @@ impl Query {
         if let Some(error) = sort_error {
             return Err(error);
         }
+        let date_formula_groups = self.group_by.as_ref().is_some_and(|group| {
+            group.property.starts_with("formula.")
+                && rows
+                    .iter()
+                    .any(|row| matches!(row.values[&group.property], Value::Date(_)))
+                && rows
+                    .iter()
+                    .all(|row| matches!(row.values[&group.property], Value::Date(_) | Value::Null))
+        });
         let manual = self
             .group_order
             .as_ref()
             .map(|values| {
                 values
                     .iter()
-                    .map(|value| Value::from_yaml(value, environment.host.as_deref().unwrap_or("")))
+                    .map(|value| {
+                        let property = &self
+                            .group_by
+                            .as_ref()
+                            .context("manual order requires grouping")?
+                            .property;
+                        let source = environment.host.as_deref().unwrap_or("");
+                        if date_formula_groups && !value.is_null() {
+                            Ok(Value::Date(super::value::parse_date(
+                                value.as_str().context("date group must be a string")?,
+                            )?))
+                        } else if property.starts_with("file.") || property.starts_with("formula.")
+                        {
+                            Value::from_yaml(value, source)
+                        } else {
+                            evaluator.property_value(
+                                source,
+                                property.strip_prefix("note.").unwrap_or(property),
+                                value,
+                            )
+                        }
+                    })
                     .collect::<Result<Vec<_>>>()
             })
             .transpose()?;
