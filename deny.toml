@@ -41,4 +41,5 @@ unknown-git = "deny"
 allow-git = [
     "https://github.com/reekta92/graf",
     "https://github.com/reekta92/pinstar",
+    "https://github.com/reekta92/merman",
 ]

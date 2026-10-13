@@ -11,6 +11,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 ## Core Architecture
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture: view state machine, event loop, rendering pipeline, data flow, threading model, module map
+- [DEPENDENCY_PATCHES.md](DEPENDENCY_PATCHES.md) — Pinned compatibility forks, maintained YAML backend, safety evidence, and update policy
 
 ## Views
 
@@ -46,6 +47,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 docs/
 ├── INDEX.md              ← You are here
 ├── ARCHITECTURE.md       System overview
+├── DEPENDENCY_PATCHES.md Compatibility forks and dependency safety
 ├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
 ├── HELP.md               Help: 3-pane, 8 tabs, keybind index, tips, popup accordion
