@@ -69,8 +69,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
         kanban(frame, area, state, theme);
         return;
     }
-    let card = matches!(state.layout(), Layout::Cards);
-    let item_height = if card { 4 } else { 1 };
+    if matches!(state.layout(), Layout::Cards) {
+        cards(frame, area, state, theme);
+        return;
+    }
+    let item_height = 1;
     let header = usize::from(matches!(state.layout(), Layout::Table));
     let footer = usize::from(header > 0 && !result.summaries.is_empty());
     let visible = (usize::from(area.height).saturating_sub(header + footer) / item_height).max(1);
@@ -221,19 +224,124 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
             } else {
                 Style::default().fg(theme.text)
             };
-            let mut paragraph = Paragraph::new(text).style(style);
-            if card {
-                paragraph = paragraph
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(theme.border)),
-                    )
-                    .wrap(Wrap { trim: false });
-            }
-            frame.render_widget(paragraph, rect);
+            frame.render_widget(Paragraph::new(text).style(style), rect);
         }
     }
+}
+fn card_regions(state: &BasesState, area: Rect) -> Vec<(Rect, usize, usize)> {
+    let columns = (area.width / 32).max(1);
+    let width = area.width / columns;
+    let mut y = area.y;
+    let mut column = 0;
+    let mut regions = Vec::new();
+    for (position, item) in state.items.iter().enumerate().skip(state.offset) {
+        if matches!(item, Item::Group(_)) {
+            if column > 0 {
+                y = y.saturating_add(5);
+                column = 0;
+            }
+            if y >= area.bottom() {
+                break;
+            }
+            regions.push((Rect::new(area.x, y, area.width, 1), position, state.column));
+            y = y.saturating_add(1);
+        } else {
+            if y >= area.bottom() {
+                break;
+            }
+            regions.push((
+                Rect::new(
+                    area.x + column * width,
+                    y,
+                    width.saturating_sub(1).max(1),
+                    4,
+                )
+                .intersection(area),
+                position,
+                state.column,
+            ));
+            column += 1;
+            if column == columns {
+                column = 0;
+                y = y.saturating_add(5);
+            }
+        }
+    }
+    regions
+}
+fn cards(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
+    if area.is_empty() {
+        return;
+    }
+    state.offset = state.offset.min(state.items.len().saturating_sub(1));
+    let mut regions = card_regions(state, area);
+    if !regions
+        .iter()
+        .any(|(_, position, _)| *position == state.selected)
+    {
+        state.offset = state.selected;
+        regions = card_regions(state, area);
+    }
+    let Some(loaded) = &state.loaded else {
+        return;
+    };
+    let Ok(result) = &loaded.result else {
+        return;
+    };
+    for (rect, position, _) in &regions {
+        let selected = *position == state.selected;
+        let style = if selected {
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+        } else {
+            Style::default().fg(theme.text)
+        };
+        match state.items[*position] {
+            Item::Group(_) => {
+                frame.render_widget(
+                    Paragraph::new(item_line(state, state.items[*position])).style(
+                        Style::default()
+                            .fg(theme.heading)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    *rect,
+                );
+            }
+            Item::Row(index) => {
+                let text = loaded
+                    .columns
+                    .iter()
+                    .map(|key| {
+                        let label = loaded.document.config.labels.get(key).unwrap_or(key);
+                        let value = result.rows[index]
+                            .values
+                            .get(key)
+                            .map_or_else(String::new, display);
+                        format!("{}: {value}", sanitize_for_terminal(label))
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let border = if selected || state.selected_ids.contains(&result.rows[index].id) {
+                    theme.accent
+                } else {
+                    theme.border
+                };
+                frame.render_widget(
+                    Paragraph::new(text)
+                        .style(style)
+                        .wrap(Wrap { trim: false })
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .border_style(Style::default().fg(border)),
+                        ),
+                    *rect,
+                );
+            }
+        }
+    }
+    state.hit_rows = regions;
 }
 fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
     let Some(loaded) = &state.loaded else {

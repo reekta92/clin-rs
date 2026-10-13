@@ -375,6 +375,45 @@ fn metadata_invalidation_survives_cancelled_refresh_view_switch_and_reopen() {
 }
 
 #[test]
+fn cards_form_a_bounded_grid_and_keep_last_row_visible() {
+    let (_root, mut app) = fixture();
+    for index in 0..120 {
+        app.storage
+            .create_document(
+                &format!("extra-{index:03}.md"),
+                "---\nscore: 4\n---\nBody\n",
+            )
+            .unwrap();
+    }
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base,"filters: file.ext == 'md'\nviews: [{type: cards, name: Cards, order: [file.name, score]}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    render(&mut app);
+    let state = app.bases_state.as_ref().unwrap();
+    assert_eq!(state.result().unwrap().rows.len(), 121);
+    key(&mut app, KeyCode::Home);
+    render(&mut app);
+    let state = app.bases_state.as_ref().unwrap();
+    assert!(
+        state.hit_rows.len() < 25,
+        "render only visible cards, not whole dataset"
+    );
+    assert_eq!(state.hit_rows[0].0.y, state.hit_rows[1].0.y);
+    assert!(state.hit_rows[0].0.x < state.hit_rows[1].0.x);
+    key(&mut app, KeyCode::End);
+    render(&mut app);
+    let state = app.bases_state.as_ref().unwrap();
+    assert!(
+        state
+            .hit_rows
+            .iter()
+            .any(|(rect, position, _)| *position == state.selected
+                && rect.intersection(AREA) == *rect)
+    );
+}
+
+#[test]
 fn configuration_paste_validates_and_preserves_unknown_data() {
     let (_root, mut app) = fixture();
     key(&mut app, KeyCode::Char(':'));
