@@ -28,6 +28,11 @@ pub enum Operation {
         metadata: Arc<VaultMetadata>,
         source: String,
     },
+    MovePublic {
+        ids: Vec<String>,
+        folder: String,
+        metadata: Arc<VaultMetadata>,
+    },
     Replay {
         transaction: Transaction,
         forward: bool,
@@ -122,6 +127,27 @@ impl WriteTask {
                         &flag,
                     )
                     .map(Outcome::Changed),
+                    Operation::MovePublic {
+                        ids,
+                        folder,
+                        metadata,
+                    } => {
+                        for id in &ids {
+                            if metadata.file(id).is_none() {
+                                bail!("file is absent from public metadata");
+                            }
+                        }
+                        let moves = storage.prepare_public_file_moves(&ids, &folder, &flag)?;
+                        let transaction = Transaction {
+                            changes: Vec::new(),
+                            moves,
+                        };
+                        if transaction.bytes() > edits::MAX_HISTORY_BYTES {
+                            bail!("public move exceeds 32 MiB history budget; originals retained");
+                        }
+                        storage.apply_public_file_moves(&transaction.moves, &flag)?;
+                        Ok(Outcome::Changed(transaction))
+                    }
                     Operation::Replay {
                         transaction,
                         forward,

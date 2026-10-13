@@ -197,6 +197,30 @@ impl BasesState {
         ));
         Ok(())
     }
+    pub(super) fn start_folder_move(
+        &mut self,
+        app: &mut App,
+        ids: Vec<String>,
+        folder: String,
+    ) -> Result<()> {
+        self.ensure_idle()?;
+        let metadata = self
+            .loaded
+            .as_ref()
+            .context("base has not loaded")?
+            .metadata
+            .clone();
+        self.write_task = Some(WriteTask::spawn(
+            app.storage.clone(),
+            &app.notes_worker_pool,
+            Operation::MovePublic {
+                ids,
+                folder,
+                metadata,
+            },
+        ));
+        Ok(())
+    }
     pub(super) fn drop_in_group(&mut self, app: &mut App, item: Item, target: usize) -> Result<()> {
         self.ensure_idle()?;
         let property = self.group_property()?;
@@ -225,7 +249,6 @@ impl BasesState {
                 if source == target {
                     return Ok(());
                 }
-                super::edits::property_key(property)?;
                 let id = &result.rows.get(row).context("card no longer exists")?.id;
                 let ids = if self.selected_ids.contains(id) {
                     result
@@ -238,6 +261,17 @@ impl BasesState {
                     vec![id.clone()]
                 };
                 let value = self.group_yaml(target)?;
+                if property == "file.folder" {
+                    let folder = if value.is_null() {
+                        String::new()
+                    } else {
+                        value
+                            .as_str()
+                            .context("folder group must be text")?
+                            .to_owned()
+                    };
+                    return self.start_folder_move(app, ids, folder);
+                }
                 self.start_edit(
                     app,
                     EditIntent::Group {

@@ -17,6 +17,10 @@ enum Record<T> {
     Pending(Vec<T>),
     Committed(Vec<T>),
     Draft(T),
+    Moves {
+        entries: Vec<super::public_moves::FileMove>,
+        committed: bool,
+    },
 }
 type Entry = (String, String, String);
 pub(crate) struct DocumentTransaction(PathBuf);
@@ -101,6 +105,35 @@ impl Storage {
         self.write_document_record(&path, &Record::Pending(entries))?;
         Ok(DocumentTransaction(path))
     }
+    pub(crate) fn begin_public_move_transaction(
+        &self,
+        entries: &[super::public_moves::FileMove],
+    ) -> Result<DocumentTransaction> {
+        let path = self
+            .document_recovery_dir(true)?
+            .join(format!("{}.bin", uuid::Uuid::new_v4()));
+        self.write_document_record(
+            &path,
+            &Record::<Entry>::Moves {
+                entries: entries.to_vec(),
+                committed: false,
+            },
+        )?;
+        Ok(DocumentTransaction(path))
+    }
+    pub(crate) fn commit_public_move_transaction(
+        &self,
+        journal: &DocumentTransaction,
+        entries: &[super::public_moves::FileMove],
+    ) -> Result<()> {
+        self.write_document_record(
+            &journal.0,
+            &Record::<Entry>::Moves {
+                entries: entries.to_vec(),
+                committed: true,
+            },
+        )
+    }
     pub(crate) fn finish_document_transaction(
         &self,
         journal: &DocumentTransaction,
@@ -170,6 +203,9 @@ impl Storage {
                     bail!("unsupported document recovery record");
                 }
                 match record {
+                    Record::Moves { entries, committed } => {
+                        self.recover_public_moves(&entries, committed)?
+                    }
                     Record::Committed(entries) => {
                         let mut rollback = false;
                         for (id, before, after) in &entries {

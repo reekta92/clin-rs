@@ -1,6 +1,7 @@
 pub(crate) mod document_recovery;
 pub mod documents;
 pub mod metadata;
+pub mod public_moves;
 
 use crate::config::ClinConfig;
 use rand::RngExt;

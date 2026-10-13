@@ -72,8 +72,15 @@ column. Configure `groupOrder` to retain empty columns and control visibility;
   cards, heading drags, or column-created notes. Their order and visibility can
   still be managed through configuration.
 
-`file.folder` **card moves remain unimplemented**; they diagnose as read-only
-rather than using ordinary encrypted-note move operations.
+`file.folder` card moves use guarded public file transactions, including binary
+attachments. Basenames, bytes, modification times and permissions are preserved.
+Same-filesystem moves retain file identity; cross-filesystem moves stream staged
+copies without loading attachments into memory. Destination collisions, changed
+source bytes/timestamps/permissions, hidden/private paths and symlinks reject the
+batch before publication. Blank keyboard Move To Group moves to the vault root.
+Undo/redo checks the same baselines. Encrypted move records retain staged rollback
+data through publication and durable commit; startup recovery restores interrupted
+moves or retains conflicting records. Authored links remain verbatim.
 
 ## Public data and guarded writes
 
@@ -96,13 +103,13 @@ public image activation limits; remote image URLs are not fetched.
 
 ## Remaining implementation and evidence
 
-Live standalone/named/inline embeds, card cover/layout options, folder card moves,
+Live standalone/named/inline embeds, card cover/layout options,
 remaining native authoring/integration, comprehensive Notes-design alignment,
 and complete end-to-end performance acceptance remain unfinished. Existing 5,000-note indexing/query benchmarks and
 native workflow/PTY tests are stage-specific evidence, not full UI/refresh/memory
 acceptance or demonstrated Obsidian runtime parity.
 
 Implementation: `src/bases/`; guarded document/property storage:
-`src/storage/{documents.rs,metadata.rs,document_recovery.rs}` and
+`src/storage/{documents.rs,metadata.rs,public_moves.rs,document_recovery.rs}` and
 `src/frontmatter/properties.rs`. Dependency remediation and immutable Mermaid
 compatibility pin: [DEPENDENCY_PATCHES.md](DEPENDENCY_PATCHES.md).

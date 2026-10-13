@@ -456,7 +456,9 @@ impl BasesState {
                 .context("no property selected")?
                 .clone(),
         };
-        edits::property_key(&column)?;
+        if column != "file.folder" || !matches!(intent, EditIntent::Move(_)) {
+            edits::property_key(&column)?;
+        }
         let ids = if let EditIntent::Group { ids, .. } = &intent {
             ids.clone()
         } else if self.selected_ids.is_empty() {
@@ -470,6 +472,11 @@ impl BasesState {
                 .map(|row| row.id.clone())
                 .collect()
         };
+        if column == "file.folder"
+            && let EditIntent::Move(folder) = intent
+        {
+            return self.start_folder_move(app, ids, folder);
+        }
         self.edit_intent = Some(intent);
         self.write_task = Some(WriteTask::spawn(
             app.storage.clone(),
@@ -510,8 +517,24 @@ impl BasesState {
         ));
         Ok(())
     }
+    fn remap_moved_focus(&mut self, transaction: &Transaction, forward: bool) {
+        let focused = self.row().map(|row| row.id.clone());
+        for plan in &transaction.moves {
+            let (from, to) = if forward {
+                (plan.source_id(), plan.destination_id())
+            } else {
+                (plan.destination_id(), plan.source_id())
+            };
+            if self.selected_ids.remove(from) {
+                self.selected_ids.insert(to.to_owned());
+            }
+            if focused.as_deref() == Some(from) {
+                self.focus_id = Some(to.to_owned());
+            }
+        }
+    }
     fn remember(&mut self, transaction: Transaction) {
-        if transaction.changes.is_empty() {
+        if transaction.changes.is_empty() && transaction.moves.is_empty() {
             return;
         }
         self.redo.clear();
@@ -530,6 +553,8 @@ impl BasesState {
         match result {
             Err(error) => {
                 self.edit_intent = None;
+                self.refresh(app, true);
+                app.request_notes_reconcile();
                 app.set_temporary_status(&format!("Bases: {error:#}"));
             }
             Ok(Outcome::Prepared { snapshots, key }) => {
@@ -611,15 +636,22 @@ impl BasesState {
                 }
             }
             Ok(Outcome::Changed(transaction)) => {
+                self.remap_moved_focus(&transaction, true);
+                let moved = !transaction.moves.is_empty();
                 self.remember(transaction);
                 self.refresh(app, true);
                 app.request_notes_reconcile();
-                app.set_temporary_status_static("Properties saved");
+                app.set_temporary_status_static(if moved {
+                    "Public files moved"
+                } else {
+                    "Properties saved"
+                });
             }
             Ok(Outcome::Replayed {
                 transaction,
                 forward,
             }) => {
+                self.remap_moved_focus(&transaction, forward);
                 if forward {
                     self.redo.pop();
                     self.undo.push(transaction);
@@ -635,6 +667,7 @@ impl BasesState {
             Ok(Outcome::Saved(change)) => {
                 self.remember(Transaction {
                     changes: vec![change],
+                    moves: Vec::new(),
                 });
                 self.refresh(app, false);
                 app.request_notes_reconcile();

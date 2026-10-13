@@ -610,6 +610,7 @@ dependencies = [
  "same-file",
  "serde",
  "serde_json",
+ "sha2",
  "signal-hook 0.4.5",
  "strum",
  "syntect",

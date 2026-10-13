@@ -21,15 +21,38 @@ pub struct Change {
 #[derive(Clone, Debug)]
 pub struct Transaction {
     pub changes: Vec<Change>,
+    pub moves: Vec<crate::storage::public_moves::FileMove>,
 }
 impl Transaction {
     pub fn bytes(&self) -> usize {
         self.changes
             .iter()
             .map(|change| change.before.source().len() + change.after.source().len())
-            .sum()
+            .sum::<usize>()
+            + self
+                .moves
+                .iter()
+                .map(crate::storage::public_moves::FileMove::history_bytes)
+                .sum::<usize>()
     }
     pub fn replay(&self, storage: &Storage, forward: bool, cancelled: &AtomicBool) -> Result<()> {
+        if !self.moves.is_empty() {
+            if !self.changes.is_empty() {
+                bail!("mixed public move/property history is invalid");
+            }
+            let plans: Vec<_> = self
+                .moves
+                .iter()
+                .map(|plan| {
+                    if forward {
+                        plan.clone()
+                    } else {
+                        plan.reversed()
+                    }
+                })
+                .collect();
+            return storage.apply_public_file_moves(&plans, cancelled);
+        }
         let plans = self
             .changes
             .iter()
@@ -287,6 +310,7 @@ fn apply(
     let journal = storage.begin_document_transaction(&plans)?;
     let mut transaction = Transaction {
         changes: Vec::new(),
+        moves: Vec::new(),
     };
     for (before, source) in plans {
         let result = if cancelled.load(Ordering::Relaxed) {

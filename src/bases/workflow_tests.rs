@@ -888,6 +888,121 @@ fn kanban_checkbox_moves_preserve_types_and_none_removes_property() {
 }
 
 #[test]
+fn folder_columns_move_binary_batches_with_undo_redo_and_root_keyboard_target() {
+    let (_root, mut app) = fixture();
+    let original = "---\r\ntitle: Exact\r\n---\r\nBody\r\n\r\n";
+    app.storage.create_document("A/note.md", original).unwrap();
+    fs::write(app.storage.notes_dir.join("A/image.png"), [0, 255, 128, 42]).unwrap();
+    let baseline = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&baseline,"# retained\nplugin: {opaque: true}\nfilters: file.ext == 'md' || file.ext == 'png'\nviews: [{type: kanban, name: Folder, order: [file.name], groupBy: {property: file.folder}, groupOrder: [A, B, null]}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    idle(&mut app);
+    app.bases_state
+        .as_mut()
+        .unwrap()
+        .selected_ids
+        .extend(["A/note.md".into(), "A/image.png".into()]);
+    drag_card(&mut app, "A/note.md", 1);
+    assert!(!app.storage.notes_dir.join("A/note.md").exists());
+    assert_eq!(
+        app.storage.load_document("B/note.md").unwrap().source(),
+        original
+    );
+    assert_eq!(
+        fs::read(app.storage.notes_dir.join("B/image.png")).unwrap(),
+        [0, 255, 128, 42]
+    );
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "B/note.md"
+    );
+    key(&mut app, KeyCode::Char('u'));
+    idle(&mut app);
+    assert_eq!(
+        app.storage.load_document("A/note.md").unwrap().source(),
+        original
+    );
+    assert_eq!(
+        fs::read(app.storage.notes_dir.join("A/image.png")).unwrap(),
+        [0, 255, 128, 42]
+    );
+    event(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+    );
+    idle(&mut app);
+    assert!(!app.storage.notes_dir.join("A/image.png").exists());
+    key(&mut app, KeyCode::Char('m'));
+    prompt_text(&mut app, "");
+    assert_eq!(
+        app.storage.load_document("note.md").unwrap().source(),
+        original
+    );
+    assert_eq!(
+        fs::read(app.storage.notes_dir.join("image.png")).unwrap(),
+        [0, 255, 128, 42]
+    );
+    assert!(!app.storage.notes_dir.join("B/note.md").exists());
+    assert!(
+        app.storage
+            .load_document("board.base")
+            .unwrap()
+            .source()
+            .contains("opaque: true")
+    );
+    assert_eq!(
+        app.storage.recover_documents().unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        fs::read(app.storage.notes_dir.join("private.clin")).unwrap(),
+        b"not a public document"
+    );
+}
+
+#[test]
+fn folder_column_collision_rejects_entire_batch_and_stale_undo_retains_new_bytes() {
+    let (_root, mut app) = fixture();
+    app.storage.create_document("A/one.md", "one").unwrap();
+    app.storage.create_document("A/two.md", "two").unwrap();
+    app.storage
+        .create_document("B/two.md", "collision")
+        .unwrap();
+    board(&mut app, "file.folder", "[A, B, null]");
+    app.bases_state
+        .as_mut()
+        .unwrap()
+        .selected_ids
+        .extend(["A/one.md".into(), "A/two.md".into()]);
+    drag_card(&mut app, "A/one.md", 1);
+    assert_eq!(
+        app.storage.load_document("A/one.md").unwrap().source(),
+        "one"
+    );
+    assert_eq!(
+        app.storage.load_document("A/two.md").unwrap().source(),
+        "two"
+    );
+    assert_eq!(
+        app.storage.load_document("B/two.md").unwrap().source(),
+        "collision"
+    );
+    assert!(app.status.contains("already exists"));
+    app.bases_state.as_mut().unwrap().selected_ids.clear();
+    drag_card(&mut app, "A/one.md", 1);
+    let baseline = app.storage.load_document("B/one.md").unwrap();
+    app.storage.save_document(&baseline, "external").unwrap();
+    key(&mut app, KeyCode::Char('u'));
+    idle(&mut app);
+    assert_eq!(
+        app.storage.load_document("B/one.md").unwrap().source(),
+        "external"
+    );
+    assert!(!app.storage.notes_dir.join("A/one.md").exists());
+    assert!(app.status.contains("changed"));
+}
+
+#[test]
 fn kanban_date_columns_and_folder_creation_retain_native_types() {
     let (_root, mut app) = fixture();
     fs::create_dir_all(app.storage.notes_dir.join(".obsidian")).unwrap();
