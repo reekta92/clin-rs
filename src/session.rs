@@ -110,6 +110,7 @@ pub fn start_session(app: &mut App) -> SessionGuard {
         app.fs_overflow = overflow.clone();
 
         let notes_path = app.storage.notes_dir.clone();
+        let ignored_root = notes_path.clone();
         let overflow_cb = overflow.clone();
         let mut watcher =
             match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
@@ -131,7 +132,11 @@ pub fn start_session(app: &mut App) -> SessionGuard {
                 if !event.paths.is_empty() {
                     let all_ignored = event.paths.iter().all(|p| {
                         let path_str = p.to_string_lossy();
-                        path_str.contains("/.git/")
+                        p.strip_prefix(&ignored_root).is_ok_and(|relative| {
+                            relative.components().next().is_some_and(|component| {
+                                matches!(component.as_os_str().to_str(), Some(".clin" | ".git"))
+                            })
+                        }) || path_str.contains("/.git/")
                             || path_str.contains("\\.git\\")
                             || path_str.ends_with(".tmp")
                             || path_str.ends_with(".lock")

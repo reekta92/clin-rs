@@ -93,8 +93,22 @@ impl App {
         self.set_default_status();
     }
 
+    pub(crate) fn invalidate_bases(&mut self) {
+        if let Some(worker) = &mut self.bases_worker {
+            worker.invalidate();
+        }
+        self.bases_refresh_requested = true;
+    }
+
     pub fn poll_bases(&mut self) -> bool {
         let mut dirty = false;
+        if self.bases_refresh_requested
+            && let Some(mut state) = self.bases_state.take()
+        {
+            state.refresh(self, false);
+            self.bases_state = Some(state);
+            dirty = true;
+        }
         if let Some(loaded) = self.bases_worker.as_mut().and_then(|worker| worker.poll()) {
             if let Some(state) = &mut self.bases_state {
                 state.install(loaded);

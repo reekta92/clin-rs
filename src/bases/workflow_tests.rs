@@ -296,6 +296,85 @@ fn multiline_formula_input_applies_once_and_invalid_input_retains_source() {
 }
 
 #[test]
+fn watcher_debounce_retains_events_and_refreshes_without_a_second_event() {
+    use crate::app::WatchedFsEvent;
+    use notify::{
+        EventKind,
+        event::{DataChange, ModifyKind},
+    };
+    let (_root, mut app) = fixture();
+    let source = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(&source, &source.source().replace("score: 2", "score: 7"))
+        .unwrap();
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1024);
+    app.fs_event_rx = Some(receiver);
+    let changed = notify::Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content)))
+        .add_path(app.storage.notes_dir.join("public.md"));
+    sender
+        .send(WatchedFsEvent {
+            observed_at: Instant::now(),
+            event: changed.clone(),
+        })
+        .unwrap();
+    crate::process_watcher_events(&mut app);
+    assert_eq!(app.watcher_pending_events.len(), 1);
+    assert!(!app.bases_state.as_ref().unwrap().loading);
+    app.watcher_window_start = Some(
+        Instant::now()
+            .checked_sub(Duration::from_millis(260))
+            .unwrap(),
+    );
+    crate::process_watcher_events(&mut app);
+    assert!(app.watcher_pending_events.is_empty());
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    assert!(
+        matches!(&app.bases_state.as_ref().unwrap().result().unwrap().rows[0].values["score"],super::value::Value::Number(value) if *value==7.0)
+    );
+    for _ in 0..513 {
+        sender
+            .send(WatchedFsEvent {
+                observed_at: Instant::now(),
+                event: changed.clone(),
+            })
+            .unwrap();
+    }
+    crate::process_watcher_events(&mut app);
+    assert!(app.watcher_pending_events.is_empty());
+    assert!(app.watcher_window_start.is_none());
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+}
+
+#[test]
+fn metadata_invalidation_survives_cancelled_refresh_view_switch_and_reopen() {
+    let (_root, mut app) = fixture();
+    let source = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(&source, &source.source().replace("score: 2", "score: 7"))
+        .unwrap();
+    app.invalidate_bases();
+    key(&mut app, KeyCode::Tab);
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    assert!(
+        matches!(&app.bases_state.as_ref().unwrap().result().unwrap().rows[0].values["score"],super::value::Value::Number(value) if *value==7.0)
+    );
+    app.bases_state = None;
+    app.mode = ViewMode::List;
+    let source = app.storage.load_document("public.md").unwrap();
+    app.storage
+        .save_document(&source, &source.source().replace("score: 7", "score: 9"))
+        .unwrap();
+    app.send_catalog_paths(vec![crate::app::catalog::PathChange::Upsert(
+        "public.md".into(),
+    )]);
+    app.open_bases_view("board.base", None);
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    assert!(
+        matches!(&app.bases_state.as_ref().unwrap().result().unwrap().rows[0].values["score"],super::value::Value::Number(value) if *value==9.0)
+    );
+}
+
+#[test]
 fn configuration_paste_validates_and_preserves_unknown_data() {
     let (_root, mut app) = fixture();
     key(&mut app, KeyCode::Char(':'));

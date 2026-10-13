@@ -11,6 +11,7 @@ use std::collections::HashSet;
 
 impl App {
     pub fn request_notes_reconcile(&mut self) {
+        self.invalidate_bases();
         let generation_num = self.catalog_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let cmd = crate::app::catalog::CatalogCommand::Reconcile {
             generation: generation_num,
@@ -32,6 +33,9 @@ impl App {
     }
 
     pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
+        if !changes.is_empty() {
+            self.invalidate_bases();
+        }
         let generation_num = self.catalog_generation.load(Ordering::SeqCst);
         let cmd = crate::app::catalog::CatalogCommand::Paths {
             generation: generation_num,

@@ -254,6 +254,7 @@ impl BasesState {
                 self.environment.clone(),
                 invalidate,
             );
+            app.bases_refresh_requested = false;
         }
     }
 }

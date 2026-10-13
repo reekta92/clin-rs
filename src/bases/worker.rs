@@ -40,6 +40,7 @@ pub struct BasesWorker {
     receiver: Receiver<Response>,
     pending: Option<Request>,
     generation: u64,
+    metadata_dirty: bool,
     cancelled: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -115,9 +116,16 @@ impl BasesWorker {
             receiver,
             pending: None,
             generation: 0,
+            metadata_dirty: true,
             cancelled: Arc::new(AtomicBool::new(false)),
             thread: Some(thread),
         })
+    }
+    pub fn invalidate(&mut self) {
+        self.cancel();
+        self.generation += 1;
+        self.pending = None;
+        self.metadata_dirty = true;
     }
     pub fn request(
         &mut self,
@@ -127,6 +135,7 @@ impl BasesWorker {
         invalidate: bool,
     ) {
         self.cancel();
+        self.metadata_dirty |= invalidate;
         self.cancelled = Arc::new(AtomicBool::new(false));
         self.generation += 1;
         self.pending = Some(Request {
@@ -134,7 +143,7 @@ impl BasesWorker {
             id: id.into(),
             view,
             environment,
-            invalidate,
+            invalidate: self.metadata_dirty,
             cancelled: self.cancelled.clone(),
         });
         self.send_pending();
@@ -153,6 +162,9 @@ impl BasesWorker {
         let mut result = None;
         while let Ok(response) = self.receiver.try_recv() {
             if response.generation == self.generation && !self.cancelled.load(Ordering::Relaxed) {
+                if response.loaded.is_ok() {
+                    self.metadata_dirty = false;
+                }
                 result = Some(response.loaded);
             }
         }

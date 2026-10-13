@@ -823,25 +823,30 @@ fn process_watcher_events(app: &mut App) {
     let Some(ref rx) = app.fs_event_rx else {
         return;
     };
-    let overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
-
-    let mut events = Vec::new();
+    let mut overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
     while let Ok(evt) = rx.try_recv() {
-        events.push(evt);
+        if app.watcher_pending_events.len() >= 512 {
+            overflow = true;
+            break;
+        }
+        if !matches!(evt.event.kind, notify::EventKind::Access(_)) {
+            app.watcher_pending_events.push(evt);
+        }
     }
 
     if overflow {
+        app.watcher_pending_events.clear();
         app.request_notes_reconcile();
         app.watcher_window_start = None;
         return;
     }
 
-    if events.is_empty() && app.watcher_window_start.is_none() {
+    if app.watcher_pending_events.is_empty() && app.watcher_window_start.is_none() {
         return;
     }
 
     if app.watcher_window_start.is_none() {
-        if let Some(first) = events.first() {
+        if let Some(first) = app.watcher_pending_events.first() {
             app.watcher_window_start = Some(first.observed_at);
         } else {
             app.watcher_window_start = Some(Instant::now());
@@ -856,6 +861,7 @@ fn process_watcher_events(app: &mut App) {
     }
 
     app.watcher_window_start = None;
+    let events = std::mem::take(&mut app.watcher_pending_events);
 
     let mut changes_map: HashMap<String, crate::app::catalog::PathChange> = HashMap::new();
     let mut needs_full_reconcile = false;
