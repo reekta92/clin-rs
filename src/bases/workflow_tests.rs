@@ -414,6 +414,104 @@ fn cards_form_a_bounded_grid_and_keep_last_row_visible() {
 }
 
 #[test]
+fn public_image_activation_uses_native_preview_and_preserves_bytes() {
+    let (_root, mut app) = fixture();
+    app.image_picker = Some(ratatui_image::picker::Picker::halfblocks());
+    app.config.features.images = FeatureState::Enabled;
+    let path = app.storage.notes_dir.join("picture.png");
+    image::RgbaImage::from_pixel(32, 16, image::Rgba([25, 180, 40, 255]))
+        .save(&path)
+        .unwrap();
+    let original = fs::read(&path).unwrap();
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base,"filters: file.ext == 'png'\nviews: [{type: table, name: Images, order: [file.name]}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().row().unwrap().id,
+        "picture.png"
+    );
+    key(&mut app, KeyCode::Enter);
+    wait(&mut app, |app| {
+        app.bases_state.as_ref().unwrap().dialog.is_some()
+    });
+    assert!(render(&mut app).contains("PUBLIC IMAGE"));
+    assert_eq!(app.mode, ViewMode::Bases);
+    key(&mut app, KeyCode::Char('q'));
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_none());
+    assert!(app.needs_full_redraw);
+    assert_eq!(fs::read(&path).unwrap(), original);
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base,"filters: file.ext == 'md'\nformulas: {cover: 'image(\"picture.png\")'}\nviews: [{type: table, name: Decorations, order: [formula.cover]}]\n").unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    wait(&mut app, |app| !app.bases_state.as_ref().unwrap().loading);
+    key(&mut app, KeyCode::Enter);
+    wait(&mut app, |app| {
+        app.bases_state.as_ref().unwrap().dialog.is_some()
+    });
+    assert!(render(&mut app).contains("PUBLIC IMAGE"));
+    app.config.core.enable_key_sequences = true;
+    let previous = app
+        .keybinds
+        .bases
+        .insert(
+            crate::keybinds::BasesAction::Back,
+            vec![crate::keybinds::KeyCombo::parse("z z").unwrap()],
+        )
+        .unwrap();
+    key(&mut app, KeyCode::Char('z'));
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_some());
+    key(&mut app, KeyCode::Char('z'));
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_none());
+    app.keybinds
+        .bases
+        .insert(crate::keybinds::BasesAction::Back, previous);
+    app.config.features.images = FeatureState::Disabled;
+    key(&mut app, KeyCode::Enter);
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    assert!(app.status.contains("enable images"));
+    assert!(app.storage.load_public_attachment("private.clin").is_err());
+    fs::create_dir_all(app.storage.notes_dir.join(".private")).unwrap();
+    fs::write(
+        app.storage.notes_dir.join(".private/picture.png"),
+        &original,
+    )
+    .unwrap();
+    assert!(
+        app.storage
+            .load_public_attachment(".private/picture.png")
+            .is_err()
+    );
+    fs::write(
+        app.storage.notes_dir.join("large.png"),
+        vec![0; 8 * 1024 * 1024 + 1],
+    )
+    .unwrap();
+    assert!(app.storage.load_public_attachment("large.png").is_err());
+    #[cfg(unix)]
+    {
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("image.png"), &original).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("image.png"),
+            app.storage.notes_dir.join("escape.png"),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(
+            app.storage.notes_dir.join("private.clin"),
+            app.storage.notes_dir.join("private-alias.png"),
+        )
+        .unwrap();
+        assert!(app.storage.load_public_attachment("escape.png").is_err());
+        assert!(
+            app.storage
+                .load_public_attachment("private-alias.png")
+                .is_err()
+        );
+    }
+}
+
+#[test]
 fn configuration_paste_validates_and_preserves_unknown_data() {
     let (_root, mut app) = fixture();
     key(&mut app, KeyCode::Char(':'));

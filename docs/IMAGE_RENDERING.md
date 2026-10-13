@@ -4,7 +4,7 @@
 
 Native pixel image rendering via the `ratatui_image` crate. The protocol is auto-detected at startup from sixel, kitty, iTerm, or halfblocks (picker initialized during application startup).
 
-**Source:** `src/image_render/` (`mod.rs`, `cache.rs`, `worker.rs`)
+**Source:** `src/image_render/{cache.rs,worker.rs}`; module declared in `src/lib.rs`.
 
 ## Architecture
 
@@ -23,8 +23,25 @@ The image rendering pipeline consists of three layers:
 | upstream `pinstar` crate (`images` feature), `src/pinstar_adapter.rs` | Canvas image file nodes |
 | `src/app/loading.rs` | Install decoded images into active view caches |
 | `src/app/notes.rs`, `src/app/views.rs` | Per-view cache initialization |
+| `src/bases/{write.rs,authoring.rs}` | Guarded public image activation and native image popup |
 
 Draw v2 stores strokes, shapes, and text only. Legacy Draw image records are dropped during migration; Draw is not an image-rendering integration.
+
+## Bases public-image activation
+
+Bases can activate public PNG/JPEG/GIF/WebP rows and typed `image()` values.
+Resolution stays within the public metadata snapshot; a background operation
+then validates the vault path, reads at most 8 MiB, and decodes with a 16 MiB
+allocation limit and maximum dimensions of 8192×8192. The result is downscaled
+to at most 512 pixels per side and rendered through the existing terminal
+picker/protocol. No notes are decrypted and no URLs are fetched.
+
+Configured Bases Back binding closes the image popup without leaving Bases;
+a full redraw clears terminal image artifacts. `[features] images = false` or
+an unavailable picker produces an explicit diagnostic. Other attachment types
+without a native preview also diagnose explicitly rather than entering the
+ordinary note/decryption path. These activation limits do not change the
+normal List/Edit image worker policy.
 
 ## Configuration
 

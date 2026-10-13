@@ -57,6 +57,10 @@ pub enum Outcome {
     Saved(super::edits::Change),
     Created(DocumentSnapshot),
     Opened(DocumentSnapshot),
+    Image {
+        id: String,
+        image: Box<image::DynamicImage>,
+    },
 }
 pub struct WriteTask {
     receiver: Receiver<Result<Outcome>>,
@@ -74,51 +78,78 @@ impl WriteTask {
         let (sender, receiver) = channel();
         pool.spawn(move || {
             let result = (|| {
-                if flag.load(Ordering::Relaxed) { bail!("Bases operation cancelled"); }
+                if flag.load(Ordering::Relaxed) {
+                    bail!("Bases operation cancelled");
+                }
                 match operation {
-                Operation::Prepare {
-                    metadata,
-                    ids,
-                    column,
-                } => {
-                    let key = edits::property_key(&column)?.to_owned();
-                    let snapshots = edits::prepare(&storage, &metadata, &ids, &flag)?;
-                    Ok(Outcome::Prepared { snapshots, key })
-                }
-                Operation::Commit {
-                    snapshots,
-                    key,
-                    value,
-                } => {
-                    edits::commit(&storage, snapshots, &[(key, value)], &flag).map(Outcome::Changed)
-                }
-                Operation::Replay {
-                    transaction,
-                    forward,
-                } => {
-                    transaction.replay(&storage, forward, &flag)?;
-                    Ok(Outcome::Replayed {
+                    Operation::Prepare {
+                        metadata,
+                        ids,
+                        column,
+                    } => {
+                        let key = edits::property_key(&column)?.to_owned();
+                        let snapshots = edits::prepare(&storage, &metadata, &ids, &flag)?;
+                        Ok(Outcome::Prepared { snapshots, key })
+                    }
+                    Operation::Commit {
+                        snapshots,
+                        key,
+                        value,
+                    } => edits::commit(&storage, snapshots, &[(key, value)], &flag)
+                        .map(Outcome::Changed),
+                    Operation::Replay {
                         transaction,
                         forward,
-                    })
+                    } => {
+                        transaction.replay(&storage, forward, &flag)?;
+                        Ok(Outcome::Replayed {
+                            transaction,
+                            forward,
+                        })
+                    }
+                    Operation::Save { baseline, source } => {
+                        let after = storage.save_document(&baseline, &source)?;
+                        Ok(Outcome::Saved(super::edits::Change {
+                            before: baseline,
+                            after,
+                        }))
+                    }
+                    Operation::Create { id, source } => {
+                        storage.create_document(&id, &source).map(Outcome::Created)
+                    }
+                    Operation::Export {
+                        id,
+                        columns,
+                        result,
+                        markdown,
+                    } => {
+                        let source = super::export::export(&columns, &result, markdown)?;
+                        storage.create_document(&id, &source).map(Outcome::Created)
+                    }
+                    Operation::Open { id, metadata } => {
+                        let file = metadata.file(&id).ok_or_else(|| {
+                            anyhow::anyhow!("file is absent from public metadata")
+                        })?;
+                        if crate::storage::is_image_ext(&file.extension) {
+                            let bytes = storage.load_public_attachment(&id)?;
+                            let image =
+                                crate::image_render::worker::decode_public_image(bytes, 512)?;
+                            if flag.load(Ordering::Relaxed) {
+                                bail!("Bases operation cancelled");
+                            }
+                            Ok(Outcome::Image {
+                                id,
+                                image: Box::new(image),
+                            })
+                        } else {
+                            if !matches!(file.extension.as_str(), "md" | "base") {
+                                bail!("native preview is unavailable for this attachment type");
+                            }
+                            storage.load_document(&id).map(Outcome::Opened)
+                        }
+                    }
                 }
-                Operation::Save { baseline, source } => {
-                    let after=storage.save_document(&baseline,&source)?;
-                    Ok(Outcome::Saved(super::edits::Change {before:baseline,after}))
-                }
-                Operation::Create { id, source } => {
-                    storage.create_document(&id, &source).map(Outcome::Created)
-                }
-                Operation::Export {id,columns,result,markdown} => {
-                    let source=super::export::export(&columns,&result,markdown)?;
-                    storage.create_document(&id,&source).map(Outcome::Created)
-                }
-                Operation::Open {id,metadata} => {
-                    let file=metadata.file(&id).ok_or_else(||anyhow::anyhow!("file is absent from public metadata"))?;
-                    if !matches!(file.extension.as_str(),"md"|"base") {bail!("this attachment needs a native preview; source editing is limited to Markdown and Bases");}
-                    storage.load_document(&id).map(Outcome::Opened)
-                }
-            }})();
+            })();
             let _ = sender.send(result);
         });
         Self {

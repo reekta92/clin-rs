@@ -91,6 +91,20 @@ impl Storage {
         Ok(resolved)
     }
 
+    pub(crate) fn load_public_attachment(&self, id: &str) -> Result<Vec<u8>> {
+        let path = self.document_path(id)?;
+        let file = fs::File::open(&path).context("failed to open public attachment")?;
+        if !file.metadata()?.is_file() {
+            bail!("public attachment must be a regular file");
+        }
+        let mut bytes = Vec::new();
+        file.take(8 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            bail!("public attachment exceeds 8 MiB preview limit");
+        }
+        Ok(bytes)
+    }
+
     pub fn load_document(&self, id: &str) -> Result<DocumentSnapshot> {
         let path = self.document_path(id)?;
         let source = read_bounded_text(&path, 16 * 1024 * 1024)?;

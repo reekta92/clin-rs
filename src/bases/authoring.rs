@@ -131,6 +131,10 @@ pub enum Target {
     MoveGroup,
 }
 pub enum Dialog {
+    Image {
+        id: String,
+        protocol: Box<ratatui_image::protocol::StatefulProtocol>,
+    },
     Menu {
         selected: usize,
     },
@@ -154,6 +158,31 @@ impl Dialog {
     }
     pub fn render(&mut self, frame: &mut Frame, area: Rect, app: &App) {
         match self {
+            Self::Image { id, protocol } => {
+                let title = format!(
+                    "Public image · {}",
+                    crate::fsutil::sanitize_for_terminal(id)
+                );
+                let hints = format!(
+                    "{} close",
+                    app.keybinds
+                        .display_bases(crate::keybinds::BasesAction::Back)
+                );
+                let inner = crate::ui::draw_popup_frame(
+                    frame,
+                    area,
+                    &title,
+                    crate::ui::PopupSize::Large,
+                    crate::ui::PopupHints::Text(&hints),
+                    &app.app_theme,
+                );
+                frame.render_stateful_widget(
+                    ratatui_image::StatefulImage::default()
+                        .resize(ratatui_image::Resize::Fit(None)),
+                    inner,
+                    &mut **protocol,
+                );
+            }
             Self::Menu { selected } => {
                 let inner = crate::ui::draw_popup_frame(
                     frame,
@@ -335,8 +364,22 @@ impl BasesState {
                 .id
                 .clone(),
             Some(super::value::Value::File(id)) => id.clone(),
+            Some(super::value::Value::Image(target)) => loaded
+                .metadata
+                .resolve_link(&row.id, &target.display())
+                .context("image is unresolved in public dataset")?
+                .id
+                .clone(),
             _ => row.id.clone(),
         };
+        if loaded
+            .metadata
+            .file(&id)
+            .is_some_and(|file| crate::storage::is_image_ext(&file.extension))
+            && (!app.config.features.images.is_enabled() || app.image_picker.is_none())
+        {
+            bail!("native image preview unavailable; enable images and restart");
+        }
         self.write_task = Some(WriteTask::spawn(
             app.storage.clone(),
             &app.notes_worker_pool,
@@ -514,6 +557,18 @@ impl BasesState {
                 app.set_temporary_status(&format!("Created {}", snapshot.id()));
             }
             Ok(Outcome::Opened(snapshot)) => app.open_public_document(snapshot),
+            Ok(Outcome::Image { id, image }) => {
+                if app.config.features.images.is_enabled()
+                    && let Some(picker) = &app.image_picker
+                {
+                    self.dialog = Some(Dialog::Image {
+                        id,
+                        protocol: Box::new(picker.new_resize_protocol(*image)),
+                    });
+                } else {
+                    app.set_temporary_status("Native image preview unavailable");
+                }
+            }
         }
         true
     }
@@ -603,6 +658,25 @@ impl BasesState {
             return false;
         };
         let mut keep = true;
+        if matches!(dialog, Dialog::Image { .. }) {
+            if let Event::Key(key) = event
+                && key.kind != KeyEventKind::Release
+                && matches!(
+                    app.keybinds.resolve_bases(
+                        &mut self.matcher,
+                        *key,
+                        app.config.sequences_enabled(),
+                        app.config.counts_enabled()
+                    ),
+                    crate::keybinds::MatchOutcome::Matched(crate::keybinds::BasesAction::Back, _)
+                )
+            {
+                app.needs_full_redraw = true;
+            } else {
+                self.dialog = Some(dialog);
+            }
+            return true;
+        }
         if let Event::Key(key) = event
             && key.kind != KeyEventKind::Release
         {
