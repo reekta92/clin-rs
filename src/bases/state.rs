@@ -23,6 +23,7 @@ pub struct BasesState {
     pub offset: usize,
     pub selected_ids: HashSet<String>,
     pub loading: bool,
+    pub(super) creating: bool,
     pub error: Option<String>,
     pub matcher: KeyMatcher,
     pub body_area: Rect,
@@ -60,6 +61,7 @@ impl BasesState {
             offset: 0,
             selected_ids: HashSet::new(),
             loading: true,
+            creating: false,
             error: None,
             matcher: KeyMatcher::default(),
             body_area: Rect::default(),
@@ -79,6 +81,26 @@ impl BasesState {
             undo: Vec::new(),
             redo: Vec::new(),
         }
+    }
+    pub(crate) fn for_creation(
+        id: String,
+        previous_mode: crate::app::ViewMode,
+        storage: crate::storage::Storage,
+        pool: &rayon::ThreadPool,
+    ) -> Self {
+        let mut state = Self::new(id.clone(), None);
+        state.previous_mode = previous_mode;
+        state.loading = false;
+        state.creating = true;
+        state.write_task = Some(super::write::WriteTask::spawn(
+            storage,
+            pool,
+            super::write::Operation::CreateBase { id },
+        ));
+        state
+    }
+    pub(crate) fn has_popup(&self) -> bool {
+        self.dialog.is_some() || self.search_popup.is_some()
     }
     pub fn result(&self) -> Option<&QueryResult> {
         self.loaded

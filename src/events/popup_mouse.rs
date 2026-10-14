@@ -393,7 +393,12 @@ impl crate::popups::ActivePopup {
             // === Group A: Simple list-style popups ===
             CreateFormat(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
-                match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
+                match handle_list_popup_mouse(
+                    mouse,
+                    area,
+                    &mut p.selected,
+                    crate::popups::CreateFormatPopup::COUNT,
+                ) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(CreateFormat(p));
                     }

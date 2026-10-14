@@ -75,7 +75,14 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate
         return;
     }
     let Some(loaded) = &state.loaded else {
-        frame.render_widget(Paragraph::new("Loading public vault metadata…"), area);
+        frame.render_widget(
+            Paragraph::new(if state.creating {
+                "Creating Bases document…"
+            } else {
+                "Loading public vault metadata…"
+            }),
+            area,
+        );
         return;
     };
     let Ok(result) = &loaded.result else {

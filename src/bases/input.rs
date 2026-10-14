@@ -335,6 +335,10 @@ impl OverlayView for BasesState {
 }
 impl BasesState {
     pub fn refresh(&mut self, app: &mut App, invalidate: bool) {
+        if self.creating {
+            app.bases_refresh_requested = false;
+            return;
+        }
         self.loading = true;
         if invalidate {
             self.media.invalidate();

@@ -41,6 +41,9 @@ pub enum Operation {
         baseline: DocumentSnapshot,
         source: String,
     },
+    CreateBase {
+        id: String,
+    },
     CreateNote {
         id: String,
         group: Option<(String, Option<Value>)>,
@@ -73,6 +76,7 @@ pub enum Outcome {
     },
     Saved(super::edits::Change),
     Created(DocumentSnapshot),
+    CreatedBase(DocumentSnapshot),
     Opened(DocumentSnapshot),
     Image {
         id: String,
@@ -167,6 +171,21 @@ impl WriteTask {
                             before: baseline,
                             after,
                         }))
+                    }
+                    Operation::CreateBase { id } => {
+                        if !id.ends_with(".base") {
+                            bail!("new Bases path must end in .base");
+                        }
+                        let path = storage.document_path(&id)?;
+                        if let Some(parent) = path.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        if flag.load(Ordering::Relaxed) {
+                            bail!("Bases operation cancelled");
+                        }
+                        storage
+                            .create_document(&id, super::format::BaseDocument::new_table().source())
+                            .map(Outcome::CreatedBase)
                     }
                     Operation::CreateNote {
                         id,

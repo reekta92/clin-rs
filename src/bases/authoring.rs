@@ -625,7 +625,12 @@ impl BasesState {
         match result {
             Err(error) => {
                 self.edit_intent = None;
-                self.refresh(app, true);
+                if self.creating {
+                    self.loading = false;
+                    self.error = Some(format!("Could not create Bases document: {error:#}"));
+                } else {
+                    self.refresh(app, true);
+                }
                 app.request_notes_reconcile();
                 app.set_temporary_status(&format!("Bases: {error:#}"));
             }
@@ -744,6 +749,13 @@ impl BasesState {
                 self.refresh(app, false);
                 app.request_notes_reconcile();
                 app.set_temporary_status_static("Base configuration saved");
+            }
+            Ok(Outcome::CreatedBase(snapshot)) => {
+                self.creating = false;
+                self.error = None;
+                self.refresh(app, true);
+                app.request_notes_reconcile();
+                app.set_temporary_status(&format!("Created {}", snapshot.id()));
             }
             Ok(Outcome::Created(snapshot)) => {
                 self.focus_id = Some(snapshot.id().to_owned());

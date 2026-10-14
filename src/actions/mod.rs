@@ -136,6 +136,16 @@ simple_action!(
     open_graph_view
 );
 simple_action!(
+    CreateBaseAction,
+    "bases.create",
+    "Create Bases File",
+    "Create a public .base query and open its native table view",
+    ActionCategory::Views,
+    "\u{f0ce}",
+    "\u{25a6}",
+    begin_create_base
+);
+simple_action!(
     CreateCanvasAction,
     "create_canvas",
     "Create Canvas Map",
@@ -253,6 +263,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
+        Box::new(CreateBaseAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(ocr::PasteImageAction),
         Box::new(ocr::InsertImageFromFileAction),
@@ -362,6 +373,7 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
         "draw.create" => app.config.features.draw_view.is_enabled(),
         "graph.open" => app.config.features.graph_view.is_enabled(),
         "create_canvas" => app.config.features.canvas_view.is_enabled(),
+        "bases.create" => app.config.features.bases_view.is_enabled(),
         "outline.open" => app.config.features.outline_view.is_enabled(),
         "manage_subnotes_list" => app.config.features.subnotes.is_enabled(),
         "note.encrypt" | "note.decrypt" => app.config.features.encryption.is_enabled(),

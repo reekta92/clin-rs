@@ -984,6 +984,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::Draw => "NEW DRAWING",
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
+            crate::popups::NoteFormat::Base => "NEW BASES FILE",
         };
         draw_text_prompt_popup(
             frame,

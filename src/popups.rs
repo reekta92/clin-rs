@@ -307,11 +307,22 @@ pub enum NoteFormat {
     Draw,
     Canvas,
     PlainText,
+    Base,
 }
 
 pub struct CreateFormatPopup {
     pub folder: String,
     pub selected: usize,
+}
+impl CreateFormatPopup {
+    pub const LABELS: [&'static str; 5] = [
+        "Markdown Note (.md)",
+        "Plain Text (.txt)",
+        "Drawing (.draw)",
+        "Canvas (.canvas)",
+        "Bases (.base)",
+    ];
+    pub const COUNT: usize = Self::LABELS.len();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -442,12 +453,7 @@ impl ActivePopup {
                 frame,
                 area,
                 "CREATE NEW",
-                &[
-                    "Markdown Note (.md)",
-                    "Plain Text (.txt)",
-                    "Drawing (.draw)",
-                    "Canvas (.canvas)",
-                ],
+                &CreateFormatPopup::LABELS,
                 p.selected,
                 keybinds,
                 theme,

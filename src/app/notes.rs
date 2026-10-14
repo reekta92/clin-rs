@@ -993,6 +993,7 @@ impl App {
                 1 => self.begin_create_text_in_folder(popup.folder), // .txt (new)
                 2 => self.begin_create_draw_in_folder(popup.folder), // .draw
                 3 => self.begin_create_canvas_in_folder(popup.folder), // .canvas
+                4 => self.begin_create_base_in_folder(popup.folder),
                 _ => {}
             }
         }
@@ -1043,6 +1044,7 @@ impl App {
             let mut title = popup.input.lines().join("");
             title = title.trim().to_string();
             match format {
+                crate::popups::NoteFormat::Base => self.create_base(popup.folder, title),
                 crate::popups::NoteFormat::Markdown => {
                     if title.is_empty() {
                         title = String::from("Untitled note");

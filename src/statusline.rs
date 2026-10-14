@@ -291,6 +291,58 @@ pub fn active_note(app: &App, view: ViewMode) -> Option<&NoteSummary> {
 
 impl StatuslineContext<'_> {
     pub fn resolve(&self, name: &str) -> Option<Cow<'static, str>> {
+        if self.view == ViewMode::Bases {
+            let state = self.app.and_then(|app| app.bases_state.as_ref());
+            let result = state.and_then(|state| state.result());
+            let value = match name {
+                "bases_rows" | "visual_total" => {
+                    Some(result.map_or(0, |result| result.rows.len()).to_string())
+                }
+                "bases_matched" | "note_count" => {
+                    Some(result.map_or(0, |result| result.matched).to_string())
+                }
+                "bases_selected" | "selected_count" => Some(
+                    state
+                        .map_or(0, |state| state.selected_ids.len())
+                        .to_string(),
+                ),
+                "visual_index" => Some(
+                    state
+                        .and_then(|state| match state.items.get(state.selected) {
+                            Some(crate::bases::state::Item::Row(index)) => Some(index + 1),
+                            _ => None,
+                        })
+                        .unwrap_or(0)
+                        .to_string(),
+                ),
+                "bases_view" => Some(
+                    state
+                        .and_then(|state| state.loaded.as_ref())
+                        .map_or_else(String::new, |loaded| {
+                            loaded.document.config.views[loaded.view].name.clone()
+                        }),
+                ),
+                "bases_property" => Some(
+                    state
+                        .and_then(|state| {
+                            state
+                                .loaded
+                                .as_ref()
+                                .and_then(|loaded| loaded.columns.get(state.column))
+                        })
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+                _ => None,
+            };
+            if let Some(value) = value {
+                return Some(
+                    crate::fsutil::sanitize_for_terminal(&value)
+                        .into_owned()
+                        .into(),
+                );
+            }
+        }
         match name {
             // Global / App
             "view" => {

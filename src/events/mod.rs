@@ -168,9 +168,12 @@ fn route_selection_popup(
         crate::popups::ActivePopup::Sort(p) => {
             route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
         }
-        crate::popups::ActivePopup::CreateFormat(p) => {
-            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
-        }
+        crate::popups::ActivePopup::CreateFormat(p) => route_selection_list(
+            &key,
+            &app.keybinds,
+            &mut p.selected,
+            crate::popups::CreateFormatPopup::COUNT - 1,
+        ),
         _ => return false,
     };
     match action {

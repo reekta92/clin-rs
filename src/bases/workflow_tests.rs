@@ -1,4 +1,6 @@
 //! Native overlay workflows over a disposable public vault, without terminal or clipboard dependencies.
+#[path = "creation_workflow_tests.rs"]
+mod creation;
 #[path = "media_workflow_tests.rs"]
 mod media;
 use crate::{

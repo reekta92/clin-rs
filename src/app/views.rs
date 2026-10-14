@@ -67,14 +67,8 @@ impl App {
         ) {
             return;
         }
-        if self.bases_worker.is_none() {
-            match crate::bases::worker::BasesWorker::new(self.storage.clone()) {
-                Ok(worker) => self.bases_worker = Some(worker),
-                Err(error) => {
-                    self.set_temporary_status(&format!("Failed to start Bases worker: {error}"));
-                    return;
-                }
-            }
+        if !self.ensure_bases_worker() {
+            return;
         }
         let mut state = crate::bases::state::BasesState::new(id.to_owned(), named_view);
         state.previous_mode = if self.mode == ViewMode::Bases {
@@ -93,6 +87,96 @@ impl App {
         self.set_default_status();
     }
 
+    pub(crate) fn ensure_bases_worker(&mut self) -> bool {
+        if self.bases_worker.is_none() {
+            match crate::bases::worker::BasesWorker::new(self.storage.clone()) {
+                Ok(worker) => self.bases_worker = Some(worker),
+                Err(error) => {
+                    self.set_temporary_status(&format!("Failed to start Bases worker: {error}"));
+                    return false;
+                }
+            }
+        }
+        true
+    }
+    pub fn begin_create_base(&mut self) {
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
+        self.begin_create_base_in_folder(folder);
+    }
+    pub fn begin_create_base_in_folder(&mut self, folder: String) {
+        if self.feature_disabled(
+            self.config.features.bases_view.is_enabled(),
+            "Bases",
+            "bases_view",
+        ) {
+            return;
+        }
+        let folder = if Self::is_virtual_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Bases File Name - Esc to cancel, Enter to create"),
+        );
+        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Base,
+        ));
+    }
+    pub(crate) fn create_base(&mut self, folder: String, title: String) {
+        if self.feature_disabled(
+            self.config.features.bases_view.is_enabled(),
+            "Bases",
+            "bases_view",
+        ) || !self.ensure_bases_worker()
+        {
+            return;
+        }
+        let name = if title.is_empty() {
+            "Untitled.base".to_owned()
+        } else if title.ends_with(".base") {
+            title
+        } else {
+            format!("{title}.base")
+        };
+        let id = if folder.is_empty() {
+            name
+        } else {
+            format!("{folder}/{name}")
+        };
+        if let Err(error) = self.storage.document_path(&id) {
+            self.set_temporary_status(&format!("Cannot create Bases document: {error:#}"));
+            return;
+        }
+        let previous_mode = if self.mode == ViewMode::Bases {
+            self.bases_state
+                .as_ref()
+                .map_or(ViewMode::List, |state| state.previous_mode)
+        } else {
+            self.mode
+        };
+        if let Some(worker) = &mut self.bases_worker {
+            worker.cancel();
+        }
+        let state = crate::bases::state::BasesState::for_creation(
+            id,
+            previous_mode,
+            self.storage.clone(),
+            &self.notes_worker_pool,
+        );
+        self.bases_state = Some(state);
+        self.mode = ViewMode::Bases;
+        self.set_default_status();
+    }
     pub(crate) fn invalidate_bases(&mut self) {
         if let Some(worker) = &mut self.bases_worker {
             worker.invalidate();

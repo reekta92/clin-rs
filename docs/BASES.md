@@ -8,7 +8,13 @@ Obsidian runtime parity.
 
 Open a `.base` file from the notes list, or use `clin notes open TITLE`.
 `[features] bases_view` enables the view (default enabled). The first saved view
-opens by default. Configurable `bases` keybindings control navigation and editing;
+opens by default. Create a base through Notes' **Create New → Bases (.base)**
+selector or command palette's **Create Bases File** action. Both reuse the native
+filename popup and current public folder context. Creation runs in the background,
+uses no-clobber public document storage, and opens the default table. Existing
+files/private paths reject without note serialization or clin/title fields.
+
+Configurable `bases` keybindings control navigation and editing;
 press the Bases Help binding (`?` by default) for the current map.
 
 Default bindings include:
@@ -31,6 +37,10 @@ Default bindings include:
 | `r`, `x`, `Esc` / `q` | Refresh, export, leave Bases |
 
 Prompts accept Enter to apply, Shift+Enter for a newline, and Esc to cancel.
+All presets inherit the Bases map; custom `bases` bindings remain supported.
+Statusline variables: `{bases_rows}`, `{bases_matched}`, `{bases_selected}`,
+`{bases_view}` and `{bases_property}`. Legacy count/selection/index variables use
+public query state in Bases, not the ordinary encrypted-note catalog.
 
 ## Search and grouped sections
 
