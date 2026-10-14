@@ -1,3 +1,4 @@
+mod bases;
 pub mod decrypt;
 pub mod encrypt;
 pub mod import;
@@ -251,7 +252,7 @@ pub struct ActionInfo {
 }
 
 pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyLock::new(|| {
-    vec![
+    let mut actions: Vec<Box<dyn Action>> = vec![
         Box::new(OpenVaultSwitcherAction),
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
@@ -362,12 +363,22 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
             source: crate::popups::ImportSource::Clipboard,
             target: crate::popups::ImportTarget::AppendCurrent,
         }),
-    ]
+    ];
+    actions.extend(bases::commands());
+    actions
 });
 
 /// Whether a palette action is available given the current feature toggles.
 /// `true` for every action not explicitly tied to a feature.
 fn action_feature_enabled(id: &str, app: &App) -> bool {
+    // Bases never delegates commands to encrypted-note catalog context.
+    if app.mode == crate::app::ViewMode::Bases && !id.starts_with("bases.") {
+        return false;
+    }
+    if id.starts_with("bases.") && id != "bases.create" {
+        return app.mode == crate::app::ViewMode::Bases
+            && app.config.features.bases_view.is_enabled();
+    }
     match id {
         "backup.open" => app.config.features.backup.is_enabled(),
         "draw.create" => app.config.features.draw_view.is_enabled(),

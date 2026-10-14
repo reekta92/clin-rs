@@ -392,6 +392,7 @@ pub enum BasesAction {
     Undo,
     Redo,
     Configure,
+    CommandPalette,
     NewNote,
     Export,
     MoveToGroup,

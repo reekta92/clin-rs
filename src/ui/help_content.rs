@@ -109,7 +109,7 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Authoring",
-        "Use {bases:Configure} to edit layout, filters, grouping, sorts, formulas and summaries, or add/hide/reorder columns. Drag writable Kanban cards between columns. {bases:NewNote} creates in focused column. Invalid or stale edits retain original data.",
+        "Use {bases:Configure} to edit layout, filters, grouping, sorts, formulas and summaries, or add/hide/reorder columns. {bases:CommandPalette} opens Notes' shared command palette, restricted to public Bases commands. Drag writable Kanban cards between columns. {bases:NewNote} creates in focused column. Invalid or stale edits retain original data.",
     ),
     tip(
         "Public exports",

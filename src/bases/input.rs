@@ -163,7 +163,20 @@ impl OverlayView for BasesState {
         let Some((action, count)) = action else {
             return Ok(OverlayResult::Continue);
         };
+        self.apply_action(app, action, count)
+    }
+}
+impl BasesState {
+    pub(crate) fn apply_action(
+        &mut self,
+        app: &mut App,
+        action: BasesAction,
+        count: u32,
+    ) -> anyhow::Result<OverlayResult> {
         match action {
+            BasesAction::CommandPalette => {
+                app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
+            }
             BasesAction::Back => {
                 if self.drag.take().is_some() {
                     return Ok(OverlayResult::Continue);

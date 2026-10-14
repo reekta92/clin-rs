@@ -3,6 +3,8 @@
 mod creation;
 #[path = "media_workflow_tests.rs"]
 mod media;
+#[path = "palette_workflow_tests.rs"]
+mod palette;
 use crate::{
     app::{App, HelpTab, ViewMode},
     config::FeatureState,

@@ -14,9 +14,9 @@ pub fn bases_group_order() -> &'static [&'static str] {
 
 pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
     use crate::keybinds::BasesAction::{
-        Back, Clear, Configure, Copy, Edit, Export, First, Help, Last, MoveDown, MoveLeft,
-        MoveRight, MoveToGroup, MoveUp, NewNote, NextProperty, NextView, Open, OpenCover, PageDown,
-        PageUp, Paste, PreviousProperty, PreviousView, Redo, Refresh, Search, SelectAll,
+        Back, Clear, CommandPalette, Configure, Copy, Edit, Export, First, Help, Last, MoveDown,
+        MoveLeft, MoveRight, MoveToGroup, MoveUp, NewNote, NextProperty, NextView, Open, OpenCover,
+        PageDown, PageUp, Paste, PreviousProperty, PreviousView, Redo, Refresh, Search, SelectAll,
         ToggleGroup, ToggleSelect, Undo,
     };
     match action {
@@ -50,6 +50,7 @@ pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
         SelectAll => meta("Editing", "Select all visible query rows"),
         Undo => meta("Editing", "Undo guarded document transaction"),
         Redo => meta("Editing", "Redo guarded document transaction"),
+        CommandPalette => meta("Authoring", "Open public Bases command palette"),
         Configure => meta(
             "Authoring",
             "Configure views, filters, formulas and summaries",

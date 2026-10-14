@@ -33,7 +33,8 @@ Default bindings include:
 | `m` | Set grouping property on selected notes; blank clears the property |
 | `n` | Create a Markdown note; Kanban uses the focused column |
 | `u` / `Ctrl+r` | Guarded session undo/redo of property and configuration edits |
-| `:` / `Ctrl+p` | Bases configuration menu |
+| `:` | Bases configuration menu |
+| `Ctrl+p` | Notes' shared command palette, scoped to public Bases commands |
 | `r`, `x`, `Esc` / `q` | Refresh, export, leave Bases |
 
 Prompts accept Enter to apply, Shift+Enter for a newline, and Esc to cancel.
