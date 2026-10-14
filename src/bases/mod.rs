@@ -9,6 +9,8 @@ pub mod expr;
 pub mod format;
 mod groups;
 mod input;
+mod layout_options;
+mod media;
 pub mod query;
 mod regexp;
 mod render;

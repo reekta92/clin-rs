@@ -34,7 +34,9 @@ Resolution stays within the public metadata snapshot; a background operation
 then validates the vault path, reads at most 8 MiB, and decodes with a 16 MiB
 allocation limit and maximum dimensions of 8192×8192. The result is downscaled
 to at most 512 pixels per side and rendered through the existing terminal
-picker/protocol. No notes are decrypted and no URLs are fetched.
+picker/protocol. No notes are decrypted. Cards/Kanban also render configured
+covers and solid hex colors; cover thumbnails are bounded to 256 pixels and
+cached separately (64 entries, two concurrent background jobs).
 
 Configured Bases Back binding closes the image popup without leaving Bases;
 a full redraw clears terminal image artifacts. `[features] images = false` or
@@ -42,6 +44,22 @@ an unavailable picker produces an explicit diagnostic. Other attachment types
 without a native preview also diagnose explicitly rather than entering the
 ordinary note/decryption path. These activation limits do not change the
 normal List/Edit image worker policy.
+
+### Remote Bases images
+
+Configured covers and typed `image()` values may fetch credential-free public
+HTTP(S) URLs when images and the terminal picker are enabled. Shared transport:
+`src/image_render/remote.rs`, using reqwest/rustls with native trust roots and a
+small Tokio runtime inside existing background jobs. No browser or plugin runtime.
+No cookies, proxy environment, credentials, or Referer header are forwarded.
+Every destination and DNS answer must be publicly routable; redirects are checked
+again. Limits: 64 KiB URL, three redirects, eight-second total deadline, 8 MiB body,
+10 ms cancellation polling, then the same bounded image decoder.
+
+Requests reveal the authored URL and your public network address to its server.
+Disable `[features] images` to prevent image requests. Prefer HTTPS; HTTP provides
+no transport integrity. Errors remain explicit native placeholders. Ordinary
+List/Edit/Canvas image policy is unchanged.
 
 ## Configuration
 

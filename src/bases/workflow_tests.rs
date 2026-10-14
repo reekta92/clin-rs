@@ -1,4 +1,6 @@
 //! Native overlay workflows over a disposable public vault, without terminal or clipboard dependencies.
+#[path = "media_workflow_tests.rs"]
+mod media;
 use crate::{
     app::{App, HelpTab, ViewMode},
     config::FeatureState,
@@ -1098,11 +1100,7 @@ fn kanban_readonly_groups_reject_column_mutation_but_allow_menu_order() {
 #[test]
 fn multiline_formula_input_applies_once_and_invalid_input_retains_source() {
     let (_root, mut app) = fixture();
-    key(&mut app, KeyCode::Char(':'));
-    for _ in 0..10 {
-        key(&mut app, KeyCode::Char('j'));
-    }
-    key(&mut app, KeyCode::Enter);
+    menu(&mut app, "Formula");
     event(&mut app, Event::Paste("Total = 1".into()));
     event(
         &mut app,
@@ -1124,11 +1122,7 @@ fn multiline_formula_input_applies_once_and_invalid_input_retains_source() {
         source.source()
     );
     assert_eq!(doc.config.formulas["Total"], "1\n+ 2");
-    key(&mut app, KeyCode::Char(':'));
-    for _ in 0..10 {
-        key(&mut app, KeyCode::Char('j'));
-    }
-    key(&mut app, KeyCode::Enter);
+    menu(&mut app, "Formula");
     event(&mut app, Event::Paste("Total = console.log(1)".into()));
     key(&mut app, KeyCode::Enter);
     assert!(app.bases_state.as_ref().unwrap().dialog.is_some());

@@ -78,6 +78,31 @@ pub const COMMANDS: &[(Command, &str, &str)] = &[
         "Non-negative integer; blank = unlimited",
     ),
     (
+        Command::View("cardSize"),
+        "Card width",
+        "Width in pixels; blank = default",
+    ),
+    (
+        Command::View("columnWidth"),
+        "Kanban column width",
+        "Width in pixels; blank = default",
+    ),
+    (
+        Command::View("image"),
+        "Cover property",
+        "Property name, e.g. note.cover or formula.Cover; blank = none",
+    ),
+    (
+        Command::View("imageFit"),
+        "Image fit",
+        "cover or contain; blank = default",
+    ),
+    (
+        Command::View("imageAspectRatio"),
+        "Image aspect ratio",
+        "Width / height; positive number; blank = 1",
+    ),
+    (
         Command::View("summaries"),
         "Column summaries",
         "YAML mapping: {score: Average}",
@@ -405,6 +430,20 @@ impl BasesState {
             .columns
             .get(self.column)
             .and_then(|column| row.values.get(column));
+        if let Some(value @ super::value::Value::Image(_)) = value
+            && let super::media::CoverSource::Remote(url) =
+                super::media::cover_source(value, &row.id, &loaded.metadata)?
+        {
+            if !app.config.features.images.is_enabled() || app.image_picker.is_none() {
+                bail!("native image preview unavailable; enable images and restart");
+            }
+            self.write_task = Some(WriteTask::spawn(
+                app.storage.clone(),
+                &app.notes_worker_pool,
+                Operation::OpenRemoteImage { url },
+            ));
+            return Ok(());
+        }
         let id = match value {
             Some(super::value::Value::Link(link)) => loaded
                 .metadata
@@ -436,6 +475,39 @@ impl BasesState {
                 id,
                 metadata: loaded.metadata.clone(),
             },
+        ));
+        Ok(())
+    }
+    pub(super) fn open_cover(&mut self, app: &mut App) -> Result<()> {
+        self.ensure_idle()?;
+        let loaded = self.loaded.as_ref().context("base has not loaded")?;
+        let row = self.row().context("select a note row")?;
+        let view = &loaded.document.config.views[loaded.view];
+        if !matches!(view.layout, Layout::Cards | Layout::Kanban) {
+            bail!("covers require Cards or Kanban layout");
+        }
+        let property = super::layout_options::CardOptions::parse(view, 8)?
+            .image
+            .context("view has no cover property")?;
+        let value = row
+            .values
+            .get(&property)
+            .context("cover property unavailable")?;
+        let source = super::media::cover_source(value, &row.id, &loaded.metadata)?;
+        if !app.config.features.images.is_enabled() || app.image_picker.is_none() {
+            bail!("native image preview unavailable; enable images and restart");
+        }
+        let operation = match source {
+            super::media::CoverSource::Public(id) => Operation::Open {
+                id,
+                metadata: loaded.metadata.clone(),
+            },
+            super::media::CoverSource::Remote(url) => Operation::OpenRemoteImage { url },
+        };
+        self.write_task = Some(WriteTask::spawn(
+            app.storage.clone(),
+            &app.notes_worker_pool,
+            operation,
         ));
         Ok(())
     }

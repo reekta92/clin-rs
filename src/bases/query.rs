@@ -126,6 +126,13 @@ impl Query {
         };
         let mut projected: BTreeSet<_> = columns.iter().cloned().collect();
         projected.extend(view.sort.iter().map(|sort| sort.property.clone()));
+        if matches!(
+            view.layout,
+            super::format::Layout::Cards | super::format::Layout::Kanban
+        ) && let Some(property) = super::layout_options::CardOptions::parse(view, 8)?.image
+        {
+            projected.insert(property);
+        }
         if let Some(group) = &view.group_by {
             projected.insert(group.property.clone());
         }

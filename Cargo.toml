@@ -104,6 +104,8 @@ fuzzy-matcher = "0.3.7"
 lru = "0.18.1"
 image = "0.25.10"
 ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm", "image-defaults"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = "0.30"
 graf = { package = "graf-rs", version = "1.1.0", git = "https://github.com/reekta92/graf", rev = "9c32610" }

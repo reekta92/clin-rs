@@ -59,7 +59,7 @@ impl OverlayView for BasesState {
             Some(app.status.as_ref()),
             app.load_spinner_tick,
         );
-        super::render::render(frame, chunks[1], self, &app.app_theme);
+        super::render::render(frame, chunks[1], self, app);
         let hints = format!(
             "{} back  {} open  {} edit  {} views  {} config  {} search  {} refresh",
             app.keybinds.display_bases(BasesAction::Back),
@@ -292,6 +292,24 @@ impl OverlayView for BasesState {
                     app.set_temporary_status(&format!("Bases: {error:#}"));
                 }
             }
+            BasesAction::PreviousProperty | BasesAction::NextProperty => {
+                let columns = self
+                    .loaded
+                    .as_ref()
+                    .map_or(0, |loaded| loaded.columns.len());
+                self.column = if matches!(action, BasesAction::NextProperty) {
+                    self.column
+                        .saturating_add(count as usize)
+                        .min(columns.saturating_sub(1))
+                } else {
+                    self.column.saturating_sub(count as usize)
+                };
+            }
+            BasesAction::OpenCover => {
+                if let Err(error) = self.open_cover(app) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
             BasesAction::ToggleGroup => {
                 if let Err(error) = self.toggle_group() {
                     app.set_temporary_status(&format!("Bases: {error:#}"));
@@ -318,6 +336,9 @@ impl OverlayView for BasesState {
 impl BasesState {
     pub fn refresh(&mut self, app: &mut App, invalidate: bool) {
         self.loading = true;
+        if invalidate {
+            self.media.invalidate();
+        }
         if let Some(worker) = app.bases_worker.as_mut() {
             worker.request(
                 &self.id,

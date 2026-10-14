@@ -31,6 +31,7 @@ pub mod goals;
 pub mod graf_adapter;
 pub mod image_render {
     pub mod cache;
+    pub(crate) mod remote;
     pub mod worker;
 
     /// Settle duration (150 ms) after the last zoom/scroll event before the

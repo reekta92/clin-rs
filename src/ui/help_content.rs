@@ -101,7 +101,7 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Typed edits",
-        "Select a property column and press {bases:Edit}. {bases:ToggleSelect} marks rows for bulk editing. File metadata and formula columns cannot be edited.",
+        "Select a property with {bases:PreviousProperty}/{bases:NextProperty} and press {bases:Edit}. {bases:ToggleSelect} marks rows for bulk editing. File metadata and formula columns cannot be edited. {bases:OpenCover} previews the configured Cards/Kanban cover.",
     ),
     tip(
         "Safe history",

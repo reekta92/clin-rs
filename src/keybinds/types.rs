@@ -397,6 +397,9 @@ pub enum BasesAction {
     MoveToGroup,
     Search,
     ToggleGroup,
+    OpenCover,
+    PreviousProperty,
+    NextProperty,
 }
 
 #[derive(

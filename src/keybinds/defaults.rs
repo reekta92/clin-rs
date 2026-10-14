@@ -290,6 +290,9 @@ const DEFAULT_BASES: &[(BasesAction, &[&str])] = &[
     (BasesAction::MoveToGroup, &["m"]),
     (BasesAction::Search, &["/"]),
     (BasesAction::ToggleGroup, &["z"]),
+    (BasesAction::OpenCover, &["v"]),
+    (BasesAction::PreviousProperty, &["["]),
+    (BasesAction::NextProperty, &["]"]),
 ];
 
 const DEFAULT_SETUP: &[(SetupAction, &[&str])] = &[

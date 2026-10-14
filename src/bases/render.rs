@@ -5,7 +5,7 @@ use super::{
     state::{BasesState, Item},
     value::Value,
 };
-use crate::{app_theme::AppThemeColors, fsutil::sanitize_for_terminal};
+use crate::fsutil::sanitize_for_terminal;
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
@@ -60,7 +60,8 @@ fn group_line(state: &BasesState, index: usize) -> String {
     )
 }
 
-pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
+pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
+    let theme = &app.app_theme;
     state.body_area = area;
     state.hit_rows.clear();
     state.hit_groups.clear();
@@ -81,11 +82,11 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
         return;
     };
     if matches!(state.layout(), Layout::Kanban) {
-        kanban(frame, area, state, theme);
+        kanban(frame, area, state, app);
         return;
     }
     if matches!(state.layout(), Layout::Cards) {
-        cards(frame, area, state, theme);
+        cards(frame, area, state, app);
         return;
     }
     let item_height = 1;
@@ -241,16 +242,26 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &App
         }
     }
 }
-fn card_regions(state: &BasesState, area: Rect) -> Vec<(Rect, usize, usize)> {
-    let columns = (area.width / 32).max(1);
+fn card_regions(
+    state: &BasesState,
+    area: Rect,
+    options: &super::layout_options::CardOptions,
+    cell: (u16, u16),
+) -> Vec<(Rect, usize, usize)> {
+    let columns = (area.width / options.width).max(1);
     let width = area.width / columns;
+    let height = 4u16.saturating_add(options.cover_height(
+        width.saturating_sub(3),
+        cell,
+        area.height.saturating_sub(4),
+    ));
     let mut y = area.y;
     let mut column = 0;
     let mut regions = Vec::new();
     for (position, item) in state.items.iter().enumerate().skip(state.offset) {
         if matches!(item, Item::Group(_)) {
             if column > 0 {
-                y = y.saturating_add(5);
+                y = y.saturating_add(height.saturating_add(1));
                 column = 0;
             }
             if y >= area.bottom() {
@@ -267,7 +278,7 @@ fn card_regions(state: &BasesState, area: Rect) -> Vec<(Rect, usize, usize)> {
                     area.x + column * width,
                     y,
                     width.saturating_sub(1).max(1),
-                    4,
+                    height,
                 )
                 .intersection(area),
                 position,
@@ -276,24 +287,35 @@ fn card_regions(state: &BasesState, area: Rect) -> Vec<(Rect, usize, usize)> {
             column += 1;
             if column == columns {
                 column = 0;
-                y = y.saturating_add(5);
+                y = y.saturating_add(height.saturating_add(1));
             }
         }
     }
     regions
 }
-fn cards(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
+fn cards(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
+    let Some(loaded) = &state.loaded else {
+        return;
+    };
+    let Ok(options) = super::layout_options::CardOptions::parse(
+        &loaded.document.config.views[loaded.view],
+        font(app).0,
+    ) else {
+        return;
+    };
+    let cell = font(app);
+    let theme = &app.app_theme;
     if area.is_empty() {
         return;
     }
     state.offset = state.offset.min(state.items.len().saturating_sub(1));
-    let mut regions = card_regions(state, area);
+    let mut regions = card_regions(state, area, &options, cell);
     if !regions
         .iter()
         .any(|(_, position, _)| *position == state.selected)
     {
         state.offset = state.selected;
-        regions = card_regions(state, area);
+        regions = card_regions(state, area, &options, cell);
     }
     let Some(loaded) = &state.loaded else {
         return;
@@ -324,41 +346,27 @@ fn cards(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppTheme
                 );
             }
             Item::Row(index) => {
-                let text = loaded
-                    .columns
-                    .iter()
-                    .map(|key| {
-                        let label = loaded.document.config.labels.get(key).unwrap_or(key);
-                        let value = result.rows[index]
-                            .values
-                            .get(key)
-                            .map_or_else(String::new, display);
-                        format!("{}: {value}", sanitize_for_terminal(label))
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                let border = if selected || state.selected_ids.contains(&result.rows[index].id) {
-                    theme.accent
-                } else {
-                    theme.border
-                };
-                frame.render_widget(
-                    Paragraph::new(text)
-                        .style(style)
-                        .wrap(Wrap { trim: false })
-                        .block(
-                            Block::default()
-                                .borders(Borders::ALL)
-                                .border_style(Style::default().fg(border)),
-                        ),
+                card(
+                    frame,
                     *rect,
+                    loaded,
+                    CardSelection {
+                        row: index,
+                        property: state.column,
+                        focused: selected,
+                        checked: state.selected_ids.contains(&result.rows[index].id),
+                    },
+                    &mut state.media,
+                    app,
+                    &options,
                 );
             }
         }
     }
     state.hit_rows = regions;
 }
-fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThemeColors) {
+fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
+    let theme = &app.app_theme;
     let Some(loaded) = &state.loaded else {
         return;
     };
@@ -372,8 +380,14 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
         );
         return;
     }
+    let Ok(options) = super::layout_options::CardOptions::parse(
+        &loaded.document.config.views[loaded.view],
+        font(app).0,
+    ) else {
+        return;
+    };
     let active = state.focused_group().map_or(0, |(group, _)| group);
-    let count = (usize::from(area.width) / 26).max(1);
+    let count = (usize::from(area.width) / usize::from(options.width)).max(1);
     let first = active.saturating_sub(count - 1);
     let width = area.width / count as u16;
     for (group_index, group) in result.groups.iter().enumerate().skip(first).take(count) {
@@ -431,14 +445,21 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
                 }
             })
             .unwrap_or(0);
-        let count = (usize::from(inner.height) / 3).max(1);
+        let height = 4u16
+            .saturating_add(options.cover_height(
+                inner.width.saturating_sub(2),
+                font(app),
+                inner.height.saturating_sub(4),
+            ))
+            .min(inner.height.max(1));
+        let count = (usize::from(inner.height) / usize::from(height)).max(1);
         let offset = selected_row.saturating_sub(count - 1);
         for (position, &row) in group.rows.iter().enumerate().skip(offset).take(count) {
             let rect = Rect::new(
                 inner.x,
-                inner.y + ((position - offset) * 3) as u16,
+                inner.y + ((position - offset) * usize::from(height)) as u16,
                 inner.width,
-                3,
+                height,
             )
             .intersection(inner);
             let item_position = state
@@ -447,26 +468,141 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, theme: &AppThem
                 .position(|item| matches!(item,Item::Row(index) if *index==row))
                 .unwrap_or(0);
             state.hit_rows.push((rect, item_position, state.column));
-            let text = loaded
-                .columns
-                .iter()
-                .take(3)
-                .map(|column| {
-                    result.rows[row]
-                        .values
-                        .get(column)
-                        .map_or_else(String::new, display)
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            let style = if item_position == state.selected {
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .bg(theme.highlight_bg)
-            } else {
-                Style::default().fg(theme.text)
-            };
-            frame.render_widget(Paragraph::new(text).style(style), rect);
+            card(
+                frame,
+                rect,
+                loaded,
+                CardSelection {
+                    row,
+                    property: state.column,
+                    focused: item_position == state.selected,
+                    checked: state.selected_ids.contains(&result.rows[row].id),
+                },
+                &mut state.media,
+                app,
+                &options,
+            );
         }
     }
+}
+fn font(app: &crate::app::App) -> (u16, u16) {
+    app.image_picker.as_ref().map_or((8, 16), |picker| {
+        let font = picker.font_size();
+        if font.width == 1 && font.height == 2 {
+            (8, 16)
+        } else {
+            (font.width.max(1), font.height.max(1))
+        }
+    })
+}
+struct CardSelection {
+    row: usize,
+    property: usize,
+    focused: bool,
+    checked: bool,
+}
+fn card(
+    frame: &mut Frame,
+    rect: Rect,
+    loaded: &super::worker::LoadedBase,
+    selection: CardSelection,
+    media: &mut super::media::PublicImages,
+    app: &crate::app::App,
+    options: &super::layout_options::CardOptions,
+) {
+    let result = loaded
+        .result
+        .as_ref()
+        .expect("card belongs to successful query");
+    let row = &result.rows[selection.row];
+    let theme = &app.app_theme;
+    let style = if selection.focused {
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
+    } else {
+        theme.bg_style().fg(theme.text)
+    };
+    let title = loaded
+        .columns
+        .first()
+        .and_then(|property| row.values.get(property))
+        .map_or_else(String::new, display)
+        .replace('\n', " ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(style)
+        .border_style(
+            Style::default().fg(if selection.focused || selection.checked {
+                theme.accent
+            } else {
+                theme.border
+            }),
+        );
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    let height = options
+        .cover_height(inner.width, font(app), inner.height.saturating_sub(2))
+        .min(inner.height.saturating_sub(1));
+    let cover = Rect::new(inner.x, inner.y, inner.width, height);
+    let body = Rect::new(
+        inner.x,
+        inner.y.saturating_add(height),
+        inner.width,
+        inner.height.saturating_sub(height),
+    );
+    if let Some(property) = &options.image
+        && let Some(value) = row.values.get(property)
+    {
+        media.render(
+            frame,
+            cover,
+            super::media::Cover {
+                value,
+                host: &row.id,
+                fit: options.fit,
+            },
+            &loaded.metadata,
+            app,
+        );
+    }
+    let start = selection
+        .property
+        .saturating_sub(usize::from(body.height).saturating_sub(1))
+        .max(1);
+    let lines: Vec<ratatui::text::Line> = loaded
+        .columns
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(usize::from(body.height))
+        .map(|(index, property)| {
+            let label = loaded
+                .document
+                .config
+                .labels
+                .get(property)
+                .unwrap_or(property);
+            let text = format!(
+                "{}{}: {}",
+                if selection.focused && index == selection.property {
+                    "› "
+                } else {
+                    ""
+                },
+                sanitize_for_terminal(label),
+                row.values.get(property).map_or_else(String::new, display)
+            );
+            ratatui::text::Line::styled(
+                text,
+                if selection.focused && index == selection.property {
+                    style.add_modifier(Modifier::BOLD)
+                } else {
+                    style
+                },
+            )
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines).style(style), body);
 }

@@ -15,8 +15,9 @@ pub fn bases_group_order() -> &'static [&'static str] {
 pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
     use crate::keybinds::BasesAction::{
         Back, Clear, Configure, Copy, Edit, Export, First, Help, Last, MoveDown, MoveLeft,
-        MoveRight, MoveToGroup, MoveUp, NewNote, NextView, Open, PageDown, PageUp, Paste,
-        PreviousView, Redo, Refresh, Search, SelectAll, ToggleGroup, ToggleSelect, Undo,
+        MoveRight, MoveToGroup, MoveUp, NewNote, NextProperty, NextView, Open, OpenCover, PageDown,
+        PageUp, Paste, PreviousProperty, PreviousView, Redo, Refresh, Search, SelectAll,
+        ToggleGroup, ToggleSelect, Undo,
     };
     match action {
         Back => meta("General", "Return to previous view"),
@@ -32,6 +33,9 @@ pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
         Last => meta("Navigation", "Last row"),
         Open => meta("Navigation", "Open public source or toggle grouped section"),
         Search => meta("Navigation", "Search displayed public properties"),
+        OpenCover => meta("Navigation", "Preview configured public cover image"),
+        PreviousProperty => meta("Navigation", "Focus previous displayed property"),
+        NextProperty => meta("Navigation", "Focus next displayed property"),
         ToggleGroup => meta(
             "Navigation",
             "Collapse or expand grouped Table/List/Cards section",

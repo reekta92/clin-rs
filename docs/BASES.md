@@ -20,6 +20,8 @@ Default bindings include:
 | `Enter` | Open public source/native image; toggle a grouped Table/List/Cards header |
 | `/` | Search displayed public property values with the Notes-style Find bar |
 | `z` | Collapse/expand focused Table/List/Cards group |
+| `[` / `]` | Focus previous/next displayed property, including inside Kanban cards |
+| `v` | Preview configured public/remote cover image |
 | `e` / `F2`, `Delete` | Edit/clear a note property |
 | `Space`, `Ctrl+a` | Toggle selection/select visible results |
 | `m` | Set grouping property on selected notes; blank clears the property |
@@ -82,6 +84,32 @@ Undo/redo checks the same baselines. Encrypted move records retain staged rollba
 data through publication and durable commit; startup recovery restores interrupted
 moves or retains conflicting records. Authored links remain verbatim.
 
+## Cards, Kanban and covers
+
+The first displayed property is the card title. Remaining properties retain labels;
+`[` / `]` exposes and focuses properties beyond the visible caption window.
+Configuration supports core `cardSize`, `columnWidth`, `image`, `imageFit` and
+`imageAspectRatio` fields. Pixel widths map to terminal columns using cell geometry;
+`cover` crops, `contain` preserves the full image, and aspect ratio is width/height.
+Geometry stays within the viewport. Unknown/plugin fields remain unchanged.
+
+The image property can contain a public attachment link, typed `image()`/link
+value, HTTP(S) URL, or `#RGB`/`#RRGGBB` color. Cover-only values are projected but
+do not enter displayed-property search or exports. Local images use public-only
+storage guards. Colors need no image feature or file/network access. Decode runs
+in the background: two concurrent cover jobs, four queued results, 64-entry LRU,
+256-pixel thumbnails. Explicit refresh cancels and invalidates cached generations.
+The preview binding opens the same native image popup without leaving Bases.
+
+Remote covers require enabled images and an initialized picker. Requests use
+credential-free HTTP(S), native TLS trust roots, no cookies/proxy/Referer, and only
+public destination addresses. Every DNS answer and redirect destination is checked;
+loopback, private, link-local, multicast and reserved targets are rejected. Bounds:
+64 KiB URLs, three redirects, eight-second total deadline, 8 MiB body, shared image
+decode limits. Cancellation is checked every 10 ms during transfer. Source URLs
+are sent to their servers, which can observe your public network address; disable
+`[features] images` to prevent image requests. HTTP lacks HTTPS transport integrity.
+
 ## Public data and guarded writes
 
 Bases metadata, formulas, links, backlinks, summaries, images, and exports use a
@@ -99,12 +127,11 @@ recovery records are storage-owned under `.clin/document-recovery`.
 Unknown plugin/view settings remain opaque and preserved, never executed.
 Browser/plugin runtimes and official Maps are not provided. `html()` remains
 inert text with diagnostics. See [IMAGE_RENDERING.md](IMAGE_RENDERING.md) for
-public image activation limits; remote image URLs are not fetched.
+public image activation and remote-request limits.
 
 ## Remaining implementation and evidence
 
-Live standalone/named/inline embeds, card cover/layout options,
-remaining native authoring/integration, comprehensive Notes-design alignment,
+Live standalone/named/inline embeds, remaining native layout/authoring/integration, comprehensive Notes-design alignment,
 and complete end-to-end performance acceptance remain unfinished. Existing 5,000-note indexing/query benchmarks and
 native workflow/PTY tests are stage-specific evidence, not full UI/refresh/memory
 acceptance or demonstrated Obsidian runtime parity.

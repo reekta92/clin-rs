@@ -57,6 +57,9 @@ pub enum Operation {
         id: String,
         metadata: Arc<VaultMetadata>,
     },
+    OpenRemoteImage {
+        url: String,
+    },
 }
 pub enum Outcome {
     Prepared {
@@ -85,7 +88,7 @@ impl WriteTask {
     pub fn spawn(storage: Storage, pool: &rayon::ThreadPool, operation: Operation) -> Self {
         let writing = !matches!(
             operation,
-            Operation::Prepare { .. } | Operation::Open { .. }
+            Operation::Prepare { .. } | Operation::Open { .. } | Operation::OpenRemoteImage { .. }
         );
         let cancelled = Arc::new(AtomicBool::new(false));
         let flag = cancelled.clone();
@@ -219,6 +222,17 @@ impl WriteTask {
                     } => {
                         let source = super::export::export(&columns, &result, markdown)?;
                         storage.create_document(&id, &source).map(Outcome::Created)
+                    }
+                    Operation::OpenRemoteImage { url } => {
+                        let bytes = crate::image_render::remote::load_remote_image(&url, &flag)?;
+                        let image = crate::image_render::worker::decode_public_image(bytes, 512)?;
+                        if flag.load(Ordering::Relaxed) {
+                            bail!("Bases operation cancelled");
+                        }
+                        Ok(Outcome::Image {
+                            id: url,
+                            image: Box::new(image),
+                        })
                     }
                     Operation::Open { id, metadata } => {
                         let file = metadata.file(&id).ok_or_else(|| {
