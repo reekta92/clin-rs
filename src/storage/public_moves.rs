@@ -400,7 +400,7 @@ mod tests {
             notes_dir: root.path().into(),
             config_dir: root.path().into(),
             templates_dir: root.path().join("templates"),
-            key: [3; 32],
+            key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };
@@ -544,7 +544,7 @@ mod tests {
             notes_dir: PathBuf::from("/"),
             config_dir: source.path().join(".clin"),
             templates_dir: source.path().join("templates"),
-            key: [3; 32],
+            key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };

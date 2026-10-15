@@ -231,7 +231,7 @@ mod tests {
             data_dir: dir.path().to_owned(),
             config_dir: dir.path().to_owned(),
             templates_dir: dir.path().join("templates"),
-            key: [0; 32],
+            key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };

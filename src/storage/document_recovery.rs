@@ -270,7 +270,7 @@ mod tests {
             config_dir: dir.path().into(),
             notes_dir: dir.path().into(),
             templates_dir: dir.path().join("templates"),
-            key: [3; 32],
+            key: rand::random(),
             skip_dir_patterns: Vec::new(),
             rename_on_title_change: true,
         };
