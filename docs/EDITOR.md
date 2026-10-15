@@ -13,7 +13,9 @@ event loop), `src/ui/edit_view.rs` (rendering), `src/events/edit.rs` (input).
 Edit runs in dedicated same-process session. It draws initial frame, batches up
 to 64 queued input events without reordering keys, coalesces only consecutive
 mouse-move or resize events, and redraws only after dirty editor-local work.
-Catalog, watcher, search, and other generic app queues wait until Edit exits.
+Catalog, search, and other generic app queues wait until Edit exits. While live
+Bases regions are visible, Edit narrowly drains watcher changes and the shared
+public query worker, without replacing unsaved editor text.
 
 `EditorDocument` currently wraps `ratatui-textarea` behind body APIs; title,
 canvas JSON, popups, Draw, and Backup retain their own `TextArea` instances.
@@ -113,6 +115,14 @@ while older text above and all text below the current paragraph are dimmed.
 ## Sidebars + Wikilink Previews
 
 The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. `Ctrl+o` toggles Outline, `Ctrl+b` toggles Links, and `Ctrl+t` cycles focus to a visible sidebar. `Alt+l` previews the link under the cursor.
+
+**Ctrl+g Ctrl+b** (`edit.ToggleBases`) opens the `.base` link under the cursor in
+a live sidebar using the current public file as `this`; repeat to close it.
+Public Markdown and linked-note previews also render named and fenced Bases
+definitions. Click a region to use Bases controls; Esc returns focus to the
+editor. The Bases palette binding expands the region into its full view and
+returns to the same host afterward. See [BASES.md](BASES.md) for privacy, source
+anchors, refresh, guarded writes, and resource limits.
 
 ## Keyboard Text Selection
 
@@ -217,3 +227,12 @@ Editor mutations attempt to write an encrypted draft to `<vault>/.clin/editor_dr
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full configuration reference
 - [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — keybind presets and sequence syntax
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — editor-related actions
+
+Interacting with a live Bases region in an ordinary public Markdown editor enables
+lossless guarded saving for that open document. The editor still presents the body
+and title separately. It retains the original YAML, line endings, trailing body
+bytes, permissions, and opening baseline; title edits do not rename the file.
+Inline configuration saves update the containing buffer. Metadata-only writes can
+rebase pending body edits and migrate their encrypted recovery draft. Conflicts
+retain the pending editor and reject stale saves. A source handoff suspends and
+restores the containing editor, including unsaved text.

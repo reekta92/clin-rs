@@ -8,11 +8,18 @@ Technical docs for the pinstar canvas module — an Obsidian-compatible node/edg
 
 The canvas view provides an infinite 2D space for visual note mapping. Users can place text nodes, link to files/URLs, group nodes, and connect them with edges. Canvas files use the `.canvas` extension and follow Obsidian's canvas JSON schema for compatibility.
 
-**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (git tag `v0.6.0`, `images` feature) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, the statusline footer, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate. Local iteration: create `.cargo/config.toml` with `[patch."https://github.com/reekta92/pinstar"] pinstar = { path = "../pinstar" }` (gitignored) while iterating — then REMOVE it before running `--locked` gates or committing: a patched build rewrites Cargo.lock to the path source and breaks CI.
+**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (immutable revision `5ce3dbc94165`, `images` and `mermaid-preview` features) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, the statusline footer, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate. Local iteration: create `.cargo/config.toml` with `[patch."https://github.com/reekta92/pinstar"] pinstar = { path = "../pinstar" }` (gitignored) while iterating — then REMOVE it before running `--locked` gates or committing: a patched build rewrites Cargo.lock to the path source and breaks CI.
 
 ---
 
 ## File Format
+
+`.base` file nodes and text nodes containing `![[File.base#View]]` or fenced
+`base` definitions render live native Bases regions within visible node bounds.
+Click a region to use its row/property controls. Esc returns Canvas focus; the
+Bases palette binding expands it into the full view with a return path.
+Inline configuration edits use a guarded, exact JSON text-string replacement;
+save unsaved node text first. See [BASES.md](BASES.md).
 
 Canvas files are JSON with a `.canvas` extension. Schema:
 
@@ -222,3 +229,8 @@ Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's 
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateCanvasAction` (Ctrl+P → New Canvas)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — data flow and storage overview
 - [ENCRYPTION.md](ENCRYPTION.md) — canvas uses plaintext JSON; generic note-encryption conversion is not a supported canvas workflow
+
+Guarded inline Bases writes reload the containing Canvas and clear its ordinary
+undo/redo snapshots, which predate the replacement. Use Bases undo/redo for those
+writes. Finish and save pending raw, floating-editor, rename, resize, or drag edits
+before writing inline configuration. Invalid raw input stays in the editor.

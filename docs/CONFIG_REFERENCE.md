@@ -35,6 +35,7 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 |---|---|---|---|
 | `graph_view` | `enum` | `true` | Enable the force-directed Graph view |
 | `canvas_view` | `enum` | `true` | Enable the `.canvas` view |
+| `bases_view` | `enum` | `true` | Enable native `.base` views, authoring and live public embeds/sidebar |
 | `draw_view` | `enum` | `true` | Enable the `.draw` view |
 | `outline_view` | `enum` | `true` | Enable the Outline view (overlay + editor sidebar) |
 | `help_view` | `enum` | `true` | Enable the in-app Help view |
@@ -223,6 +224,15 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{tag_filter}`, `{folder_filter}`: Active query filter parameters
 - `{pinned_count}`: Total pinned notes
 - `{pinned_on_top}`, `{folders_first}`, `{list_preview}`, `{calendar}`, `{layout_edit}`: Config and view states (`on`/`off`)
+
+##### Bases View
+
+Bases uses the global statusline templates. `{bases_rows}` is the displayed public
+row count; `{bases_matched}` counts matches before the limit; `{bases_selected}`
+counts checked rows. `{bases_view}` and `{bases_property}` identify the selected
+saved view and displayed property. In Bases, `{visual_total}`, `{note_count}` and
+`{selected_count}` resolve to these public query counts. `{visual_index}` is the
+1-based result row, or zero on a group heading. Encrypted Notes context is absent.
 
 ##### Note Context (List + Edit views)
 - `{note_title}`: Title of the selected/edited note

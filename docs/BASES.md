@@ -1,8 +1,8 @@
 # Bases
 
 Terminal-native `.base` documents, targeting Obsidian 1.14.3 file and core query
-semantics. Implementation is still in progress; this is not a claim of complete
-Obsidian runtime parity.
+semantics. Core layouts, authoring, guarded writes, and live public embeds are
+implemented. Obsidian runtime parity has not been demonstrated.
 
 ## Open and navigate
 
@@ -38,10 +38,35 @@ Default bindings include:
 | `r`, `x`, `Esc` / `q` | Refresh, export, leave Bases |
 
 Prompts accept Enter to apply, Shift+Enter for a newline, and Esc to cancel.
+Configuration's **Edit Bases source** opens the guarded public source editor,
+including when parsing or view validation fails. Another valid saved view remains
+usable and editable while an invalid view's settings remain preserved.
 All presets inherit the Bases map; custom `bases` bindings remain supported.
 Statusline variables: `{bases_rows}`, `{bases_matched}`, `{bases_selected}`,
 `{bases_view}` and `{bases_property}`. Legacy count/selection/index variables use
 public query state in Bases, not the ordinary encrypted-note catalog.
+
+## Table and List settings
+
+Table configuration supports `rowHeight`: empty/default (one terminal row),
+`medium` (two), `tall` (four), and `extra` (eight). `columnSize` maps property names
+to pixel widths, for example `{file.name: 240, score: 120}`. Widths use terminal
+cell geometry; unspecified properties use 20 columns. Cells wrap at grapheme
+boundaries. Horizontal navigation exposes the focused property, including columns
+wider than the viewport. Short terminals clip rows and retain usable focused
+content; headers, group headings, and summaries have separate mouse regions.
+
+List configuration supports `markers`: `bullet` (default), `number`, or `none`.
+Numbering restarts in each group. `indentProperties: true` places secondary
+properties on separate indented lines; otherwise `separator` joins values inline.
+Its default, including empty text, is `", "`. The first property is the title.
+Property navigation keeps the focused secondary value visible when earlier values
+exceed the viewport. Click a displayed value to focus it for editing.
+
+All settings use the existing lossless view configuration. Blank prompts remove
+the setting and restore its default. Invalid types and ranges reject without
+changing source. Rename, duplicate, and move from Notes preserve `.base` bytes;
+rename/move use guarded public transactions and duplication preserves Unix modes.
 
 ## Search and grouped sections
 
@@ -104,6 +129,54 @@ Configuration supports core `cardSize`, `columnWidth`, `image`, `imageFit` and
 `cover` crops, `contain` preserves the full image, and aspect ratio is width/height.
 Geometry stays within the viewport. Unknown/plugin fields remain unchanged.
 
+## Live embeds and sidebar
+
+Public Markdown previews support `![[File.base]]`, `![[File.base#View]]`, and fenced
+`base` definitions. Omit `#View` to use the first saved view. Missing or ambiguous
+files/views show diagnostics. Inline definitions retain their source anchors;
+they are live native views, including Table, List, Cards, and Kanban controls.
+The same regions appear in the editor, Notes preview, linked-note preview,
+and Canvas `.base` file nodes and text nodes containing Bases definitions.
+
+Click a region to focus its rows/properties, then use the configured Bases
+bindings. Esc closes its popup first, then returns keyboard focus to the host.
+The Bases command-palette binding (`Ctrl+p` by default) expands the focused region
+into the full view and opens its public-scoped palette. Ctrl+Enter also expands
+a focused region. Leaving returns to the
+original region. Source handoffs preserve an unsaved containing editor buffer.
+
+In the editor, place the cursor on a `.base` wikilink and press **Ctrl+g Ctrl+b**
+(`edit.ToggleBases`) to open its active-file sidebar. Repeat to close it. `this`
+uses the public containing note or Canvas file; standalone bases use their own
+file. Public unsaved editor text updates host properties and links without
+replacing the editor buffer. Encrypted notes and virtual subnotes never create
+live definitions or enter Bases query/cache state.
+
+Regions reserve eight terminal rows in Markdown and clip to their host viewport.
+There are at most 32 definitions per Markdown document and 32 resident live
+regions per app; further regions show a resource diagnostic. A single cancellable
+query worker shares public snapshots across regions. Markdown caches retain
+source geometry; host identity, document revision, source anchor, view, metadata
+revision, and volatile query context belong to the live query state. Private host
+rendering disables Bases recognition before Markdown cache insertion.
+
+Watcher changes refresh individual public files and their links; folder/schema
+changes and explicit refresh rebuild the snapshot. Closing or replacing a region
+cancels obsolete work. Bases cells do not recursively interpret Markdown, so result
+values cannot introduce recursive embeds or execute scripts.
+
+Inline configuration saves splice only the original YAML range. Canvas text-node
+edits replace only that node's quoted JSON text value, retaining other JSON bytes.
+Save an unsaved containing document/Canvas node before authoring its inline
+configuration; stale baselines reject. Property edits use the same guarded
+transactions and history as standalone views. Focusing a live region promotes an
+ordinary public Markdown editor to guarded, lossless saving while keeping its
+body-only presentation. Title edits update the YAML title without renaming the
+file or injecting clin fields. Pending body edits survive metadata-only updates;
+conflicting source replacements reject. Inline saves and history synchronize the
+containing editor and Canvas state. Canvas's ordinary undo snapshots are cleared
+after a guarded host replacement; Bases history owns that replacement.
+
 The image property can contain a public attachment link, typed `image()`/link
 value, HTTP(S) URL, or `#RGB`/`#RRGGBB` color. Cover-only values are projected but
 do not enter displayed-property search or exports. Local images use public-only
@@ -140,12 +213,14 @@ Browser/plugin runtimes and official Maps are not provided. `html()` remains
 inert text with diagnostics. See [IMAGE_RENDERING.md](IMAGE_RENDERING.md) for
 public image activation and remote-request limits.
 
-## Remaining implementation and evidence
+## Acceptance and compatibility
 
-Live standalone/named/inline embeds, remaining native layout/authoring/integration, comprehensive Notes-design alignment,
-and complete end-to-end performance acceptance remain unfinished. Existing 5,000-note indexing/query benchmarks and
-native workflow/PTY tests are stage-specific evidence, not full UI/refresh/memory
-acceptance or demonstrated Obsidian runtime parity.
+[BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) records the Notes-design audit, native
+workflow checks, release measurements, and reproduction checklist. File round
+trips and native terminal workflows are tested. Obsidian 1.14.3 runtime comparison
+was explicitly waived; no runtime-parity claim is made. Simultaneous Obsidian/clin
+writers are unsupported. Linux acceptance does not establish Windows/macOS or Nix
+build parity.
 
 Implementation: `src/bases/`; guarded document/property storage:
 `src/storage/{documents.rs,metadata.rs,public_moves.rs,document_recovery.rs}` and

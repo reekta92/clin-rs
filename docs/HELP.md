@@ -8,7 +8,7 @@ The help view provides a 3-pane layout: a left pane with a keybind table for the
 
 ## Tabs
 
-The help view has up to 8 tabs in order. Disabled-feature tabs are omitted:
+The help view has up to 9 tabs in order. Disabled-feature tabs are omitted:
 
 | # | Tab | Description |
 |---|---|---|
@@ -20,8 +20,9 @@ The help view has up to 8 tabs in order. Disabled-feature tabs are omitted:
 | 6 | **Backup** | Git-backed vault backup dashboard |
 | 7 | **Templates** | Reusable note templates with variable substitution |
 | 8 | **About** | Application metadata, config paths, CLI reference |
+| 9 | **Bases** | Public queries, four layouts, guarded authoring and live-region bindings |
 
-Digits `1`–`8` jump to visible tabs by position; `Tab`/`Right` and `Shift+Tab`/`Left` cycle them. If a custom help binding matches a digit, it takes precedence.
+Digits `1`–`9` jump to visible tabs by position; `Tab`/`Right` and `Shift+Tab`/`Left` cycle them. If a custom help binding matches a digit, it takes precedence.
 
 ## Keybind Index
 
@@ -55,3 +56,7 @@ Digit jumps (`1`–`8`) and popup accordion keys (`n`/`N`) are fallback handlers
 - [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, rendering pipeline
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full configuration reference
 - [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — keybind presets and sequence syntax
+
+Bases contextual help uses the live configurable `bases` keymap. Editor help also
+lists the `Ctrl+g Ctrl+b` Bases-sidebar chord. Click an embedded region to activate
+its keymap; Esc closes a region popup before returning focus to its host.

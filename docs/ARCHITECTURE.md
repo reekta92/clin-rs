@@ -113,6 +113,18 @@ Bases stores its original return mode on `BasesState`, preserving it through
 public-source handoff and reopening. No sub-view takes terminal ownership or
 runs a separate event loop.
 
+Live Bases regions reuse that renderer and input state through
+`bases/embedding.rs`; source identity and lossless inline splices belong to
+`bases/embed_source.rs`. One query worker serves the active overlay or bounded
+visible regions, sharing immutable public metadata. File metadata uses `Arc`
+with copy-on-write updates so host edits and watcher deltas do not duplicate
+every file's properties. Metadata generations invalidate dependent queries;
+cancelled generations cannot install results. Markdown caches store reserved
+source geometry, while app-owned region state supplies live results and focus.
+Canvas integration projects existing Pinstar nodes through the host adapter;
+there is no second Canvas engine or new dependency fork. `serde_json`'s existing
+`raw_value` feature identifies exact text-node string ranges for guarded edits.
+
 ---
 
 ## App State (`app.rs`)

@@ -121,3 +121,17 @@ quit = ["Ctrl+x Ctrl+c", "q"]
 
 Every token follows modifier parsing conventions (for example `Ctrl+Shift+Z`,
 `Alt+Key`).
+
+## Shared Bases Sidebar Shortcut
+
+All presets inherit **Ctrl+g Ctrl+b** (`toggle_bases`) in Edit. Place the cursor
+on a public `.base` wikilink to open its active-file sidebar; repeat to close it.
+Click a live region to use the configured `bases` bindings. Its command-palette
+binding expands the region into the full Bases view and opens the palette.
+Ctrl+Enter is an additional region expansion shortcut. Esc dismisses a popup,
+then returns focus to the containing surface.
+
+```toml
+[edit]
+toggle_bases = ["Ctrl+g Ctrl+b"]
+```

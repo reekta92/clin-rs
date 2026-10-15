@@ -1,6 +1,7 @@
 # Command Palette
 
-Technical docs for the command palette and Action trait — an extensible action system accessible from List with `:` or `Ctrl+p` in the default preset. In Editor, `Ctrl+p` toggles Markdown preview instead.
+Technical docs for the command palette and Action trait — an extensible action system accessible from List with `:` or `Ctrl+p` in the default preset. In Editor, `Ctrl+p` toggles Markdown preview. In a focused live Bases region, the
+configured Bases palette binding expands the region and opens its public palette.
 
 ---
 
@@ -219,3 +220,13 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
 - [CANVAS.md](CANVAS.md) — `CreateCanvasAction`
 - [DRAW.md](DRAW.md) — `CreateDrawAction`
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — `OpenGraphAction`
+
+## Bases scope
+
+Standalone and expanded live Bases views use the same palette widget. Their
+context adds native Bases actions for property editing/clear/copy/paste, guarded
+history, saved views, configuration, source/image opening, grouping, creation and
+export. Encrypted-note catalog actions and context are excluded. The default
+Bases binding is `Ctrl+p`; configurable sequences and preset counts remain owned
+by the shared keybinding resolver. Closing the full view restores its live region
+and original editor/overlay return stack.

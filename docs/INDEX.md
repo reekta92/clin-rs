@@ -15,7 +15,8 @@ For installation, quickstart, and general project info, see the [README.md](../R
 
 ## Views
 
-- [BASES.md](BASES.md) — In-progress native Bases: public queries, guarded editing, Kanban workflows, safety and remaining work
+- [BASES.md](BASES.md) — Native Bases: four layouts, public queries, guarded editing, live embeds, safety and acceptance
+- [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) — Native audit, release measurements and manual checks
 - [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree layout, note format chooser, preview pane
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
 - [BACKUP.md](BACKUP.md) — Git-based backup dashboard: vault state (staged/unstaged/untracked), history, diff preview, automation settings
@@ -52,7 +53,7 @@ docs/
 ├── BASES.md              Native Bases implementation and current limits
 ├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
-├── HELP.md               Help: 3-pane, 8 tabs, keybind index, tips, popup accordion
+├── HELP.md               Help: 3-pane, 9 tabs, keybind index, tips, popup accordion
 ├── BACKUP.md             Git-based backup dashboard
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
