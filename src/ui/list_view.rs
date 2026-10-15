@@ -27,7 +27,9 @@ pub(crate) struct GridTileSpec<'a> {
     pub in_selection: bool,
     pub is_hovered: bool,
     pub has_tags: bool,
+    pub has_local_template: bool,
     pub is_pinned_folder: bool,
+    pub is_muted: bool,
 }
 
 /// Columns/rows of grid tiles that fit in `area`; columns always >= 1.
@@ -68,7 +70,9 @@ pub(crate) fn render_grid_tile(
         in_selection,
         is_hovered,
         has_tags,
+        has_local_template,
         is_pinned_folder,
+        is_muted,
     } = spec;
 
     // --- tile border (plain border = "button") ---
@@ -111,13 +115,14 @@ pub(crate) fn render_grid_tile(
         } else {
             Modifier::empty()
         });
-    buf.set_style(Rect::new(inner.x, inner.y, inner.width, 1), icon_style);
+    let icon_y = inner.y;
+    buf.set_style(Rect::new(inner.x, icon_y, inner.width, 1), icon_style);
     let inner_w = inner.width as usize;
     if icon_mode == crate::config::IconMode::None {
         let label_chars: Vec<char> = text_label.chars().collect();
         let label_start = inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
         for (k, ch) in label_chars.iter().enumerate() {
-            if let Some(cell) = buf.cell_mut((label_start + k as u16, inner.y)) {
+            if let Some(cell) = buf.cell_mut((label_start + k as u16, icon_y)) {
                 cell.set_char(*ch).set_style(icon_style);
             }
         }
@@ -125,50 +130,53 @@ pub(crate) fn render_grid_tile(
         use unicode_width::UnicodeWidthChar;
         let w = UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
         let icon_x = inner.x + (inner_w.saturating_sub(w as usize) / 2) as u16;
-        buf.set_string(icon_x, inner.y, icon_char.to_string(), icon_style);
+        buf.set_string(icon_x, icon_y, icon_char.to_string(), icon_style);
     }
 
-    // --- tag icon: top right corner for items that have tags ---
-    if has_tags {
-        let tag_x = inner.x + inner.width.saturating_sub(1);
-        let tag_fg = if in_selection {
-            theme.highlight_fg
-        } else {
-            theme.tag
-        };
-        let tag_style = base_style
-            .fg(tag_fg)
+    // Pack badges tightly: the Unicode folder and pin each occupy two cells,
+    // so an extra gap would overlap the centered folder glyph. Use matching
+    // Octicons for the Nerd Font pin/gear to avoid mixing icon families.
+    // Icon-free mode leaves this corner empty.
+    let badges = [
+        (
+            has_tags,
+            crate::ui::get_char('\u{f02b}', '\u{1f3f7}', icon_mode),
+            theme.tag,
+        ),
+        (
+            is_pinned_folder,
+            crate::ui::get_char('\u{f435}', '\u{1f4cc}', icon_mode),
+            theme.pinned,
+        ),
+        (
+            has_local_template,
+            crate::ui::get_char('\u{f423}', '\u{2699}', icon_mode),
+            theme.muted,
+        ),
+    ];
+    let mut badge_right = inner.right();
+    for (enabled, glyph, color) in badges {
+        if !enabled || glyph == ' ' {
+            continue;
+        }
+        let width = unicode_width::UnicodeWidthChar::width(glyph).unwrap_or(1) as u16;
+        if width > badge_right.saturating_sub(inner.x) {
+            break;
+        }
+        let x = badge_right - width;
+        let style = base_style
+            .fg(if in_selection {
+                theme.highlight_fg
+            } else {
+                color
+            })
             .add_modifier(if is_selected || in_selection {
                 Modifier::BOLD
             } else {
                 Modifier::empty()
             });
-        use unicode_width::UnicodeWidthChar;
-        let tg = crate::ui::get_char('\u{f02b}', '\u{1f3f7}', icon_mode);
-        let tw = UnicodeWidthChar::width(tg).unwrap_or(1) as u16;
-        let tg_x = tag_x.saturating_sub(tw.saturating_sub(1));
-        buf.set_string(tg_x, inner.y, tg.to_string(), tag_style);
-    }
-
-    // --- pin icon: top right corner for pinned folders ---
-    if is_pinned_folder {
-        let pin_x = inner.x + inner.width.saturating_sub(1);
-        let pin_fg = if in_selection {
-            theme.highlight_fg
-        } else {
-            theme.pinned
-        };
-        let pin_style = base_style
-            .fg(pin_fg)
-            .add_modifier(if is_selected || in_selection {
-                Modifier::BOLD
-            } else {
-                Modifier::empty()
-            });
-        let pg = crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', icon_mode);
-        let pw = unicode_width::UnicodeWidthChar::width(pg).unwrap_or(1) as u16;
-        let pg_x = pin_x.saturating_sub(pw.saturating_sub(1));
-        buf.set_string(pg_x, inner.y, pg.to_string(), pin_style);
+        buf.set_string(x, inner.y, glyph.to_string(), style);
+        badge_right = x;
     }
 
     // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
@@ -180,7 +188,15 @@ pub(crate) fn render_grid_tile(
     }
     let pad = inner_w.saturating_sub(chars.len());
     let left = pad / 2;
-    let name_style = if is_selected || in_selection {
+    let name_style = if is_muted {
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(if is_selected {
+                Modifier::BOLD
+            } else {
+                Modifier::empty()
+            })
+    } else if is_selected || in_selection {
         if in_selection {
             Style::default()
                 .fg(theme.highlight_fg)
@@ -846,7 +862,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 (
                     "Pinned",
                     Some(crate::ui::get_icon(
-                        "\u{f4cc}",
+                        "\u{f435}",
                         "\u{1f4cc}",
                         app.config.ui.icon_mode,
                     )),
@@ -1279,7 +1295,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             app.app_theme.text
                         };
                         let ic = if s.pinned {
-                            crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode)
+                            crate::ui::get_char('\u{f435}', '\u{1f4cc}', app.config.ui.icon_mode)
                         } else if *is_clin {
                             crate::ui::get_char('\u{f023}', '\u{1f512}', app.config.ui.icon_mode)
                         } else if *is_draw {
@@ -1306,6 +1322,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         };
                         (ic, label, col, s.title.clone())
                     }
+                    crate::app::VisualItem::TemplateConfig { .. } => (
+                        crate::ui::get_char('\u{f15c}', '\u{2699}', app.config.ui.icon_mode),
+                        "Vars",
+                        app.app_theme.muted,
+                        crate::templates::FOLDER_TEMPLATE_CONFIG.to_string(),
+                    ),
                     crate::app::VisualItem::CreateNew { .. } => (
                         crate::ui::get_char('\u{f067}', '\u{2795}', app.config.ui.icon_mode),
                         "+",
@@ -1355,6 +1377,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         text_label,
                         glyph_color,
                         raw_name: &raw_name,
+                        is_muted: matches!(item, crate::app::VisualItem::TemplateConfig { .. }),
+                        has_local_template: matches!(item, crate::app::VisualItem::Folder { path, name, .. }
+                            if name != ".." && app.list.template_config_folders.contains(path)),
                         is_selected,
                         in_selection,
                         is_hovered,
@@ -1998,6 +2023,9 @@ fn get_item_name(app: &App, idx: usize) -> Option<String> {
                 app.notes.get(*summary_idx).map(|n| n.title.clone())
             }
             crate::list_view::VisualItem::CreateNew { .. } => Some("Create...".to_string()),
+            crate::list_view::VisualItem::TemplateConfig { .. } => {
+                Some(crate::templates::FOLDER_TEMPLATE_CONFIG.to_string())
+            }
             crate::list_view::VisualItem::Subnote {
                 parent_id,
                 subnote_idx,
@@ -2145,6 +2173,14 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                     })
                     .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
                 ("Subnotes".to_string(), title)
+            }
+            crate::list_view::VisualItem::TemplateConfig { folder, .. } => {
+                let path = if folder.is_empty() {
+                    "Vault".to_string()
+                } else {
+                    format!("Vault/{folder}")
+                };
+                (path, crate::templates::FOLDER_TEMPLATE_CONFIG.to_string())
             }
             crate::list_view::VisualItem::CreateNew { path, .. } => {
                 let folder = if path.is_empty() {
@@ -2321,6 +2357,63 @@ mod tests {
             column,
             row,
             modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn grid_folder_badges_keep_main_icon_on_original_row_in_all_icon_modes() {
+        use crate::config::IconMode;
+        use unicode_width::UnicodeWidthChar;
+
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, app) = grid_test_app(0);
+        let area = Rect::new(0, 0, GRID_TILE_W, GRID_TILE_H);
+        for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
+            for (pin, template) in [(false, false), (true, false), (false, true), (true, true)] {
+                let mut buffer = ratatui::buffer::Buffer::empty(area);
+                let icon = crate::ui::get_char('\u{f07b}', '\u{1f4c1}', mode);
+                render_grid_tile(
+                    &mut buffer,
+                    area,
+                    GridTileSpec {
+                        icon_char: icon,
+                        text_label: "F",
+                        glyph_color: app.app_theme.folder,
+                        raw_name: "Folder",
+                        is_selected: true,
+                        in_selection: false,
+                        is_hovered: false,
+                        has_tags: false,
+                        has_local_template: template,
+                        is_pinned_folder: pin,
+                        is_muted: false,
+                    },
+                    &app.app_theme,
+                    mode,
+                );
+                let main = if mode == IconMode::None { 'F' } else { icon };
+                let main_width = main.width().unwrap_or(1) as u16;
+                let main_x = 1 + (GRID_TILE_W - 2 - main_width) / 2;
+                assert_eq!(
+                    buffer.cell((main_x, 1)).unwrap().symbol(),
+                    main.to_string(),
+                    "main icon moved: {mode:?}, pin={pin}, template={template}"
+                );
+                assert_eq!(buffer.cell((main_x, 2)).unwrap().symbol(), " ");
+                let mut badge_right = GRID_TILE_W - 1;
+                for (enabled, glyph) in [
+                    (pin, crate::ui::get_char('\u{f435}', '\u{1f4cc}', mode)),
+                    (template, crate::ui::get_char('\u{f423}', '\u{2699}', mode)),
+                ] {
+                    if !enabled || glyph == ' ' {
+                        continue;
+                    }
+                    let x = badge_right - glyph.width().unwrap_or(1) as u16;
+                    assert!(x >= main_x + main_width, "badge overlaps main icon");
+                    assert_eq!(buffer.cell((x, 1)).unwrap().symbol(), glyph.to_string());
+                    badge_right = x;
+                }
+            }
         }
     }
 

@@ -107,7 +107,56 @@ Available variables for `{variable_name}` substitution:
 | `{month}` | `05` | Zero-padded month |
 | `{day}` | `10` | Zero-padded day of month |
 
-Variables are substituted by `TemplateVariables::substitute()` which scans for `{name}` patterns and replaces them. Unknown variables are left as-is.
+The renderer substitutes `{name}` tokens once in the template title and body. Unknown variables stay literal and produce a warning listing missing names. Inserted values are not expanded again, so a variable containing `{date}` retains that text.
+
+### Folder-local custom variables
+
+Create `.clin-template.toml` in any physical vault folder. Values must be strings. Names are case-sensitive ASCII identifiers (`[A-Za-z_][A-Za-z0-9_]*`); the seven built-in names above are reserved.
+
+For example, put this config in `books/rust/`:
+
+```toml
+inherit_parent = true
+
+[variables]
+book = "The Rust Programming Language"
+```
+
+Then put this config in `books/rust/chapter-04/`:
+
+```toml
+inherit_parent = true
+
+[variables]
+chapter = "04"
+chapter_title = "Understanding Ownership"
+```
+
+One shared template can use `{book}`, `{chapter}`, `{chapter_title}`, and `{date}` in both `[title].template` and `[content].template`. Custom values do not affect tags, frontmatter fields, or destination paths.
+
+#### Inheritance
+
+- `inherit_parent` defaults to `true` when omitted.
+- Values flow from the vault root toward the destination folder. Nearer values override ancestor values with the same name.
+- Folders without a config continue inheritance normally, including destinations not created yet.
+- `inherit_parent = false` excludes all configs above that folder. Its own values still flow into inheriting descendants.
+- Resolution stops at the vault root, never at the user's home or filesystem root. Symlinks escaping the vault are rejected; the config file itself cannot be a symlink.
+- Malformed TOML, invalid names, non-string values, and attempts to override built-ins stop template-based creation before a note is written. Errors identify the config path.
+- Changes apply to future creation only; existing notes are not re-expanded.
+
+#### Edit configuration in the TUI
+
+Select a physical folder (or a note inside it), open the command palette, and choose **Edit Folder Template Variables**. In grid layout, this edits the current folder. The action creates a starter config only when absent, then opens it in the existing template editor. Smart/virtual folders are not configuration destinations.
+
+The built-in editor validates before saving; an invalid edit leaves the previous file intact and stays in the editor. With external-editor mode enabled, your editor writes directly to disk; Clin validates on return and reports errors. An invalid external edit must be corrected before template-based creation can continue.
+
+Folders with their own `.clin-template.toml` display a gear glyph (`⚙` in Unicode mode) on the folder item: beside its name in tree layout, and in the tile's corner in grid layout, alongside any pin badge. This indicates a local config file, not merely inherited variables. The badge respects the icon-mode setting and does not appear on virtual folders or the `..` navigation tile.
+
+Inside that folder, `.clin-template.toml` appears as a muted selectable item in both tree and grid layouts, even when hidden/all-files display is off. Select it and press Enter (or double-click) to edit using the same validated editor; its preview displays the TOML. The palette action remains available to create a config when none exists.
+
+Config files are not indexed or counted as notes and cannot be pinned/tagged through note actions. They remain visible during selection mode without participating in bulk note selection. External config creation/removal updates the badge and item without moving the selected note.
+
+No header indicator, Smart Folder template automation, prompts, expressions, or executable plugins are included.
 
 ```rust
 impl TemplateVariables {
@@ -140,7 +189,7 @@ If a template file named `default.toml` exists in the templates directory, the T
 |---|---|
 | `clin templates list` | List all available templates |
 | `clin templates init` | Create meeting, todo, and journal example templates |
-| `clin notes new -t <display-name> [title]` | Insert a template's literal body, then open the TUI unless `--no-tui` or `--body` is supplied |
+| `clin notes new -t <display-name> [--folder <relative-path>] [title]` | Render a template using destination-folder variables, then open the TUI unless `--no-tui` or `--body` is supplied |
 
 ---
 
@@ -172,11 +221,19 @@ clin notes new --no-tui "My Note"
 
 ---
 
-### Current CLI Limitations
+### CLI rendering and precedence
 
-The CLI matches the template's `name` exactly (for example `"Meeting Notes"`, not `meeting`). It copies `[content].template` literally: variables remain `{date}`, `{time}`, etc., and `[title].template` is not used. An omitted title becomes `"New Note"`; `--body` overrides template content. The TUI picker renders both title and body with variable substitution.
+The CLI matches the template's `name` exactly (for example `"Meeting Notes"`, not `meeting`). It renders built-ins and folder-local values using the same renderer as the TUI:
 
-Use the TUI picker when you need rendered template variables. These are current implementation limits, not intended guarantees for future versions.
+```bash
+clin notes new -t "Book Chapter" --folder books/rust/chapter-04 --no-tui
+```
+
+`--folder` is relative to the active vault and defaults to its root. Absolute paths, `..`, backslashes, and symlinks escaping the vault are rejected. Missing destination folders are created when the note is saved.
+
+An explicit title overrides the rendered template title. An explicit `--body` overrides template content and implies no TUI. Both explicit arguments stay literal (they are not interpolated), and unused template fields do not generate missing-variable warnings. Without an explicit or template title, the fallback is `"New Note"`.
+
+Unknown variables remain literal and warnings go to stderr. Configuration/template errors exit unsuccessfully without creating a partial note. CLI creation without `-t` remains blank and does not automatically load `default.toml`.
 
 ## Storage Templates API
 

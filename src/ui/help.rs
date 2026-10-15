@@ -638,6 +638,41 @@ fn templates_help_text(
     rows.push(help_heading_row("Variables", theme, tab));
     rows.push(help_empty_row(tab));
     rows.push(help_item_dyn(
+        "Edit folder-local variables",
+        Some("Palette: Edit Folder Template Variables"),
+        theme,
+        "Variables",
+        tab,
+    ));
+    rows.push(help_item_dyn(
+        "Folder config / parent inheritance",
+        Some(".clin-template.toml / inherit_parent = true"),
+        theme,
+        "Variables",
+        tab,
+    ));
+    rows.push(help_item_dyn(
+        "Edit muted folder config item",
+        Some("Select .clin-template.toml + Enter"),
+        theme,
+        "Variables",
+        tab,
+    ));
+    rows.push(help_item_dyn(
+        "Folder contains its own config",
+        Some("Gear badge on folder label / tile"),
+        theme,
+        "Variables",
+        tab,
+    ));
+    rows.push(help_item_dyn(
+        "Custom strings apply to template title/body",
+        Some("[variables] book = \"Example Book\" / {book}"),
+        theme,
+        "Variables",
+        tab,
+    ));
+    rows.push(help_item_dyn(
         "Variable: current date",
         Some("{date}"),
         theme,

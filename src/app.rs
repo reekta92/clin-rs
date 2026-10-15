@@ -1137,6 +1137,8 @@ impl App {
         Self::is_virtual_pinned_path(path)
             || Self::is_virtual_subnotes_path(path)
             || Self::is_subnotes_parent_grid_path(path)
+            || path == VIRTUAL_SMART_PATH
+            || crate::list_view::SmartFolderKind::from_virtual_path(path).is_some()
     }
 
     pub fn format_visual_item(&self, vi: usize) -> ListItem<'static> {
@@ -1239,7 +1241,18 @@ impl App {
                 if self.list.drag_hover == Some(vi) {
                     style = style.bg(self.app_theme.highlight_bg);
                 }
-                let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                let mut spans = vec![Span::styled(text, style)];
+                if name != ".." && self.list.template_config_folders.contains(path) {
+                    let glyph =
+                        crate::ui::get_icon("\u{f013}", "\u{2699}", self.config.ui.icon_mode);
+                    if !glyph.is_empty() {
+                        spans.push(Span::styled(
+                            format!(" {glyph}"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
+                }
+                let mut lines = vec![Line::from(spans)];
                 if self.list.list_density == crate::config::ListDensity::Comfortable {
                     lines.push(Line::from(""));
                 }
@@ -1399,6 +1412,22 @@ impl App {
                     lines.push(Line::from(""));
                 }
                 ListItem::new(lines)
+            }
+            VisualItem::TemplateConfig { depth, .. } => {
+                let indent = "  ".repeat(*depth);
+                let icon = crate::ui::get_icon("\u{f15c}", "\u{2699}", self.config.ui.icon_mode);
+                let label = if icon.is_empty() {
+                    format!("{indent}{}", crate::templates::FOLDER_TEMPLATE_CONFIG)
+                } else {
+                    format!(
+                        "{indent} {icon} {}",
+                        crate::templates::FOLDER_TEMPLATE_CONFIG
+                    )
+                };
+                ListItem::new(Line::from(Span::styled(
+                    label,
+                    Style::default().fg(self.app_theme.muted),
+                )))
             }
             VisualItem::CreateNew { depth, .. } => {
                 let indent = "  ".repeat(*depth);
@@ -1595,6 +1624,7 @@ impl App {
                 }
                 crate::list_view::VisualItem::Folder { .. }
                 | crate::list_view::VisualItem::CreateNew { .. }
+                | crate::list_view::VisualItem::TemplateConfig { .. }
                 | crate::list_view::VisualItem::SmartFolder { .. }
                 | crate::list_view::VisualItem::Subnote { .. } => {
                     self.set_temporary_status_static(
@@ -1794,10 +1824,19 @@ impl App {
                 if current.replace("\r\n", "\n") == content {
                     return Ok(());
                 }
-                let destination = toml::from_str::<Template>(&content).map_or_else(
-                    |_| path.clone(),
-                    |template| self.storage.template_path(&template.name),
-                );
+                let folder_config = crate::templates::is_folder_template_config(&path);
+                if folder_config {
+                    self.storage.check_folder_template_config_path(&path)?;
+                    crate::templates::FolderTemplateConfig::parse(&content)?;
+                }
+                let destination = if folder_config {
+                    path.clone()
+                } else {
+                    toml::from_str::<Template>(&content).map_or_else(
+                        |_| path.clone(),
+                        |template| self.storage.template_path(&template.name),
+                    )
+                };
                 if destination == path {
                     crate::fsutil::atomic_write_preserving_permissions(&path, content.as_bytes())?;
                 } else {

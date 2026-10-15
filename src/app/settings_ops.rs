@@ -59,6 +59,7 @@ impl App {
             }
             Some(VisualItem::SmartFolder { .. })
             | Some(VisualItem::CreateNew { .. })
+            | Some(VisualItem::TemplateConfig { .. })
             | Some(VisualItem::Subnote { .. }) => {
                 self.set_temporary_status_static("Cannot pin virtual folders or actions");
             }
@@ -1000,6 +1001,7 @@ impl App {
                 crate::config::FeatureState::Disabled
             }
         });
+        self.refresh_visual_list();
     }
 
     pub fn toggle_import(&mut self) {

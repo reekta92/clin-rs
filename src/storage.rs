@@ -607,7 +607,8 @@ impl Storage {
                     None => continue,
                 };
 
-                if (!include_hidden && file_name.starts_with('.'))
+                if file_name == crate::templates::FOLDER_TEMPLATE_CONFIG
+                    || (!include_hidden && file_name.starts_with('.'))
                     || (public_dataset
                         && path
                             .extension()
@@ -714,6 +715,10 @@ impl Storage {
         Ok(summary)
     }
     pub fn load_note_summary(&self, id: &str) -> Result<NoteSummary> {
+        anyhow::ensure!(
+            !crate::templates::is_folder_template_config(Path::new(id)),
+            "folder template config is not a note"
+        );
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 

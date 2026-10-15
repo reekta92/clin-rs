@@ -1,5 +1,18 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+mod folder_ui_tests;
+mod variables;
+#[cfg(test)]
+mod variables_tests;
+pub use variables::{DEFAULT_FOLDER_TEMPLATE_CONFIG, FOLDER_TEMPLATE_CONFIG, FolderTemplateConfig};
+
+pub fn is_folder_template_config(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name == FOLDER_TEMPLATE_CONFIG)
+}
 
 use anyhow::{Context, Result};
 use chrono::Local;
@@ -31,6 +44,18 @@ pub struct ContentConfig {
 pub struct RenderedTemplate {
     pub title: Option<String>,
     pub content: String,
+    pub missing_variables: Vec<String>,
+}
+
+impl RenderedTemplate {
+    pub fn warning(&self) -> Option<String> {
+        (!self.missing_variables.is_empty()).then(|| {
+            format!(
+                "Unknown template variables (left literal): {}",
+                self.missing_variables.join(", ")
+            )
+        })
+    }
 }
 
 impl Template {
@@ -52,13 +77,23 @@ impl Template {
     }
 
     pub fn render(&self) -> RenderedTemplate {
+        self.render_with_variables(&BTreeMap::new())
+    }
+
+    pub fn render_with_variables(&self, custom: &BTreeMap<String, String>) -> RenderedTemplate {
         let vars = TemplateVariables::now();
-
-        let title = self.title.template.as_ref().map(|t| vars.substitute(t));
-
-        let content = vars.substitute(&self.content.template);
-
-        RenderedTemplate { title, content }
+        let mut missing = BTreeSet::new();
+        let title = self
+            .title
+            .template
+            .as_ref()
+            .map(|t| vars.substitute_with(t, custom, &mut missing));
+        let content = vars.substitute_with(&self.content.template, custom, &mut missing);
+        RenderedTemplate {
+            title,
+            content,
+            missing_variables: missing.into_iter().collect(),
+        }
     }
 }
 
@@ -87,15 +122,52 @@ impl TemplateVariables {
         }
     }
 
-    pub fn substitute(&self, template: &str) -> String {
-        template
-            .replace("{date}", &self.date)
-            .replace("{datetime}", &self.datetime)
-            .replace("{time}", &self.time)
-            .replace("{weekday}", &self.weekday)
-            .replace("{year}", &self.year)
-            .replace("{month}", &self.month)
-            .replace("{day}", &self.day)
+    #[cfg(test)]
+    fn substitute(&self, template: &str) -> String {
+        self.substitute_with(template, &BTreeMap::new(), &mut BTreeSet::new())
+    }
+
+    fn substitute_with(
+        &self,
+        template: &str,
+        custom: &BTreeMap<String, String>,
+        missing: &mut BTreeSet<String>,
+    ) -> String {
+        let mut output = String::with_capacity(template.len());
+        let mut rest = template;
+        while let Some(start) = rest.find('{') {
+            output.push_str(&rest[..start]);
+            rest = &rest[start..];
+            if let Some(boundary) = rest[1..].find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            {
+                let end = boundary + 1;
+                let name = &rest[1..end];
+                if rest.as_bytes()[end] == b'}' && variables::is_variable_name(name) {
+                    let value = match name {
+                        "date" => Some(&self.date),
+                        "datetime" => Some(&self.datetime),
+                        "time" => Some(&self.time),
+                        "weekday" => Some(&self.weekday),
+                        "year" => Some(&self.year),
+                        "month" => Some(&self.month),
+                        "day" => Some(&self.day),
+                        _ => custom.get(name),
+                    };
+                    if let Some(value) = value {
+                        output.push_str(value);
+                    } else {
+                        output.push_str(&rest[..=end]);
+                        missing.insert(name.to_string());
+                    }
+                    rest = &rest[end + 1..];
+                    continue;
+                }
+            }
+            output.push('{');
+            rest = &rest[1..];
+        }
+        output.push_str(rest);
+        output
     }
 }
 

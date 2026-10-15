@@ -68,6 +68,9 @@ pub enum NotesCmd {
         /// Create the note from this template.
         #[arg(short, long)]
         template: Option<String>,
+        /// Destination folder relative to the vault (also selects local template variables).
+        #[arg(long, default_value = "")]
+        folder: String,
         /// Initial body content. When set, the note is created and the TUI is not opened.
         #[arg(long)]
         body: Option<String>,

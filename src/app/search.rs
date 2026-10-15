@@ -499,7 +499,10 @@ impl App {
     pub fn is_selectable_index(&self, idx: usize) -> bool {
         !matches!(
             self.list.visual_list.get(idx),
-            Some(crate::list_view::VisualItem::CreateNew { .. })
+            Some(
+                crate::list_view::VisualItem::CreateNew { .. }
+                    | crate::list_view::VisualItem::TemplateConfig { .. }
+            )
         )
     }
 
