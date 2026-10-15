@@ -1218,7 +1218,6 @@ impl App {
                 let is_draw = *is_draw;
                 let is_canvas = *is_canvas;
                 let id = &self.notes[summary_idx].id;
-                let is_clin = id.ends_with(".clin");
                 if !self.config.features.file_view_enabled(id) {
                     self.list.preview_content = None;
                     self.list.preview_content_width = None;
@@ -1228,11 +1227,6 @@ impl App {
                     self.list.preview_content_offset_y = None;
                     self.list.preview_content_index = Some(self.list.visual_index);
                     self.list.pending_markdown_resize = None;
-                    return;
-                }
-                if self.preview_encryption && is_clin {
-                    self.list.preview_content = None;
-                    self.list.preview_content_index = Some(self.list.visual_index);
                     return;
                 }
 
@@ -1858,9 +1852,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         (temp_dir, App::new(storage).unwrap())
     }

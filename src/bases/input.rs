@@ -296,8 +296,10 @@ impl BasesState {
                         .and_then(|loaded| loaded.columns.get(self.column))
                         .and_then(|column| row.values.get(column))
                 }) {
-                    crate::text_edit::write_system_clipboard(&value.to_text().display());
-                    app.set_temporary_status_static("Copied cell");
+                    let notice = crate::text_edit::clipboard_notice(
+                        crate::text_edit::write_system_clipboard(&value.to_text().display()),
+                    );
+                    app.set_temporary_status_static(notice);
                 }
             }
             BasesAction::Search => {

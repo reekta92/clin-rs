@@ -1,5 +1,5 @@
 //! Session lifecycle: signal registration, background worker spawn,
-//! and orderly backup flush on exit. Separated from the terminal event
+//! and orderly recovery flush on exit. Separated from the terminal event
 //! loop so GUI hosts can reuse startup/shutdown without a terminal.
 
 use crate::app::App;
@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct SessionGuard {
-    backup_done_rx: std::sync::mpsc::Receiver<()>,
     pub watcher: Option<notify::RecommendedWatcher>,
 }
 
@@ -29,7 +28,6 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
     } else {
         App::new_deferred(storage)?
     };
-    let _ = app.storage.recover_editor_draft();
     for w in init_warnings {
         app.messages
             .push(w, crate::app::messages::MessageSeverity::Warning);
@@ -56,8 +54,8 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
 }
 
 /// = cleanup_orphaned_temp_files, signal registration (SIGINT/SIGTERM/SIGHUP/SIGQUIT
-/// → SHOULD_EXIT/FORCE_QUIT atomics), backup worker spawn, image decode worker spawn,
-/// fs watcher init. Sets app.backup_tx, app.image_decode_tx/rx, app.fs_event_rx, app.fs_overflow.
+/// → SHOULD_EXIT/FORCE_QUIT atomics), recovery flushing, image decode worker spawn,
+/// fs watcher init. Sets app.image_decode_tx/rx, app.fs_event_rx, app.fs_overflow.
 pub fn start_session(app: &mut App) -> SessionGuard {
     crate::fsutil::cleanup_orphaned_temp_files();
 
@@ -79,20 +77,7 @@ pub fn start_session(app: &mut App) -> SessionGuard {
         register_signal(signal_hook::consts::SIGQUIT);
     }
 
-    // Spawn the background backup worker (only when the feature is enabled).
-    let done_rx = if app.config.features.backup.is_enabled() {
-        let (tx, done_rx) = crate::backup::worker::spawn(
-            app.git_lock.clone(),
-            app.backup_status.clone(),
-            app.message_tx.clone(),
-        );
-        app.backup_tx = Some(tx);
-        done_rx
-    } else {
-        let (tx, done_rx) = std::sync::mpsc::channel();
-        drop(tx);
-        done_rx
-    };
+    // Recovery writes are started lazily when an editor first queues a draft.
 
     // Spawn the background image decode worker (only when the feature is enabled).
     if app.config.features.images.is_enabled() {
@@ -177,80 +162,15 @@ pub fn start_session(app: &mut App) -> SessionGuard {
         None
     };
 
-    SessionGuard {
-        backup_done_rx: done_rx,
-        watcher,
-    }
+    SessionGuard { watcher }
 }
 
-/// = the post-loop backup flush block verbatim (signal_exit / backup_on_quit /
-/// done_rx deadline logic, incl. println!/eprintln! messages).
-fn wait_backup_flush(guard: &SessionGuard) -> bool {
-    let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-    loop {
-        if crate::FORCE_QUIT.load(Ordering::Acquire) {
-            return false;
-        }
-        match guard
-            .backup_done_rx
-            .recv_timeout(std::time::Duration::from_millis(200))
-        {
-            Ok(()) => return true,
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return false,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                if std::time::Instant::now() >= deadline {
-                    return false;
-                }
-            }
-        }
-    }
-}
-
-pub fn finish_session(app: &mut App, guard: SessionGuard) -> Result<()> {
-    let signal_exit = crate::SHOULD_EXIT.load(Ordering::Acquire);
-
-    if signal_exit {
-        drop(app.backup_tx.take());
-    } else if app.config.features.backup.is_enabled() && app.config.backup.backup_on_quit {
-        println!("Backing up…");
-        let _ = app.backup_tx.as_ref().map(|tx| {
-            tx.send(crate::backup::worker::BackupJob::Flush(
-                "auto: backup on quit".into(),
-            ))
-        });
-        drop(app.backup_tx.take());
-        if wait_backup_flush(&guard) {
-            println!("Done.");
-        } else {
-            eprintln!("Backup still running in background; exiting.");
-        }
-        if let Some(msg) = app.backup_status.lock().take() {
-            eprintln!("Backup warning: {msg}");
-        }
-    } else {
-        drop(app.backup_tx.take());
-        let _ = wait_backup_flush(&guard);
-    }
+/// Stop session resources; editor persistence is flushed before returning.
+pub fn finish_session(app: &mut App, _guard: SessionGuard) -> Result<()> {
+    app.flush_drafts()?;
     Ok(())
 }
 
-/// Stop workers for an in-process vault rebootstrap without triggering backup-on-quit.
 pub fn finish_session_for_rebootstrap(app: &mut App, guard: SessionGuard) -> Result<()> {
-    drop(app.backup_tx.take());
-    let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-    loop {
-        match guard
-            .backup_done_rx
-            .recv_timeout(std::time::Duration::from_millis(200))
-        {
-            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-                if std::time::Instant::now() >= deadline =>
-            {
-                break;
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-        }
-    }
-    Ok(())
+    finish_session(app, guard)
 }

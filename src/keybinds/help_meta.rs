@@ -1,6 +1,4 @@
-use crate::keybinds::types::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, ListAction,
-};
+use crate::keybinds::types::{CanvasAction, DrawAction, EditAction, GraphAction, ListAction};
 
 #[derive(Clone, Copy)]
 pub struct HelpMeta {
@@ -103,9 +101,6 @@ pub fn canvas_group_order() -> &'static [&'static str] {
         "Menus & Popups",
         "General",
     ]
-}
-pub fn backup_group_order() -> &'static [&'static str] {
-    &["Navigation", "Actions", "Settings Fields", "General"]
 }
 
 pub fn list_action_meta(a: ListAction) -> HelpMeta {
@@ -322,34 +317,6 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
     }
 }
 
-pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
-    match a {
-        BackupAction::MoveUp => meta("Navigation", "Move up"),
-        BackupAction::MoveDown => meta("Navigation", "Move down"),
-        BackupAction::ScrollDiffUp => meta("Navigation", "Scroll diff up"),
-        BackupAction::ScrollDiffDown => meta("Navigation", "Scroll diff down"),
-        BackupAction::CycleSection => meta("Navigation", "Cycle sections"),
-        BackupAction::StageFile => meta("Actions", "Stage file"),
-        BackupAction::UnstageFile => meta("Actions", "Unstage file"),
-        BackupAction::StageAll => meta("Actions", "Stage all changes"),
-        BackupAction::Refresh => meta("Actions", "Refresh status"),
-        BackupAction::EnterCommit => meta("Actions", "Enter commit"),
-        BackupAction::ConfirmCommit => meta("Actions", "Confirm commit"),
-        BackupAction::CancelCommit => meta("Actions", "Cancel commit"),
-        BackupAction::Push => meta("Actions", "Push to remote"),
-        BackupAction::Pull => meta("Actions", "Pull from remote"),
-        BackupAction::OpenSettings => meta("Actions", "Open settings"),
-        BackupAction::CloseSettings => meta("Actions", "Close settings"),
-        BackupAction::NextField => meta("Settings Fields", "Next field"),
-        BackupAction::PrevField => meta("Settings Fields", "Previous field"),
-        BackupAction::ActivateField => meta("Settings Fields", "Activate field"),
-        BackupAction::ConfirmEditField => meta("Settings Fields", "Confirm edit field"),
-        BackupAction::CancelEditField => meta("Settings Fields", "Cancel edit field"),
-        BackupAction::Help => meta("General", "Show help"),
-        BackupAction::Back => meta("General", "Back to list"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,9 +350,5 @@ mod tests {
     #[test]
     fn canvas_meta_nonempty() {
         assert_meta_nonempty!(CanvasAction, canvas_action_meta);
-    }
-    #[test]
-    fn backup_meta_nonempty() {
-        assert_meta_nonempty!(BackupAction, backup_action_meta);
     }
 }

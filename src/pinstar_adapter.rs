@@ -342,9 +342,11 @@ impl OverlayView for PinstarPlugin {
                 self.state.mouse_pos = Some((mouse.column, mouse.row));
                 let outcome = handle_pinstar_mouse(&mut self.state, mouse, area);
                 if let Some(clipboard) = outcome.clipboard {
-                    crate::text_edit::write_system_clipboard(&clipboard);
-                }
-                if let Some(notice) = outcome.notice {
+                    let notice = crate::text_edit::clipboard_notice(
+                        crate::text_edit::write_system_clipboard(&clipboard),
+                    );
+                    app.set_temporary_status(notice);
+                } else if let Some(notice) = outcome.notice {
                     app.set_temporary_status(notice);
                 }
                 if self.state.trigger_image_picker {

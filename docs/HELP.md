@@ -17,7 +17,6 @@ The help view has up to 8 tabs in order. Disabled-feature tabs are omitted:
 | 3 | **Graph** | Visualize your notes as a force-directed graph |
 | 4 | **Draw** | Freehand strokes, shapes, and text on a drawing canvas |
 | 5 | **Canvas** | Infinite pinstar canvas for connecting notes and drawings |
-| 6 | **Backup** | Git-backed vault backup dashboard |
 | 7 | **Templates** | Reusable note templates with variable substitution |
 | 8 | **About** | Application metadata, config paths, CLI reference |
 

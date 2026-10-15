@@ -21,11 +21,31 @@ pub(crate) fn read_bounded_text(path: &Path, max_bytes: usize) -> Result<String>
 #[derive(Clone, Debug)]
 pub struct DocumentSnapshot {
     id: String,
-    source: String,
+    source: std::sync::Arc<str>,
+    existing: bool,
     recovery_id: uuid::Uuid,
 }
 
 impl DocumentSnapshot {
+    pub(crate) fn new(id: String) -> Self {
+        Self {
+            id,
+            source: "".into(),
+            existing: false,
+            recovery_id: uuid::Uuid::new_v4(),
+        }
+    }
+    pub(crate) fn exists(&self) -> bool {
+        self.existing
+    }
+    pub(crate) fn for_destination(&self, id: String) -> Self {
+        Self { id, ..self.clone() }
+    }
+    pub(crate) fn retain_recovery_id(mut self, previous: &Self) -> Self {
+        self.recovery_id = previous.recovery_id;
+        self
+    }
+
     pub(crate) fn recovery_id(&self) -> uuid::Uuid {
         self.recovery_id
     }
@@ -110,7 +130,8 @@ impl Storage {
         let source = read_bounded_text(&path, 16 * 1024 * 1024)?;
         Ok(DocumentSnapshot {
             id: id.to_owned(),
-            source,
+            source: source.into(),
+            existing: true,
             recovery_id: uuid::Uuid::new_v4(),
         })
     }
@@ -121,6 +142,7 @@ impl Storage {
         baseline: &DocumentSnapshot,
         source: &str,
     ) -> Result<DocumentSnapshot> {
+        let _guard = self.write_guard()?;
         if source.len() > 16 * 1024 * 1024 {
             bail!("document exceeds 16777216-byte safety limit");
         }
@@ -137,7 +159,8 @@ impl Storage {
         }
         Ok(DocumentSnapshot {
             id: baseline.id.clone(),
-            source: source.to_owned(),
+            source: source.into(),
+            existing: true,
             recovery_id: baseline.recovery_id,
         })
     }
@@ -166,6 +189,7 @@ impl Storage {
 
     /// Publish a new document without replacing an existing file, even on collision.
     pub fn create_document(&self, id: &str, source: &str) -> Result<DocumentSnapshot> {
+        let _guard = self.write_guard()?;
         if source.len() > 16 * 1024 * 1024 {
             bail!("document exceeds 16777216-byte safety limit");
         }
@@ -175,26 +199,22 @@ impl Storage {
         crate::fsutil::atomic_create(&path, source.as_bytes())?;
         Ok(DocumentSnapshot {
             id: id.to_owned(),
-            source: source.to_owned(),
+            source: source.into(),
+            existing: true,
             recovery_id: uuid::Uuid::new_v4(),
         })
     }
 
     pub fn rename_document(&self, id: &str, title: &str) -> Result<String> {
-        let source = self.document_path(id)?;
+        let _guard = self.write_guard()?;
+        self.document_path(id)?;
         let ext = Path::new(id)
             .extension()
             .and_then(|e| e.to_str())
             .context("document has no extension")?;
         let stem = self.note_file_stem_from_title(title);
         let target_id = self.unique_note_id(&stem, ext, id);
-        let target = self.document_path(&target_id)?;
-        if source != target {
-            if target.exists() {
-                bail!("rename destination already exists");
-            }
-            fs::rename(source, target).context("failed to rename document")?;
-        }
+        self.relocate_note_locked(id, &target_id)?;
         Ok(target_id)
     }
 
@@ -218,7 +238,11 @@ impl Storage {
         let target = self.document_path(&target_id)?;
         fs::create_dir_all(target.parent().context("document has no parent")?)?;
         let bytes = fs::read(source).context("failed to read source document")?;
-        crate::fsutil::atomic_create(&target, &bytes)?;
+        crate::fsutil::atomic_create_preserving_permissions(
+            &target,
+            &self.document_path(id)?,
+            &bytes,
+        )?;
         Ok(target_id)
     }
 }
@@ -234,9 +258,7 @@ mod tests {
             data_dir: dir.path().to_owned(),
             config_dir: dir.path().to_owned(),
             templates_dir: dir.path().join("templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         (dir, storage)
     }
@@ -284,6 +306,7 @@ mod tests {
         );
         assert!(storage.load_note("a.base").is_err());
         let note = super::super::Note {
+            baseline: None,
             title: "Wrong".into(),
             content: "bad".into(),
             tags: Vec::new(),

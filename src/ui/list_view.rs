@@ -1524,15 +1524,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
     if let Some(preview_rect) = preview_area {
-        let hide_encrypted = app.preview_encryption
-            && app
-                .list
-                .visual_list
-                .get(app.list.visual_index)
-                .is_some_and(|item| {
-                    matches!(item, crate::app::VisualItem::Note { is_clin: true, .. })
-                });
-
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
         let is_current_or_pending = content_is_current || app.list.pending_preview_update;
 
@@ -1594,7 +1585,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 preview_rect,
                 &app.app_theme,
                 content,
-                hide_encrypted,
                 app.list.snapshot_scroll_offset,
                 &app.config,
             );
@@ -2296,9 +2286,7 @@ mod tests {
             config_dir: temp_dir.path().join("config"),
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         for path in [
             &storage.data_dir,
@@ -2533,9 +2521,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
 

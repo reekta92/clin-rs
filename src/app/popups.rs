@@ -84,6 +84,9 @@ impl App {
     }
 
     fn open_template_path_in_editor(&mut self, path: &std::path::Path) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         if self.editor.external_editor_enabled {
             self.open_path_in_external_editor(path);
             self.sync_template_filename(path);
@@ -101,6 +104,9 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = None;
+        self.editor.public_document = None;
+        self.editor.note_baseline = None;
+        self.editor.template_source = Some(content.clone());
         self.editor.template_edit_path = Some(path.to_path_buf());
         self.editor.title_editor = make_title_editor(
             &format!(
@@ -112,7 +118,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.body = EditorDocument::from_text(&content);
+        self.editor.body = EditorDocument::from_source(&content);
         self.apply_editor_prefs();
         self.set_temporary_status_static("Editing template (Esc to save and return)");
     }
@@ -653,7 +659,9 @@ template = """
             };
             self.config.core.keybind_preset = new;
             self.apply_keybind_preset(new);
-            self.set_temporary_status(&format!("Keybind preset: {new}"));
+            self.set_temporary_status(&format!(
+                "Navigation preset: {new} (text editing unchanged)"
+            ));
             if let Ok(mut c) = crate::config::ClinConfig::load().0 {
                 c.core.keybind_preset = new;
                 let _ = c.save();

@@ -28,9 +28,7 @@ fn fixture() -> (tempfile::TempDir, App) {
         notes_dir: root.path().join("vault"),
         config_dir: root.path().join("vault/.clin"),
         templates_dir: root.path().join("templates"),
-        key: [0; 32],
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
     };
     for directory in [
         &storage.data_dir,

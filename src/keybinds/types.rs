@@ -303,46 +303,6 @@ pub enum CanvasAction {
     strum::EnumIter,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum BackupAction {
-    Back,
-    MoveDown,
-    MoveUp,
-    ScrollDiffDown,
-    ScrollDiffUp,
-    Refresh,
-    EnterCommit,
-    Push,
-    OpenSettings,
-    CycleSection,
-    CancelCommit,
-    ConfirmCommit,
-    CloseSettings,
-    NextField,
-    PrevField,
-    ActivateField,
-    CancelEditField,
-    ConfirmEditField,
-    Help,
-    Pull,
-    StageFile,
-    UnstageFile,
-    StageAll,
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    strum::EnumIter,
-)]
-#[serde(rename_all = "snake_case")]
 pub enum OutlineAction {
     MoveUp,
     MoveDown,

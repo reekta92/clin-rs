@@ -41,7 +41,7 @@ Prompts accept Enter to apply, Shift+Enter for a newline, and Esc to cancel.
 All presets inherit the Bases map; custom `bases` bindings remain supported.
 Statusline variables: `{bases_rows}`, `{bases_matched}`, `{bases_selected}`,
 `{bases_view}` and `{bases_property}`. Legacy count/selection/index variables use
-public query state in Bases, not the ordinary encrypted-note catalog.
+public query state in Bases, separate from the ordinary note catalog.
 
 ## Search and grouped sections
 
@@ -91,7 +91,7 @@ Same-filesystem moves retain file identity; cross-filesystem moves stream staged
 copies without loading attachments into memory. Destination collisions, changed
 source bytes/timestamps/permissions, hidden/private paths and symlinks reject the
 batch before publication. Blank keyboard Move To Group moves to the vault root.
-Undo/redo checks the same baselines. Encrypted move records retain staged rollback
+Undo/redo checks the same baselines. Private plaintext move records retain staged rollback
 data through publication and durable commit; startup recovery restores interrupted
 moves or retains conflicting records. Authored links remain verbatim.
 
@@ -132,8 +132,8 @@ Generic property/source edits do not insert clin fields or synchronize titles
 with filenames. Unrelated YAML, comments, formatting, body bytes, and file
 permissions are retained. Atomic writes check original bytes; configuration
 prompts retain the baseline from opening the dialog, even when a watcher refresh
-arrives. Stale edits/undo reject rather than overwrite newer files. Encrypted
-recovery records are storage-owned under `.clin/document-recovery`.
+arrives. Stale edits/undo reject rather than overwrite newer files. Private plaintext
+recovery records are storage-owned under `.clin/document-recovery-v2`. See [Upgrading](UPGRADING.md) for privacy and legacy-data requirements.
 
 Unknown plugin/view settings remain opaque and preserved, never executed.
 Browser/plugin runtimes and official Maps are not provided. `html()` remains

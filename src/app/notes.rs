@@ -314,6 +314,9 @@ impl App {
     }
 
     pub fn open_note_at_line(&mut self, note_id: &str, line_number: Option<usize>) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         if note_id.ends_with(".base") {
             self.open_bases_view(note_id, None);
             return;
@@ -327,8 +330,9 @@ impl App {
             return;
         }
         if note_id.ends_with(".clin") {
-            self.status =
-                Cow::Borrowed("Note is encrypted. Use command palette (Ctrl+P) to decrypt.");
+            self.status = Cow::Borrowed(
+                "Legacy encrypted note: use the previous release to decrypt a safe copy.",
+            );
             return;
         }
         let ext = std::path::Path::new(note_id)
@@ -409,6 +413,9 @@ impl App {
     }
 
     pub fn open_public_document(&mut self, snapshot: crate::storage::documents::DocumentSnapshot) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         self.editor.editing_id = Some(snapshot.id().to_owned());
         self.editor.template_edit_path = None;
         self.editor.title_editor = make_title_editor(
@@ -435,8 +442,13 @@ impl App {
     }
 
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editor.public_document = None;
+            self.editor.template_edit_path = None;
+            self.editor.note_baseline = note.baseline.clone();
             self.editor.editing_id = Some(note_id.to_string());
             self.editor.initial_word_count = crate::goals::count_words(&note.content);
             self.editor.title_editor = make_title_editor(
@@ -444,7 +456,7 @@ impl App {
                 self.app_theme.highlight_fg,
                 self.app_theme.highlight_bg,
             );
-            let mut body = EditorDocument::from_text(&note.content);
+            let mut body = EditorDocument::from_source(&note.content);
             if let Some(l) = line_number {
                 body.move_cursor(ratatui_textarea::CursorMove::Jump(
                     l.saturating_sub(1) as u16,
@@ -547,6 +559,7 @@ impl App {
                             }
 
                             let updated_note = Note {
+                                baseline: note.baseline.clone(),
                                 title: note.title,
                                 content: new_content,
                                 updated_at: now_unix_secs(),
@@ -559,7 +572,6 @@ impl App {
                                     crate::app::messages::MessageSeverity::Warning,
                                 );
                             } else {
-                                self.enqueue_backup(format!("auto: {}", updated_note.title));
                                 self.set_temporary_status_static("Note saved");
                                 self.refresh_note_single(None, note_id);
 
@@ -657,8 +669,12 @@ impl App {
     }
 
     fn enter_edit_mode(&mut self, id: String, title: String, content: String) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         if self.editor.external_editor_enabled {
             let new_note = Note {
+                baseline: None,
                 title,
                 content,
                 updated_at: now_unix_secs(),
@@ -666,7 +682,6 @@ impl App {
             };
             match self.storage.save_note(&id, &new_note) {
                 Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", new_note.title));
                     self.refresh_note_single(None, &saved_id);
                     self.open_note_in_external_editor(&saved_id, None);
                 }
@@ -682,6 +697,10 @@ impl App {
 
         self.mode = ViewMode::Edit;
 
+        self.editor.public_document = None;
+        self.editor.template_edit_path = None;
+        self.editor.note_baseline =
+            Some(crate::storage::documents::DocumentSnapshot::new(id.clone()));
         self.editor.editing_id = Some(id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
@@ -722,6 +741,9 @@ impl App {
         editor_title: String,
         content: String,
     ) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() && !Self::is_virtual_path(folder) {
             new_id = format!("{folder}/{new_id}");
@@ -729,6 +751,7 @@ impl App {
 
         if self.editor.external_editor_enabled {
             let new_note = Note {
+                baseline: None,
                 title: note_title,
                 content,
                 updated_at: now_unix_secs(),
@@ -736,7 +759,6 @@ impl App {
             };
             match self.storage.save_note(&new_id, &new_note) {
                 Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", new_note.title));
                     self.refresh_note_single(None, &saved_id);
                     self.open_note_in_external_editor(&saved_id, None);
                 }
@@ -751,6 +773,11 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        self.editor.public_document = None;
+        self.editor.template_edit_path = None;
+        self.editor.note_baseline = Some(crate::storage::documents::DocumentSnapshot::new(
+            new_id.clone(),
+        ));
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
@@ -767,6 +794,7 @@ impl App {
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
+            self.editor.note_baseline = None;
             self.editor.public_document = None;
             if self.editor.template_edit_path.is_some() {
                 self.refresh_template_popup();
@@ -814,6 +842,7 @@ impl App {
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
+        self.editor.note_baseline = None;
         self.editor.public_document = None;
         if self.editor.template_edit_path.is_some() {
             self.refresh_template_popup();
@@ -915,7 +944,9 @@ impl App {
 
     pub fn open_note_from_graph(&mut self, note_id: &str) {
         if note_id.ends_with(".clin") {
-            self.set_temporary_status_static("Cannot open encrypted notes. Decrypt first.");
+            self.set_temporary_status_static(
+                "Legacy encrypted notes require the previous release; data retained.",
+            );
             return;
         }
         let ext = std::path::Path::new(note_id)
@@ -1076,6 +1107,10 @@ impl App {
                     };
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Draw;
+                    self.editor.note_baseline =
+                        Some(self.storage.load_document(&canvas_id).unwrap_or_else(|_| {
+                            crate::storage::documents::DocumentSnapshot::new(canvas_id.clone())
+                        }));
                     self.editor.editing_id = Some(canvas_id.clone());
                     let state = crate::draw::app::DrawAppState::new(
                         self.storage.clone(),
@@ -1114,6 +1149,10 @@ impl App {
                     }
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Canvas;
+                    self.editor.note_baseline =
+                        Some(self.storage.load_document(&canvas_id).unwrap_or_else(|_| {
+                            crate::storage::documents::DocumentSnapshot::new(canvas_id.clone())
+                        }));
                     self.editor.editing_id = Some(canvas_id);
                     if let Ok(plugin) = crate::pinstar_adapter::PinstarPlugin::new(
                         &path,
@@ -1150,7 +1189,6 @@ impl App {
                 note.content.push_str(&content);
                 note.updated_at = now_unix_secs();
                 self.storage.save_note(id, &note)?;
-                self.enqueue_backup(format!("auto: {}", note.title));
                 self.refresh_note_single(None, id);
                 self.set_temporary_status_static("Content appended");
             }
@@ -1159,6 +1197,9 @@ impl App {
     }
 
     pub fn start_note_with_content(&mut self, folder: String, title: String, content: String) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
@@ -1172,6 +1213,7 @@ impl App {
 
         if self.editor.external_editor_enabled {
             let note = Note {
+                baseline: None,
                 title,
                 content,
                 updated_at: now_unix_secs(),
@@ -1179,7 +1221,6 @@ impl App {
             };
             match self.storage.save_note(&new_id, &note) {
                 Ok(saved_id) => {
-                    self.enqueue_backup(format!("auto: {}", note.title));
                     self.refresh_note_single(None, &saved_id);
                     self.open_note_in_external_editor(&saved_id, None);
                 }
@@ -1194,6 +1235,11 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        self.editor.public_document = None;
+        self.editor.template_edit_path = None;
+        self.editor.note_baseline = Some(crate::storage::documents::DocumentSnapshot::new(
+            new_id.clone(),
+        ));
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
@@ -1217,7 +1263,7 @@ impl App {
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
                     .borders(ratatui::widgets::Borders::ALL)
-                    .title("Rename Note - Esc to cancel, Enter to save"),
+                    .title("Rename file: links are NOT updated - Esc cancel, Enter confirm"),
             );
             self.popups.active = Some(crate::popups::ActivePopup::NoteRename(NoteRenamePopup {
                 note_id: id,

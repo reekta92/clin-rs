@@ -1,6 +1,6 @@
 use super::{
-    BackupAction, BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, Keybinds, ListAction, OutlineAction, SetupAction,
+    BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo, Keybinds,
+    ListAction, OutlineAction, SetupAction,
 };
 use crate::config::KeybindPreset;
 
@@ -221,32 +221,6 @@ const DEFAULT_CANVAS: &[(CanvasAction, &[&str])] = &[
     (CanvasAction::EditorUnfocus, &["Esc"]),
 ];
 
-const DEFAULT_BACKUP: &[(BackupAction, &[&str])] = &[
-    (BackupAction::Back, &["Esc", "q"]),
-    (BackupAction::MoveDown, &["j", "Down"]),
-    (BackupAction::MoveUp, &["k", "Up"]),
-    (BackupAction::ScrollDiffDown, &["Ctrl+d", "PageDown"]),
-    (BackupAction::ScrollDiffUp, &["Ctrl+u", "PageUp"]),
-    (BackupAction::Refresh, &["r"]),
-    (BackupAction::EnterCommit, &["c"]),
-    (BackupAction::Push, &["p"]),
-    (BackupAction::OpenSettings, &[","]),
-    (BackupAction::CycleSection, &["Tab", "BackTab"]),
-    (BackupAction::Help, &["?"]),
-    (BackupAction::Pull, &["Shift+P"]),
-    (BackupAction::StageFile, &["Space", "s"]),
-    (BackupAction::UnstageFile, &["u"]),
-    (BackupAction::StageAll, &["Shift+S"]),
-    (BackupAction::CancelCommit, &["Esc"]),
-    (BackupAction::ConfirmCommit, &["Enter"]),
-    (BackupAction::CloseSettings, &["Esc", "q"]),
-    (BackupAction::NextField, &["j", "Down"]),
-    (BackupAction::PrevField, &["k", "Up"]),
-    (BackupAction::ActivateField, &["Enter"]),
-    (BackupAction::CancelEditField, &["Esc"]),
-    (BackupAction::ConfirmEditField, &["Enter"]),
-];
-
 const DEFAULT_OUTLINE: &[(OutlineAction, &[&str])] = &[
     (OutlineAction::MoveUp, &["k", "Up"]),
     (OutlineAction::MoveDown, &["j", "Down"]),
@@ -314,7 +288,6 @@ impl Default for Keybinds {
             graph: build(DEFAULT_GRAPH),
             draw: build(DEFAULT_DRAW),
             canvas: build(DEFAULT_CANVAS),
-            backup: build(DEFAULT_BACKUP),
             outline: build(DEFAULT_OUTLINE),
             setup: build(DEFAULT_SETUP),
             bases: build(DEFAULT_BASES),
@@ -403,21 +376,6 @@ const HELIX_CANVAS: &[(CanvasAction, &[&str])] = &[
     (CanvasAction::OpenContextMenu, &["Space m"]),
     (CanvasAction::ToggleGrid, &["Space g"]),
     (CanvasAction::Help, &["?"]),
-];
-
-const HELIX_BACKUP: &[(BackupAction, &[&str])] = &[
-    // ── Backup view ──
-    (BackupAction::Back, &["q", "Esc"]),
-    (BackupAction::MoveDown, &["j", "Down"]),
-    (BackupAction::MoveUp, &["k", "Up"]),
-    (BackupAction::ScrollDiffDown, &["Ctrl+d", "PageDown"]),
-    (BackupAction::ScrollDiffUp, &["Ctrl+u", "PageUp"]),
-    (BackupAction::Refresh, &["r"]),
-    (BackupAction::EnterCommit, &["c"]),
-    (BackupAction::Push, &["p"]),
-    (BackupAction::StageFile, &["Space"]),
-    (BackupAction::OpenSettings, &["Space s"]),
-    (BackupAction::CycleSection, &["Tab", "BackTab"]),
 ];
 
 const HELIX_OUTLINE: &[(OutlineAction, &[&str])] = &[
@@ -519,21 +477,6 @@ const VIM_CANVAS: &[(CanvasAction, &[&str])] = &[
     (CanvasAction::Help, &["?"]),
 ];
 
-const VIM_BACKUP: &[(BackupAction, &[&str])] = &[
-    // ── Backup view ──
-    (BackupAction::Back, &["q", "Esc"]),
-    (BackupAction::MoveDown, &["j", "Down"]),
-    (BackupAction::MoveUp, &["k", "Up"]),
-    (BackupAction::ScrollDiffDown, &["Ctrl+d", "PageDown"]),
-    (BackupAction::ScrollDiffUp, &["Ctrl+u", "PageUp"]),
-    (BackupAction::Refresh, &["r"]),
-    (BackupAction::EnterCommit, &["c"]),
-    (BackupAction::Push, &["p"]),
-    (BackupAction::OpenSettings, &["Space"]),
-    (BackupAction::CycleSection, &["Tab", "BackTab"]),
-    (BackupAction::StageFile, &["Space"]),
-];
-
 const VIM_OUTLINE: &[(OutlineAction, &[&str])] = &[
     // ── Outline view ──
     (OutlineAction::MoveUp, &["k", "Up"]),
@@ -600,17 +543,6 @@ const EMACS_CANVAS: &[(CanvasAction, &[&str])] = &[
     (CanvasAction::Help, &["Ctrl+h"]),
 ];
 
-const EMACS_BACKUP: &[(BackupAction, &[&str])] = &[
-    // ── Backup view ──
-    (BackupAction::Back, &["Ctrl+x Ctrl+c", "q"]),
-    (BackupAction::MoveDown, &["Ctrl+n", "Down"]),
-    (BackupAction::MoveUp, &["Ctrl+p", "Up"]),
-    (BackupAction::Refresh, &["r"]),
-    (BackupAction::EnterCommit, &["c"]),
-    (BackupAction::Push, &["p"]),
-    (BackupAction::CycleSection, &["Tab", "BackTab"]),
-];
-
 const EMACS_OUTLINE: &[(OutlineAction, &[&str])] = &[
     // ── Outline view ──
     (OutlineAction::MoveUp, &["Ctrl+p", "Up"]),
@@ -631,7 +563,6 @@ impl KeybindPreset {
             || Self::has_multi_seq(&kb.graph)
             || Self::has_multi_seq(&kb.draw)
             || Self::has_multi_seq(&kb.canvas)
-            || Self::has_multi_seq(&kb.backup)
             || Self::has_multi_seq(&kb.outline)
             || Self::has_multi_seq(&kb.setup)
     }
@@ -680,14 +611,7 @@ impl KeybindPreset {
                             .collect(),
                     );
                 }
-                for (a, keys) in HELIX_BACKUP {
-                    kb.backup.insert(
-                        *a,
-                        keys.iter()
-                            .map(|k| KeyCombo::parse(k).expect("valid key combo"))
-                            .collect(),
-                    );
-                }
+
                 for (a, keys) in HELIX_OUTLINE {
                     kb.outline.insert(
                         *a,
@@ -733,14 +657,7 @@ impl KeybindPreset {
                             .collect(),
                     );
                 }
-                for (a, keys) in VIM_BACKUP {
-                    kb.backup.insert(
-                        *a,
-                        keys.iter()
-                            .map(|k| KeyCombo::parse(k).expect("valid key combo"))
-                            .collect(),
-                    );
-                }
+
                 for (a, keys) in VIM_OUTLINE {
                     kb.outline.insert(
                         *a,
@@ -786,14 +703,7 @@ impl KeybindPreset {
                             .collect(),
                     );
                 }
-                for (a, keys) in EMACS_BACKUP {
-                    kb.backup.insert(
-                        *a,
-                        keys.iter()
-                            .map(|k| KeyCombo::parse(k).expect("valid key combo"))
-                            .collect(),
-                    );
-                }
+
                 for (a, keys) in EMACS_OUTLINE {
                     kb.outline.insert(
                         *a,

@@ -1,7 +1,6 @@
 use super::{
-    BackupAction, BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction,
-    SetupAction,
+    BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
+    KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction, SetupAction,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
@@ -146,7 +145,6 @@ keybind_resolve!(help, HelpAction, resolve_help, false);
 keybind_resolve!(graph, GraphAction, resolve_graph, true);
 keybind_resolve!(draw, DrawAction, resolve_draw, true);
 keybind_resolve!(canvas, CanvasAction, resolve_canvas, true);
-keybind_resolve!(backup, BackupAction, resolve_backup, true);
 keybind_resolve!(outline, OutlineAction, resolve_outline, true);
 keybind_resolve!(setup, SetupAction, resolve_setup, false);
 keybind_resolve!(bases, BasesAction, resolve_bases, true);
@@ -181,7 +179,6 @@ impl Keybinds {
         merge_section(&mut keybinds.graph, &toml.graph, warnings);
         merge_section(&mut keybinds.draw, &toml.draw, warnings);
         merge_section(&mut keybinds.canvas, &toml.canvas, warnings);
-        merge_section(&mut keybinds.backup, &toml.backup, warnings);
         merge_section(&mut keybinds.outline, &toml.outline, warnings);
         merge_section(&mut keybinds.setup, &toml.setup, warnings);
         merge_section(&mut keybinds.bases, &toml.bases, warnings);
@@ -209,7 +206,6 @@ impl Keybinds {
             graph: section_to_toml(&self.graph),
             draw: section_to_toml(&self.draw),
             canvas: section_to_toml(&self.canvas),
-            backup: section_to_toml(&self.backup),
             outline: section_to_toml(&self.outline),
             setup: section_to_toml(&self.setup),
             bases: section_to_toml(&self.bases),
@@ -293,13 +289,6 @@ keybind_scope!(
     matches_canvas,
     canvas_keys_display,
     display_canvas
-);
-keybind_scope!(
-    backup,
-    BackupAction,
-    matches_backup,
-    backup_keys_display,
-    display_backup
 );
 keybind_scope!(
     outline,
@@ -470,7 +459,7 @@ mod tests {
         assert_ne!(keybinds.help.len(), 0);
         assert_ne!(keybinds.draw.len(), 0);
         assert_ne!(keybinds.canvas.len(), 0);
-        assert_ne!(keybinds.backup.len(), 0);
+
         assert_ne!(keybinds.outline.len(), 0);
 
         let toml = keybinds.to_toml();
@@ -484,7 +473,7 @@ mod tests {
             Keybinds::load_layered(&path, Keybinds::default(), &mut Vec::new()).unwrap();
         assert_eq!(loaded_keybinds.draw, keybinds.draw);
         assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
-        assert_eq!(loaded_keybinds.backup, keybinds.backup);
+
         assert_eq!(loaded_keybinds.outline, keybinds.outline);
     }
 
@@ -1013,7 +1002,7 @@ mod tests {
             assert_eq!(loaded.graph, expected.graph);
             assert_eq!(loaded.draw, expected.draw);
             assert_eq!(loaded.canvas, expected.canvas);
-            assert_eq!(loaded.backup, expected.backup);
+
             assert_eq!(loaded.outline, expected.outline);
             assert_eq!(loaded.setup, expected.setup);
         }
@@ -1047,13 +1036,6 @@ fn test_display_picks_hint_key() {
         "Canvas MoveUp"
     );
     assert_eq!(kb.display_canvas(CanvasAction::Quit), "Esc", "Canvas Quit");
-    // Backup: Esc for Back (not q)
-    assert_eq!(kb.display_backup(BackupAction::Back), "Esc", "Backup Back");
-    assert_eq!(
-        kb.display_backup(BackupAction::EnterCommit),
-        "c",
-        "EnterCommit"
-    );
 }
 
 #[test]
@@ -1114,11 +1096,6 @@ fn test_macro_resolve_parity() {
     // Canvas
     let outcome1 = kb.resolve_canvas(&mut matcher, event, false, true);
     let outcome2 = matcher.resolve(event, &kb.canvas, false, true);
-    assert_eq!(outcome1, outcome2);
-
-    // Backup
-    let outcome1 = kb.resolve_backup(&mut matcher, event, false, true);
-    let outcome2 = matcher.resolve(event, &kb.backup, false, true);
     assert_eq!(outcome1, outcome2);
 
     // Outline

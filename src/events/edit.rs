@@ -433,7 +433,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     app.app_theme.highlight_bg,
                 );
             }
-            app.write_draft();
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
@@ -442,13 +441,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.body, key) {
                 if app.editor.body.revision() != revision {
                     app.request_editor_preview_update();
-                    app.write_draft();
                 }
                 return false;
             }
             if app.editor.body.input(Input::from(key)).content_changed {
                 app.request_editor_preview_update();
-                app.write_draft();
             }
         }
     }

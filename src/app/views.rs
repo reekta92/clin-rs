@@ -282,29 +282,6 @@ impl App {
         }
     }
 
-    pub fn open_backup_view(&mut self) {
-        if self.feature_disabled(self.config.features.backup.is_enabled(), "Backup", "backup") {
-            return;
-        }
-        let vault_path = crate::config::vault_path_or_dot(&self.config);
-        let config = &self.config;
-
-        self.backup_state = Some(crate::backup::state::BackupState::new(
-            vault_path,
-            config.features.backup.is_enabled(),
-            &config.backup,
-            self.app_theme.clone(),
-            self.keybinds.clone(),
-            config.ui.tab_icons_only,
-            self.git_lock.clone(),
-            self.seq_matcher.clone(),
-        ));
-        if self.mode != ViewMode::Backup {
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Backup;
-        }
-    }
-
     pub fn open_draw_view(&mut self) {
         if self.feature_disabled(
             self.config.features.draw_view.is_enabled(),
@@ -528,9 +505,7 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
         }
     }
 

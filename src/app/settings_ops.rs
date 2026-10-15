@@ -447,20 +447,6 @@ impl App {
         );
     }
 
-    pub fn toggle_preview_encryption(&mut self) {
-        self.preview_encryption = !self.preview_encryption;
-        if self.list.preview_enabled {
-            self.update_preview();
-        }
-        let val = self.preview_encryption;
-        self.flag_status_persist(
-            val,
-            "Encrypted note previews enabled",
-            "Encrypted note previews hidden",
-            |c, v| c.list.preview_encryption = v,
-        );
-    }
-
     pub fn toggle_pinned_on_top(&mut self) {
         self.pinned_on_top = !self.pinned_on_top;
         self.sort_notes();
@@ -1028,18 +1014,6 @@ impl App {
         });
     }
 
-    pub fn toggle_encryption(&mut self) {
-        self.config.features.encryption = !self.config.features.encryption;
-        let val = self.config.features.encryption.is_enabled();
-        self.flag_status_persist(val, "Encryption enabled", "Encryption disabled", |c, v| {
-            c.features.encryption = if v {
-                crate::config::FeatureState::Enabled
-            } else {
-                crate::config::FeatureState::Disabled
-            }
-        });
-    }
-
     pub fn toggle_folder_graph_preview(&mut self) {
         self.config.list.folder_graph_preview = !self.config.list.folder_graph_preview;
         self.refresh_visual_list();
@@ -1101,9 +1075,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         App::new(storage).unwrap()
     }
@@ -1527,9 +1499,7 @@ mod tests {
             config_dir: temp.path().join("config"),
             notes_dir: old_path.join("notes"),
             templates_dir: old_path.join("templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
         let mut state =

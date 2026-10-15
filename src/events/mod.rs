@@ -351,30 +351,6 @@ pub fn handle_bracketed_paste(
                 false
             }
         }
-        ViewMode::Backup => {
-            if let Some(backup) = &mut app.backup_state {
-                match backup.input_mode {
-                    crate::backup::state::BackupInputMode::EditCommitMessage => {
-                        backup.commit_textarea.insert_str(&data);
-                        return true;
-                    }
-                    crate::backup::state::BackupInputMode::EditSettingsField => {
-                        match backup.settings.focused_field {
-                            crate::backup::state::SettingsField::RemoteUrl => {
-                                backup.settings.remote_url.insert_str(&data);
-                            }
-                            crate::backup::state::SettingsField::RemoteName => {
-                                backup.settings.remote_name.insert_str(&data);
-                            }
-                            _ => return false,
-                        }
-                        return true;
-                    }
-                    _ => return false,
-                }
-            }
-            false
-        }
         _ => false,
     }
 }
@@ -2053,9 +2029,7 @@ mod tests {
             config_dir: temp_dir.path().join("config"),
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         for path in [
             &storage.data_dir,
@@ -2262,6 +2236,7 @@ mod tests {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (_temp_dir, mut app) = test_app();
         let note = crate::storage::Note {
+            baseline: None,
             title: "Tagged".into(),
             content: String::new(),
             updated_at: 0,
@@ -2417,9 +2392,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
@@ -2504,9 +2477,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
@@ -2600,9 +2571,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor
@@ -2744,9 +2713,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.body =
@@ -2808,9 +2775,7 @@ mod tests {
             config_dir: temp_dir.path().join("config"),
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         std::fs::create_dir_all(&storage.data_dir).unwrap();
         std::fs::create_dir_all(&storage.config_dir).unwrap();

@@ -290,37 +290,6 @@ impl Default for SearchConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(default)]
-pub struct BackupConfig {
-    #[serde(default)]
-    pub backup_on_save: bool,
-    #[serde(default)]
-    pub backup_on_quit: bool,
-    #[serde(default)]
-    pub auto_push: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auto_backup_interval: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct NotesConfig {
-    pub rename_on_title_change: bool,
-}
-
-impl Default for NotesConfig {
-    fn default() -> Self {
-        Self {
-            rename_on_title_change: true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ImageConfig {
@@ -358,8 +327,6 @@ pub struct ListConfig {
     pub preview_enabled: bool,
     #[serde(default)]
     pub preview_position: PreviewPosition,
-    #[serde(default)]
-    pub preview_encryption: bool,
     #[serde(default)]
     pub show_file_size: bool,
     pub date_format: String,
@@ -402,7 +369,6 @@ impl Default for ListConfig {
         Self {
             preview_enabled: true,
             preview_position: PreviewPosition::default(),
-            preview_encryption: false,
             show_file_size: false,
             date_format: "%Y-%m-%d".to_string(),
             density: ListDensity::default(),
@@ -603,7 +569,6 @@ pub struct StatuslineConfig {
     pub graph: Option<StatuslineOverride>,
     pub draw: Option<StatuslineOverride>,
     pub canvas: Option<StatuslineOverride>,
-    pub backup: Option<StatuslineOverride>,
     pub outline: Option<StatuslineOverride>,
 }
 
@@ -702,9 +667,7 @@ pub struct FeaturesConfig {
     pub subnotes: FeatureState,
     pub templates: FeatureState,
     pub import: FeatureState,
-    pub encryption: FeatureState,
     pub images: FeatureState,
-    pub backup: FeatureState,
     pub goals: FeatureState,
     pub calendar: FeatureState,
     pub smart_folders: FeatureState,
@@ -724,9 +687,7 @@ impl Default for FeaturesConfig {
             subnotes: FeatureState::Enabled,
             templates: FeatureState::Enabled,
             import: FeatureState::Enabled,
-            encryption: FeatureState::Enabled,
             images: FeatureState::Enabled,
-            backup: FeatureState::Enabled,
             goals: FeatureState::Enabled,
             calendar: FeatureState::Enabled,
             smart_folders: FeatureState::Enabled,
@@ -752,11 +713,6 @@ pub struct ClinConfig {
     pub core: CoreConfig,
     #[serde(default)]
     pub ui: UiConfig,
-    #[serde(default)]
-    pub backup: BackupConfig,
-    #[serde(default)]
-    pub notes: NotesConfig,
-
     #[serde(default)]
     pub list: ListConfig,
     #[serde(default)]

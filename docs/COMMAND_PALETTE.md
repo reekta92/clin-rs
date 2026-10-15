@@ -37,7 +37,6 @@ pub trait Action: Send + Sync {
 
 | Method | Description |
 |---|---|
-| `id()` | Unique identifier string (e.g. `"note.encrypt"`) |
 | `name()` | Human-readable name for the palette |
 | `description()` | Short help text shown in palette |
 | `category()` | Grouping (General, Notes, Import, Append, Views, Settings) |
@@ -80,10 +79,8 @@ Actions are grouped by category:
 | Category | Shipped actions |
 |---|---|
 | **General** | Show info, paste image, insert image from file (shown under All) |
-| **Notes** | Encrypt, decrypt, manage sub-notes, outline, insert date, rasterize |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note; OCR paste |
-| **Views** | Graph, draw, canvas, backup, vault switcher |
 | **Settings** | Setup wizard, theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
 File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Views/Settings categories; General actions appear under All, not a separate General tab.
@@ -122,8 +119,6 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ├─────────────────────────────────────────────┤
 │ All · Notes · Import · Append · Views · Set │
 ├─────────────────────────────────────────────┤
-│   Encrypt Note               Encrypt..      │
-│   Decrypt Note               Decrypt..      │
 │   Outline               Headers..      │
 │   Open Graph View            Switch..       │
 │   Create Drawing             Create..       │
@@ -214,7 +209,6 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
 ## Connections
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, App state
-- [ENCRYPTION.md](ENCRYPTION.md) — `EncryptNoteAction`, `DecryptNoteAction`
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — `SwitchThemeAction`
 - [CANVAS.md](CANVAS.md) — `CreateCanvasAction`
 - [DRAW.md](DRAW.md) — `CreateDrawAction`

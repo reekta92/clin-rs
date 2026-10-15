@@ -36,6 +36,7 @@ where
         dirty |= app.poll_editor_renderers();
         dirty |= app.poll_editor_image_results();
         dirty |= app.tick_autosave();
+        dirty |= app.poll_draft_errors();
 
         if dirty {
             if !(pre_draw_hook)(app) {
@@ -85,17 +86,36 @@ where
                 {
                     synchronize_source_highlight(app, change);
                 }
+                app.write_draft();
                 app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
                 app.editor.autosave_timer =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
                 dirty = true;
             }
             if app.mode != ViewMode::Edit || app.should_quit {
-                break;
+                if finish_editor_transition(app) {
+                    break;
+                }
+                dirty = true;
             }
         }
     }
     Ok(())
+}
+
+/// Global quit and view actions obey the same save contract as Escape.
+fn finish_editor_transition(app: &mut App) -> bool {
+    if (app.editor.editing_id.is_some()
+        || app.editor.public_document.is_some()
+        || app.editor.template_edit_path.is_some())
+        && let Err(error) = app.autosave()
+    {
+        app.mode = ViewMode::Edit;
+        app.should_quit = false;
+        app.set_temporary_status(&error);
+        return false;
+    }
+    true
 }
 
 fn coalesce_editor_events(events: Vec<Event>) -> Vec<Event> {
@@ -118,6 +138,7 @@ fn coalesce_editor_events(events: Vec<Event>) -> Vec<Event> {
     batch
 }
 fn synchronize_source_highlight(app: &mut App, change: crate::editor_document::DocumentChange) {
+    crate::ui::apply_editor_visual_change(&mut app.editor, &change);
     let theme = app.app_theme.clone();
     let ghost_syntax = app.config.editor.ghost_syntax;
     let extended_features = app.config.editor.extended_markdown_features;
@@ -154,8 +175,7 @@ where
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
-            // Ctrl+C copies when a text selection is active; otherwise it
-            // force-quits (terminals always deliver the plain key).
+            // Ctrl+C is copy in text inputs, never an implicit emergency exit.
             let has_selection = match *focus {
                 EditFocus::Title => app.editor.title_editor.has_selection(),
                 EditFocus::Body => app.editor.body.has_selection(),
@@ -172,8 +192,8 @@ where
                 }
                 Ok(true)
             } else {
-                let _ = app.autosave();
-                crate::force_quit()
+                app.set_temporary_status_static("Nothing selected to copy");
+                Ok(true)
             }
         }
         Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -213,6 +233,9 @@ where
 }
 
 #[cfg(test)]
+mod safety_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crossterm::event::{KeyEvent, KeyModifiers};
@@ -228,9 +251,7 @@ mod tests {
             config_dir: dir.path().join("config"),
             notes_dir: dir.path().join("notes"),
             templates_dir: dir.path().join("templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         for path in [
             &storage.data_dir,

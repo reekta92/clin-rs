@@ -16,7 +16,7 @@ mouse-move or resize events, and redraws only after dirty editor-local work.
 Catalog, watcher, search, and other generic app queues wait until Edit exits.
 
 `EditorDocument` currently wraps `ratatui-textarea` behind body APIs; title,
-canvas JSON, popups, Draw, and Backup retain their own `TextArea` instances.
+canvas JSON, popups, and Draw retain their own `TextArea` instances.
 
 ## Preview Lifecycle
 
@@ -205,15 +205,32 @@ zen_focus_unit = "paragraph"
 zen_focus_context = 3
 ```
 
-## Draft Recovery and Encrypted Notes
-
-Editor mutations attempt to write an encrypted draft to `<vault>/.clin/editor_draft.bin`. Startup attempts to recover it into the note, then removes the readable draft even if decoding or saving fails. This is best-effort recovery, not a guarantee against every crash or disk-write failure.
-
-`.clin` notes cannot be edited directly: use **Decrypt Note** from the palette first. Draft writes exclude `.clin` IDs; encryption uses the application-wide key outside the vault. See [ENCRYPTION.md](ENCRYPTION.md).
-
 ## Connections
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, view state machine
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full configuration reference
 - [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — keybind presets and sequence syntax
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — editor-related actions
+
+## Save and recovery guarantees
+
+Ordinary saves preserve filename identity and Unix permissions, reject read-only files, and check the loaded raw source against disk. Conflicts and save failures remain unsaved; autosave retries instead of claiming success. Explicit file rename warns that incoming references are not rewritten.
+
+Recovery drafts are coalesced off the input thread, with durable flushes at save/session boundaries. New records are plaintext with private Unix permissions; old encrypted records are retained, never converted or deleted automatically. See [Upgrading](UPGRADING.md) for privacy and legacy-data requirements.
+
+`Ctrl+C` copies an active selection. Without selection it reports that nothing is selected, not an emergency process exit. Navigation presets do not turn the body into Vim or Helix.
+
+## Clipboard transport
+
+Copy and cut use the native system clipboard when available. On SSH, or when
+native clipboard access fails, clin can send bounded OSC 52 output to the
+terminal, including tmux passthrough. The terminal and tmux must permit OSC 52;
+clin cannot confirm delivery. “Copy sent to terminal (OSC 52)” means only that
+the escape sequence was written. Failed system copies remain in the app-local
+clipboard, available to clin's text fields for the current process.
+
+Existing notes retain trailing empty lines. Unchanged saves retain raw CRLF and
+frontmatter formatting. Body edits preserve unrelated frontmatter comments,
+quoting, and unknown properties. Adding a newline is an edit. Template saves
+check their loaded source before replacement; templates do not get note recovery
+drafts.

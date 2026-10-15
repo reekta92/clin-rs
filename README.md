@@ -78,15 +78,13 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 - **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
 - **Outline view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
 - **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
-- **Subnotes** — virtual notes attached to physical notes (encrypted only under encrypted parents), with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
+- **Subnotes** — virtual notes attached to physical notes, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
 - **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
-- **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
-- **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
+- **Command palette** (Ctrl+P) — extensible action system with theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Custom themes** — drop-in TOML themes in the active configuration directory’s `themes/` subdirectory, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
 
-- **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
 - **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, with image files displayed through terminal graphics or fallback placeholders. See [compatibility limits](docs/CANVAS.md#obsidian-compatibility).
 - **Templates** — TOML-based note templates with variable substitution (`{date}`, `{time}`, `{weekday}`, etc.). See [TEMPLATES.md](docs/TEMPLATES.md).
 - **Goals system** — daily word-count and note-count goals with in-app progress bars. Configurable via `[goals]` config section and command palette.
@@ -331,27 +329,25 @@ CLI templates currently insert the literal body without variable substitution or
 
 ## Features
 
+**Plaintext-only:** backup and encryption features have been removed. Existing encrypted notes and recovery records require the previous release; files and keys are preserved. Read [Upgrading](docs/UPGRADING.md) before opening an encrypted vault.
+
 | View | Purpose | Key Actions |
 |---|---|---|
 | **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete; Subnotes grid + radial graph |
 | **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
 | **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
-| **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
 | **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
 | **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
-| **Help** | In-app keybind + feature reference | Up to eight tabs (Notes/Editor/Graph/Draw/Canvas/Backup/Templates/About), filtered by enabled features; search, popup accordion, preset-aware tips |
 
 | Feature | Description |
 |---|---|
-| **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph |
-| **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt; local plaintext key, visible unauthenticated frontmatter |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
 | **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, 13 hint-bar styles |
 | **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
 | **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
-| **Keybinds** | Fully customizable through active-preset keybind files, with Helix/Vim/Emacs presets |
+| **Keybinds** | Fully customizable through active-preset keybind files, with navigation-only Helix/Vim/Emacs presets (not modal body editing) |
 | **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
 
 ---
@@ -368,7 +364,6 @@ See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all availab
 [features]
 images = true
 calendar = true
-backup = false
 
 [core]
 storage_path = "/path/to/your/vault"
@@ -387,7 +382,6 @@ hint_bar_style = "classic"
 [list]
 preview_enabled = true
 preview_position = "right"
-preview_encryption = false
 show_file_size = false
 date_format = "%Y-%m-%d"
 density = "comfortable"
@@ -484,18 +478,16 @@ Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all proje
 - [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
 - [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
 - [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view
-- [Backup](docs/BACKUP.md) — Git-based backup dashboard: vault state, history, diff preview, automation
 
 - [Draw](docs/DRAW.md) — freehand drawing canvas
 - [Outline](docs/OUTLINE.md) — nested outline navigation
 - [Editor](docs/EDITOR.md) — title/body editing, find, soft-wrap, sidebars, wikilink previews
-- [Encryption](docs/ENCRYPTION.md) — ChaCha20-Poly1305 per-note encryption
 - [Help](docs/HELP.md) — 3-pane help view: tabs, keybind index, tips, popup accordion
 - [Image Rendering](docs/IMAGE_RENDERING.md) — ratatui-image pixel rendering, protocols, [image] config
 - [Theme System](docs/THEME_SYSTEM.md) — built-in themes and customization
 - [Setup](docs/SETUP.md) — first-run setup wizard
 - [Command Palette](docs/COMMAND_PALETTE.md) — extensible action system
-- [Subnotes](docs/SUBNOTES.md) — attached notes, parent-dependent encryption, grid tab, radial graph, manager popup
+- [Subnotes](docs/SUBNOTES.md) — attached plaintext notes, grid tab, radial graph, manager popup
 - [Templates](docs/TEMPLATES.md) — TOML-based note templates
 
 
@@ -524,3 +516,15 @@ Licensed under the [GNU General Public License v3.0](LICENSE).
 ## Credits
 
 Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), upstream [graf](https://github.com/reekta92/graf-rs) (fdg-sim physics), and [pinstar](https://github.com/reekta92/pinstar). Markdown preview via built-in comrak/syntect renderer.
+
+Create a note from shell input without opening the TUI:
+
+```sh
+printf 'Meeting notes\n' | clin notes new --stdin 'Meeting'
+clin notes new 'Imported' < notes.txt
+```
+
+Input must be UTF-8 and at most 16 MiB. `--stdin` conflicts with `--body`.
+Explicit empty stdin creates an empty body; implicitly detected empty stdin
+keeps template content. See [Editor](docs/EDITOR.md#clipboard-transport) for
+native clipboard, SSH/OSC 52, tmux, and app-local fallback behavior.

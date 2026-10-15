@@ -221,4 +221,3 @@ Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — overall state machine and event loop
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateCanvasAction` (Ctrl+P → New Canvas)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — data flow and storage overview
-- [ENCRYPTION.md](ENCRYPTION.md) — canvas uses plaintext JSON; generic note-encryption conversion is not a supported canvas workflow

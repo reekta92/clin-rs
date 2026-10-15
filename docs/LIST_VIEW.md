@@ -36,7 +36,6 @@ The List view features a configurable preview pane that renders the contents of 
 - **Canvas Snapshots**: Shows a static preview of `.canvas` files.
 - **Draw Snapshots**: Shows a static preview of `.draw` files.
 - **Images**: Shows supported image files through terminal graphics when `[features] images` is enabled.
-- **Encrypted notes**: Content previews require `[list] preview_encryption = true`; metadata remains visible.
 
 ### Preview Configuration
 The preview pane can be toggled on/off and positioned on the left or right in configuration.

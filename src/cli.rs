@@ -71,6 +71,9 @@ pub enum NotesCmd {
         /// Initial body content. When set, the note is created and the TUI is not opened.
         #[arg(long)]
         body: Option<String>,
+        /// Read UTF-8 body from stdin. Non-terminal stdin is also detected automatically.
+        #[arg(long, conflicts_with = "body")]
+        stdin: bool,
         /// Create the note and exit without opening the TUI.
         #[arg(long)]
         no_tui: bool,

@@ -242,6 +242,7 @@ impl Storage {
         if plans.is_empty() {
             return Ok(());
         }
+        let _guard = self.write_guard()?;
         self.preflight_public_moves(plans, cancelled)?;
         let plans: Vec<_> = plans
             .iter()
@@ -388,9 +389,7 @@ mod tests {
             notes_dir: root.path().into(),
             config_dir: root.path().into(),
             templates_dir: root.path().join("templates"),
-            key: [3; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         (root, storage)
     }
@@ -532,9 +531,7 @@ mod tests {
             notes_dir: PathBuf::from("/"),
             config_dir: source.path().join(".clin"),
             templates_dir: source.path().join("templates"),
-            key: [3; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let id = source
             .path()
@@ -577,11 +574,11 @@ mod tests {
         plans
     }
     #[test]
-    fn pending_move_recovery_restores_unlinked_source_from_encrypted_journal() {
+    fn pending_move_recovery_restores_unlinked_source_from_private_journal() {
         let (root, storage) = vault();
         let plans = staged(&storage, root.path());
         let _journal = storage.begin_public_move_transaction(&plans).unwrap();
-        let directory = root.path().join(".clin/document-recovery");
+        let directory = root.path().join(".clin/document-recovery-v2");
         let record = fs::read(
             fs::read_dir(&directory)
                 .unwrap()
@@ -591,7 +588,7 @@ mod tests {
                 .path(),
         )
         .unwrap();
-        assert!(!record.windows(5).any(|bytes| bytes == b"a.png"));
+        assert!(record.windows(5).any(|bytes| bytes == b"a.png"));
         fs::hard_link(
             storage.move_stage(&plans[0]).unwrap(),
             root.path().join("folder/a.png"),
