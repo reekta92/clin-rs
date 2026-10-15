@@ -104,6 +104,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::InsertDate, &["Ctrl+;"]),
     (EditAction::ToggleOutline, &["Ctrl+o"]),
     (EditAction::ToggleLinks, &["Ctrl+b"]),
+    (EditAction::ToggleBases, &["Ctrl+g Ctrl+b"]),
     (EditAction::PreviewLink, &["Alt+l"]),
     (EditAction::CycleAlignment, &["F9"]),
 ];

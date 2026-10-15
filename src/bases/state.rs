@@ -13,6 +13,8 @@ pub enum Item {
 
 pub struct BasesState {
     pub id: String,
+    pub(super) expand_requested: bool,
+    pub(crate) embedded_request: Option<super::embedding::Request>,
     pub previous_mode: crate::app::ViewMode,
     pub named_view: Option<String>,
     pub environment: Environment,
@@ -27,6 +29,8 @@ pub struct BasesState {
     pub error: Option<String>,
     pub matcher: KeyMatcher,
     pub body_area: Rect,
+    pub(super) scrollbar: crate::ui::scrollbar::ScrollbarMeta,
+    pub(super) scroll_drag: Option<i32>,
     pub hit_rows: Vec<(Rect, usize, usize)>,
     pub(super) hit_groups: Vec<(Rect, usize)>,
     pub(super) media: super::media::PublicImages,
@@ -51,6 +55,8 @@ impl BasesState {
         };
         Self {
             id,
+            expand_requested: false,
+            embedded_request: None,
             previous_mode: crate::app::ViewMode::List,
             named_view,
             environment,
@@ -65,6 +71,8 @@ impl BasesState {
             error: None,
             matcher: KeyMatcher::default(),
             body_area: Rect::default(),
+            scrollbar: crate::ui::scrollbar::ScrollbarMeta::default(),
+            scroll_drag: None,
             hit_rows: Vec::new(),
             hit_groups: Vec::new(),
             media: super::media::PublicImages::default(),

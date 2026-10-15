@@ -697,3 +697,43 @@ fn query_5000_notes_benchmark() {
         "warm query p95 exceeds 150 ms"
     );
 }
+
+#[test]
+fn query_reuse_excludes_volatile_functions_and_includes_semantic_controls() {
+    let source = "filters: file.ext == 'md'\nformulas: {x: 'score + 1'}\nviews: [{type: table, order: [file.name, formula.x]}, {type: list, order: [file.name, formula.x]}]\n";
+    let doc = BaseDocument::parse(source).unwrap();
+    let mut query = Query::compile(&doc, 0).unwrap();
+    assert!(query.reuse_key().is_some());
+    assert_eq!(
+        query.reuse_key(),
+        Query::compile(&doc, 1).unwrap().reuse_key()
+    );
+    query.set_search("unique").unwrap();
+    assert_ne!(
+        query.reuse_key(),
+        Query::compile(&doc, 0).unwrap().reuse_key()
+    );
+    for expression in [
+        "now()",
+        "today()",
+        "random()",
+        "date('2026-10-15').relative()",
+        r#"date('2026-10-15')["rel\u0061tive"]()"#,
+    ] {
+        let source = format!(
+            "formulas: {{x: {}}}\nviews: [{{type: table, order: [formula.x]}}]",
+            serde_json::to_string(expression).unwrap()
+        );
+        let query = Query::compile(&BaseDocument::parse(&source).unwrap(), 0).unwrap();
+        assert_eq!(query.reuse_key(), None, "{expression}");
+    }
+    for filter in ["now()", "random() > 0", "today()"] {
+        let source = format!("filters: {filter}\nviews: [{{type: list}}]");
+        assert_eq!(
+            Query::compile(&BaseDocument::parse(&source).unwrap(), 0)
+                .unwrap()
+                .reuse_key(),
+            None
+        );
+    }
+}

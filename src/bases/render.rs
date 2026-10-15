@@ -8,9 +8,9 @@ use super::{
 use crate::fsutil::sanitize_for_terminal;
 use ratatui::{
     Frame,
-    layout::{Constraint, Rect},
+    layout::Rect,
     style::{Modifier, Style},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 
 pub fn display(value: &Value) -> String {
@@ -19,6 +19,7 @@ pub fn display(value: &Value) -> String {
     }
     sanitize_for_terminal(&value.to_text().display()).into_owned()
 }
+
 fn item_line(state: &BasesState, item: Item) -> String {
     let Some(loaded) = &state.loaded else {
         return String::new();
@@ -63,6 +64,7 @@ fn group_line(state: &BasesState, index: usize) -> String {
 pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
     let theme = &app.app_theme;
     state.body_area = area;
+    state.scrollbar = crate::ui::scrollbar::ScrollbarMeta::default();
     state.hit_rows.clear();
     state.hit_groups.clear();
     if let Some(error) = &state.error {
@@ -85,169 +87,87 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate
         );
         return;
     };
-    let Ok(result) = &loaded.result else {
+    let Ok(_) = &loaded.result else {
         return;
     };
     if matches!(state.layout(), Layout::Kanban) {
-        kanban(frame, area, state, app);
+        let content = Rect {
+            width: area.width.saturating_sub(u16::from(area.width > 1)),
+            ..area
+        };
+        kanban(frame, content, state, app);
+        draw_scrollbar(frame, area, state, app);
+        return;
+    }
+    if state.items.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No matching public files").style(Style::default().fg(theme.muted)),
+            area,
+        );
         return;
     }
     if matches!(state.layout(), Layout::Cards) {
-        cards(frame, area, state, app);
+        let content = Rect {
+            width: area.width.saturating_sub(u16::from(area.width > 1)),
+            ..area
+        };
+        cards(frame, content, state, app);
+        draw_scrollbar(frame, area, state, app);
         return;
     }
-    let item_height = 1;
-    let header = usize::from(matches!(state.layout(), Layout::Table));
-    let footer = usize::from(header > 0 && !result.summaries.is_empty());
-    let visible = (usize::from(area.height).saturating_sub(header + footer) / item_height).max(1);
-    if state.selected < state.offset {
-        state.offset = state.selected;
+    linear::render(frame, area, state, app);
+}
+fn draw_scrollbar(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
+    if area.width <= 1 {
+        return;
     }
-    if state.selected >= state.offset + visible {
-        state.offset = state.selected + 1 - visible;
-    }
-    state.offset = state.offset.min(state.items.len().saturating_sub(visible));
-    let selected_style = Style::default()
-        .fg(theme.highlight_fg)
-        .bg(theme.highlight_bg);
-    let selected_column = state.column;
-    let start_column =
-        selected_column.saturating_sub(usize::from(area.width / 20).saturating_sub(1));
-    if matches!(state.layout(), Layout::Table) {
-        let columns: Vec<_> = loaded
-            .columns
-            .iter()
-            .skip(start_column)
-            .take((usize::from(area.width) / 20).max(1))
-            .collect();
-        for position in state.offset..state.items.len().min(state.offset + visible) {
-            for column in 0..columns.len() {
-                let rect = Rect::new(
-                    area.x + (column * 20) as u16,
-                    area.y + header as u16 + (position - state.offset) as u16,
-                    20,
-                    1,
-                )
-                .intersection(area);
-                state.hit_rows.push((rect, position, start_column + column));
+    let visible = state
+        .hit_rows
+        .iter()
+        .map(|(_, position, _)| position)
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    state.scrollbar = crate::ui::scrollbar::ScrollbarMeta {
+        track: crate::ui::scrollbar::track_rect(area),
+        content_len: state.items.len(),
+        viewport_len: visible,
+    };
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        state.scrollbar.track,
+        state.items.len(),
+        visible,
+        state.selected,
+        state.items.len().saturating_sub(1),
+        &app.app_theme,
+    );
+}
+#[path = "linear.rs"]
+mod linear;
+
+fn wrap_cell(text: &str, width: u16, height: u16) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    use unicode_width::UnicodeWidthStr;
+    let mut output = String::new();
+    let mut used = 0;
+    let mut line = 1;
+    for cluster in text.graphemes(true) {
+        let size = cluster.width();
+        if used + size > usize::from(width) {
+            if line >= height {
+                break;
             }
+            output.push('\n');
+            line += 1;
+            used = 0;
         }
-        let rows = state
-            .items
-            .iter()
-            .copied()
-            .enumerate()
-            .skip(state.offset)
-            .take(visible)
-            .map(|(position, item)| match item {
-                Item::Group(index) => Row::new(
-                    columns
-                        .iter()
-                        .enumerate()
-                        .map(|(column, key)| {
-                            let group = &result.groups[index];
-                            let summary = group
-                                .summaries
-                                .get(*key)
-                                .map(|value| format!("Σ {}", display(value)))
-                                .unwrap_or_default();
-                            let text = if column == 0 {
-                                format!("{} {summary}", group_line(state, index))
-                            } else {
-                                summary
-                            };
-                            Cell::from(text)
-                        })
-                        .collect::<Vec<_>>(),
-                )
-                .style(if position == state.selected {
-                    selected_style.add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                        .fg(theme.heading)
-                        .add_modifier(Modifier::BOLD)
-                }),
-                Item::Row(index) => Row::new(
-                    columns
-                        .iter()
-                        .enumerate()
-                        .map(|(column, key)| {
-                            let text = result.rows[index]
-                                .values
-                                .get(*key)
-                                .map_or_else(String::new, display);
-                            let style = if position == state.selected
-                                && column + start_column == selected_column
-                            {
-                                selected_style
-                            } else if state.selected_ids.contains(&result.rows[index].id) {
-                                Style::default().fg(theme.accent)
-                            } else {
-                                Style::default().fg(theme.text)
-                            };
-                            Cell::from(text).style(style)
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-            })
-            .collect::<Vec<_>>();
-        let table = Table::new(rows, columns.iter().map(|_| Constraint::Length(19)))
-            .header(
-                Row::new(columns.iter().map(|column| {
-                    Cell::from(sanitize_for_terminal(
-                        loaded.document.config.labels.get(*column).unwrap_or(column),
-                    ))
-                }))
-                .style(
-                    Style::default()
-                        .fg(theme.heading)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            )
-            .column_spacing(1);
-        let table = if footer > 0 {
-            table.footer(
-                Row::new(columns.iter().map(|column| {
-                    Cell::from(
-                        result
-                            .summaries
-                            .get(*column)
-                            .map(|value| format!("Σ {}", display(value)))
-                            .unwrap_or_default(),
-                    )
-                }))
-                .style(Style::default().fg(theme.heading)),
-            )
-        } else {
-            table
-        };
-        frame.render_widget(table, area);
-    } else {
-        for (position, item) in state
-            .items
-            .iter()
-            .copied()
-            .enumerate()
-            .skip(state.offset)
-            .take(visible)
-        {
-            let rect = Rect::new(
-                area.x,
-                area.y + ((position - state.offset) * item_height) as u16,
-                area.width,
-                item_height as u16,
-            )
-            .intersection(area);
-            state.hit_rows.push((rect, position, state.column));
-            let text = item_line(state, item);
-            let style = if position == state.selected {
-                selected_style
-            } else {
-                Style::default().fg(theme.text)
-            };
-            frame.render_widget(Paragraph::new(text).style(style), rect);
+        if size > usize::from(width) {
+            continue;
         }
+        output.push_str(cluster);
+        used += size;
     }
+    output
 }
 fn card_regions(
     state: &BasesState,
@@ -527,6 +447,11 @@ fn card(
         Style::default()
             .fg(theme.highlight_fg)
             .bg(theme.highlight_bg)
+    } else if app
+        .mouse_pos
+        .is_some_and(|(x, y)| rect.contains((x, y).into()))
+    {
+        theme.hover_style().fg(theme.text)
     } else {
         theme.bg_style().fg(theme.text)
     };
@@ -612,4 +537,15 @@ fn card(
         })
         .collect();
     frame.render_widget(Paragraph::new(lines).style(style), body);
+}
+
+#[cfg(test)]
+mod cell_tests {
+    #[test]
+    fn wrapping_keeps_graphemes_and_clips_to_cell_geometry() {
+        assert_eq!(super::wrap_cell("public.md", 7, 3), "public.\nmd");
+        assert_eq!(super::wrap_cell("界界e\u{301}界", 4, 2), "界界\ne\u{301}界");
+        assert_eq!(super::wrap_cell("abcd", 2, 1), "ab");
+        assert_eq!(super::wrap_cell("wide", 0, 1), "");
+    }
 }

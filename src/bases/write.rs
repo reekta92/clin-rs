@@ -40,6 +40,7 @@ pub enum Operation {
     Save {
         baseline: DocumentSnapshot,
         source: String,
+        embedded: Option<super::embedding::Request>,
     },
     CreateBase {
         id: String,
@@ -55,6 +56,9 @@ pub enum Operation {
         columns: Vec<String>,
         result: Arc<super::query::QueryResult>,
         markdown: bool,
+    },
+    OpenSource {
+        id: String,
     },
     Open {
         id: String,
@@ -74,7 +78,10 @@ pub enum Outcome {
         transaction: Transaction,
         forward: bool,
     },
-    Saved(super::edits::Change),
+    Saved {
+        change: super::edits::Change,
+        embedded: Option<Box<super::embedding::Request>>,
+    },
     Created(DocumentSnapshot),
     CreatedBase(DocumentSnapshot),
     Opened(DocumentSnapshot),
@@ -92,7 +99,10 @@ impl WriteTask {
     pub fn spawn(storage: Storage, pool: &rayon::ThreadPool, operation: Operation) -> Self {
         let writing = !matches!(
             operation,
-            Operation::Prepare { .. } | Operation::Open { .. } | Operation::OpenRemoteImage { .. }
+            Operation::Prepare { .. }
+                | Operation::OpenSource { .. }
+                | Operation::Open { .. }
+                | Operation::OpenRemoteImage { .. }
         );
         let cancelled = Arc::new(AtomicBool::new(false));
         let flag = cancelled.clone();
@@ -165,12 +175,23 @@ impl WriteTask {
                             forward,
                         })
                     }
-                    Operation::Save { baseline, source } => {
+                    Operation::Save {
+                        baseline,
+                        source,
+                        embedded,
+                    } => {
+                        // Validate the replacement anchor before committing any host bytes.
+                        let embedded = embedded
+                            .map(|request| request.after_save(&source))
+                            .transpose()?;
                         let after = storage.save_document(&baseline, &source)?;
-                        Ok(Outcome::Saved(super::edits::Change {
-                            before: baseline,
-                            after,
-                        }))
+                        Ok(Outcome::Saved {
+                            change: super::edits::Change {
+                                before: baseline,
+                                after,
+                            },
+                            embedded: embedded.map(Box::new),
+                        })
                     }
                     Operation::CreateBase { id } => {
                         if !id.ends_with(".base") {
@@ -253,6 +274,7 @@ impl WriteTask {
                             image: Box::new(image),
                         })
                     }
+                    Operation::OpenSource { id } => storage.load_document(&id).map(Outcome::Opened),
                     Operation::Open { id, metadata } => {
                         let file = metadata.file(&id).ok_or_else(|| {
                             anyhow::anyhow!("file is absent from public metadata")

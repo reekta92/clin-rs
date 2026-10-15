@@ -17,7 +17,7 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::Style,
-    widgets::{List, ListItem, ListState},
+    widgets::{List, ListItem},
 };
 use ratatui_textarea::TextArea;
 use serde_yaml_ng::Value;
@@ -25,6 +25,7 @@ use serde_yaml_ng::Value;
 #[derive(Clone, Copy)]
 pub enum Command {
     View(&'static str),
+    Source,
     GlobalFilter,
     Formula,
     Summary,
@@ -76,6 +77,31 @@ pub const COMMANDS: &[(Command, &str, &str)] = &[
         Command::View("limit"),
         "Row limit",
         "Non-negative integer; blank = unlimited",
+    ),
+    (
+        Command::View("rowHeight"),
+        "Table row height",
+        "medium, tall or extra; blank = short",
+    ),
+    (
+        Command::View("columnSize"),
+        "Table column widths",
+        "YAML pixel-width mapping: {file.name: 240, score: 120}; blank = default",
+    ),
+    (
+        Command::View("markers"),
+        "List markers",
+        "bullet, number or none; blank = bullet",
+    ),
+    (
+        Command::View("indentProperties"),
+        "Indent list properties",
+        "true or false; blank = false",
+    ),
+    (
+        Command::View("separator"),
+        "List property separator",
+        "YAML text; blank or empty text = comma and space",
     ),
     (
         Command::View("cardSize"),
@@ -168,6 +194,11 @@ pub const COMMANDS: &[(Command, &str, &str)] = &[
         "Hide all groups",
         "",
     ),
+    (
+        Command::Source,
+        "Edit Bases source",
+        "Open public source for repair",
+    ),
 ];
 pub enum EditIntent {
     Edit,
@@ -209,18 +240,27 @@ pub enum Dialog {
     },
     Menu {
         selected: usize,
+        offset: usize,
+        area: Rect,
+        bounds: Rect,
     },
     Prompt {
         target: Target,
         title: String,
         hint: String,
         input: Box<TextArea<'static>>,
+        area: Rect,
+        bounds: Rect,
+        selection: crate::text_edit::MouseTextSelection,
     },
 }
 impl Dialog {
     pub fn prompt(target: Target, title: &str, hint: &str, value: &str) -> Self {
         Self::Prompt {
             target,
+            area: Rect::default(),
+            bounds: Rect::default(),
+            selection: crate::text_edit::MouseTextSelection::default(),
             title: title.into(),
             hint: hint.into(),
             input: Box::new(TextArea::new(
@@ -255,7 +295,12 @@ impl Dialog {
                     &mut **protocol,
                 );
             }
-            Self::Menu { selected } => {
+            Self::Menu {
+                selected,
+                offset,
+                area: menu_area,
+                bounds,
+            } => {
                 let inner = crate::ui::draw_popup_frame(
                     frame,
                     area,
@@ -264,20 +309,25 @@ impl Dialog {
                     crate::ui::PopupHints::Text("Enter select · Esc cancel"),
                     &app.app_theme,
                 );
+                *menu_area = inner;
+                *bounds = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
                 let list = List::new(COMMANDS.iter().map(|(_, label, _)| ListItem::new(*label)))
                     .highlight_style(
                         Style::default()
                             .fg(app.app_theme.highlight_fg)
                             .bg(app.app_theme.highlight_bg),
                     );
-                frame.render_stateful_widget(
-                    list,
-                    inner,
-                    &mut ListState::default().with_selected(Some(*selected)),
-                );
+                let mut state = crate::ui::list_state_selected(Some(*selected), *offset);
+                frame.render_stateful_widget(list, inner, &mut state);
+                *offset = state.offset();
             }
             Self::Prompt {
-                title, hint, input, ..
+                title,
+                hint,
+                input,
+                area: input_area,
+                bounds,
+                ..
             } => {
                 let inner = crate::ui::draw_popup_frame(
                     frame,
@@ -286,6 +336,13 @@ impl Dialog {
                     crate::ui::PopupSize::Medium,
                     crate::ui::PopupHints::Text("Enter save · Esc cancel · Ctrl+v paste"),
                     &app.app_theme,
+                );
+                *bounds = crate::ui::centered_rect(crate::ui::PopupSize::Medium, area);
+                *input_area = Rect::new(
+                    inner.x,
+                    inner.y.saturating_add(1),
+                    inner.width,
+                    inner.height.saturating_sub(1),
                 );
                 if inner.height > 0 {
                     frame.render_widget(
@@ -300,15 +357,7 @@ impl Dialog {
                         .fg(app.app_theme.highlight_fg)
                         .bg(app.app_theme.highlight_bg),
                 );
-                frame.render_widget(
-                    &**input,
-                    Rect::new(
-                        inner.x,
-                        inner.y.saturating_add(1),
-                        inner.width,
-                        inner.height.saturating_sub(1),
-                    ),
-                );
+                frame.render_widget(&**input, *input_area);
             }
         }
     }
@@ -335,6 +384,8 @@ pub fn configure(
     command: Command,
     source: &str,
 ) -> Result<BaseDocument> {
+    let original = document;
+    let edited_view = view;
     let document = match command {
         Command::View(key) => {
             let value = if source.trim().is_empty() {
@@ -409,12 +460,16 @@ pub fn configure(
             }
             document.remove_view(view)?
         }
-        Command::NewNote | Command::Export | Command::Group(_) => {
+        Command::NewNote | Command::Export | Command::Group(_) | Command::Source => {
             bail!("not a configuration field")
         }
     };
     for (index, view) in document.config.views.iter().enumerate() {
-        if view.layout.supported() {
+        if view.layout.supported()
+            && (index == edited_view
+                || index >= original.config.views.len()
+                || super::query::Query::compile(original, index).is_ok())
+        {
             super::query::Query::compile(&document, index)?;
         }
     }
@@ -579,6 +634,22 @@ impl BasesState {
         }
         .context("no history available")?
         .clone();
+        for change in &transaction.changes {
+            let baseline = if forward {
+                &change.before
+            } else {
+                &change.after
+            };
+            if self.embedded_request.as_ref().is_some_and(|request| {
+                request.host.as_deref() == Some(baseline.id())
+                    && matches!(
+                        request.definition,
+                        super::embedding::Definition::Inline { .. }
+                    )
+            }) {
+                app.ensure_inline_host_write(baseline)?;
+            }
+        }
         self.write_task = Some(WriteTask::spawn(
             app.storage.clone(),
             &app.notes_worker_pool,
@@ -715,6 +786,9 @@ impl BasesState {
             Ok(Outcome::Changed(transaction)) => {
                 self.remap_moved_focus(&transaction, true);
                 let moved = !transaction.moves.is_empty();
+                for change in &transaction.changes {
+                    app.synchronize_public_change(&change.before, &change.after);
+                }
                 self.remember(transaction);
                 self.refresh(app, true);
                 app.request_notes_reconcile();
@@ -728,6 +802,27 @@ impl BasesState {
                 transaction,
                 forward,
             }) => {
+                for change in &transaction.changes {
+                    let (before, after) = if forward {
+                        (&change.before, &change.after)
+                    } else {
+                        (&change.after, &change.before)
+                    };
+                    app.synchronize_public_change(before, after);
+                    if let Some(request) = &self.embedded_request
+                        && matches!(
+                            request.definition,
+                            super::embedding::Definition::Inline { .. }
+                        )
+                        && request.host.as_deref() == Some(after.id())
+                    {
+                        match request.after_save(after.source()) {
+                            Ok(updated) => self.embedded_request = Some(updated),
+                            Err(error) => app
+                                .set_temporary_status(&format!("Inline source refresh: {error:#}")),
+                        }
+                    }
+                }
                 self.remap_moved_focus(&transaction, forward);
                 if forward {
                     self.redo.pop();
@@ -741,7 +836,9 @@ impl BasesState {
                 app.request_notes_reconcile();
                 app.set_temporary_status_static("History applied");
             }
-            Ok(Outcome::Saved(change)) => {
+            Ok(Outcome::Saved { change, embedded }) => {
+                app.synchronize_public_change(&change.before, &change.after);
+                self.embedded_request = embedded.map(|embedded| *embedded);
                 self.remember(Transaction {
                     changes: vec![change],
                     moves: Vec::new(),
@@ -763,7 +860,24 @@ impl BasesState {
                 app.request_notes_reconcile();
                 app.set_temporary_status(&format!("Created {}", snapshot.id()));
             }
-            Ok(Outcome::Opened(snapshot)) => app.open_public_document(snapshot),
+            Ok(Outcome::Opened(snapshot)) => {
+                if app.canvas_state.as_ref().is_some_and(|canvas| {
+                    canvas.state.path == app.storage.notes_dir.join(snapshot.id())
+                        && canvas.base_host_has_pending_changes()
+                }) {
+                    app.set_temporary_status_static(
+                        "Finish and save the Canvas edit before opening its source",
+                    );
+                    return true;
+                }
+                if self.embedded_request.is_some()
+                    && app.editor.editing_id.is_some()
+                    && app.embedded_host_editor.is_none()
+                {
+                    app.embedded_host_editor = Some(Box::new(std::mem::take(&mut app.editor)));
+                }
+                app.open_public_document(snapshot);
+            }
             Ok(Outcome::Image { id, image }) => {
                 if app.config.features.images.is_enabled()
                     && let Some(picker) = &app.image_picker
@@ -817,15 +931,12 @@ impl BasesState {
                 baseline,
                 view,
             } => {
-                if loaded.snapshot.source() != baseline.source() {
+                if loaded.snapshot.id() != baseline.id()
+                    || loaded.snapshot.source() != baseline.source()
+                {
                     bail!("Bases document changed; close dialog and reload before authoring");
                 }
-                let document = configure(
-                    &BaseDocument::parse(baseline.source())?,
-                    *view,
-                    *command,
-                    source,
-                )?;
+                let document = configure(&loaded.document, *view, *command, source)?;
                 self.named_view = document
                     .config
                     .views
@@ -833,7 +944,8 @@ impl BasesState {
                     .map(|view| view.name.clone());
                 Operation::Save {
                     baseline: baseline.clone(),
-                    source: document.source().into(),
+                    source: loaded.configuration_source(app, &document)?,
+                    embedded: self.embedded_request.clone(),
                 }
             }
             Target::MoveGroup => {
@@ -847,7 +959,9 @@ impl BasesState {
                 source: self.id.clone(),
             },
             Target::GroupOrder { action, baseline } => {
-                if loaded.snapshot.source() != baseline.source() {
+                if loaded.snapshot.id() != baseline.id()
+                    || loaded.snapshot.source() != baseline.source()
+                {
                     bail!("Bases document changed; close dialog and reload before authoring");
                 }
                 self.change_group_order(app, *action, source)?;
@@ -900,20 +1014,120 @@ impl BasesState {
             }
             return true;
         }
+        let mut activate = false;
+        if let Event::Mouse(mouse) = event {
+            use crossterm::event::{MouseButton, MouseEventKind};
+            match &mut dialog {
+                Dialog::Menu {
+                    selected,
+                    offset,
+                    area,
+                    bounds,
+                } => match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left)
+                        if !bounds.contains((mouse.column, mouse.row).into()) =>
+                    {
+                        return true;
+                    }
+                    MouseEventKind::Down(MouseButton::Left)
+                        if area.contains((mouse.column, mouse.row).into()) =>
+                    {
+                        let index = *offset + usize::from(mouse.row - area.y);
+                        if index < COMMANDS.len() {
+                            activate = *selected == index;
+                            *selected = index;
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        *selected = (*selected + 3).min(COMMANDS.len() - 1)
+                    }
+                    MouseEventKind::ScrollUp => *selected = selected.saturating_sub(3),
+                    _ => {}
+                },
+                Dialog::Prompt {
+                    input,
+                    area,
+                    bounds,
+                    selection,
+                    ..
+                } => match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left)
+                        if !bounds.contains((mouse.column, mouse.row).into()) =>
+                    {
+                        return true;
+                    }
+                    MouseEventKind::Down(MouseButton::Left)
+                        if area.contains((mouse.column, mouse.row).into()) =>
+                    {
+                        let (row, column) = crate::ui::get_textarea_scroll(input);
+                        crate::events::move_textarea_cursor_to_mouse(
+                            input,
+                            *area,
+                            mouse.column,
+                            mouse.row,
+                            row,
+                            column,
+                        );
+                        selection.begin(&mut **input);
+                    }
+                    MouseEventKind::Drag(MouseButton::Left) if selection.active => {
+                        selection.mark_drag();
+                        let (row, column) = crate::ui::get_textarea_scroll(input);
+                        crate::events::move_textarea_cursor_to_mouse(
+                            input,
+                            *area,
+                            mouse.column,
+                            mouse.row,
+                            row,
+                            column,
+                        );
+                    }
+                    MouseEventKind::Up(MouseButton::Left) if selection.active => {
+                        if let Some(notice) = selection.finish(&mut **input, true) {
+                            app.set_temporary_status(notice);
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        let activate_event = Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        ));
+        let event = if activate { &activate_event } else { event };
         if let Event::Key(key) = event
             && key.kind != KeyEventKind::Release
         {
             match (&mut dialog, key.code) {
                 (_, KeyCode::Esc) => keep = false,
-                (Dialog::Menu { selected }, KeyCode::Up | KeyCode::Char('k')) => {
+                (Dialog::Menu { selected, .. }, KeyCode::Up | KeyCode::Char('k')) => {
                     *selected = selected.saturating_sub(1)
                 }
-                (Dialog::Menu { selected }, KeyCode::Down | KeyCode::Char('j')) => {
+                (Dialog::Menu { selected, .. }, KeyCode::Down | KeyCode::Char('j')) => {
                     *selected = (*selected + 1).min(COMMANDS.len() - 1)
                 }
-                (Dialog::Menu { selected }, KeyCode::Enter) => {
+                (Dialog::Menu { selected, .. }, KeyCode::Enter) => {
                     let (command, title, hint) = COMMANDS[*selected];
                     let target = match command {
+                        Command::Source => {
+                            match self.ensure_idle() {
+                                Ok(()) => {
+                                    self.write_task = Some(WriteTask::spawn(
+                                        app.storage.clone(),
+                                        &app.notes_worker_pool,
+                                        Operation::OpenSource {
+                                            id: self.id.clone(),
+                                        },
+                                    ))
+                                }
+                                Err(error) => {
+                                    app.set_temporary_status(&format!("Bases: {error:#}"))
+                                }
+                            }
+                            return true;
+                        }
                         Command::NewNote => {
                             if let Err(error) = self.prompt_new_note() {
                                 app.set_temporary_status(&format!("Bases: {error:#}"));

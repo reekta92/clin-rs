@@ -134,6 +134,7 @@ impl Node {
 pub struct Expression {
     pub(crate) root: Node,
     dependencies: BTreeSet<String>,
+    pub(crate) volatile: bool,
 }
 
 impl Expression {
@@ -159,6 +160,7 @@ impl Expression {
         let mut expression = Self {
             root,
             dependencies: BTreeSet::new(),
+            volatile: false,
         };
         let mut pending = vec![(&expression.root, 1)];
         while let Some((node, depth)) = pending.pop() {
@@ -176,11 +178,17 @@ impl Expression {
                 }
                 Kind::Call(target, arguments) => {
                     match &target.kind {
-                        Kind::Name(name) if GLOBAL_FUNCTIONS.contains(&name.as_str()) => {}
+                        Kind::Name(name) if GLOBAL_FUNCTIONS.contains(&name.as_str()) => {
+                            expression.volatile |=
+                                matches!(name.as_str(), "now" | "today" | "random");
+                        }
                         Kind::Member(_, key)
                             if key
                                 .string()
-                                .is_some_and(|name| METHODS.contains(&name.as_str())) => {}
+                                .is_some_and(|name| METHODS.contains(&name.as_str())) =>
+                        {
+                            expression.volatile |= key.string().as_deref() == Some("relative");
+                        }
                         _ => bail!("unsupported Bases function at byte {}", target.offset),
                     }
                     pending.push((target, depth + 1));

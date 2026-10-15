@@ -181,20 +181,17 @@ impl Storage {
     }
 
     pub fn rename_document(&self, id: &str, title: &str) -> Result<String> {
-        let source = self.document_path(id)?;
+        self.document_path(id)?;
         let ext = Path::new(id)
             .extension()
             .and_then(|e| e.to_str())
             .context("document has no extension")?;
         let stem = self.note_file_stem_from_title(title);
         let target_id = self.unique_note_id(&stem, ext, id);
-        let target = self.document_path(&target_id)?;
-        if source != target {
-            if target.exists() {
-                bail!("rename destination already exists");
-            }
-            fs::rename(source, target).context("failed to rename document")?;
-        }
+        let cancelled = std::sync::atomic::AtomicBool::new(false);
+        let plans =
+            self.prepare_public_file_paths(&[(id.to_owned(), target_id.clone())], &cancelled)?;
+        self.apply_public_file_moves(&plans, &cancelled)?;
         Ok(target_id)
     }
 
@@ -217,8 +214,8 @@ impl Storage {
         let target_id = self.unique_note_id(&preferred, ext, initial);
         let target = self.document_path(&target_id)?;
         fs::create_dir_all(target.parent().context("document has no parent")?)?;
-        let bytes = fs::read(source).context("failed to read source document")?;
-        crate::fsutil::atomic_create(&target, &bytes)?;
+        let bytes = self.load_document(id)?.source().as_bytes().to_vec();
+        crate::fsutil::atomic_create_preserving_permissions(&target, &bytes, &source)?;
         Ok(target_id)
     }
 }

@@ -62,6 +62,21 @@ pub fn atomic_create(path: &Path, data: &[u8]) -> Result<()> {
     atomic_write_impl(path, data, None, false)
 }
 
+/// Publish a copy with its source's Unix permission bits, without replacing a destination.
+pub fn atomic_create_preserving_permissions(path: &Path, data: &[u8], source: &Path) -> Result<()> {
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(fs::metadata(source)?.permissions().mode())
+    };
+    #[cfg(not(unix))]
+    let mode = {
+        let _ = source;
+        None
+    };
+    atomic_write_impl(path, data, mode, false)
+}
+
 /// Replace an existing file while preserving its Unix permission bits.
 pub fn atomic_write_preserving_permissions(path: &Path, data: &[u8]) -> Result<()> {
     #[cfg(unix)]

@@ -34,7 +34,14 @@ impl App {
 
     pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
         if !changes.is_empty() {
-            self.invalidate_bases();
+            self.base_embeds.invalidate();
+            if let Some(worker) = &mut self.bases_worker {
+                worker.invalidate_paths(changes.iter().map(|change| match change {
+                    crate::app::catalog::PathChange::Upsert(id)
+                    | crate::app::catalog::PathChange::Remove(id) => id.clone(),
+                }));
+            }
+            self.bases_refresh_requested = true;
         }
         let generation_num = self.catalog_generation.load(Ordering::SeqCst);
         let cmd = crate::app::catalog::CatalogCommand::Paths {
@@ -418,6 +425,13 @@ impl App {
         );
         self.editor.body = EditorDocument::from_source(snapshot.source());
         self.editor.public_document = Some(snapshot);
+        self.editor.public_document_body_only = false;
+        self.editor.public_document_title = None;
+        self.editor.public_opening_snapshot = None;
+        self.editor.bases_sidebar_renderer = None;
+        if self.editor.sidebar == crate::editor::EditSidebar::Bases {
+            self.editor.sidebar = crate::editor::EditSidebar::None;
+        }
         self.editor.editor_preview_enabled = false;
         self.editor.md_preview_renderer = None;
         self.editor.link_preview_renderer = None;
@@ -436,7 +450,13 @@ impl App {
 
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
+            self.editor.bases_sidebar_renderer = None;
+            if self.editor.sidebar == crate::editor::EditSidebar::Bases {
+                self.editor.sidebar = crate::editor::EditSidebar::None;
+            }
             self.editor.public_document = None;
+            self.editor.public_document_body_only = false;
+            self.editor.public_document_title = None;
             self.editor.editing_id = Some(note_id.to_string());
             self.editor.initial_word_count = crate::goals::count_words(&note.content);
             self.editor.title_editor = make_title_editor(
@@ -444,6 +464,17 @@ impl App {
                 self.app_theme.highlight_fg,
                 self.app_theme.highlight_bg,
             );
+            self.editor.public_opening_snapshot = if note_id.to_ascii_lowercase().ends_with(".md") {
+                self.storage.load_document(note_id).ok().filter(|snapshot| {
+                    crate::frontmatter::properties::PropertyDocument::parse(snapshot.source())
+                        .is_ok_and(|document| {
+                            document.body.replace("\r\n", "\n").trim_end_matches('\n')
+                                == note.content.replace("\r\n", "\n").trim_end_matches('\n')
+                        })
+                })
+            } else {
+                None
+            };
             let mut body = EditorDocument::from_text(&note.content);
             if let Some(l) = line_number {
                 body.move_cursor(ratatui_textarea::CursorMove::Jump(
@@ -766,6 +797,48 @@ impl App {
 
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
         if let Some(return_to) = self.return_mode.take() {
+            if return_to == ViewMode::Edit
+                && let Some(editor) = self.embedded_host_editor.take()
+            {
+                self.editor = *editor;
+                self.mode = ViewMode::Edit;
+                self.set_default_status();
+                return;
+            }
+            if return_to == ViewMode::Bases
+                && let Some(state) = &mut self.bases_state
+                && let Some(request) = &state.embedded_request
+                && request.host.as_deref() == self.editor.editing_id.as_deref()
+                && matches!(
+                    request.definition,
+                    crate::bases::embedding::Definition::Inline { .. }
+                )
+                && let Some(snapshot) = &self.editor.public_document
+            {
+                match request.after_save(snapshot.source()) {
+                    Ok(request) => {
+                        if let crate::bases::embedding::Definition::Inline { source, .. } =
+                            &request.definition
+                        {
+                            state.named_view = crate::bases::format::BaseDocument::parse(source)
+                                .ok()
+                                .and_then(|document| {
+                                    document
+                                        .config
+                                        .views
+                                        .get(state.loaded.as_ref().map_or(0, |loaded| loaded.view))
+                                        .map(|view| view.name.clone())
+                                });
+                        }
+                        state.embedded_request = Some(request);
+                    }
+                    Err(error) => {
+                        state.error = Some(format!(
+                            "Inline source anchor changed; reopen the containing preview: {error:#}"
+                        ))
+                    }
+                }
+            }
             self.editor.editing_id = None;
             self.editor.public_document = None;
             if self.editor.template_edit_path.is_some() {

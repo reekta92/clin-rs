@@ -15,6 +15,7 @@ pub fn draw_preview_pane(
     hide_encrypted: bool,
     scroll_offset: u16,
     config: &crate::config::ClinConfig,
+    app: Option<&crate::app::App>,
 ) {
     let icon_mode = config.ui.icon_mode;
     let mut actual_content = content;
@@ -91,8 +92,12 @@ pub fn draw_preview_pane(
                         .saturating_add(scroll_offset as usize)
                         .min(page.end);
                     let widget_range = start..page.end;
-                    let widget = crate::markdown::MarkdownWidget::new(doc, widget_range);
+                    let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone());
                     frame.render_widget(widget, inner);
+                    if let Some(app) = app {
+                        app.base_embeds
+                            .draw(frame, inner, renderer, widget_range, app);
+                    }
                     if renderer.total_pages() > 1 {
                         let indicator = format!(
                             " {}/{} ",

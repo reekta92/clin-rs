@@ -178,6 +178,7 @@ impl App {
         self.set_default_status();
     }
     pub(crate) fn invalidate_bases(&mut self) {
+        self.base_embeds.invalidate();
         if let Some(worker) = &mut self.bases_worker {
             worker.invalidate();
         }
@@ -186,15 +187,40 @@ impl App {
 
     pub fn poll_bases(&mut self) -> bool {
         let mut dirty = false;
+        if let Some(canvas) = &mut self.canvas_state {
+            match canvas.poll_base_renderers() {
+                Ok(changed) => dirty |= changed,
+                Err(error) => {
+                    self.set_temporary_status(&format!("Canvas host reload failed: {error:#}"))
+                }
+            }
+        }
         if self.bases_refresh_requested
+            && self.mode == ViewMode::Bases
             && let Some(mut state) = self.bases_state.take()
         {
             state.refresh(self, false);
             self.bases_state = Some(state);
             dirty = true;
         }
-        if let Some(loaded) = self.bases_worker.as_mut().and_then(|worker| worker.poll()) {
-            if let Some(state) = &mut self.bases_state {
+        if let Some((key, loaded)) = self
+            .bases_worker
+            .as_mut()
+            .and_then(|worker| worker.poll_completed())
+        {
+            if let Some(key) = key
+                && !self.bases_state.as_ref().is_some_and(|state| {
+                    state
+                        .embedded_request
+                        .as_ref()
+                        .is_some_and(|request| request.key == key)
+                })
+            {
+                self.base_embeds.install(key, loaded);
+            } else if let Some(state) = &mut self.bases_state {
+                if let Ok(loaded) = &loaded {
+                    self.base_embeds.observe_revision(loaded.public_revision);
+                }
                 state.install(loaded);
             }
             dirty = true;
@@ -203,7 +229,7 @@ impl App {
             dirty |= state.poll_write(self);
             self.bases_state = Some(state);
         }
-        dirty
+        dirty | self.poll_base_embeds()
     }
 
     pub fn open_graph_view(&mut self) {

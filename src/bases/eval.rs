@@ -14,6 +14,11 @@ pub struct Formulas {
     expressions: BTreeMap<String, Expression>,
 }
 impl Formulas {
+    pub(crate) fn volatile(&self) -> bool {
+        self.expressions
+            .values()
+            .any(|expression| expression.volatile)
+    }
     pub fn compile(definitions: &BTreeMap<String, String>) -> Result<Self> {
         let expressions = definitions
             .iter()

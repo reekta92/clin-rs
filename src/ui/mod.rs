@@ -86,6 +86,7 @@ pub struct PreviewHeaderInfo {
 }
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
+    app.base_embeds.begin_frame();
     // Suppress background element hover when a popup is active
     let popup_hover_pos = app.mouse_pos;
     if app.popups.active.is_some() || app.command_palette.is_some() || app.popups.confirm.is_some()
@@ -344,6 +345,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Restore mouse_pos for popup hover detection
     app.mouse_pos = popup_hover_pos;
 
+    app.base_embeds.draw_popup(frame, app);
     crate::ui::quick_keybinds::draw_quick_keybinds(frame, app);
     if app.messages.is_active() {
         crate::ui::message_overlay::draw_message_overlay(frame, app, &app.app_theme, frame.area());

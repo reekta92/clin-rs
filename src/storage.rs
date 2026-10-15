@@ -1748,6 +1748,19 @@ impl Storage {
     }
 
     pub fn move_note(&mut self, id: &str, new_folder: &str) -> Result<String> {
+        if Path::new(id)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("base"))
+        {
+            let cancelled = std::sync::atomic::AtomicBool::new(false);
+            let plans = self.prepare_public_file_moves(&[id.to_owned()], new_folder, &cancelled)?;
+            let target = plans
+                .first()
+                .map_or_else(|| id.to_owned(), |plan| plan.destination_id().to_owned());
+            self.apply_public_file_moves(&plans, &cancelled)?;
+            return Ok(target);
+        }
         let old_path = self.note_path(id);
         if !old_path.exists() {
             anyhow::bail!("Note does not exist");

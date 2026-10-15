@@ -9,8 +9,8 @@ use serde::Deserialize;
 use serde_yaml_ng::{Mapping, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
 
 #[derive(Clone, Debug, Default)]
@@ -64,7 +64,7 @@ impl PropertyTypes {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileMetadata {
     pub id: String,
     pub name: String,
@@ -90,6 +90,29 @@ impl FileMetadata {
         Ok(&self.properties)
     }
 
+    fn update_markdown(&mut self, source: &str, body_only: bool) -> Result<()> {
+        let body = if body_only {
+            source
+        } else {
+            let parsed = PropertyDocument::parse(source)?;
+            self.properties = parsed.properties;
+            self.property_error = None;
+            parsed.body
+        };
+        let mut markdown = markdown_metadata(body);
+        for value in self.properties.values() {
+            collect_property_links(value, &mut markdown.links);
+        }
+        deduplicate(&mut markdown.links);
+        let mut tags = property_tags(self.properties.get("tags"));
+        tags.extend(markdown.tags);
+        deduplicate(&mut tags);
+        self.tags = tags;
+        self.links = markdown.links;
+        self.embeds = markdown.embeds;
+        Ok(())
+    }
+
     pub fn property_error(&self) -> Option<&str> {
         self.property_error.as_deref()
     }
@@ -97,7 +120,7 @@ impl FileMetadata {
 
 #[derive(Clone, Debug, Default)]
 pub struct VaultMetadata {
-    files: HashMap<String, FileMetadata>,
+    files: HashMap<String, Arc<FileMetadata>>,
     paths: HashMap<String, String>,
     names: HashMap<String, Vec<String>>,
     pub property_types: PropertyTypes,
@@ -105,16 +128,119 @@ pub struct VaultMetadata {
 
 impl VaultMetadata {
     pub fn files(&self) -> impl Iterator<Item = &FileMetadata> {
-        self.files.values()
+        self.files.values().map(Arc::as_ref)
     }
     pub fn file(&self, id: &str) -> Option<&FileMetadata> {
-        self.files.get(id)
+        self.files.get(id).map(Arc::as_ref)
     }
     pub fn len(&self) -> usize {
         self.files.len()
     }
     pub fn is_empty(&self) -> bool {
         self.files.is_empty()
+    }
+
+    pub(crate) fn with_host_source(&self, id: &str, source: &str, body_only: bool) -> Result<Self> {
+        if source.len() > 16 * 1024 * 1024 {
+            bail!("public host source exceeds 16777216-byte safety limit");
+        }
+        let mut snapshot = self.clone();
+        let host = snapshot
+            .files
+            .get_mut(id)
+            .context("containing file is unavailable in public metadata")?;
+        if !host.extension.eq_ignore_ascii_case("md") {
+            return Ok(snapshot);
+        }
+        Arc::make_mut(host).update_markdown(source, body_only)?;
+        for file in snapshot.files.values_mut() {
+            if file.backlinks.iter().any(|source| source == id) {
+                Arc::make_mut(file).backlinks.retain(|source| source != id);
+            }
+        }
+        let host = snapshot.file(id).expect("validated host");
+        let targets: Vec<_> = host
+            .links
+            .iter()
+            .chain(&host.embeds)
+            .filter_map(|link| snapshot.resolve_link(id, link).map(|file| file.id.clone()))
+            .collect();
+        for target in targets {
+            let backlinks = &mut Arc::make_mut(
+                snapshot
+                    .files
+                    .get_mut(&target)
+                    .expect("resolved public file"),
+            )
+            .backlinks;
+            backlinks.push(id.to_owned());
+            backlinks.sort();
+            backlinks.dedup();
+        }
+        Ok(snapshot)
+    }
+
+    fn rebuild_indexes(&mut self) {
+        self.paths.clear();
+        self.names.clear();
+        let mut files: Vec<_> = self.files.values().collect();
+        files.sort_by(|left, right| left.id.cmp(&right.id));
+        for file in files {
+            self.paths
+                .entry(file.id.to_lowercase())
+                .or_insert_with(|| file.id.clone());
+            for name in [&file.name, &file.basename] {
+                let names = self.names.entry(name.to_lowercase()).or_default();
+                if !names.contains(&file.id) {
+                    names.push(file.id.clone());
+                }
+            }
+        }
+    }
+    fn refresh_backlinks(
+        &mut self,
+        changed: Option<&std::collections::BTreeSet<String>>,
+        cancelled: &AtomicBool,
+    ) -> Result<()> {
+        let mut reverse: HashMap<String, Vec<String>> = HashMap::new();
+        for file in self
+            .files
+            .values()
+            .filter(|file| changed.is_none_or(|ids| ids.contains(&file.id)))
+        {
+            if cancelled.load(Ordering::Relaxed) {
+                bail!("metadata load cancelled");
+            }
+            for link in file.links.iter().chain(&file.embeds) {
+                if let Some(target) = self.resolve_link(&file.id, link) {
+                    reverse
+                        .entry(target.id.clone())
+                        .or_default()
+                        .push(file.id.clone());
+                }
+            }
+        }
+        for file in self.files.values_mut() {
+            if cancelled.load(Ordering::Relaxed) {
+                bail!("metadata load cancelled");
+            }
+            let mut backlinks = if let Some(changed) = changed {
+                file.backlinks
+                    .iter()
+                    .filter(|id| !changed.contains(*id))
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            backlinks.extend(reverse.remove(&file.id).unwrap_or_default());
+            backlinks.sort();
+            backlinks.dedup();
+            if backlinks != file.backlinks {
+                Arc::make_mut(file).backlinks = backlinks;
+            }
+        }
+        Ok(())
     }
 
     /// Resolution never opens a file; private and outside paths are absent from this snapshot.
@@ -160,8 +286,20 @@ impl VaultMetadata {
     }
 }
 
+fn public_metadata_id(id: &str) -> bool {
+    !Path::new(id).extension().and_then(|value| value.to_str()).is_some_and(|value| value.eq_ignore_ascii_case("clin"))
+        && !Path::new(id).components().any(|component| matches!(component, std::path::Component::Normal(name) if name.to_string_lossy().starts_with('.')))
+}
+
 impl Storage {
     pub fn load_vault_metadata(&self, cancelled: &AtomicBool) -> Result<VaultMetadata> {
+        self.rebuild_vault_metadata(None, cancelled)
+    }
+    pub(crate) fn rebuild_vault_metadata(
+        &self,
+        previous: Option<&VaultMetadata>,
+        cancelled: &AtomicBool,
+    ) -> Result<VaultMetadata> {
         if cancelled.load(Ordering::Relaxed) {
             bail!("metadata load cancelled");
         }
@@ -177,99 +315,139 @@ impl Storage {
             if cancelled.load(Ordering::Relaxed) {
                 bail!("metadata load cancelled");
             }
-            let path = self.document_path(&entry.id)?;
-            let stats = std::fs::metadata(&path).context("failed to read file metadata")?;
-            let name = Path::new(&entry.id)
-                .file_name()
-                .and_then(|v| v.to_str())
-                .context("invalid filename")?
-                .to_owned();
-            let basename = Path::new(&entry.id)
-                .file_stem()
-                .and_then(|v| v.to_str())
-                .context("invalid filename")?
-                .to_owned();
-            let extension = Path::new(&entry.id)
-                .extension()
-                .and_then(|v| v.to_str())
-                .unwrap_or("")
-                .to_owned();
-            let folder = Path::new(&entry.id)
-                .parent()
-                .and_then(|v| v.to_str())
-                .unwrap_or("")
-                .replace('\\', "/");
-            let mut file = FileMetadata {
-                id: entry.id.clone(),
-                name,
-                basename,
-                extension,
-                folder,
-                size: stats.len(),
-                created: stats.created().ok(),
-                modified: stats.modified().ok(),
-                tags: Vec::new(),
-                links: Vec::new(),
-                embeds: Vec::new(),
-                backlinks: Vec::new(),
-                properties: Mapping::new(),
-                property_error: None,
-            };
-            if file.extension.eq_ignore_ascii_case("md") {
-                match self.load_document(&file.id).and_then(|document| {
-                    let parsed = PropertyDocument::parse(document.source())?;
-                    let mut markdown = markdown_metadata(parsed.body);
-                    for value in parsed.properties.values() {
-                        collect_property_links(value, &mut markdown.links);
-                    }
-                    deduplicate(&mut markdown.links);
-                    let mut tags = property_tags(parsed.properties.get("tags"));
-                    tags.extend(markdown.tags);
-                    deduplicate(&mut tags);
-                    Ok((parsed.properties, tags, markdown.links, markdown.embeds))
-                }) {
-                    Ok((properties, tags, links, embeds)) => {
-                        file.properties = properties;
-                        file.tags = tags;
-                        file.links = links;
-                        file.embeds = embeds;
-                    }
-                    Err(error) => file.property_error = Some(error.to_string()),
+            if let Some(mut file) = self.load_public_file_metadata(&entry.id)? {
+                let old = previous.and_then(|previous| previous.files.get(&file.id));
+                if let Some(old) = old {
+                    file.backlinks.clone_from(&old.backlinks);
                 }
+                let shared = old
+                    .filter(|old| ***old == file)
+                    .cloned()
+                    .unwrap_or_else(|| Arc::new(file));
+                snapshot.files.insert(shared.id.clone(), shared);
             }
-            snapshot
-                .paths
-                .entry(file.id.to_lowercase())
-                .or_insert_with(|| file.id.clone());
-            for name in [&file.name, &file.basename] {
-                let names = snapshot.names.entry(name.to_lowercase()).or_default();
-                if !names.contains(&file.id) {
-                    names.push(file.id.clone());
-                }
-            }
-            snapshot.files.insert(file.id.clone(), file);
         }
-        let mut reverse: HashMap<String, Vec<String>> = HashMap::new();
-        for file in snapshot.files() {
+        snapshot.rebuild_indexes();
+        snapshot.refresh_backlinks(None, cancelled)?;
+        Ok(snapshot)
+    }
+
+    fn public_metadata_path(&self, id: &str) -> Result<Option<std::path::PathBuf>> {
+        use std::path::Component;
+        if !public_metadata_id(id) {
+            return Ok(None);
+        }
+        let mut ancestor = self.notes_dir.clone();
+        for component in Path::new(id).components() {
+            let Component::Normal(name) = component else {
+                bail!("metadata path must be public and vault-relative");
+            };
+            ancestor.push(name);
+            match std::fs::symlink_metadata(&ancestor) {
+                Ok(metadata) if metadata.file_type().is_symlink() => return Ok(None),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(error).context("failed to inspect public metadata path"),
+            }
+        }
+        self.document_path(id).map(Some)
+    }
+    fn load_public_file_metadata(&self, id: &str) -> Result<Option<FileMetadata>> {
+        let Some(path) = self.public_metadata_path(id)? else {
+            return Ok(None);
+        };
+        let stats = std::fs::metadata(&path).context("failed to read file metadata")?;
+        if !stats.is_file() {
+            bail!("public metadata path is not a file");
+        }
+        let name = Path::new(id)
+            .file_name()
+            .and_then(|v| v.to_str())
+            .context("invalid filename")?
+            .to_owned();
+        let basename = Path::new(id)
+            .file_stem()
+            .and_then(|v| v.to_str())
+            .context("invalid filename")?
+            .to_owned();
+        let extension = Path::new(id)
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+            .to_owned();
+        let folder = Path::new(id)
+            .parent()
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+            .replace('\\', "/");
+        let mut file = FileMetadata {
+            id: id.to_owned(),
+            name,
+            basename,
+            extension,
+            folder,
+            size: stats.len(),
+            created: stats.created().ok(),
+            modified: stats.modified().ok(),
+            tags: Vec::new(),
+            links: Vec::new(),
+            embeds: Vec::new(),
+            backlinks: Vec::new(),
+            properties: Mapping::new(),
+            property_error: None,
+        };
+        if file.extension.eq_ignore_ascii_case("md")
+            && let Err(error) = self
+                .load_document(&file.id)
+                .and_then(|document| file.update_markdown(document.source(), false))
+        {
+            file.property_error = Some(error.to_string());
+        }
+        Ok(Some(file))
+    }
+
+    pub(crate) fn refresh_vault_metadata(
+        &self,
+        previous: &VaultMetadata,
+        paths: &std::collections::BTreeSet<String>,
+        cancelled: &AtomicBool,
+    ) -> Result<VaultMetadata> {
+        if cancelled.load(Ordering::Relaxed) {
+            bail!("metadata load cancelled");
+        }
+        if paths.contains(".obsidian/types.json") {
+            return self.rebuild_vault_metadata(Some(previous), cancelled);
+        }
+        for id in paths {
+            let prefix = format!("{id}/");
+            if previous.files.keys().any(|file| file.starts_with(&prefix))
+                || self
+                    .public_metadata_path(id)?
+                    .is_some_and(|path| path.is_dir())
+            {
+                return self.rebuild_vault_metadata(Some(previous), cancelled);
+            }
+        }
+        let mut snapshot = previous.clone();
+        let mut membership_changed = false;
+        for id in paths {
             if cancelled.load(Ordering::Relaxed) {
                 bail!("metadata load cancelled");
             }
-            for link in file.links.iter().chain(&file.embeds) {
-                if let Some(target) = snapshot.resolve_link(&file.id, link) {
-                    reverse
-                        .entry(target.id.clone())
-                        .or_default()
-                        .push(file.id.clone());
+            match self.load_public_file_metadata(id)? {
+                Some(file) => {
+                    membership_changed |= !snapshot.files.contains_key(id);
+                    snapshot.files.insert(id.clone(), Arc::new(file));
+                }
+                None => {
+                    membership_changed |= snapshot.files.remove(id).is_some();
                 }
             }
         }
-        for (target, mut sources) in reverse {
-            sources.sort();
-            sources.dedup();
-            if let Some(file) = snapshot.files.get_mut(&target) {
-                file.backlinks = sources;
-            }
+        if membership_changed {
+            snapshot.rebuild_indexes();
         }
+        snapshot.refresh_backlinks((!membership_changed).then_some(paths), cancelled)?;
         Ok(snapshot)
     }
 
@@ -508,6 +686,83 @@ fn decode_percent(target: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn incremental_metadata_matches_full_snapshots_across_links_membership_and_private_paths() {
+        let (root, storage) = vault();
+        let cancelled = AtomicBool::new(false);
+        std::fs::write(
+            root.path().join("source.md"),
+            "---\nscore: 1\n---\n[[target]] [[duplicate]]\n",
+        )
+        .unwrap();
+        std::fs::write(root.path().join("target.md"), "Target").unwrap();
+        let mut snapshot = storage.load_vault_metadata(&cancelled).unwrap();
+        std::fs::create_dir(root.path().join("folder")).unwrap();
+        std::fs::write(root.path().join("folder/duplicate.md"), "Duplicate").unwrap();
+        let mut check = |paths: &[&str]| {
+            snapshot = storage
+                .refresh_vault_metadata(
+                    &snapshot,
+                    &paths.iter().map(|path| (*path).to_owned()).collect(),
+                    &cancelled,
+                )
+                .unwrap();
+            let full = storage.load_vault_metadata(&cancelled).unwrap();
+            assert_eq!(snapshot.len(), full.len());
+            for file in full.files() {
+                let incremental = snapshot.file(&file.id).unwrap();
+                assert_eq!(incremental.properties().ok(), file.properties().ok());
+                assert_eq!(incremental.backlinks, file.backlinks);
+                assert_eq!(incremental.links, file.links);
+                assert_eq!(incremental.tags, file.tags);
+                assert_eq!(
+                    snapshot
+                        .resolve_link("source.md", &file.basename)
+                        .map(|file| &file.id),
+                    full.resolve_link("source.md", &file.basename)
+                        .map(|file| &file.id)
+                );
+            }
+        };
+        check(&["folder/duplicate.md"]);
+        std::fs::write(root.path().join("duplicate.md"), "Ambiguous").unwrap();
+        check(&["duplicate.md"]);
+        std::fs::write(
+            root.path().join("source.md"),
+            "---\nscore: 2\n---\n[[duplicate]] #changed\n",
+        )
+        .unwrap();
+        check(&["source.md"]);
+        std::fs::remove_file(root.path().join("duplicate.md")).unwrap();
+        check(&["duplicate.md"]);
+        std::fs::remove_file(root.path().join("folder/duplicate.md")).unwrap();
+        std::fs::remove_dir(root.path().join("folder")).unwrap();
+        check(&["folder"]);
+        std::fs::write(root.path().join("private.clin"), "not ciphertext").unwrap();
+        std::fs::write(root.path().join(".private.md"), "not public").unwrap();
+        check(&["private.clin", ".private.md"]);
+        std::fs::create_dir(root.path().join(".obsidian")).unwrap();
+        std::fs::write(
+            root.path().join(".obsidian/types.json"),
+            r#"{"types":{"score":"number"}}"#,
+        )
+        .unwrap();
+        check(&[".obsidian/types.json"]);
+        assert_eq!(
+            snapshot.property_types.declared_type("score"),
+            Some("number")
+        );
+        assert!(
+            storage
+                .refresh_vault_metadata(
+                    &snapshot,
+                    &["source.md".to_owned()].into(),
+                    &AtomicBool::new(true)
+                )
+                .is_err()
+        );
+    }
     use std::fs;
 
     fn vault() -> (tempfile::TempDir, Storage) {
@@ -669,6 +924,30 @@ mod tests {
         assert!(snapshot.file(".obsidian/types.json").is_none());
     }
 
+    #[test]
+    fn full_rebuild_shares_unchanged_files_and_replaces_changed_backlinks() {
+        let (dir, storage) = vault();
+        fs::write(dir.path().join("a.md"), "---\nscore: 2\n---\n[[b]]").unwrap();
+        fs::write(dir.path().join("b.md"), "Body").unwrap();
+        let first = load(&storage);
+        let second = storage
+            .rebuild_vault_metadata(Some(&first), &AtomicBool::new(false))
+            .unwrap();
+        assert!(Arc::ptr_eq(&first.files["a.md"], &second.files["a.md"]));
+        assert!(Arc::ptr_eq(&first.files["b.md"], &second.files["b.md"]));
+        fs::write(dir.path().join("a.md"), "---\nscore: 3\n---\nNo link").unwrap();
+        let third = storage
+            .rebuild_vault_metadata(Some(&second), &AtomicBool::new(false))
+            .unwrap();
+        assert!(!Arc::ptr_eq(&second.files["a.md"], &third.files["a.md"]));
+        assert!(!Arc::ptr_eq(&second.files["b.md"], &third.files["b.md"]));
+        assert_eq!(second.file("b.md").unwrap().backlinks, ["a.md"]);
+        assert_eq!(third.file("b.md").unwrap().backlinks, Vec::<String>::new());
+        assert_eq!(
+            format!("{:?}", third.file("a.md")),
+            format!("{:?}", load(&storage).file("a.md"))
+        );
+    }
     #[test]
     fn cancelled_metadata_load_installs_nothing() {
         let (_dir, storage) = vault();

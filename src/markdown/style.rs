@@ -20,6 +20,7 @@ pub(crate) struct RenderLine {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderedDocument {
     pub(crate) lines: Vec<RenderLine>,
+    pub(crate) base_slots: Vec<crate::bases::embedding::Slot>,
     content_empty: bool,
     last_non_blank_line: Option<usize>,
     estimated_bytes: usize,
@@ -51,10 +52,33 @@ impl RenderedDocument {
 
         Self {
             lines,
+            base_slots: Vec::new(),
             content_empty,
             last_non_blank_line,
             estimated_bytes,
         }
+    }
+
+    pub(crate) fn with_base_slots(mut self, slots: Vec<crate::bases::embedding::Slot>) -> Self {
+        if !slots.is_empty() {
+            self.content_empty = false;
+            self.last_non_blank_line = self
+                .last_non_blank_line
+                .into_iter()
+                .chain(slots.iter().map(|slot| slot.rows.end.saturating_sub(1)))
+                .max();
+        }
+        self.estimated_bytes += slots
+            .iter()
+            .map(|slot| match &slot.definition {
+                crate::bases::embedding::Definition::File { target, view } => {
+                    target.len() + view.as_ref().map_or(0, String::len)
+                }
+                crate::bases::embedding::Definition::Inline { source, .. } => source.len(),
+            })
+            .sum::<usize>();
+        self.base_slots = slots;
+        self
     }
 
     pub(crate) fn lines(&self) -> &[RenderLine] {

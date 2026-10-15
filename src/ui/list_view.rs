@@ -1597,6 +1597,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 hide_encrypted,
                 app.list.snapshot_scroll_offset,
                 &app.config,
+                Some(app),
             );
         }
 

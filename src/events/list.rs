@@ -8,6 +8,9 @@ use crate::list_view::ListMode;
 use super::contains_cell;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    if app.base_embed_event(&crossterm::event::Event::Key(key), Rect::default()) {
+        return true;
+    }
     // Snap-only: first key after scrollbar pan snaps viewport back to
     // selection and is consumed.
     if app.list.list_viewport_offset.take().is_some() {
@@ -499,6 +502,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     false
 }
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
+    if app.base_embed_event(&crossterm::event::Event::Mouse(mouse_event), terminal_area) {
+        return;
+    }
     if app.layout_edit {
         handle_layout_edit_mouse(app, mouse_event, terminal_area);
         return;

@@ -439,6 +439,8 @@ pub struct App {
     pub config_errors: Vec<String>,
     pub canvas_state: Option<crate::pinstar_adapter::PinstarPlugin>,
     pub bases_state: Option<crate::bases::state::BasesState>,
+    pub(crate) embedded_host_editor: Option<Box<crate::editor::NoteEditor>>,
+    pub(crate) base_embeds: crate::bases::embedding::Embeds,
     pub bases_worker: Option<crate::bases::worker::BasesWorker>,
     pub config: crate::config::ClinConfig,
     pub catalog_cmd_tx: std::sync::mpsc::SyncSender<crate::app::catalog::CatalogCommand>,
@@ -709,6 +711,8 @@ impl App {
             canvas_state: None,
             bases_state: None,
             bases_worker: None,
+            base_embeds: crate::bases::embedding::Embeds::default(),
+            embedded_host_editor: None,
             config: bootstrap_config,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
@@ -987,6 +991,8 @@ impl App {
             canvas_state: None,
             bases_state: None,
             bases_worker: None,
+            base_embeds: crate::bases::embedding::Embeds::default(),
+            embedded_host_editor: None,
             config: bootstrap_config,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
@@ -1728,15 +1734,20 @@ impl App {
     }
 
     pub fn autosave(&mut self) -> Result<(), String> {
-        if let Some(baseline) = self.editor.public_document.as_ref() {
-            let source = self
-                .editor
-                .public_document_source()
-                .expect("public source baseline");
-            match self.storage.save_document(baseline, &source) {
+        if let Some(baseline) = self.editor.public_document.clone() {
+            let source = self.editor.public_document_source().ok_or_else(|| {
+                "Public document source cannot be serialized; original retained".to_owned()
+            })?;
+            match self.storage.save_document(&baseline, &source) {
                 Ok(snapshot) => {
                     let cleanup = self.storage.clear_document_draft(&snapshot);
-                    self.editor.public_document = Some(snapshot);
+                    self.editor.public_document = Some(snapshot.clone());
+                    self.synchronize_public_change(&baseline, &snapshot);
+                    if self.editor.public_document_body_only {
+                        self.editor.public_document_title = Some(
+                            crate::events::get_title_text(&self.editor.title_editor).into_owned(),
+                        );
+                    }
                     cleanup.map_err(|error| {
                         format!("Document saved; draft cleanup failed: {error:#}")
                     })?;
@@ -1811,6 +1822,12 @@ impl App {
         };
         match self.storage.save_note(&id, &note) {
             Ok(saved_id) => {
+                self.editor.public_opening_snapshot =
+                    if saved_id.to_ascii_lowercase().ends_with(".md") {
+                        self.storage.load_document(&saved_id).ok()
+                    } else {
+                        None
+                    };
                 self.editor.editing_id = Some(saved_id.clone());
                 self.enqueue_backup(format!("auto: {}", note.title));
 

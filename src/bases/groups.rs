@@ -148,12 +148,14 @@ impl BasesState {
             order.map(Value::Sequence).as_ref(),
         )?;
         super::query::Query::compile(&document, loaded.view)?;
+        let source = loaded.configuration_source(app, &document)?;
         self.write_task = Some(WriteTask::spawn(
             app.storage.clone(),
             &app.notes_worker_pool,
             Operation::Save {
                 baseline: loaded.snapshot.clone(),
-                source: document.source().into(),
+                source,
+                embedded: self.embedded_request.clone(),
             },
         ));
         Ok(())

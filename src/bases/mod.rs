@@ -3,6 +3,7 @@
 mod authoring;
 mod dates;
 pub mod edits;
+pub(crate) mod embedding;
 pub mod eval;
 mod export;
 pub mod expr;

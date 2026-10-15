@@ -1796,6 +1796,7 @@ fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafPlugin, confi
         hide_encrypted,
         0,
         config,
+        None,
     );
 }
 

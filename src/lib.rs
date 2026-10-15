@@ -1267,11 +1267,24 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
                     if let Some(worker) = app.bases_worker.as_mut() {
                         worker.cancel();
                     }
-                    app.mode = app
-                        .bases_state
-                        .take()
-                        .map_or(ViewMode::List, |state| state.previous_mode);
-                    app.return_mode = None;
+                    if let Some(state) = app.bases_state.take() {
+                        app.mode = state.previous_mode;
+                        if state.embedded_request.is_some() {
+                            let (return_mode, suspended) = app.base_embeds.restore(state);
+                            app.return_mode = return_mode;
+                            app.bases_state = suspended;
+                            if app.mode == ViewMode::Edit
+                                && let Some(editor) = app.embedded_host_editor.take()
+                            {
+                                app.editor = *editor;
+                            }
+                        } else {
+                            app.return_mode = None;
+                        }
+                    } else {
+                        app.mode = ViewMode::List;
+                        app.return_mode = None;
+                    }
                     app.set_default_status();
                 }
             }
@@ -1325,7 +1338,14 @@ where
             prev_mode = app.mode;
             continue;
         }
-        app.poll_bases();
+        if app.poll_bases() {
+            list_dirty = true;
+            graph_dirty = true;
+        }
+        // Background source handoffs must enter Edit before polling another input event.
+        if app.mode == ViewMode::Edit {
+            continue;
+        }
         let msgs_before = app.messages.messages.len();
         while let Ok(msg) = app.message_rx.try_recv() {
             app.messages.push(msg.text, msg.severity);
@@ -1464,7 +1484,7 @@ where
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
-        } else if active_catalog || active_search {
+        } else if active_catalog || active_search || app.base_embeds.is_loading() {
             Duration::from_millis(32)
         } else if matches!(
             app.list.preview_content,
@@ -1635,6 +1655,9 @@ where
             }
             let size = terminal.size().context("failed to get terminal size")?;
             let area = Rect::new(0, 0, size.width, size.height);
+            if app.mode != ViewMode::Bases && app.base_embed_event(&ev, area) {
+                return Ok(());
+            }
             if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
                 return Ok(());
             }

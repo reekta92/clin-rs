@@ -53,7 +53,8 @@ fn view_name(mode: ViewMode) -> &'static str {
 /// when a popup, command palette, or another header-anchored overlay
 /// (find/help-search) is open so they never visually collide.
 pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
-    if !app.quick_keybinds_open
+    if app.base_embeds.has_popup()
+        || !app.quick_keybinds_open
         || app.popups.active.is_some()
         || app.command_palette.is_some()
         || app.editor.find_popup.is_some()

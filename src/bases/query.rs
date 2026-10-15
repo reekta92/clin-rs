@@ -17,6 +17,14 @@ enum CompiledFilter {
     Not(Vec<Self>),
 }
 impl CompiledFilter {
+    fn volatile(&self) -> bool {
+        match self {
+            Self::Expression(expression) => expression.volatile,
+            Self::And(filters) | Self::Or(filters) | Self::Not(filters) => {
+                filters.iter().any(Self::volatile)
+            }
+        }
+    }
     fn compile(filter: &Filter) -> Result<Self> {
         Ok(match filter {
             Filter::Expression(source) => Self::Expression(Expression::parse(source)?),
@@ -94,6 +102,7 @@ pub struct Query {
     global_filter: CompiledFilter,
     view_filter: CompiledFilter,
     pub columns: Vec<String>,
+    pub(super) layout_options: super::layout_options::LayoutOptions,
     projected: BTreeSet<String>,
     sort: Vec<PropertySort>,
     group_by: Option<PropertySort>,
@@ -115,6 +124,7 @@ impl Query {
                 view.layout.name()
             );
         }
+        let layout_options = super::layout_options::LayoutOptions::parse(view)?;
         if view.group_order.is_some() && view.group_by.is_none() {
             bail!("groupOrder requires groupBy");
         }
@@ -169,6 +179,7 @@ impl Query {
         }
         Ok(Self {
             formulas,
+            layout_options,
             global_filter: CompiledFilter::compile(&document.config.filter)?,
             view_filter: CompiledFilter::compile(&view.filter)?,
             columns,
@@ -180,6 +191,34 @@ impl Query {
             summaries,
             search: String::new(),
         })
+    }
+
+    pub(super) fn reuse_key(&self) -> Option<String> {
+        if self.formulas.volatile()
+            || self.global_filter.volatile()
+            || self.view_filter.volatile()
+            || self.summaries.values().any(
+                |summary| matches!(summary, Summary::Custom(expression) if expression.volatile),
+            )
+        {
+            return None;
+        }
+        Some(format!(
+            "{:?}",
+            (
+                &self.formulas,
+                &self.global_filter,
+                &self.view_filter,
+                &self.columns,
+                &self.projected,
+                &self.sort,
+                &self.group_by,
+                &self.group_order,
+                self.limit,
+                &self.summaries,
+                &self.search
+            )
+        ))
     }
 
     pub(crate) fn set_search(&mut self, text: &str) -> Result<()> {

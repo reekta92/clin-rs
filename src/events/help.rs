@@ -84,7 +84,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         },
         crate::keybinds::MatchOutcome::Pending => {}
         crate::keybinds::MatchOutcome::NoMatch => match key.code {
-            KeyCode::Char(c) if ('1'..='8').contains(&c) => {
+            KeyCode::Char(c) if ('1'..='9').contains(&c) => {
                 let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
                 let idx = (c as u8 - b'1') as usize;
                 if let Some((tab, _, _)) = tabs_data.get(idx) {

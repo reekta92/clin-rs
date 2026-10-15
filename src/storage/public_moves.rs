@@ -172,25 +172,37 @@ impl Storage {
                 _ => bail!("public folder must stay inside vault"),
             }
         }
-        let folder = normalized;
+        let paths = ids
+            .iter()
+            .map(|id| {
+                let name = Path::new(id)
+                    .file_name()
+                    .context("public move source has no filename")?;
+                let target = normalized
+                    .join(name)
+                    .to_str()
+                    .context("invalid public folder")?
+                    .replace('\\', "/");
+                Ok((id.clone(), target))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.prepare_public_file_paths(&paths, cancelled)
+    }
+    pub(crate) fn prepare_public_file_paths(
+        &self,
+        paths: &[(String, String)],
+        cancelled: &AtomicBool,
+    ) -> Result<Vec<FileMove>> {
         let mut plans = Vec::new();
-        for id in ids {
+        for (id, to) in paths {
             check_cancel(cancelled)?;
             let source = self.move_path(id)?;
             let metadata = fs::metadata(&source)?;
             if metadata.permissions().readonly() {
                 bail!("public move source is read-only");
             }
-            let name = Path::new(id)
-                .file_name()
-                .context("public move source has no filename")?;
-            let to = folder
-                .join(name)
-                .to_str()
-                .context("invalid public folder")?
-                .replace('\\', "/");
-            self.move_path(&to)?;
-            if *id == to {
+            self.move_path(to)?;
+            if id == to {
                 continue;
             }
             let (digest, len) = digest(&source, cancelled)?;
@@ -203,7 +215,7 @@ impl Storage {
             let mode = None;
             plans.push(FileMove {
                 from: id.clone(),
-                to,
+                to: to.clone(),
                 digest,
                 len,
                 mode,

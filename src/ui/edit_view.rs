@@ -377,6 +377,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone())
                     .text_align(app.editor.text_align);
                 frame.render_widget(widget, inner);
+                app.base_embeds
+                    .draw(frame, inner, renderer, widget_range.clone(), app);
 
                 // Overlay images continuously
                 if let (Some(_), Some(decode_tx)) =
@@ -564,6 +566,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+    if app.editor.sidebar == EditSidebar::Bases {
+        if let Some(renderer) = &app.editor.bases_sidebar_renderer {
+            app.base_embeds
+                .draw(frame, area, renderer, 0..usize::from(area.height), app);
+        }
+        return;
+    }
     let theme = &app.app_theme;
 
     // Fill the background of the sidebar area
@@ -628,7 +637,7 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
                 .collect();
             (title, items)
         }
-        EditSidebar::None => return,
+        EditSidebar::None | EditSidebar::Bases => return,
     };
 
     let title_widget = Paragraph::new(title).style(title_style);
@@ -638,7 +647,7 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
         let empty_msg = match app.editor.sidebar {
             EditSidebar::Outline => "  No headers",
             EditSidebar::Links => "  No links",
-            EditSidebar::None => "",
+            EditSidebar::None | EditSidebar::Bases => "",
         };
         let p = Paragraph::new(empty_msg).style(Style::default().fg(theme.muted));
         frame.render_widget(p, sb_chunks[3]);
@@ -694,6 +703,9 @@ fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
     };
     renderer.set_page_height(inner.height as usize);
     renderer.set_viewport(0, inner.height as usize);
+    let Some(renderer) = app.editor.link_preview_renderer.as_ref() else {
+        return;
+    };
     if let Some(doc) = renderer.document() {
         let padding_block = Block::default()
             .style(app.app_theme.preview_bg_style())
@@ -703,9 +715,11 @@ fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
         frame.render_widget(padding_block, inner);
 
         let range = renderer.current_page_range();
-        let widget =
-            crate::markdown::MarkdownWidget::new(doc, range).text_align(app.editor.text_align);
+        let widget = crate::markdown::MarkdownWidget::new(doc, range.clone())
+            .text_align(app.editor.text_align);
         frame.render_widget(widget, padded_inner);
+        app.base_embeds
+            .draw(frame, padded_inner, renderer, range, app);
     } else {
         let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));
         frame.render_widget(p, inner);

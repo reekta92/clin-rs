@@ -113,6 +113,7 @@ pub enum EditAction {
     InsertDate,
     ToggleOutline,
     ToggleLinks,
+    ToggleBases,
     PreviewLink,
     GoToLine,
     Save,

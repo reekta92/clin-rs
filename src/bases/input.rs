@@ -13,6 +13,109 @@ use ratatui::{
 
 impl OverlayView for BasesState {
     fn overlay_render(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
+        self.render_native(frame, area, app);
+    }
+    fn overlay_handle_event(
+        &mut self,
+        event: Event,
+        app: &mut App,
+        area: Rect,
+    ) -> anyhow::Result<OverlayResult> {
+        if self.search_event(&event, app, area) {
+            return Ok(OverlayResult::Continue);
+        }
+        if self.dialog_event(&event, app) {
+            return Ok(OverlayResult::Continue);
+        }
+        let action = match event {
+            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                match app.keybinds.resolve_bases(
+                    &mut self.matcher,
+                    key,
+                    app.config.sequences_enabled(),
+                    app.config.counts_enabled(),
+                ) {
+                    MatchOutcome::Matched(action, count) => Some((action, count.unwrap_or(1))),
+                    _ => None,
+                }
+            }
+            Event::Mouse(mouse) => {
+                let maximum = self.items.len().saturating_sub(1);
+                if let Some(fraction) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                    &mouse,
+                    self.scrollbar,
+                    self.selected as f32 / maximum.max(1) as f32,
+                    &mut self.scroll_drag,
+                ) {
+                    self.selected = (fraction * maximum as f32).round() as usize;
+                    return Ok(OverlayResult::Continue);
+                }
+                match mouse.kind {
+                    MouseEventKind::ScrollDown => Some((BasesAction::MoveDown, 3)),
+                    MouseEventKind::ScrollUp => Some((BasesAction::MoveUp, 3)),
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if let Some((_, item, column)) = self
+                            .hit_rows
+                            .iter()
+                            .find(|(rect, _, _)| rect.contains((mouse.column, mouse.row).into()))
+                        {
+                            self.selected = *item;
+                            self.column = *column;
+                            if !matches!(self.layout(), super::format::Layout::Kanban)
+                                && matches!(
+                                    self.items.get(self.selected),
+                                    Some(super::state::Item::Group(_))
+                                )
+                            {
+                                if let Err(error) = self.toggle_group() {
+                                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                                }
+                                return Ok(OverlayResult::Continue);
+                            }
+                            if matches!(self.layout(), super::format::Layout::Kanban)
+                                && !self.loading
+                                && self.write_task.is_none()
+                            {
+                                self.drag = self.items.get(self.selected).copied();
+                                if self.hit_groups.iter().any(|(rect, _)| {
+                                    rect.y == mouse.row
+                                        && rect.width >= 3
+                                        && rect.right().saturating_sub(2) == mouse.column
+                                }) {
+                                    self.drag = None;
+                                    if let Err(error) = self.prompt_new_note() {
+                                        app.set_temporary_status(&format!("Bases: {error:#}"));
+                                    }
+                                }
+                            }
+                        }
+                        None
+                    }
+                    MouseEventKind::Up(MouseButton::Left) => {
+                        if let Some(item) = self.drag.take()
+                            && let Some((_, target)) = self
+                                .hit_groups
+                                .iter()
+                                .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
+                            && let Err(error) = self.drop_in_group(app, item, *target)
+                        {
+                            app.set_temporary_status(&format!("Bases: {error:#}"));
+                        }
+                        None
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let Some((action, count)) = action else {
+            return Ok(OverlayResult::Continue);
+        };
+        self.apply_action(app, action, count)
+    }
+}
+impl BasesState {
+    pub(crate) fn render_native(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &App) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -74,96 +177,12 @@ impl OverlayView for BasesState {
             Paragraph::new(hints).style(app.app_theme.hint_line_bg_style()),
             chunks[2],
         );
-        self.render_search(frame, area, app);
-        if let Some(dialog) = self.dialog.as_mut() {
-            dialog.render(frame, area, app);
-        }
-    }
-    fn overlay_handle_event(
-        &mut self,
-        event: Event,
-        app: &mut App,
-        area: Rect,
-    ) -> anyhow::Result<OverlayResult> {
-        if self.search_event(&event, app, area) {
-            return Ok(OverlayResult::Continue);
-        }
-        if self.dialog_event(&event, app) {
-            return Ok(OverlayResult::Continue);
-        }
-        let action = match event {
-            Event::Key(key) if key.kind != KeyEventKind::Release => {
-                match app.keybinds.resolve_bases(
-                    &mut self.matcher,
-                    key,
-                    app.config.sequences_enabled(),
-                    app.config.counts_enabled(),
-                ) {
-                    MatchOutcome::Matched(action, count) => Some((action, count.unwrap_or(1))),
-                    _ => None,
-                }
+        if self.embedded_request.is_none() || app.mode == crate::app::ViewMode::Bases {
+            self.render_search(frame, area, app);
+            if let Some(dialog) = self.dialog.as_mut() {
+                dialog.render(frame, area, app);
             }
-            Event::Mouse(mouse) => match mouse.kind {
-                MouseEventKind::ScrollDown => Some((BasesAction::MoveDown, 3)),
-                MouseEventKind::ScrollUp => Some((BasesAction::MoveUp, 3)),
-                MouseEventKind::Down(MouseButton::Left) => {
-                    if let Some((_, item, column)) = self
-                        .hit_rows
-                        .iter()
-                        .find(|(rect, _, _)| rect.contains((mouse.column, mouse.row).into()))
-                    {
-                        self.selected = *item;
-                        self.column = *column;
-                        if !matches!(self.layout(), super::format::Layout::Kanban)
-                            && matches!(
-                                self.items.get(self.selected),
-                                Some(super::state::Item::Group(_))
-                            )
-                        {
-                            if let Err(error) = self.toggle_group() {
-                                app.set_temporary_status(&format!("Bases: {error:#}"));
-                            }
-                            return Ok(OverlayResult::Continue);
-                        }
-                        if matches!(self.layout(), super::format::Layout::Kanban)
-                            && !self.loading
-                            && self.write_task.is_none()
-                        {
-                            self.drag = self.items.get(self.selected).copied();
-                            if self.hit_groups.iter().any(|(rect, _)| {
-                                rect.y == mouse.row
-                                    && rect.width >= 3
-                                    && rect.right().saturating_sub(2) == mouse.column
-                            }) {
-                                self.drag = None;
-                                if let Err(error) = self.prompt_new_note() {
-                                    app.set_temporary_status(&format!("Bases: {error:#}"));
-                                }
-                            }
-                        }
-                    }
-                    None
-                }
-                MouseEventKind::Up(MouseButton::Left) => {
-                    if let Some(item) = self.drag.take()
-                        && let Some((_, target)) = self
-                            .hit_groups
-                            .iter()
-                            .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
-                        && let Err(error) = self.drop_in_group(app, item, *target)
-                    {
-                        app.set_temporary_status(&format!("Bases: {error:#}"));
-                    }
-                    None
-                }
-                _ => None,
-            },
-            _ => None,
-        };
-        let Some((action, count)) = action else {
-            return Ok(OverlayResult::Continue);
-        };
-        self.apply_action(app, action, count)
+        }
     }
 }
 impl BasesState {
@@ -174,6 +193,11 @@ impl BasesState {
         count: u32,
     ) -> anyhow::Result<OverlayResult> {
         match action {
+            BasesAction::CommandPalette
+                if self.embedded_request.is_some() && app.mode != crate::app::ViewMode::Bases =>
+            {
+                self.expand_requested = true;
+            }
             BasesAction::CommandPalette => {
                 app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
             }
@@ -192,15 +216,10 @@ impl BasesState {
             BasesAction::MoveDown => self.move_row(true, count as usize),
             BasesAction::First => self.selected = 0,
             BasesAction::Last => self.selected = self.items.len().saturating_sub(1),
-            BasesAction::PageUp => {
-                self.selected = self
-                    .selected
-                    .saturating_sub(usize::from(self.body_area.height).saturating_sub(1))
-            }
+            BasesAction::PageUp => self.selected = self.selected.saturating_sub(self.page_len()),
             BasesAction::PageDown => {
-                self.selected = (self.selected
-                    + usize::from(self.body_area.height).saturating_sub(1))
-                .min(self.items.len().saturating_sub(1))
+                self.selected =
+                    (self.selected + self.page_len()).min(self.items.len().saturating_sub(1))
             }
             BasesAction::MoveLeft | BasesAction::MoveRight
                 if matches!(self.layout(), super::format::Layout::Kanban) =>
@@ -274,7 +293,12 @@ impl BasesState {
                 }
             }
             BasesAction::Configure => {
-                self.dialog = Some(super::authoring::Dialog::Menu { selected: 0 })
+                self.dialog = Some(super::authoring::Dialog::Menu {
+                    selected: 0,
+                    offset: 0,
+                    area: Rect::default(),
+                    bounds: Rect::default(),
+                })
             }
             BasesAction::NewNote => {
                 if let Err(error) = self.prompt_new_note() {
@@ -347,16 +371,38 @@ impl BasesState {
     }
 }
 impl BasesState {
+    fn page_len(&self) -> usize {
+        self.hit_rows
+            .iter()
+            .map(|(_, position, _)| position)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            .saturating_sub(1)
+            .max(1)
+    }
     pub fn refresh(&mut self, app: &mut App, invalidate: bool) {
         if self.creating {
             app.bases_refresh_requested = false;
             return;
         }
         self.loading = true;
+        self.environment.now = chrono::Local::now();
         if invalidate {
             self.media.invalidate();
         }
+        app.bases_refresh_requested = false;
         if let Some(worker) = app.bases_worker.as_mut() {
+            if let Some(embedded) = &self.embedded_request {
+                let mut embedded = embedded.clone();
+                embedded.view.clone_from(&self.named_view);
+                worker.request_embed(
+                    embedded,
+                    self.environment.clone(),
+                    self.search_text.clone(),
+                    invalidate,
+                );
+                return;
+            }
             worker.request(
                 &self.id,
                 self.named_view.clone(),

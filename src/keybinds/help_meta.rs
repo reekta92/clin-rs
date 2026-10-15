@@ -192,6 +192,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::PreviewPageDown => meta("Preview", "Page preview down"),
         EditAction::ToggleOutline => meta("Panels", "Toggle outline pane"),
         EditAction::ToggleLinks => meta("Panels", "Toggle links pane"),
+        EditAction::ToggleBases => meta("Panels", "Open Bases link under cursor in sidebar"),
         EditAction::PreviewLink => meta("Panels", "Preview linked note under cursor"),
         EditAction::GoToLine => meta("Editor", "Go to line number"),
         EditAction::PasteImage => meta("Editing", "Paste image from clipboard"),

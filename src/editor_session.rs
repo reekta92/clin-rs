@@ -33,6 +33,10 @@ where
 
         dirty |= app.messages.tick_expirations();
         dirty |= app.tick_status();
+        if app.base_embeds.has_visible() {
+            crate::process_watcher_events(app);
+            dirty |= app.poll_bases();
+        }
         dirty |= app.poll_editor_renderers();
         dirty |= app.poll_editor_image_results();
         dirty |= app.tick_autosave();
@@ -51,7 +55,8 @@ where
             .md_preview_renderer
             .as_ref()
             .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
-            || app.editor.pending_editor_preview_update;
+            || app.editor.pending_editor_preview_update
+            || app.base_embeds.is_loading();
         let timeout = if editor_pending {
             std::time::Duration::from_millis(16)
         } else if let Some(timer) = app.editor.autosave_timer {
@@ -117,7 +122,10 @@ fn coalesce_editor_events(events: Vec<Event>) -> Vec<Event> {
     }
     batch
 }
-fn synchronize_source_highlight(app: &mut App, change: crate::editor_document::DocumentChange) {
+pub(crate) fn synchronize_source_highlight(
+    app: &mut App,
+    change: crate::editor_document::DocumentChange,
+) {
     let theme = app.app_theme.clone();
     let ghost_syntax = app.config.editor.ghost_syntax;
     let extended_features = app.config.editor.extended_markdown_features;
@@ -139,6 +147,9 @@ where
 {
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
+    if app.base_embed_event(&event, area) {
+        return Ok(true);
+    }
     match event {
         // All-keys keyboard mode reports bare modifier presses and text-less
         // IME events (key code 0); drop them before any handler sees them.

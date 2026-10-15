@@ -107,6 +107,7 @@ pub(crate) fn render_layout(
         source_lines: content.split('\n').collect(),
         lines: Vec::new(),
         image_slots: Vec::new(),
+        base_slots: Vec::new(),
         cols: cols as usize,
         theme,
         opts,
@@ -148,7 +149,7 @@ pub(crate) fn render_layout(
         .collect();
 
     Some(LayoutResult {
-        document: RenderedDocument::new(lines),
+        document: RenderedDocument::new(lines).with_base_slots(ctx.base_slots),
         code_blocks: ctx.code_blocks,
     })
 }
@@ -262,6 +263,7 @@ pub(crate) fn render_code_patch(
         source_lines: Vec::new(),
         lines: Vec::new(),
         image_slots: Vec::new(),
+        base_slots: Vec::new(),
         cols: cols as usize,
         theme,
         opts,
@@ -326,6 +328,7 @@ struct Ctx<'src, 'render> {
     source_lines: Vec<&'src str>,
     lines: Vec<LineBuilder>,
     image_slots: Vec<(usize, String)>,
+    base_slots: Vec<crate::bases::embedding::Slot>,
     cols: usize,
     theme: &'render MarkdownTheme,
     opts: &'render MdRenderOpts,
@@ -951,6 +954,16 @@ fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtIt
 
 fn render_paragraph<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     let margin = block_margin(depth);
+    let source_line = node.data.borrow().sourcepos.start.line;
+    if ctx.opts.render_bases
+        && node.data.borrow().sourcepos.end.line == source_line
+        && let Some(definition) = ctx
+            .source_line(source_line)
+            .and_then(crate::bases::embedding::Definition::reference)
+    {
+        reserve_base(ctx, source_line, definition, margin);
+        return;
+    }
 
     if ctx.opts.is_todo_txt {
         let mut raw = String::new();
@@ -1152,6 +1165,33 @@ fn render_code_rows(
     start_line..ctx.lines.len()
 }
 
+fn reserve_base(
+    ctx: &mut Ctx<'_, '_>,
+    source_line: usize,
+    definition: crate::bases::embedding::Definition,
+    margin: usize,
+) {
+    ctx.ensure_source_line(source_line, margin);
+    if ctx.base_slots.len() >= 32 {
+        ctx.push_str(
+            "Bases: at most 32 live definitions per document",
+            ctx.theme.blockquote,
+            margin,
+        );
+        return;
+    }
+    let start = ctx.lines.len().saturating_sub(1);
+    ctx.push_str("Loading Bases…", ctx.theme.blockquote, margin);
+    for _ in 1..crate::bases::embedding::SLOT_HEIGHT {
+        ctx.push_line(source_line, margin);
+    }
+    ctx.base_slots.push(crate::bases::embedding::Slot {
+        rows: start..ctx.lines.len(),
+        source_line,
+        definition,
+    });
+}
+
 fn render_code_block(
     ctx: &mut Ctx<'_, '_>,
     cb: &NodeCodeBlock,
@@ -1170,6 +1210,21 @@ fn render_code_block(
     } else {
         String::new()
     };
+
+    if ctx.opts.render_bases && is_fenced && lang == "base" {
+        reserve_base(
+            ctx,
+            src_line,
+            crate::bases::embedding::Definition::Inline {
+                source: Arc::from(cb.literal.as_str()),
+                lines: src_line..end_line.saturating_sub(1),
+            },
+            margin,
+        );
+        ctx.current_source_line = end_line;
+        ctx.quote_depth = saved_q_depth;
+        return;
+    }
 
     if ctx.opts.render_mermaid && is_fenced && lang.eq_ignore_ascii_case("mermaid") {
         let columns = u16::try_from(ctx.cols.saturating_sub(margin)).unwrap_or(u16::MAX);
@@ -1613,10 +1668,53 @@ fn render_inline<'a>(
 ) {
     let data = node.data.borrow();
     match &data.value {
-        NodeValue::Text(t) => {
-            // `t` is &Cow<str> — access as &str via deref coercion
-            ctx.push_str(t, base_style, margin);
+        NodeValue::Text(t) if ctx.opts.render_bases => {
+            let source_line = data.sourcepos.start.line;
+            let raw = ctx.source_line(source_line).unwrap_or("").to_owned();
+            let mut raw_cursor = data.sourcepos.start.column.saturating_sub(1).min(raw.len());
+            let mut cursor = 0;
+            for (start, _) in t.match_indices("![[") {
+                if start < cursor {
+                    continue;
+                }
+                let Some(end) = t[start..].find("]]").map(|end| start + end + 2) else {
+                    break;
+                };
+                let reference = &t[start..end];
+                let Some(definition) = crate::bases::embedding::Definition::reference(reference)
+                else {
+                    continue;
+                };
+                let Some(raw_start) = raw
+                    .get(raw_cursor..)
+                    .and_then(|source| source.find(reference))
+                    .map(|start| raw_cursor + start)
+                else {
+                    continue;
+                };
+                raw_cursor = raw_start + reference.len();
+                // Comrak folds escaped text; check the original source before creating a live region.
+                if raw[..raw_start]
+                    .bytes()
+                    .rev()
+                    .take_while(|byte| *byte == b'\\')
+                    .count()
+                    % 2
+                    == 1
+                {
+                    continue;
+                }
+                ctx.push_str(&t[cursor..start], base_style, margin);
+                if ctx.col > margin {
+                    ctx.push_line(source_line, margin);
+                }
+                reserve_base(ctx, source_line, definition, margin);
+                ctx.push_line(source_line, margin);
+                cursor = end;
+            }
+            ctx.push_str(&t[cursor..], base_style, margin);
         }
+        NodeValue::Text(t) => ctx.push_str(t, base_style, margin),
         NodeValue::Code(c) => {
             ctx.push(' ', ctx.theme.code_inline, margin);
             ctx.push_str(&c.literal, ctx.theme.code_inline, margin);
@@ -1842,6 +1940,7 @@ mod tests {
             syntax_hl: true,
             wrap: true,
             render_mermaid: true,
+            render_bases: true,
             icon_mode,
             code_theme: default_code_theme().to_string(),
             code_line_numbers: false,

@@ -1,6 +1,12 @@
 //! Native overlay workflows over a disposable public vault, without terminal or clipboard dependencies.
+#[path = "acceptance_tests.rs"]
+mod acceptance;
 #[path = "creation_workflow_tests.rs"]
 mod creation;
+#[path = "embed_workflow_tests.rs"]
+mod embeds;
+#[path = "layout_workflow_tests.rs"]
+mod layout;
 #[path = "media_workflow_tests.rs"]
 mod media;
 #[path = "palette_workflow_tests.rs"]
