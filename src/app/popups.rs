@@ -83,11 +83,99 @@ impl App {
         self.open_template_path_in_editor(&path);
     }
 
+    /// Edit the selected physical folder's local variables through the existing TOML editor.
+    pub fn edit_folder_template_variables(&mut self) {
+        if self.mode != ViewMode::List {
+            self.set_temporary_status_static("Select a physical folder in the notes list first");
+            return;
+        }
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            match self.list.visual_list.get(self.list.visual_index) {
+                Some(VisualItem::SmartFolder { .. } | VisualItem::Subnote { .. }) => {
+                    self.set_temporary_status_static(
+                        "Select a physical folder, not a virtual folder",
+                    );
+                    return;
+                }
+                Some(VisualItem::Folder { path, .. } | VisualItem::CreateNew { path, .. }) => {
+                    path.clone()
+                }
+                _ => self.get_current_folder_context(),
+            }
+        };
+        self.open_folder_template_config(&folder);
+    }
+
+    pub(crate) fn open_folder_template_config(&mut self, folder: &str) {
+        if self.feature_disabled(
+            self.config.features.templates.is_enabled(),
+            "Templates",
+            "templates",
+        ) {
+            return;
+        }
+        if Self::is_virtual_path(folder) {
+            self.set_temporary_status_static("Select a physical folder, not a virtual folder");
+            return;
+        }
+        let result = (|| -> anyhow::Result<std::path::PathBuf> {
+            let path = self.storage.folder_template_config_path(folder)?;
+            let parent = path
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("folder template config has no parent"))?;
+            std::fs::create_dir_all(parent)?;
+            // Never overwrite an existing configuration when opening the editor.
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    use std::io::Write;
+                    file.write_all(crate::templates::DEFAULT_FOLDER_TEMPLATE_CONFIG.as_bytes())?;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(e.into()),
+            }
+            Ok(path)
+        })();
+        match result {
+            Ok(path) => {
+                self.popups.active = None;
+                self.open_template_path_in_editor(&path);
+            }
+            Err(e) => {
+                let text = format!("Failed to open folder template config: {e:#}");
+                self.set_temporary_status(&text);
+                self.messages
+                    .push(text, crate::app::messages::MessageSeverity::Warning);
+            }
+        }
+    }
+
     fn open_template_path_in_editor(&mut self, path: &std::path::Path) {
+        let folder_config = crate::templates::is_folder_template_config(path);
         if self.editor.external_editor_enabled {
             self.open_path_in_external_editor(path);
-            self.sync_template_filename(path);
-            self.refresh_template_popup();
+            if folder_config {
+                let result = self
+                    .storage
+                    .check_folder_template_config_path(path)
+                    .and_then(|_| std::fs::read_to_string(path).map_err(anyhow::Error::from))
+                    .and_then(|content| crate::templates::FolderTemplateConfig::parse(&content));
+                if let Err(e) = result {
+                    let text = format!("Invalid folder template config {}: {e:#}", path.display());
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
+                self.refresh_visual_list();
+            } else {
+                self.sync_template_filename(path);
+                self.refresh_template_popup();
+            }
             return;
         }
 
@@ -101,10 +189,21 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = None;
+        self.editor.public_document = None;
+        self.editor.public_opening_snapshot = None;
+        self.editor.bases_sidebar_renderer = None;
+        if self.editor.sidebar == crate::editor::EditSidebar::Bases {
+            self.editor.sidebar = crate::editor::EditSidebar::None;
+        }
         self.editor.template_edit_path = Some(path.to_path_buf());
         self.editor.title_editor = make_title_editor(
             &format!(
-                "Template: {}",
+                "{}: {}",
+                if folder_config {
+                    "Folder variables"
+                } else {
+                    "Template"
+                },
                 path.file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("template")
@@ -114,7 +213,11 @@ impl App {
         );
         self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
-        self.set_temporary_status_static("Editing template (Esc to save and return)");
+        self.set_temporary_status_static(if folder_config {
+            "Editing folder variables (Esc to validate, save and return)"
+        } else {
+            "Editing template (Esc to save and return)"
+        });
     }
 
     fn sync_template_filename(&mut self, path: &std::path::Path) -> std::path::PathBuf {

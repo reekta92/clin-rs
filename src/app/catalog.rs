@@ -155,6 +155,9 @@ pub(crate) fn load_persisted_note_cache(
     let mut map = HashMap::with_capacity(cache.entries.len());
 
     for (id, stamp, summary) in cache.entries {
+        if crate::templates::is_folder_template_config(Path::new(&id)) {
+            continue;
+        }
         if !show_hidden {
             let has_hidden = id.split('/').any(|s| s.starts_with('.'));
             if has_hidden {

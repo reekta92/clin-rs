@@ -117,6 +117,16 @@ simple_action!(
     open_backup_view
 );
 simple_action!(
+    EditFolderTemplateVariablesAction,
+    "templates.edit_folder_variables",
+    "Edit Folder Template Variables",
+    "Create or edit the current physical folder's .clin-template.toml",
+    ActionCategory::Settings,
+    "\u{f15c}",
+    "\u{270f}",
+    edit_folder_template_variables
+);
+simple_action!(
     CreateDrawAction,
     "draw.create",
     "Create Drawing",
@@ -263,6 +273,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(outline::OpenOutlineAction),
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
+        Box::new(EditFolderTemplateVariablesAction),
         Box::new(CreateCanvasAction),
         Box::new(CreateBaseAction),
         Box::new(ocr::OcrPasteAction),
@@ -380,6 +391,9 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
             && app.config.features.bases_view.is_enabled();
     }
     match id {
+        "templates.edit_folder_variables" => {
+            app.config.features.templates.is_enabled() && app.mode == crate::app::ViewMode::List
+        }
         "backup.open" => app.config.features.backup.is_enabled(),
         "draw.create" => app.config.features.draw_view.is_enabled(),
         "graph.open" => app.config.features.graph_view.is_enabled(),

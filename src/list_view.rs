@@ -69,7 +69,7 @@ impl SmartFolderKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum VisualItem {
     Folder {
         path: String,
@@ -100,6 +100,11 @@ pub enum VisualItem {
         path: String,
         depth: usize,
     },
+    /// Folder-local template variables: a navigable config, never a note summary.
+    TemplateConfig {
+        folder: String,
+        depth: usize,
+    },
     /// A subnote listed under its parent in the Subnotes view.
     /// `parent_id` is the parent note id; `subnote_idx` indexes into the
     /// parent's Vec<SubNote> in App::subnotes_view_cache.
@@ -123,6 +128,8 @@ pub struct ListView {
     pub grid_scroll: usize,
     pub grid_tiles: Vec<GridTile>,
     pub folder_expanded: HashSet<String>,
+    /// Local config presence for visible folders; rebuilt with the list, not per draw.
+    pub template_config_folders: HashSet<String>,
     pub preview_enabled: bool,
     pub preview_content: Option<PreviewContent>,
     pub preview_content_index: Option<usize>,
@@ -181,6 +188,7 @@ impl Default for ListView {
             grid_scroll: 0,
             grid_tiles: Vec::new(),
             folder_expanded: HashSet::new(),
+            template_config_folders: HashSet::new(),
             preview_enabled: false,
             preview_content: None,
             preview_content_index: None,

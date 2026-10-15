@@ -85,8 +85,9 @@ cargo test --locked storage::metadata --lib
 cargo test --locked --release bases::workflow_tests::acceptance::native_5000_note_acceptance --lib -- --ignored --nocapture
 ```
 
-Final result: **six passed, zero failed, zero skipped**; **596 library tests** and
-**8 integration tests** passed. Five opt-in tests remain ignored by the ordinary
+After integrating current main's folder-local template-variable changes, the
+final result was **six passed, zero failed, zero skipped**; **616 library tests** and
+**12 integration tests** passed. Five opt-in tests remain ignored by the ordinary
 test command; the complete native release acceptance above passed separately.
 
 The six required gates are formatting, locked check, all-target Clippy with denied
@@ -131,18 +132,18 @@ Host catalog availability precedes the cold-query timer and RSS baseline.
 
 | Measurement | Observed | Required |
 | --- | --- | --- |
-| Cold metadata + first query | 409.350 ms | ≤3 s |
-| Uncached ordinary full query | p50 57.030 / p95 61.535 / max 67.638 ms | p95 ≤150 ms |
-| Single-note watcher-to-results, including 250 ms debounce | p50 390.551 / p95 426.309 / max 426.309 ms | p95 ≤500 ms |
-| Visible Table/List/Cards/Kanban render CPU | p95 0.174 / 0.871 / 0.328 / 0.171 ms | p95 ≤16 ms |
+| Cold metadata + first query | 507.861 ms | ≤3 s |
+| Uncached ordinary full query | p50 123.086 / p95 130.952 / max 136.967 ms | p95 ≤150 ms |
+| Single-note watcher-to-results, including 250 ms debounce | p50 410.520 / p95 415.768 / max 415.768 ms | p95 ≤500 ms |
+| Visible Table/List/Cards/Kanban render CPU | p95 0.156 / 0.883 / 0.129 / 0.171 ms | p95 ≤16 ms |
 | Input during indexing | 0.047 ms | ≤50 ms |
-| Cancellation | 0.115 ms | ≤100 ms |
-| Incremental native Bases RSS, after repeated refresh and two live embeds | 121,132 KiB (118.293 MiB) | ≤128 MiB |
+| Cancellation | 0.084 ms | ≤100 ms |
+| Incremental native Bases RSS, after repeated refresh and two live embeds | 121,032 KiB (118.195 MiB) | ≤128 MiB |
 
-Render p50/max (ms): Table 0.158/0.782, List 0.835/5.067, Cards 0.126/1.212,
-Kanban 0.163/0.297. Host RSS was 35,368 KiB; final process RSS 156,500 KiB.
-Four two-embed close/reopen cycles took 414–727 ms. The final two cycles differed
-by 64 KiB RSS; no rows were dropped. Repeated runs on this host passed the same
+Render p50/max (ms): Table 0.148/0.831, List 0.845/5.058, Cards 0.125/0.307,
+Kanban 0.160/0.579. Host RSS was 35,592 KiB; final process RSS 156,624 KiB.
+Four two-embed close/reopen cycles took 553–585 ms. The final two cycles differed
+by 12 KiB RSS; no rows were dropped. Repeated runs on this host passed the same
 limits; timings vary with background load.
 
 RSS is measured before standalone evaluator/cancellation microbenchmarks create

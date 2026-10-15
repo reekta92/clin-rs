@@ -47,10 +47,13 @@ impl App {
                     self.persist_folder_state();
                 }
             }
-            VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
+            VisualItem::Note { .. }
+            | VisualItem::CreateNew { .. }
+            | VisualItem::TemplateConfig { .. } => {
                 let item_path = match &self.list.visual_list[self.list.visual_index] {
                     VisualItem::Note { summary_idx, .. } => &self.notes[*summary_idx].folder,
                     VisualItem::CreateNew { path, .. } => path,
+                    VisualItem::TemplateConfig { folder, .. } => folder,
                     _ => unreachable!(),
                 };
 
@@ -100,7 +103,9 @@ impl App {
                     self.list.visual_index += 1;
                 }
             }
-            VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
+            VisualItem::Note { .. }
+            | VisualItem::CreateNew { .. }
+            | VisualItem::TemplateConfig { .. } => {
                 self.open_selected();
             }
             VisualItem::Subnote { .. } => {}

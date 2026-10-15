@@ -2,6 +2,27 @@
 
 Full reference of all configuration options for clin-rs.
 
+## Folder-local note template variables
+
+Note template variables use a separate `.clin-template.toml` file inside a physical vault folder, not a section of the global config:
+
+```toml
+inherit_parent = true
+
+[variables]
+book = "Example Book"
+chapter = "04"
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `inherit_parent` | Boolean | `true` | Include ancestor-folder values up to the vault root. `false` cuts off ancestors above this config. |
+| `[variables]` entries | String | Empty map | Case-sensitive custom values used in note template title/body; nearer folders override ancestors. |
+
+Names must match `[A-Za-z_][A-Za-z0-9_]*`. Built-ins (`date`, `datetime`, `time`, `weekday`, `year`, `month`, `day`) cannot be overridden. Unknown tokens stay literal and warn; invalid configuration blocks template-based creation. These note variables are separate from the UI/statusline interpolation variables documented below.
+
+Use **Edit Folder Template Variables** in the command palette to create/edit the selected physical folder's config, or select its muted `.clin-template.toml` item and press Enter. A gear badge on the folder item indicates its own local config; inherited-only variables do not add a badge. CLI creation selects the destination with `--folder` in `clin notes new -t ...`. See [Template System](TEMPLATES.md#folder-local-custom-variables) for inheritance, validation, and CLI precedence details.
+
 ---
 
 ## Configuration

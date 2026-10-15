@@ -1172,6 +1172,8 @@ impl App {
         Self::is_virtual_pinned_path(path)
             || Self::is_virtual_subnotes_path(path)
             || Self::is_subnotes_parent_grid_path(path)
+            || path == VIRTUAL_SMART_PATH
+            || crate::list_view::SmartFolderKind::from_virtual_path(path).is_some()
     }
 
     pub fn format_visual_item(&self, vi: usize) -> ListItem<'static> {
@@ -1274,7 +1276,18 @@ impl App {
                 if self.list.drag_hover == Some(vi) {
                     style = style.bg(self.app_theme.highlight_bg);
                 }
-                let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                let mut spans = vec![Span::styled(text, style)];
+                if name != ".." && self.list.template_config_folders.contains(path) {
+                    let glyph =
+                        crate::ui::get_icon("\u{f013}", "\u{2699}", self.config.ui.icon_mode);
+                    if !glyph.is_empty() {
+                        spans.push(Span::styled(
+                            format!(" {glyph}"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
+                }
+                let mut lines = vec![Line::from(spans)];
                 if self.list.list_density == crate::config::ListDensity::Comfortable {
                     lines.push(Line::from(""));
                 }
@@ -1434,6 +1447,22 @@ impl App {
                     lines.push(Line::from(""));
                 }
                 ListItem::new(lines)
+            }
+            VisualItem::TemplateConfig { depth, .. } => {
+                let indent = "  ".repeat(*depth);
+                let icon = crate::ui::get_icon("\u{f15c}", "\u{2699}", self.config.ui.icon_mode);
+                let label = if icon.is_empty() {
+                    format!("{indent}{}", crate::templates::FOLDER_TEMPLATE_CONFIG)
+                } else {
+                    format!(
+                        "{indent} {icon} {}",
+                        crate::templates::FOLDER_TEMPLATE_CONFIG
+                    )
+                };
+                ListItem::new(Line::from(Span::styled(
+                    label,
+                    Style::default().fg(self.app_theme.muted),
+                )))
             }
             VisualItem::CreateNew { depth, .. } => {
                 let indent = "  ".repeat(*depth);
@@ -1630,6 +1659,7 @@ impl App {
                 }
                 crate::list_view::VisualItem::Folder { .. }
                 | crate::list_view::VisualItem::CreateNew { .. }
+                | crate::list_view::VisualItem::TemplateConfig { .. }
                 | crate::list_view::VisualItem::SmartFolder { .. }
                 | crate::list_view::VisualItem::Subnote { .. } => {
                     self.set_temporary_status_static(
@@ -1767,7 +1797,22 @@ impl App {
             && self.editor.editing_id.is_none()
         {
             let mut path_to_write = path.clone();
-            if let Ok(template) = toml::from_str::<Template>(&content) {
+            let folder_config = crate::templates::is_folder_template_config(path);
+            if folder_config {
+                let validation = self
+                    .storage
+                    .check_folder_template_config_path(path)
+                    .and_then(|_| {
+                        crate::templates::FolderTemplateConfig::parse(&content).map(|_| ())
+                    });
+                if let Err(e) = validation {
+                    let err = format!("Folder template config save failed: {e:#}");
+                    self.set_temporary_status(&err);
+                    self.messages
+                        .push(err.clone(), crate::app::messages::MessageSeverity::Warning);
+                    return Err(err);
+                }
+            } else if let Ok(template) = toml::from_str::<Template>(&content) {
                 let new_path = self.storage.template_path(&template.name);
                 if new_path != *path && !new_path.exists() {
                     if let Err(e) = std::fs::rename(path, &new_path) {
@@ -1784,7 +1829,12 @@ impl App {
             }
 
             if let Err(e) = crate::fsutil::atomic_write_str(&path_to_write, &content) {
-                let err = format!("Template save failed: {e}");
+                let kind = if folder_config {
+                    "Folder template config"
+                } else {
+                    "Template"
+                };
+                let err = format!("{kind} save failed: {e}");
                 self.set_temporary_status(&err);
                 self.messages
                     .push(err.clone(), crate::app::messages::MessageSeverity::Warning);

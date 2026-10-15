@@ -11,6 +11,74 @@ struct SmartFolderData {
     matches: Vec<usize>,
 }
 impl App {
+    fn add_local_template_configs(&mut self, visual: &mut Vec<VisualItem>) {
+        self.list.template_config_folders.clear();
+        if !self.config.features.templates.is_enabled() {
+            return;
+        }
+        let mut folders: std::collections::HashSet<String> = visual
+            .iter()
+            .filter_map(|item| match item {
+                VisualItem::Folder { path, name, .. }
+                    if name != ".." && !Self::is_virtual_path(path) =>
+                {
+                    Some(path.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        if self.list.notes_layout == crate::config::NotesLayout::Grid
+            && !Self::is_virtual_path(&self.list.grid_folder)
+        {
+            folders.insert(self.list.grid_folder.clone());
+        }
+        self.list.template_config_folders = folders
+            .into_iter()
+            .filter(|folder| self.storage.has_local_template_config(folder))
+            .collect();
+        if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            let folder = &self.list.grid_folder;
+            if self.list.template_config_folders.contains(folder) {
+                let index = visual
+                    .iter()
+                    .position(|item| matches!(item, VisualItem::CreateNew { .. }))
+                    .unwrap_or(visual.len());
+                visual.insert(
+                    index,
+                    VisualItem::TemplateConfig {
+                        folder: folder.clone(),
+                        depth: 0,
+                    },
+                );
+            }
+            return;
+        }
+        let mut items = Vec::with_capacity(visual.len());
+        for item in std::mem::take(visual) {
+            let config = match &item {
+                VisualItem::Folder {
+                    path,
+                    depth,
+                    is_expanded: true,
+                    ..
+                } if !Self::is_virtual_path(path)
+                    && self.list.template_config_folders.contains(path) =>
+                {
+                    Some(VisualItem::TemplateConfig {
+                        folder: path.clone(),
+                        depth: depth + 1,
+                    })
+                }
+                _ => None,
+            };
+            items.push(item);
+            if let Some(config) = config {
+                items.push(config);
+            }
+        }
+        *visual = items;
+    }
+
     pub fn refresh_visual_list(&mut self) {
         self.list.list_viewport_offset = None;
         let mut visual = Vec::new();
@@ -817,13 +885,9 @@ impl App {
                     });
                 }
             }
-
-            self.list.visual_list = visual;
-            self.clamp_visual_index();
-            self.request_preview_update();
-            return;
         }
 
+        self.add_local_template_configs(&mut visual);
         self.list.visual_list = visual;
         self.clamp_visual_index();
         self.request_preview_update();
@@ -1450,6 +1514,54 @@ impl App {
                     self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
                 } else {
                     self.list.preview_content = None;
+                }
+                self.list.preview_content_index = Some(self.list.visual_index);
+            }
+            Some(VisualItem::TemplateConfig { folder, .. }) => {
+                let folder = folder.clone();
+                let content = self
+                    .storage
+                    .folder_template_config_path(&folder)
+                    .and_then(|path| std::fs::read_to_string(path).map_err(anyhow::Error::from));
+                match content {
+                    Ok(content) => {
+                        let fence_len = content
+                            .split(|c| c != '`')
+                            .map(str::len)
+                            .max()
+                            .unwrap_or(0)
+                            .max(2)
+                            + 1;
+                        let fence = "`".repeat(fence_len);
+                        let markdown = format!("{fence}toml\n{content}\n{fence}");
+                        let width = self.desired_list_preview_width();
+                        let height = self.desired_list_preview_height();
+                        let mut renderer = match self.list.preview_content.take() {
+                            Some(PreviewContent::Markdown(renderer)) => *renderer,
+                            _ => MarkdownRenderer::new(),
+                        };
+                        renderer.set_page_height(height as usize);
+                        let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
+                        renderer.render_with(
+                            &markdown,
+                            width,
+                            &self.app_theme,
+                            &opts,
+                            crate::markdown::RenderViewport {
+                                start: renderer.visible_start(),
+                                height: height as usize,
+                            },
+                        );
+                        self.list.preview_content =
+                            Some(PreviewContent::Markdown(Box::new(renderer)));
+                        self.set_list_preview_geometry(width, height);
+                    }
+                    Err(e) => {
+                        self.list.preview_content = None;
+                        self.set_temporary_status(&format!(
+                            "Failed to preview folder template config: {e:#}"
+                        ));
+                    }
                 }
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
