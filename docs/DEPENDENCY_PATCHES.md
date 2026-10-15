@@ -1,5 +1,9 @@
 # Dependency compatibility patches
 
+The lockfile also selects `rustls 0.23.46`, resolving
+`RUSTSEC-2026-0346` through `RUSTSEC-2026-0349` without advisory ignores or an MSRV
+change. This is a registry patch update, independent of the Mermaid fork below.
+
 ## Mermaid YAML backend
 
 clin-rs pins `merman-core 0.6.0` to compatibility fork
