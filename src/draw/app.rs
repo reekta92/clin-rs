@@ -214,6 +214,20 @@ pub struct DrawAppState {
 }
 
 impl DrawAppState {
+    pub(crate) fn palette_input_available(&self) -> bool {
+        self.text_editor.is_none()
+            && self.context_menu.is_none()
+            && !self.show_shape_selector
+            && !self.show_color_selector
+            && self.interaction.is_none()
+            && self.current_stroke.is_none()
+            && self.creation_origin.is_none()
+            && self.preview_element.is_none()
+            && self.erase_start_data.is_none()
+            && !self.is_panning
+            && self.right_mouse_screen.is_none()
+            && !self.mouse_selection.active
+    }
     pub fn new(
         storage: crate::storage::Storage,
         file_id: Option<String>,

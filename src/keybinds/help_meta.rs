@@ -50,7 +50,7 @@ pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
         SelectAll => meta("Editing", "Select all visible query rows"),
         Undo => meta("Editing", "Undo guarded document transaction"),
         Redo => meta("Editing", "Redo guarded document transaction"),
-        CommandPalette => meta("Authoring", "Open public Bases command palette"),
+        CommandPalette => meta("Authoring", "Open command palette for public Bases"),
         Configure => meta(
             "Authoring",
             "Configure views, filters, formulas and summaries",
@@ -143,7 +143,7 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
         ListAction::ToggleWrap => meta("Display", "Toggle word wrap (editor and preview)"),
         ListAction::PreviewPageUp => meta("Display", "Page preview up"),
         ListAction::ToggleCalendar => meta("Display", "Toggle widget pane"),
-        ListAction::OpenCommandPalette => meta("Display", "Open command palette"),
+        ListAction::OpenCommandPalette => meta("Display", "Open Notes command palette"),
         ListAction::OpenGraph => meta("Display", "Open graph view"),
         ListAction::OpenCanvas => meta("Display", "Open canvas view"),
         ListAction::CollapseAll => meta("Display", "Collapse all folders"),

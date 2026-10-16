@@ -28,6 +28,29 @@ pub(crate) struct Embeds {
     public_revision: u64,
 }
 impl Embeds {
+    pub(crate) fn clear_palette_matchers(&mut self) {
+        for state in self.entries.get_mut().values_mut() {
+            state.matcher.clear();
+        }
+        if let Some(state) = &mut self.suspended_base {
+            state.matcher.clear();
+        }
+    }
+    pub(crate) fn focused(&self) -> bool {
+        self.active
+            .get()
+            .is_some_and(|key| self.visible.borrow().contains(&key))
+    }
+    pub(crate) fn has_writes(&self) -> bool {
+        self.entries
+            .borrow()
+            .values()
+            .any(|state| state.is_writing())
+            || self
+                .suspended_base
+                .as_ref()
+                .is_some_and(|state| state.is_writing())
+    }
     pub(crate) fn is_loading(&self) -> bool {
         self.entries
             .borrow()
@@ -301,6 +324,15 @@ impl Embeds {
         )
     }
     fn expand(&mut self, key: u64, app: &mut App) {
+        if !app.palette_input_available()
+            || !self
+                .entries
+                .borrow()
+                .get(&key)
+                .is_some_and(|state| state.palette_input_available())
+        {
+            return;
+        }
         if self
             .entries
             .get_mut()
@@ -325,13 +357,14 @@ impl Embeds {
             return;
         }
         if let Some(mut state) = self.entries.get_mut().remove(&key) {
+            state.matcher.clear();
             self.return_mode = app.return_mode;
             self.suspended_base = app.bases_state.take().map(Box::new);
             state.previous_mode = app.mode;
             app.mode = crate::app::ViewMode::Bases;
             state.refresh(app, false);
             app.bases_state = Some(state);
-            app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
+            app.open_command_palette(None);
             self.active.set(None);
             self.running = None;
         }
@@ -362,6 +395,22 @@ impl Embeds {
         if !self.visible.borrow().contains(&key) {
             self.active.set(None);
             return false;
+        }
+        if let Event::Key(key_event) = event
+            && key_event.code == KeyCode::F(6)
+            && key_event.modifiers.is_empty()
+            && app.palette_fallback_available(crate::app::ViewMode::Bases)
+        {
+            if key_event.kind == crossterm::event::KeyEventKind::Press
+                && self
+                    .entries
+                    .borrow()
+                    .get(&key)
+                    .is_some_and(|state| state.palette_input_available())
+            {
+                self.expand(key, app);
+            }
+            return true;
         }
         if let Event::Key(key_event) = event
             && key_event

@@ -62,6 +62,16 @@ pub enum BackupInputMode {
     EditSettingsField,
 }
 
+impl BackupState {
+    pub(crate) fn palette_input_available(&self) -> bool {
+        self.input_mode == BackupInputMode::Normal
+            && !self.settings_open
+            && self.mouse_selection.is_none()
+            && self.scroll_drag.is_none()
+            && self.diff_scroll_drag.is_none()
+    }
+}
+
 pub struct BackupSettingsState {
     pub enabled: bool,
     pub backup_on_save: bool,

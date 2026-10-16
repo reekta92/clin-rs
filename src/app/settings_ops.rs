@@ -2,15 +2,50 @@ use super::*;
 use crate::list_view::*;
 
 impl App {
+    pub(crate) fn sync_retained_view_settings(&mut self) {
+        let theme = &self.app_theme;
+        if let Some(s) = &mut self.draw_state {
+            s.theme = theme.clone();
+            s.keybinds = self.keybinds.clone();
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.graph_plugin {
+            s.app_theme = theme.clone();
+            s.keybinds = self.keybinds.clone();
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.canvas_state {
+            s.keybinds = self.keybinds.clone();
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.outline_state {
+            s.keybinds = self.keybinds.clone();
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.backup_state {
+            s.theme = theme.clone();
+            s.keybinds = self.keybinds.clone();
+            s.seq_matcher.clear();
+            s.tab_icons_only = self.config.ui.tab_icons_only;
+            s.scrollbars_enabled = self.config.ui.scrollbars;
+        }
+    }
     /// Load, patch, and save an editor config field.  Replaces the
     /// `ClinConfig::load().0 → set → save()` boilerplate used by toggle methods.
-    fn persist_config(&mut self, field_update: impl FnOnce(&mut crate::config::ClinConfig)) {
-        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
+    pub(super) fn persist_config(
+        &mut self,
+        field_update: impl FnOnce(&mut crate::config::ClinConfig),
+    ) -> anyhow::Result<()> {
+        let result = (|| {
+            let mut config = crate::config::ClinConfig::load().0?;
             field_update(&mut config);
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
+            config.save()
+        })();
+        self.sync_retained_view_settings();
+        if let Err(error) = &result {
+            self.set_temporary_status(&format!("Failed to save config: {error:#}"));
         }
+        result
     }
     /// Show on/off status for `val` and persist config via `set` (closure receives the new value).
     fn flag_status_persist(
@@ -19,9 +54,9 @@ impl App {
         on: &'static str,
         off: &'static str,
         set: impl FnOnce(&mut crate::config::ClinConfig, bool),
-    ) {
+    ) -> anyhow::Result<()> {
         self.set_temporary_status_static(if val { on } else { off });
-        self.persist_config(|c| set(c, val));
+        self.persist_config(|c| set(c, val))
     }
 
     pub fn toggle_external_editor_mode(&mut self) {
@@ -33,7 +68,7 @@ impl App {
         };
         self.set_temporary_status(msg);
         let val = self.editor.external_editor_enabled;
-        self.persist_config(|c| c.editor.external_enabled = val);
+        let _ = self.persist_config(|c| c.editor.external_enabled = val);
     }
 
     pub fn toggle_pin(&mut self) {
@@ -79,7 +114,7 @@ impl App {
             self.set_temporary_status_static("Preview disabled");
         }
         let val = self.list.preview_enabled;
-        self.persist_config(|c| c.list.preview_enabled = val);
+        let _ = self.persist_config(|c| c.list.preview_enabled = val);
     }
 
     pub fn toggle_calendar(&mut self) {
@@ -90,7 +125,7 @@ impl App {
             self.set_temporary_status_static("Widget pane disabled");
         }
         let val = self.list.calendar_enabled;
-        self.persist_config(|c| {
+        let _ = self.persist_config(|c| {
             c.features.calendar = if val {
                 crate::config::FeatureState::Enabled
             } else {
@@ -108,7 +143,7 @@ impl App {
         };
         self.set_temporary_status_static(msg);
         let val = self.list.inline_info;
-        self.persist_config(|c| c.list.inline_info = val);
+        let _ = self.persist_config(|c| c.list.inline_info = val);
     }
 
     pub fn toggle_layout_edit(&mut self) {
@@ -305,7 +340,7 @@ impl App {
             self.set_temporary_status_static("Markdown preview disabled");
         }
         let val = self.editor.editor_preview_enabled;
-        self.persist_config(|c| c.editor.preview_enabled = val);
+        let _ = self.persist_config(|c| c.editor.preview_enabled = val);
     }
     pub fn toggle_preview_fullscreen(&mut self) {
         if matches!(
@@ -364,7 +399,7 @@ impl App {
         self.editor.title_editor.set_wrap_mode(mode);
 
         let val = new_wrap;
-        self.persist_config(|c| {
+        let _ = self.persist_config(|c| {
             c.core.preview_wrap = val;
             c.editor.soft_wrap = val;
         });
@@ -418,7 +453,7 @@ impl App {
     pub fn toggle_show_line_numbers(&mut self) {
         self.editor.show_line_numbers = !self.editor.show_line_numbers;
         let val = self.editor.show_line_numbers;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Line numbers enabled",
             "Line numbers disabled",
@@ -429,7 +464,7 @@ impl App {
     pub fn toggle_confirm_on_delete(&mut self) {
         self.confirm_on_delete = !self.confirm_on_delete;
         let val = self.confirm_on_delete;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Delete confirmation enabled",
             "Delete confirmation disabled",
@@ -437,15 +472,16 @@ impl App {
         );
     }
 
-    pub fn toggle_confirm_on_quit(&mut self) {
+    pub fn toggle_confirm_on_quit(&mut self) -> anyhow::Result<()> {
         self.confirm_on_quit = !self.confirm_on_quit;
         let val = self.confirm_on_quit;
+        self.config.core.confirm_on_quit = val;
         self.flag_status_persist(
             val,
             "Quit confirmation enabled",
             "Quit confirmation disabled",
             |c, v| c.core.confirm_on_quit = v,
-        );
+        )
     }
 
     pub fn toggle_preview_encryption(&mut self) {
@@ -454,7 +490,7 @@ impl App {
             self.update_preview();
         }
         let val = self.preview_encryption;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Encrypted note previews enabled",
             "Encrypted note previews hidden",
@@ -467,7 +503,7 @@ impl App {
         self.sort_notes();
         self.refresh_visual_list();
         let val = self.pinned_on_top;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Pinned notes shown on top",
             "Pinned notes in natural order",
@@ -479,16 +515,17 @@ impl App {
         self.list.show_hidden_files = !self.list.show_hidden_files;
         self.request_notes_reconcile();
         let val = self.list.show_hidden_files;
-        self.flag_status_persist(val, "Hidden files shown", "Hidden files hidden", |c, v| {
-            c.list.show_hidden_files = v
-        });
+        let _ =
+            self.flag_status_persist(val, "Hidden files shown", "Hidden files hidden", |c, v| {
+                c.list.show_hidden_files = v
+            });
     }
 
     pub fn toggle_show_all_files(&mut self) {
         self.list.show_all_files = !self.list.show_all_files;
         self.request_notes_reconcile();
         let val = self.list.show_all_files;
-        self.flag_status_persist(val, "Showing all files", "Showing notes only", |c, v| {
+        let _ = self.flag_status_persist(val, "Showing all files", "Showing notes only", |c, v| {
             c.list.show_all_files = v
         });
     }
@@ -497,7 +534,7 @@ impl App {
         self.list.folders_first = !self.list.folders_first;
         self.refresh_visual_list();
         let val = self.list.folders_first;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Folders first in list",
             "Files first in list",
@@ -509,7 +546,7 @@ impl App {
         self.config.features.smart_folders = !self.config.features.smart_folders;
         self.refresh_visual_list();
         let val = self.config.features.smart_folders.is_enabled();
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Smart folders enabled",
             "Smart folders disabled",
@@ -523,12 +560,12 @@ impl App {
         );
     }
 
-    pub fn toggle_tab_icons_only(&mut self) {
+    pub fn toggle_tab_icons_only(&mut self) -> anyhow::Result<()> {
         self.config.ui.tab_icons_only = !self.config.ui.tab_icons_only;
         let val = self.config.ui.tab_icons_only;
         self.flag_status_persist(val, "Tab icons only", "Tab icons + labels", |c, v| {
             c.ui.tab_icons_only = v
-        });
+        })
     }
 
     pub fn toggle_notes_layout(&mut self) {
@@ -542,7 +579,7 @@ impl App {
         self.refresh_visual_list();
         // #2: persist
         let val = self.list.notes_layout.clone();
-        self.persist_config(|c| c.list.default_view = val);
+        let _ = self.persist_config(|c| c.list.default_view = val);
     }
     fn local_state_path(&self) -> anyhow::Result<std::path::PathBuf> {
         #[cfg(test)]
@@ -767,7 +804,7 @@ impl App {
     pub fn toggle_edit_mode_highlight(&mut self) {
         self.config.editor.edit_mode_highlight = !self.config.editor.edit_mode_highlight;
         let val = self.config.editor.edit_mode_highlight;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Edit mode highlighting enabled",
             "Edit mode highlighting disabled",
@@ -778,7 +815,7 @@ impl App {
     pub fn toggle_ghost_syntax(&mut self) {
         self.config.editor.ghost_syntax = !self.config.editor.ghost_syntax;
         let val = self.config.editor.ghost_syntax;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Ghost syntax enabled",
             "Ghost syntax disabled",
@@ -790,7 +827,7 @@ impl App {
         self.config.editor.extended_markdown_features =
             !self.config.editor.extended_markdown_features;
         let val = self.config.editor.extended_markdown_features;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Extended markdown features enabled",
             "Extended markdown features disabled",
@@ -798,15 +835,15 @@ impl App {
         );
     }
 
-    pub fn toggle_scrollbars(&mut self) {
+    pub fn toggle_scrollbars(&mut self) -> anyhow::Result<()> {
         self.config.ui.scrollbars = !self.config.ui.scrollbars;
         let val = self.config.ui.scrollbars;
         self.flag_status_persist(val, "Scrollbars on", "Scrollbars off", |c, v| {
             c.ui.scrollbars = v
-        });
+        })
     }
 
-    pub fn toggle_scrollbar_pan_mode(&mut self) {
+    pub fn toggle_scrollbar_pan_mode(&mut self) -> anyhow::Result<()> {
         self.config.ui.scrollbar_pan_mode = !self.config.ui.scrollbar_pan_mode;
         self.list.list_viewport_offset = None;
         let val = self.config.ui.scrollbar_pan_mode;
@@ -815,13 +852,13 @@ impl App {
             "Scrollbar pan mode on",
             "Scrollbar pan mode off",
             |c, v| c.ui.scrollbar_pan_mode = v,
-        );
+        )
     }
 
     pub fn toggle_syntax_highlighting(&mut self) {
         self.config.core.syntax_highlighting = !self.config.core.syntax_highlighting;
         let val = self.config.core.syntax_highlighting;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Syntax highlighting enabled",
             "Syntax highlighting disabled",
@@ -832,7 +869,7 @@ impl App {
     pub fn toggle_code_line_numbers(&mut self) {
         self.config.core.code_line_numbers = !self.config.core.code_line_numbers;
         let val = self.config.core.code_line_numbers;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Code line numbers enabled",
             "Code line numbers disabled",
@@ -844,7 +881,7 @@ impl App {
         self.list.show_file_size = !self.list.show_file_size;
         self.refresh_visual_list();
         let val = self.list.show_file_size;
-        self.flag_status_persist(val, "File sizes shown", "File sizes hidden", |c, v| {
+        let _ = self.flag_status_persist(val, "File sizes shown", "File sizes hidden", |c, v| {
             c.list.show_file_size = v
         });
     }
@@ -863,7 +900,7 @@ impl App {
             },
         );
         let val = self.list.list_density.clone();
-        self.persist_config(|c| c.list.density = val);
+        let _ = self.persist_config(|c| c.list.density = val);
     }
 
     pub fn cycle_week_start(&mut self) {
@@ -879,14 +916,14 @@ impl App {
             },
         );
         let val = self.list.week_start;
-        self.persist_config(|c| c.list.week_start = val);
+        let _ = self.persist_config(|c| c.list.week_start = val);
     }
 
     pub fn toggle_goals(&mut self) {
         self.config.features.goals = !self.config.features.goals;
         self.refresh_visual_list();
         let val = self.config.features.goals.is_enabled();
-        self.flag_status_persist(val, "Goals enabled", "Goals disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Goals enabled", "Goals disabled", |c, v| {
             c.features.goals = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -898,20 +935,21 @@ impl App {
     pub fn toggle_graph_view(&mut self) {
         self.config.features.graph_view = !self.config.features.graph_view;
         let val = self.config.features.graph_view.is_enabled();
-        self.flag_status_persist(val, "Graph view enabled", "Graph view disabled", |c, v| {
-            c.features.graph_view = if v {
-                crate::config::FeatureState::Enabled
-            } else {
-                crate::config::FeatureState::Disabled
-            }
-        });
+        let _ =
+            self.flag_status_persist(val, "Graph view enabled", "Graph view disabled", |c, v| {
+                c.features.graph_view = if v {
+                    crate::config::FeatureState::Enabled
+                } else {
+                    crate::config::FeatureState::Disabled
+                }
+            });
     }
 
     pub fn toggle_canvas_view(&mut self) {
         self.config.features.canvas_view = !self.config.features.canvas_view;
         let val = self.config.features.canvas_view.is_enabled();
         self.refresh_view_file_features();
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Canvas view enabled",
             "Canvas view disabled",
@@ -929,7 +967,7 @@ impl App {
         self.config.features.draw_view = !self.config.features.draw_view;
         let val = self.config.features.draw_view.is_enabled();
         self.refresh_view_file_features();
-        self.flag_status_persist(val, "Draw view enabled", "Draw view disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Draw view enabled", "Draw view disabled", |c, v| {
             c.features.draw_view = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -941,7 +979,7 @@ impl App {
     pub fn toggle_outline_view(&mut self) {
         self.config.features.outline_view = !self.config.features.outline_view;
         let val = self.config.features.outline_view.is_enabled();
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Outline view enabled",
             "Outline view disabled",
@@ -958,7 +996,7 @@ impl App {
     pub fn toggle_help_view(&mut self) {
         self.config.features.help_view = !self.config.features.help_view;
         let val = self.config.features.help_view.is_enabled();
-        self.flag_status_persist(val, "Help enabled", "Help disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Help enabled", "Help disabled", |c, v| {
             c.features.help_view = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -971,7 +1009,7 @@ impl App {
         self.config.features.tags = !self.config.features.tags;
         self.refresh_visual_list();
         let val = self.config.features.tags.is_enabled();
-        self.flag_status_persist(val, "Tags enabled", "Tags disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Tags enabled", "Tags disabled", |c, v| {
             c.features.tags = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -983,7 +1021,7 @@ impl App {
     pub fn toggle_trash(&mut self) {
         self.config.features.trash = !self.config.features.trash;
         let val = self.config.features.trash.is_enabled();
-        self.flag_status_persist(val, "Trash enabled", "Trash disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Trash enabled", "Trash disabled", |c, v| {
             c.features.trash = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -996,7 +1034,7 @@ impl App {
         self.config.features.subnotes = !self.config.features.subnotes;
         self.refresh_visual_list();
         let val = self.config.features.subnotes.is_enabled();
-        self.flag_status_persist(val, "Subnotes enabled", "Subnotes disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Subnotes enabled", "Subnotes disabled", |c, v| {
             c.features.subnotes = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -1008,7 +1046,7 @@ impl App {
     pub fn toggle_templates(&mut self) {
         self.config.features.templates = !self.config.features.templates;
         let val = self.config.features.templates.is_enabled();
-        self.flag_status_persist(val, "Templates enabled", "Templates disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Templates enabled", "Templates disabled", |c, v| {
             c.features.templates = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -1021,7 +1059,7 @@ impl App {
     pub fn toggle_import(&mut self) {
         self.config.features.import = !self.config.features.import;
         let val = self.config.features.import.is_enabled();
-        self.flag_status_persist(val, "Import enabled", "Import disabled", |c, v| {
+        let _ = self.flag_status_persist(val, "Import enabled", "Import disabled", |c, v| {
             c.features.import = if v {
                 crate::config::FeatureState::Enabled
             } else {
@@ -1033,13 +1071,14 @@ impl App {
     pub fn toggle_encryption(&mut self) {
         self.config.features.encryption = !self.config.features.encryption;
         let val = self.config.features.encryption.is_enabled();
-        self.flag_status_persist(val, "Encryption enabled", "Encryption disabled", |c, v| {
-            c.features.encryption = if v {
-                crate::config::FeatureState::Enabled
-            } else {
-                crate::config::FeatureState::Disabled
-            }
-        });
+        let _ =
+            self.flag_status_persist(val, "Encryption enabled", "Encryption disabled", |c, v| {
+                c.features.encryption = if v {
+                    crate::config::FeatureState::Enabled
+                } else {
+                    crate::config::FeatureState::Disabled
+                }
+            });
     }
 
     pub fn toggle_folder_graph_preview(&mut self) {
@@ -1047,7 +1086,7 @@ impl App {
         self.refresh_visual_list();
         self.request_preview_update();
         let val = self.config.list.folder_graph_preview;
-        self.flag_status_persist(
+        let _ = self.flag_status_persist(
             val,
             "Folder graph preview enabled",
             "Folder graph preview disabled",
@@ -1058,15 +1097,22 @@ impl App {
     pub fn toggle_graph_show_legend(&mut self) {
         self.config.graf.visual.show_legend = !self.config.graf.visual.show_legend;
         let val = self.config.graf.visual.show_legend;
-        self.flag_status_persist(val, "Graph legend shown", "Graph legend hidden", |c, v| {
-            c.graf.visual.show_legend = v
-        });
+        if let Some(graph) = &mut self.graph_plugin {
+            graph.show_legend = val;
+        }
+        let _ =
+            self.flag_status_persist(val, "Graph legend shown", "Graph legend hidden", |c, v| {
+                c.graf.visual.show_legend = v
+            });
     }
 
     pub fn toggle_graph_show_minimap(&mut self) {
         self.config.graf.visual.show_minimap = !self.config.graf.visual.show_minimap;
         let val = self.config.graf.visual.show_minimap;
-        self.flag_status_persist(
+        if let Some(graph) = &mut self.graph_plugin {
+            graph.show_minimap = val;
+        }
+        let _ = self.flag_status_persist(
             val,
             "Graph minimap shown",
             "Graph minimap hidden",
@@ -1077,9 +1123,13 @@ impl App {
     pub fn toggle_graph_show_orphan(&mut self) {
         self.config.graf.filter.show_orphan = !self.config.graf.filter.show_orphan;
         let val = self.config.graf.filter.show_orphan;
-        self.flag_status_persist(val, "Orphan nodes shown", "Orphan nodes hidden", |c, v| {
-            c.graf.filter.show_orphan = v
-        });
+        if let Some(graph) = &mut self.graph_plugin {
+            graph.refresh_simulation(&self.config);
+        }
+        let _ =
+            self.flag_status_persist(val, "Orphan nodes shown", "Orphan nodes hidden", |c, v| {
+                c.graf.filter.show_orphan = v
+            });
     }
 }
 

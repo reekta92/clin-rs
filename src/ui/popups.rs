@@ -311,7 +311,7 @@ pub fn draw_theme_popup(
         .constraints([
             Constraint::Min(0),
             Constraint::Length(3),
-            Constraint::Length(3),
+            Constraint::Length(if popup.setup_owned { 0 } else { 3 }),
         ])
         .split(content);
 

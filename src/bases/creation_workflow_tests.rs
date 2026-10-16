@@ -62,6 +62,9 @@ fn notes_format_picker_and_palette_create_public_bases_without_note_serializatio
             .any(|action| action.id == "bases.create")
     );
     crate::actions::execute_action("bases.create", &mut app, None).unwrap();
+    if let Some(ActivePopup::CreateNote(popup, NoteFormat::Base)) = &app.popups.active {
+        assert_eq!(popup.folder, "boards");
+    }
     assert!(matches!(
         app.popups.active,
         Some(ActivePopup::CreateNote(_, NoteFormat::Base))

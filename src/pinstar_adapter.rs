@@ -99,6 +99,32 @@ pub struct PinstarPlugin {
 }
 
 impl PinstarPlugin {
+    pub(crate) fn palette_input_available(&self) -> bool {
+        let s = &self.state;
+        s.context_menu.is_none()
+            && s.rename_popup.is_none()
+            && s.floating_editor.is_none()
+            && !s.editor_focus
+            && s.connection_source_id.is_none()
+            && s.deleting_connection_source_id.is_none()
+            && s.resizing_node_id.is_none()
+            && !s.is_dragging_resize_handle
+            && s.drag_start_pos.is_none()
+            && !s.is_panning
+            && !s.mouse_selecting
+            && s.select_rect_start.is_none()
+            && s.right_down_screen.is_none()
+    }
+
+    pub(crate) fn save_for_navigation(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.palette_input_available(),
+            "Finish the Canvas interaction before leaving"
+        );
+        self.state.save()?;
+        self.base_host_raw = self.state.raw_editor.lines().join("\n");
+        Ok(())
+    }
     pub fn new(
         path: &std::path::Path,
         config: &crate::config::ClinConfig,
@@ -326,9 +352,17 @@ impl PinstarPlugin {
         }
 
         match outcome.host_action {
-            Some(PinstarAction::Quit) => OverlayResult::Exit,
+            Some(PinstarAction::Quit) => match self.save_for_navigation() {
+                Ok(()) => OverlayResult::Exit,
+                Err(error) => {
+                    app.set_temporary_status(&format!("Canvas save failed: {error:#}"));
+                    OverlayResult::Continue
+                }
+            },
             Some(PinstarAction::Save) => {
-                let _ = self.state.save();
+                if let Err(error) = self.state.save() {
+                    app.set_temporary_status(&format!("Canvas save failed: {error:#}"));
+                }
                 OverlayResult::Continue
             }
             Some(PinstarAction::Help) => OverlayResult::OpenHelp(HelpTab::Canvas),

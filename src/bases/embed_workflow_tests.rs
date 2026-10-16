@@ -147,6 +147,79 @@ fn embedded_dialogs_keep_modal_focus_and_custom_palette_expands_without_private_
 }
 
 #[test]
+fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialogs_modal() {
+    for mode in [ViewMode::List, ViewMode::Edit, ViewMode::Canvas] {
+        let (_root, mut app) = fixture();
+        app.bases_state = None;
+        app.mode = ViewMode::List;
+        if mode == ViewMode::Edit {
+            app.load_and_open_note("public.md", None);
+        }
+        if mode == ViewMode::Canvas {
+            let path = app.storage.notes_dir.join("map.canvas");
+            fs::write(&path, "{\"nodes\":[],\"edges\":[]}").unwrap();
+            app.canvas_state = Some(
+                crate::pinstar_adapter::PinstarPlugin::new(
+                    &path,
+                    &app.config,
+                    app.keybinds.clone(),
+                    Default::default(),
+                    None,
+                    &app.storage.data_dir,
+                )
+                .unwrap(),
+            );
+        }
+        app.mode = mode;
+        let renderer = markdown("![[board.base#List]]", Some("public.md"));
+        rendered(&mut app, &renderer, "• public.md, 2");
+        embedded_event(
+            &mut app,
+            Event::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: 4,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        embedded_key(&mut app, KeyCode::Char(':'));
+        assert!(app.base_embeds.has_popup());
+        embedded_key(&mut app, KeyCode::F(6));
+        assert_eq!(app.mode, mode);
+        assert!(app.base_embeds.has_popup());
+        embedded_key(&mut app, KeyCode::Esc);
+        embedded_key(&mut app, KeyCode::F(6));
+        assert_eq!(app.mode, ViewMode::Bases);
+        assert!(
+            app.command_palette
+                .as_ref()
+                .unwrap()
+                .context_note_id
+                .is_none()
+        );
+        assert!(
+            app.command_palette
+                .as_ref()
+                .unwrap()
+                .items
+                .iter()
+                .any(|item| item.id == "bases.edit")
+        );
+        assert!(crate::events::handle_global_popups_and_palette(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            AREA
+        ));
+        crate::finish_overlay_event(
+            &mut app,
+            crate::overlay::ViewKind::Bases,
+            OverlayResult::Exit,
+        );
+        assert_eq!(app.mode, mode);
+    }
+}
+
+#[test]
 fn shared_markdown_geometry_never_shares_live_results_between_vaults() {
     let (_root, mut first) = fixture();
     let (_other, mut second) = fixture();

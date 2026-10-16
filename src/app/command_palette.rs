@@ -1,0 +1,161 @@
+use super::{App, EditFocus, ViewMode};
+use crate::actions::ActionContext;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+impl App {
+    pub(crate) fn palette_fallback_available(&self, mode: ViewMode) -> bool {
+        fn claimed<A>(
+            bindings: &std::collections::HashMap<A, Vec<crate::keybinds::KeyCombo>>,
+        ) -> bool {
+            let event = KeyEvent::new(KeyCode::F(6), KeyModifiers::NONE);
+            bindings
+                .values()
+                .flatten()
+                .any(|combo| combo.keys.iter().any(|stroke| stroke.matches_event(&event)))
+        }
+        let keybinds = match mode {
+            ViewMode::Graph => self.graph_plugin.as_ref().map(|s| &s.keybinds),
+            ViewMode::Draw => self.draw_state.as_ref().map(|s| &s.keybinds),
+            ViewMode::Canvas => self.canvas_state.as_ref().map(|s| &s.keybinds),
+            ViewMode::Backup => self.backup_state.as_ref().map(|s| &s.keybinds),
+            ViewMode::Outline => self.outline_state.as_ref().map(|s| &s.keybinds),
+            _ => None,
+        }
+        .unwrap_or(&self.keybinds);
+        !match mode {
+            ViewMode::List => claimed(&keybinds.list),
+            ViewMode::Edit => claimed(&keybinds.edit),
+            ViewMode::Help => claimed(&keybinds.help),
+            ViewMode::Graph => claimed(&keybinds.graph),
+            ViewMode::Draw => claimed(&keybinds.draw),
+            ViewMode::Canvas => claimed(&keybinds.canvas),
+            ViewMode::Bases => claimed(&keybinds.bases),
+            ViewMode::Backup => claimed(&keybinds.backup),
+            ViewMode::Outline => claimed(&keybinds.outline),
+            ViewMode::Setup => claimed(&keybinds.setup),
+        }
+    }
+
+    pub(crate) fn palette_input_available(&self) -> bool {
+        if self.popups.active.is_some()
+            || self.popups.confirm.is_some()
+            || self.vault_switcher.is_some()
+            || self.messages.has_fatal()
+            || self.messages.force_open
+            || self.should_quit
+            || self.setup_rebootstrap.is_some()
+            || self.base_embeds.has_popup()
+        {
+            return false;
+        }
+        match self.mode {
+            ViewMode::List => {
+                self.list.note_drag.is_none()
+                    && self.list.drag_hover.is_none()
+                    && self.list.preview_drag_last_pos.is_none()
+                    && self.list.scroll_drag.is_none()
+                    && self.layout_drag.is_none()
+            }
+            ViewMode::Edit => {
+                self.editor.find_popup.is_none()
+                    && self.editor.go_to_line_input.is_none()
+                    && self.editor.preview_drag_last_pos.is_none()
+            }
+            ViewMode::Help => self.help_search.popup.is_none(),
+            ViewMode::Graph => self
+                .graph_plugin
+                .as_ref()
+                .is_some_and(|s| s.palette_input_available()),
+            ViewMode::Draw => self
+                .draw_state
+                .as_ref()
+                .is_some_and(|s| s.palette_input_available()),
+            ViewMode::Canvas => self
+                .canvas_state
+                .as_ref()
+                .is_some_and(|s| s.palette_input_available()),
+            ViewMode::Bases => self
+                .bases_state
+                .as_ref()
+                .is_some_and(|s| s.palette_input_available()),
+            ViewMode::Backup => self
+                .backup_state
+                .as_ref()
+                .is_some_and(|s| s.palette_input_available()),
+            ViewMode::Outline => self.outline_state.is_some(),
+            ViewMode::Setup => self
+                .setup_state
+                .as_ref()
+                .is_some_and(|s| s.vault_modal.is_none() && !s.confirm_exit),
+        }
+    }
+
+    pub(crate) fn clear_palette_matchers(&mut self) {
+        self.seq_matcher.clear();
+        self.base_embeds.clear_palette_matchers();
+        if let Some(s) = &mut self.graph_plugin {
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.draw_state {
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.canvas_state {
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.backup_state {
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.outline_state {
+            s.seq_matcher.clear();
+        }
+        if let Some(s) = &mut self.bases_state {
+            s.matcher.clear();
+        }
+    }
+
+    pub(crate) fn open_command_palette(&mut self, focus: Option<EditFocus>) -> bool {
+        if self.command_palette.is_some() || !self.palette_input_available() {
+            return false;
+        }
+        let context = ActionContext::capture(self, focus, None);
+        self.clear_palette_matchers();
+        self.quick_keybinds_open = false;
+        self.command_palette = Some(crate::palette::CommandPalette::with_context(context, self));
+        true
+    }
+
+    pub(crate) fn dismiss_command_palette(&mut self) {
+        self.command_palette = None;
+        self.clear_palette_matchers();
+    }
+
+    pub(crate) fn activate_palette(
+        &mut self,
+        palette: crate::palette::CommandPalette,
+        selected: usize,
+    ) {
+        self.dismiss_command_palette();
+        let Some(item) = palette.items.get(selected) else {
+            return;
+        };
+        if let Err(error) =
+            crate::actions::execute_action_in_context(&item.id, self, &palette.context)
+        {
+            let message = format!("Action failed: {error:#}");
+            self.set_temporary_status(&message);
+            self.messages
+                .push(message, super::messages::MessageSeverity::Warning);
+        }
+    }
+
+    pub(crate) fn refresh_command_palette(&mut self) {
+        if let Some(mut palette) = self.command_palette.take() {
+            if palette.context.origin_current(self) {
+                palette.refresh_items(self);
+                self.command_palette = Some(palette);
+            } else {
+                self.clear_palette_matchers();
+            }
+        }
+    }
+}

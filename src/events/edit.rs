@@ -287,6 +287,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::PasteImage => {
+                if *focus != EditFocus::Body {
+                    return false;
+                }
                 if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import")
                 {
                     return false;
@@ -298,6 +301,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertImageFromFile => {
+                if *focus != EditFocus::Body {
+                    return false;
+                }
                 if app.feature_disabled(app.config.features.import.is_enabled(), "Import", "import")
                 {
                     return false;

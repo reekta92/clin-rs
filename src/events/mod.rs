@@ -275,8 +275,12 @@ pub fn handle_bracketed_paste(
     }
 
     // 2. Command palette
-    if let Some(ref mut palette) = app.command_palette {
-        palette.input.insert_str(&data);
+    if let Some(mut palette) = app.command_palette.take() {
+        palette
+            .input
+            .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
+        palette.refresh_items(app);
+        app.command_palette = Some(palette);
         return true;
     }
     // 3. Help search popup
@@ -802,11 +806,64 @@ pub fn is_universal_quit_key(key: &crossterm::event::KeyEvent) -> bool {
 /// overlay; tag additionally handles a layered confirm inline. The standalone
 /// confirm check therefore runs only when no group-A popup is active, and
 /// group-B popups (trash, folder_picker, template, theme, …) follow it.
+pub(crate) fn handle_open_palette_event(
+    app: &mut App,
+    event: &crossterm::event::Event,
+    area: Rect,
+) -> bool {
+    if app.command_palette.is_none() {
+        return false;
+    }
+    if !matches!(event, crossterm::event::Event::Key(key) if key.code == KeyCode::Enter) {
+        app.refresh_command_palette();
+    }
+    if app.command_palette.is_none() {
+        return true;
+    }
+    match event {
+        crossterm::event::Event::Key(key) => {
+            let mut palette = app.command_palette.take().expect("open palette");
+            if palette.handle_input(*key, app) {
+                if key.code == KeyCode::Enter {
+                    if let Some(selected) = palette.state.selected() {
+                        app.activate_palette(palette, selected);
+                    } else {
+                        app.dismiss_command_palette();
+                    }
+                } else {
+                    app.dismiss_command_palette();
+                }
+            } else {
+                app.command_palette = Some(palette);
+            }
+        }
+        crossterm::event::Event::Mouse(mouse) => {
+            popup_mouse::handle_command_palette_mouse(app, mouse, area);
+        }
+        crossterm::event::Event::Paste(data) => {
+            let mut palette = app.command_palette.take().expect("open palette");
+            palette
+                .input
+                .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
+            palette.refresh_items(app);
+            app.command_palette = Some(palette);
+        }
+        _ => {}
+    }
+    if let Some(notice) = crate::text_edit::take_clipboard_notice() {
+        app.set_temporary_status(notice);
+    }
+    true
+}
+
 pub fn handle_global_popups_and_palette(
     app: &mut App,
     event: crossterm::event::Event,
     _terminal_area: Rect,
 ) -> bool {
+    if handle_open_palette_event(app, &event, _terminal_area) {
+        return true;
+    }
     let crossterm::event::Event::Key(key) = event else {
         return false;
     };
@@ -857,6 +914,14 @@ pub fn handle_global_popups_and_palette(
             }
             _ => true, // swallow everything else
         };
+    }
+
+    if key.code == KeyCode::F(6)
+        && key.modifiers.is_empty()
+        && app.palette_fallback_available(app.mode)
+    {
+        app.open_command_palette(None);
+        return true;
     }
 
     // QuickKeybinds toggle — identical combo in every view. F2 is unbound in
@@ -1017,29 +1082,6 @@ pub fn handle_global_popups_and_palette(
             }
             None => {}
         }
-        return true;
-    }
-    if let Some(mut palette) = app.command_palette.take() {
-        if palette.handle_input(key, app) {
-            if key.code == KeyCode::Enter
-                && let Some(selected_idx) = palette.state.selected()
-                && let Some(item) = palette.items.get(selected_idx)
-            {
-                let action_id = item.id.clone();
-
-                let note_id = palette.context_note_id.clone();
-                if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
-                {
-                    app.set_temporary_status(&format!("Action failed: {e}"));
-                    app.messages.push(
-                        format!("Action failed: {e}"),
-                        crate::app::messages::MessageSeverity::Warning,
-                    );
-                }
-            }
-            return true;
-        }
-        app.command_palette = Some(palette);
         return true;
     }
 
@@ -1788,7 +1830,11 @@ impl crate::popups::ActivePopup {
                                 }
                             }
                             crate::app::ThemePopupFocus::GeneralBg => {
-                                popup.focus = crate::app::ThemePopupFocus::GraphBg;
+                                popup.focus = if popup.setup_owned {
+                                    crate::app::ThemePopupFocus::ThemeList
+                                } else {
+                                    crate::app::ThemePopupFocus::GraphBg
+                                };
                             }
                             crate::app::ThemePopupFocus::GraphBg => {
                                 popup.focus = crate::app::ThemePopupFocus::ThemeList;
@@ -1803,7 +1849,11 @@ impl crate::popups::ActivePopup {
                                 popup.focus = crate::app::ThemePopupFocus::GeneralBg
                             }
                             crate::app::ThemePopupFocus::GeneralBg => {
-                                popup.focus = crate::app::ThemePopupFocus::GraphBg
+                                popup.focus = if popup.setup_owned {
+                                    crate::app::ThemePopupFocus::ThemeList
+                                } else {
+                                    crate::app::ThemePopupFocus::GraphBg
+                                }
                             }
                             crate::app::ThemePopupFocus::GraphBg => {
                                 popup.focus = crate::app::ThemePopupFocus::ThemeList

@@ -1,3 +1,5 @@
+mod context;
+pub(crate) use context::ActionContext;
 mod bases;
 pub mod decrypt;
 pub mod encrypt;
@@ -77,7 +79,7 @@ macro_rules! simple_action {
 #[macro_export]
 macro_rules! toggle_action {
     ($name:ident, $id:literal, $label:literal, $desc:literal,
-     $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident, $state_var:ident, $state_expr:expr) => {
+     $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident, $state_var:ident, $state_expr:expr $(, $fallible:ident)?) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
             fn id(&self) -> ::std::borrow::Cow<'static, str> {
@@ -96,8 +98,7 @@ macro_rules! toggle_action {
                 ($glyph_nerd, $glyph_unicode)
             }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
-                app.$method();
-                Ok(())
+                $crate::toggle_action!(@result app.$method() $(, $fallible)?)
             }
             fn name_dynamic(&self, $state_var: &$crate::app::App) -> String {
                 let _ = $state_var;
@@ -105,17 +106,10 @@ macro_rules! toggle_action {
             }
         }
     };
+    (@result $result:expr, fallible) => { $result };
+    (@result $result:expr) => { { $result; Ok(()) } };
 }
-simple_action!(
-    OpenBackupAction,
-    "backup.open",
-    "Open Backup Dashboard",
-    "View git backup status, commit history, and push to remote",
-    ActionCategory::Views,
-    "\u{f1d3}",
-    "\u{1f4be}",
-    open_backup_view
-);
+
 simple_action!(
     EditFolderTemplateVariablesAction,
     "templates.edit_folder_variables",
@@ -136,16 +130,7 @@ simple_action!(
     "\u{270f}",
     begin_create_draw
 );
-simple_action!(
-    OpenGraphAction,
-    "graph.open",
-    "Open Graph View",
-    "Visualize note connections as a force-directed graph",
-    ActionCategory::Views,
-    "\u{f0e8}",
-    "\u{1f5fa}",
-    open_graph_view
-);
+
 simple_action!(
     CreateBaseAction,
     "bases.create",
@@ -207,10 +192,7 @@ toggle_action!(
     "\u{1f3a8}",
     begin_theme_selection,
     app,
-    crate::config::ClinConfig::load()
-        .0
-        .map(|c| c.ui.theme.clone())
-        .unwrap_or_else(|_| "default".to_string())
+    app.config.ui.theme.clone()
 );
 simple_action!(
     SwitchKeybindPresetAction,
@@ -222,16 +204,7 @@ simple_action!(
     "\u{2328}",
     begin_keybind_preset_selection
 );
-simple_action!(
-    OpenSetupWizardAction,
-    "setup_wizard",
-    "Run Setup Wizard",
-    "Re-run the first-run setup to choose theme, keybinds, backup, and more",
-    ActionCategory::Settings,
-    "\u{f0a9}",
-    "\u{2699}",
-    open_setup_view
-);
+
 simple_action!(
     OpenVaultSwitcherAction,
     "vault.switch",
@@ -269,9 +242,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
         Box::new(insert_date::InsertDateAction),
-        Box::new(OpenGraphAction),
         Box::new(outline::OpenOutlineAction),
-        Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(EditFolderTemplateVariablesAction),
         Box::new(CreateCanvasAction),
@@ -280,7 +251,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(ocr::PasteImageAction),
         Box::new(ocr::InsertImageFromFileAction),
         Box::new(SwitchThemeAction),
-        Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
         Box::new(ToggleExternalEditorAction),
         Box::new(ToggleLayoutAction),
@@ -375,6 +345,37 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
             target: crate::popups::ImportTarget::AppendCurrent,
         }),
     ];
+    actions.extend(
+        [
+            ("notes.open", "Open Notes", "Return to the Notes list"),
+            ("help.open", "Open Help", "Show help for the current view"),
+            (
+                "graph.open",
+                "Open Graph View",
+                "Visualize note connections as a force-directed graph",
+            ),
+            (
+                "backup.open",
+                "Open Backup Dashboard",
+                "View git backup status, commit history, and push to remote",
+            ),
+            (
+                "setup_wizard",
+                "Run Setup Wizard",
+                "Choose theme, keybinds, backup, and more",
+            ),
+            ("setup.finish", "Finish Setup", "Save the wizard settings"),
+            (
+                "setup.cancel",
+                "Cancel Setup",
+                "Confirm whether to discard the wizard settings",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, name, description)| {
+            Box::new(NavigationAction(id, name, description)) as Box<dyn Action>
+        }),
+    );
     actions.extend(bases::commands());
     actions
 });
@@ -382,10 +383,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
 /// Whether a palette action is available given the current feature toggles.
 /// `true` for every action not explicitly tied to a feature.
 fn action_feature_enabled(id: &str, app: &App) -> bool {
-    // Bases never delegates commands to encrypted-note catalog context.
-    if app.mode == crate::app::ViewMode::Bases && !id.starts_with("bases.") {
-        return false;
-    }
     if id.starts_with("bases.") && id != "bases.create" {
         return app.mode == crate::app::ViewMode::Bases
             && app.config.features.bases_view.is_enabled();
@@ -394,6 +391,7 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
         "templates.edit_folder_variables" => {
             app.config.features.templates.is_enabled() && app.mode == crate::app::ViewMode::List
         }
+        "help.open" => app.config.features.help_view.is_enabled(),
         "backup.open" => app.config.features.backup.is_enabled(),
         "draw.create" => app.config.features.draw_view.is_enabled(),
         "graph.open" => app.config.features.graph_view.is_enabled(),
@@ -419,17 +417,26 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
         "settings.toggle_import" => !app.config.features.import.is_deleted(),
         "settings.toggle_encryption" => !app.config.features.encryption.is_deleted(),
         "settings.goals" => !app.config.features.goals.is_deleted(),
-        "settings.toggle_calendar" => !app.config.features.calendar.is_deleted(),
-        "settings.toggle_smart_folders" => !app.config.features.smart_folders.is_deleted(),
+        "settings.calendar" => !app.config.features.calendar.is_deleted(),
+        "settings.smart_folders" => !app.config.features.smart_folders.is_deleted(),
         _ => true,
     }
 }
 
 pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
+    get_action_infos_in_context(app, &ActionContext::capture(app, None, None))
+}
+
+pub(crate) fn get_action_infos_in_context(app: &App, context: &ActionContext) -> Vec<ActionInfo> {
+    if !app.palette_input_available() {
+        return Vec::new();
+    }
     let icon_mode = app.config.ui.icon_mode;
     ACTIONS
         .iter()
-        .filter(|a| action_feature_enabled(&a.id(), app))
+        .filter(|a| {
+            action_feature_enabled(&a.id(), app) && context::eligible(&a.id(), app, context)
+        })
         .map(|a| {
             let (nerd, unicode) = a.glyph();
             ActionInfo {
@@ -447,15 +454,45 @@ pub fn get_all_actions() -> &'static [Box<dyn Action>] {
     &ACTIONS
 }
 pub fn execute_action(action_id: &str, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
-    if !action_feature_enabled(action_id, app) {
-        anyhow::bail!("Action disabled: {action_id}");
+    let context = ActionContext::capture(app, None, context_note_id);
+    execute_action_in_context(action_id, app, &context)
+}
+
+pub(crate) fn execute_action_in_context(
+    action_id: &str,
+    app: &mut App,
+    context: &ActionContext,
+) -> Result<()> {
+    let action = ACTIONS
+        .iter()
+        .find(|action| action.id() == action_id)
+        .ok_or_else(|| anyhow::anyhow!("Action not found: {action_id}"))?;
+    if !app.palette_input_available()
+        || !action_feature_enabled(action_id, app)
+        || !context::eligible(action_id, app, context)
+    {
+        anyhow::bail!("Action unavailable in the current context: {action_id}");
     }
-    for action in get_all_actions() {
-        if action.id() == action_id {
-            return action.execute(app, context_note_id);
-        }
+    action.execute(app, context.note_id.as_deref())
+}
+
+struct NavigationAction(&'static str, &'static str, &'static str);
+impl Action for NavigationAction {
+    fn id(&self) -> Cow<'static, str> {
+        self.0.into()
     }
-    anyhow::bail!("Action not found: {action_id}")
+    fn name(&self) -> Cow<'static, str> {
+        self.1.into()
+    }
+    fn description(&self) -> Cow<'static, str> {
+        self.2.into()
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Views
+    }
+    fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
+        app.navigate_from_palette(self.0)
+    }
 }
 
 #[cfg(test)]

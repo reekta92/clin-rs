@@ -110,6 +110,36 @@ impl BasesState {
     pub(crate) fn has_popup(&self) -> bool {
         self.dialog.is_some() || self.search_popup.is_some()
     }
+    pub(crate) fn is_writing(&self) -> bool {
+        self.write_task.as_ref().is_some_and(|task| task.writing)
+    }
+    pub(crate) fn palette_input_available(&self) -> bool {
+        !self.has_popup()
+            && self.drag.is_none()
+            && self.scroll_drag.is_none()
+            && self.write_task.as_ref().is_none_or(|task| task.writing)
+    }
+    pub(crate) fn palette_command_available(&self, id: &str) -> bool {
+        if !self.palette_input_available() {
+            return false;
+        }
+        match id {
+            "bases.refresh" => true,
+            "bases.configure"
+            | "bases.next_view"
+            | "bases.previous_view"
+            | "bases.new_note"
+            | "bases.export"
+            | "bases.search"
+            | "bases.select_all"
+            | "bases.previous_property"
+            | "bases.next_property" => self.loaded.is_some() && self.write_task.is_none(),
+            "bases.undo" => !self.undo.is_empty() && self.write_task.is_none(),
+            "bases.redo" => !self.redo.is_empty() && self.write_task.is_none(),
+            "bases.toggle_group" => self.focused_group().is_some(),
+            _ => self.row().is_some() && self.write_task.is_none(),
+        }
+    }
     pub fn result(&self) -> Option<&QueryResult> {
         self.loaded
             .as_ref()?

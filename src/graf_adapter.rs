@@ -303,6 +303,29 @@ impl Drop for GrafPlugin {
 }
 
 impl GrafPlugin {
+    pub(crate) fn refresh_palette_theme(&mut self, theme: &crate::app_theme::AppThemeColors) {
+        self.app_theme = theme.clone();
+        self.preview_request_key = None;
+    }
+    pub(crate) fn palette_input_available(&self) -> bool {
+        let mouse = &self.graph_mouse_state;
+        self.search_popup.is_none()
+            && self.preview_drag_last_pos.is_none()
+            && !mouse.is_panning
+            && !mouse.is_middle_panning
+            && !mouse.is_minimap_dragging
+            && mouse.drag_origin.is_none()
+            && mouse.middle_drag_origin.is_none()
+            && self.graph_state.as_ref().is_some_and(|state| {
+                let state = state.read();
+                state.context_menu.is_none()
+                    && state.dragging_node.is_none()
+                    && state.connection_source.is_none()
+                    && state.deleting_connection_source.is_none()
+                    && state.right_down_pos.is_none()
+                    && state.marquee.start.is_none()
+            })
+    }
     pub fn new(
         config: &ClinConfig,
         storage: Storage,

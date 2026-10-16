@@ -167,7 +167,11 @@ fn handle_confirm_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: 
 // Command palette
 // ---------------------------------------------------------------------------
 
-fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
+pub(crate) fn handle_command_palette_mouse(
+    app: &mut App,
+    mouse: &MouseEvent,
+    terminal_area: Rect,
+) -> bool {
     let Some(mut palette) = app.command_palette.take() else {
         return false;
     };
@@ -207,6 +211,7 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             if !contains_cell(popup_area, mouse.column, mouse.row) {
+                app.dismiss_command_palette();
                 return true;
             }
             if contains_cell(chunks[0], mouse.column, mouse.row) {
@@ -225,7 +230,8 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                 );
                 palette.mouse_selection.begin(&mut palette.input);
             } else if mouse.row == chunks[1].y {
-                let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app)
+                let tabs: Vec<(&str, Option<&str>)> = palette
+                    .tabs
                     .iter()
                     .map(|(l, g, _)| (*l, Some(*g)))
                     .collect();
@@ -250,21 +256,11 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                     palette.state.offset(),
                     palette.items.len(),
                 ) else {
+                    app.command_palette = Some(palette);
                     return true;
                 };
                 if Some(clicked) == palette.state.selected() {
-                    let item = &palette.items[clicked];
-                    let action_id = item.id.clone();
-                    let note_id = palette.context_note_id.clone();
-                    if let Err(e) =
-                        crate::actions::execute_action(&action_id, app, note_id.as_deref())
-                    {
-                        app.set_temporary_status(&format!("Action failed: {e}"));
-                        app.messages.push(
-                            format!("Action failed: {e}"),
-                            crate::app::messages::MessageSeverity::Warning,
-                        );
-                    }
+                    app.activate_palette(palette, clicked);
                     return true;
                 } else {
                     palette.state.select(Some(clicked));
@@ -666,7 +662,7 @@ impl crate::popups::ActivePopup {
                     .constraints([
                         Constraint::Min(0),
                         Constraint::Length(3),
-                        Constraint::Length(3),
+                        Constraint::Length(if p.setup_owned { 0 } else { 3 }),
                     ])
                     .split(content);
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {

@@ -597,8 +597,15 @@ template = """
         themes.extend(crate::config::custom_themes::list_custom_themes());
         let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
 
-        let config = crate::config::ClinConfig::load().0.unwrap_or_default();
-        let current = config.ui.theme.clone();
+        let config = &self.config;
+        let current = self
+            .setup_state
+            .as_ref()
+            .filter(|_| self.mode == ViewMode::Setup)
+            .map_or_else(
+                || config.ui.theme.clone(),
+                |state| state.themes[state.theme].clone(),
+            );
 
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
@@ -608,6 +615,7 @@ template = """
         );
 
         self.popups.active = Some(crate::popups::ActivePopup::Theme(ThemePopup {
+            setup_owned: self.mode == ViewMode::Setup,
             themes,
             selected,
             is_custom,
@@ -692,12 +700,7 @@ template = """
                 crate::config::IconMode::None => "Icon mode: None",
             };
             self.set_temporary_status_static(status);
-            if let Ok(mut config) = crate::config::ClinConfig::load().0 {
-                config.ui.icon_mode = mode;
-                if let Err(e) = config.save() {
-                    self.set_temporary_status(&format!("Failed to save config: {e}"));
-                }
-            }
+            let _ = self.persist_config(|config| config.ui.icon_mode = mode);
         }
     }
 
@@ -720,12 +723,7 @@ template = """
             self.config.ui.hint_bar_style = style;
             self.app_theme.hint_bar_style = style;
             self.set_temporary_status(&format!("Hint bar style: {}", style.name()));
-            if let Ok(mut config) = crate::config::ClinConfig::load().0 {
-                config.ui.hint_bar_style = style;
-                if let Err(e) = config.save() {
-                    self.set_temporary_status(&format!("Failed to save config: {e}"));
-                }
-            }
+            let _ = self.persist_config(|config| config.ui.hint_bar_style = style);
             self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(popup));
         }
     }
@@ -735,11 +733,17 @@ template = """
     }
 
     pub fn begin_keybind_preset_selection(&mut self) {
-        let selected = match self.config.core.keybind_preset {
-            crate::config::KeybindPreset::Default => 0,
-            crate::config::KeybindPreset::Helix => 1,
-            crate::config::KeybindPreset::Vim => 2,
-            crate::config::KeybindPreset::Emacs => 3,
+        let selected = if self.mode == ViewMode::Setup {
+            self.setup_state
+                .as_ref()
+                .map_or(0, |state| state.keybind_preset)
+        } else {
+            match self.config.core.keybind_preset {
+                crate::config::KeybindPreset::Default => 0,
+                crate::config::KeybindPreset::Helix => 1,
+                crate::config::KeybindPreset::Vim => 2,
+                crate::config::KeybindPreset::Emacs => 3,
+            }
         };
         self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(
             crate::popups::SelectionPopup { selected },
@@ -754,12 +758,16 @@ template = """
                 2 => crate::config::KeybindPreset::Vim,
                 _ => crate::config::KeybindPreset::Emacs,
             };
-            self.config.core.keybind_preset = new;
-            self.apply_keybind_preset(new);
-            self.set_temporary_status(&format!("Keybind preset: {new}"));
-            if let Ok(mut c) = crate::config::ClinConfig::load().0 {
-                c.core.keybind_preset = new;
-                let _ = c.save();
+            if self.mode == ViewMode::Setup {
+                if let Some(state) = &mut self.setup_state {
+                    state.keybind_preset = popup.selected;
+                }
+                self.apply_setup_live();
+            } else {
+                self.config.core.keybind_preset = new;
+                self.apply_keybind_preset(new);
+                self.set_temporary_status(&format!("Keybind preset: {new}"));
+                let _ = self.persist_config(|config| config.core.keybind_preset = new);
             }
             self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(popup));
         }
@@ -776,7 +784,9 @@ template = """
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
-        self.seq_matcher.clear();
+        crate::app::strip_deleted_feature_keybinds(&mut self.keybinds, &self.config.features);
+        self.clear_palette_matchers();
+        self.sync_retained_view_settings();
     }
 
     pub fn select_theme(&mut self) {
@@ -784,13 +794,31 @@ template = """
             match popup.focus {
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
-                    self.config.ui.theme = next_theme.clone();
-                    self.refresh_theme_from_config();
+                    if self.mode == ViewMode::Setup {
+                        if let Some(state) = &mut self.setup_state
+                            && let Some(index) =
+                                state.themes.iter().position(|theme| *theme == next_theme)
+                        {
+                            state.theme = index;
+                        }
+                        self.apply_setup_live();
+                    } else {
+                        self.config.ui.theme = next_theme.clone();
+                        self.refresh_theme_from_config();
+                    }
                     self.set_temporary_status(&format!("Theme set to: {next_theme}"));
                     self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
                 ThemePopupFocus::GeneralBg => {
                     popup.general_is_solid = !popup.general_is_solid;
+                    if self.mode == ViewMode::Setup {
+                        if let Some(state) = &mut self.setup_state {
+                            state.background_solid = popup.general_is_solid;
+                        }
+                        self.apply_setup_live();
+                        self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
+                        return;
+                    }
                     self.config.ui.background = if popup.general_is_solid {
                         crate::config::Background::Solid
                     } else {
@@ -800,6 +828,10 @@ template = """
                     self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
                 ThemePopupFocus::GraphBg => {
+                    if self.mode == ViewMode::Setup {
+                        self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
+                        return;
+                    }
                     popup.graph_is_solid = !popup.graph_is_solid;
                     self.config.graf.visual.graph_background = if popup.graph_is_solid {
                         crate::config::Background::Solid
@@ -813,7 +845,9 @@ template = """
     }
 
     pub fn close_theme_popup(&mut self) {
-        if let Err(e) = self.config.save() {
+        if self.mode != ViewMode::Setup
+            && let Err(e) = self.config.save()
+        {
             self.set_temporary_status(&format!("Failed to save theme: {e}"));
         }
         self.popups.active = None;
@@ -1022,6 +1056,8 @@ template = """
             }
         }
 
+        crate::app::strip_deleted_feature_keybinds(&mut self.keybinds, &self.config.features);
+        self.sync_retained_view_settings();
         // Preview theme/background immediately (in-memory; no disk write).
         if visuals_changed {
             self.refresh_theme_from_config();
@@ -1085,6 +1121,8 @@ template = """
                         .return_mode
                         .take()
                         .unwrap_or(crate::app::ViewMode::List);
+                    self.return_mode = self.visit_return_mode.take();
+                    self.sync_retained_view_settings();
                 }
                 Err(error) => {
                     self.set_temporary_status(&format!("Setup failed to save: {error}"));
@@ -1093,6 +1131,10 @@ template = """
                     }
                 }
             }
+            return;
+        }
+        if let Err(error) = self.save_before_session_replace() {
+            self.set_temporary_status(&format!("Setup cannot switch vault: {error:#}"));
             return;
         }
         match crate::setup::vault_requires_confirmation(&selected_path) {
@@ -1184,6 +1226,8 @@ template = """
             .return_mode
             .take()
             .unwrap_or(crate::app::ViewMode::List);
+        self.return_mode = self.visit_return_mode.take();
+        self.sync_retained_view_settings();
         if old_availability != new_availability {
             self.refresh_view_file_features();
         }

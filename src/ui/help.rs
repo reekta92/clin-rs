@@ -375,6 +375,9 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ),
         ("F2".to_string(), "keybinds"),
     ];
+    if app.palette_fallback_available(ViewMode::Help) {
+        hints_items.push(("F6".into(), "commands"));
+    }
     if !crate::ui::help_content::tab_popup_descriptions(app.help_tab).is_empty() {
         hints_items.push(("n/N".to_string(), "cycle popup"));
     }
@@ -1322,7 +1325,7 @@ fn draw_help_tips_pane(
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(render_tip_body(
-        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context.",
+        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context. Unbound `` F6 `` opens the command palette in every view; custom bindings take priority.",
         keybinds,
         theme,
     )));
