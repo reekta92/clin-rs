@@ -1,15 +1,18 @@
+pub(crate) mod catalog;
 pub mod messages;
 
-pub(crate) mod catalog;
+mod backlinks;
 mod edit_panes;
 mod folders;
 mod import_ops;
+mod link_complete;
 mod loading;
 mod notes;
 mod popups;
 mod search;
 pub(crate) mod search_worker;
 mod settings_ops;
+pub(crate) mod tabs;
 mod tags;
 mod trash;
 pub(crate) mod vaults;
@@ -1798,6 +1801,8 @@ impl App {
             return Ok(());
         }
 
+        // Duplicate titles are allowed: notes are identified by id, so the
+        // save always proceeds. Title-based lookups resolve to the last match.
         let (updated_at, tags) = self
             .storage
             .load_note(&id)
@@ -1813,6 +1818,14 @@ impl App {
         match self.storage.save_note(&id, &note) {
             Ok(saved_id) => {
                 self.editor.editing_id = Some(saved_id.clone());
+                // Keep the open tab in sync with renames from title→filename sync.
+                if !self.editor.tabs.is_empty() {
+                    let active = self.editor.active_tab.min(self.editor.tabs.len() - 1);
+                    if let Some(tab) = self.editor.tabs.get_mut(active) {
+                        tab.id = Some(saved_id.clone());
+                        tab.title_snapshot = note.title.clone();
+                    }
+                }
                 self.enqueue_backup(format!("auto: {}", note.title));
 
                 let current_words = crate::goals::count_words(&note.content);

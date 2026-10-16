@@ -406,6 +406,11 @@ impl App {
     }
 
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
+        // If already in edit view with tabs, open as a tab (switch if present).
+        if self.mode == ViewMode::Edit && !self.editor.tabs.is_empty() {
+            self.open_note_in_tab(note_id, line_number);
+            return;
+        }
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editor.editing_id = Some(note_id.to_string());
             self.editor.initial_word_count = crate::goals::count_words(&note.content);
@@ -432,6 +437,7 @@ impl App {
             self.editor.image_picker = self.image_picker.clone();
             self.editor.image_decode_tx = self.image_decode_tx.clone();
             self.mode = ViewMode::Edit;
+            self.init_tabs_for_note(note_id, &note.title);
 
             if self.editor.editor_preview_enabled {
                 self.update_editor_markdown_preview();
@@ -631,8 +637,8 @@ impl App {
     fn enter_edit_mode(&mut self, id: String, title: String, content: String) {
         if self.editor.external_editor_enabled {
             let new_note = Note {
-                title,
-                content,
+                title: title.clone(),
+                content: content.clone(),
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
@@ -652,9 +658,21 @@ impl App {
             return;
         }
 
+        // New unsaved note becomes a tab (or reuses the current empty tab).
+        if self.mode == ViewMode::Edit && !self.editor.tabs.is_empty() {
+            let _ = self.autosave();
+            self.sync_active_tab_title();
+            let renamed = self.editor.editing_id.clone();
+            let cur = self.editor.active_tab;
+            if let Some(tab) = self.editor.tabs.get_mut(cur)
+                && (tab.id.is_none() || renamed.is_some())
+            {
+                tab.id = renamed;
+            }
+        }
         self.mode = ViewMode::Edit;
 
-        self.editor.editing_id = Some(id);
+        self.editor.editing_id = Some(id.clone());
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &title,
@@ -664,6 +682,7 @@ impl App {
         self.editor.body = EditorDocument::from_text(&content);
         self.editor.text_align = self.config.editor.text_align;
         self.apply_editor_prefs();
+        self.init_tabs_for_note(&id, &title);
         self.set_default_status();
     }
 
@@ -756,8 +775,12 @@ impl App {
             return;
         }
 
+        if self.mode == ViewMode::Edit && !self.editor.tabs.is_empty() {
+            let _ = self.autosave();
+            self.sync_active_tab_title();
+        }
         self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
+        self.editor.editing_id = Some(new_id.clone());
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &editor_title,
@@ -766,6 +789,7 @@ impl App {
         );
         self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
+        self.init_tabs_for_note(&new_id, &editor_title);
 
         self.set_default_status();
     }
@@ -773,6 +797,10 @@ impl App {
     pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
+            self.editor.tabs.clear();
+            self.editor.active_tab = 0;
+            self.editor.tab_bar_rects.clear();
+            self.editor.tab_close_rects.clear();
             if self
                 .editor
                 .template_edit_path
@@ -818,6 +846,10 @@ impl App {
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
+        self.editor.tabs.clear();
+        self.editor.active_tab = 0;
+        self.editor.tab_bar_rects.clear();
+        self.editor.tab_close_rects.clear();
         if self
             .editor
             .template_edit_path
@@ -1242,10 +1274,27 @@ impl App {
                 self.set_temporary_status_static("Title cannot be empty");
                 return;
             }
+            let old = self
+                .notes
+                .iter()
+                .find(|n| n.id == popup.note_id)
+                .map(|n| (n.id.clone(), n.title.clone()));
             match self.storage.rename_note(&popup.note_id, new_title) {
-                Ok(_) => {
+                Ok(new_id) => {
                     self.request_notes_reconcile();
-                    self.set_temporary_status_static("Note renamed");
+                    match old {
+                        Some((old_id, old_title))
+                            if old_title.to_lowercase() != new_title.to_lowercase() =>
+                        {
+                            self.offer_backlink_update(
+                                old_title,
+                                old_id,
+                                new_title.to_string(),
+                                new_id,
+                            );
+                        }
+                        _ => self.set_temporary_status_static("Note renamed"),
+                    }
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to rename: {e}"));

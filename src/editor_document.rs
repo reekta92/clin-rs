@@ -96,6 +96,32 @@ impl EditorDocument {
         }
     }
 
+    /// Char immediately before the cursor on the current line, if any.
+    /// Cursor `col` is char-based (matches `wikilink_at_cursor` accounting).
+    pub(crate) fn char_before_cursor(&self) -> Option<char> {
+        let cursor = self.textarea.cursor();
+        self.textarea.lines().get(cursor.0).and_then(|line| {
+            line.chars()
+                .nth(cursor.1.saturating_sub(1))
+                .filter(|_| cursor.1 > 0)
+        })
+    }
+
+    /// Char immediately under/at the cursor on the current line, if any.
+    pub(crate) fn char_after_cursor(&self) -> Option<char> {
+        let cursor = self.textarea.cursor();
+        self.textarea
+            .lines()
+            .get(cursor.0)
+            .and_then(|line| line.chars().nth(cursor.1))
+    }
+
+    /// Delete `n` chars forward (under the cursor). Used to remove the
+    /// auto-inserted closing half after a pair-aware Backspace.
+    pub(crate) fn delete_next_chars(&mut self, n: usize) -> EditEffect {
+        self.mutate(|textarea| textarea.delete_str(n))
+    }
+
     pub(crate) fn selection_range(&self) -> Option<(TextPosition, TextPosition)> {
         self.textarea.selection_range().map(|(start, end)| {
             (

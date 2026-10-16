@@ -9,6 +9,22 @@ pub enum EditFocus {
     Title,
     Body,
     Sidebar,
+    FileTree,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenTab {
+    pub id: Option<String>,
+    pub title_snapshot: String,
+}
+
+impl OpenTab {
+    pub fn new(id: Option<String>, title: impl Into<String>) -> Self {
+        Self {
+            id,
+            title_snapshot: title.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -24,6 +40,22 @@ pub struct LinkItem {
     pub id: String,
     pub title: String,
     pub is_backlink: bool,
+}
+
+/// Inline `[[...]]` completion state. While the body cursor sits inside an
+/// unclosed `[[query`, the edit view shows filtered note-title suggestions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkCompletion {
+    /// Source line holding the opening `[[`.
+    pub anchor_line: usize,
+    /// Char column just after the opening `[[`.
+    pub anchor_col: usize,
+    /// Raw text between `[[` and the cursor when last refreshed.
+    pub query: String,
+    /// Filtered `(id, title)` candidates, capped at `LINK_COMPLETE_LIMIT`.
+    pub matches: Vec<(String, String)>,
+    /// Selected candidate index.
+    pub selected: usize,
 }
 
 pub(crate) struct EditorPreviewScheduler {
@@ -163,14 +195,28 @@ pub struct NoteEditor {
     pub sidebar_scroll_offset: usize,
     pub sidebar_list_rect: ratatui::layout::Rect,
     pub sidebar_selected: usize,
+    pub file_tree_visible: bool,
+    pub file_tree_selected: usize,
+    pub file_tree_scroll: usize,
+    pub file_tree_rect: ratatui::layout::Rect,
+    pub file_tree_list_rect: ratatui::layout::Rect,
+    pub tabs: Vec<OpenTab>,
+    pub active_tab: usize,
+    pub tab_bar_rects: Vec<ratatui::layout::Rect>,
+    pub tab_close_rects: Vec<ratatui::layout::Rect>,
+    pub new_tab_rect: ratatui::layout::Rect,
+    pub tab_bar_rect: ratatui::layout::Rect,
     pub outline_nodes: Vec<crate::outline::parse::TreeNode>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
     pub links: Vec<LinkItem>,
+    pub link_complete: Option<LinkCompletion>,
+    pub link_complete_rect: ratatui::layout::Rect,
     pub link_preview: bool,
     pub link_preview_renderer: Option<MarkdownRenderer>,
     pub link_preview_target: Option<String>,
     pub link_preview_error: Option<String>,
     pub last_sidebar_click: Option<(u16, u16, Instant)>,
+    pub last_body_click: Option<(u16, u16, Instant)>,
     pub header_title_rect: ratatui::layout::Rect,
     pub body_viewport_row: u16,
     pub body_viewport_col: u16,
@@ -238,13 +284,27 @@ impl Default for NoteEditor {
             sidebar_scroll_offset: 0,
             sidebar_list_rect: ratatui::layout::Rect::default(),
             sidebar_selected: 0,
+            file_tree_visible: false,
+            file_tree_selected: 0,
+            file_tree_scroll: 0,
+            file_tree_rect: ratatui::layout::Rect::default(),
+            file_tree_list_rect: ratatui::layout::Rect::default(),
+            tabs: Vec::new(),
+            active_tab: 0,
+            tab_bar_rects: Vec::new(),
+            tab_close_rects: Vec::new(),
+            new_tab_rect: ratatui::layout::Rect::default(),
+            tab_bar_rect: ratatui::layout::Rect::default(),
             outline_nodes: Vec::new(),
             links: Vec::new(),
+            link_complete: None,
+            link_complete_rect: ratatui::layout::Rect::default(),
             link_preview: false,
             link_preview_renderer: None,
             link_preview_target: None,
             link_preview_error: None,
             last_sidebar_click: None,
+            last_body_click: None,
             preview_drag_last_pos: None,
             last_body_width: 0u16,
             last_body_height: 0u16,

@@ -208,8 +208,20 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
         "Press {edit:ToggleLinks} to dock a sidebar listing outgoing and incoming links for the current note. Select a link and press Enter to open that note in the editor.",
     ),
     tip(
+        "File sidebar",
+        "Press {edit:ToggleFileTree} to show the notes tree beside the editor — the same tree as the notes list, with folders, counts and icons. Click or press Enter on a note to open it in a tab; Left/Right collapse and expand folders.",
+    ),
+    tip(
+        "Note tabs",
+        "The header keeps several notes open as tabs. Press {edit:NewTab} for a new note (Markdown, Text, Draw or Canvas), {edit:CloseTab} to close the current tab, and {edit:NextTab} / {edit:PrevTab} to switch. Click a tab to switch (click the active tab to rename it) or its × to close; ● marks unsaved changes.",
+    ),
+    tip(
         "Linked-note preview",
         "Place the cursor on a [[wikilink]] and press {edit:PreviewLink} to pop up a rendered preview of the target note. Press Esc to close without navigating.",
+    ),
+    tip(
+        "Link suggestions",
+        "Type `` [[ `` in the body to pop up matching note titles. ``Up``/``Down`` move, ``Tab``/``Enter`` completes to `` [[Title]] ``, ``Esc`` dismisses, clicking a row accepts it.",
     ),
 ];
 const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
@@ -603,6 +615,18 @@ const EDITOR_POPUPS: &[PopupHelp] = &[
         name: "Links",
         body: "Press {edit:ToggleLinks} for **Links** sidebar. Arrows move, ``Enter`` opens selected note.",
     },
+    PopupHelp {
+        name: "Files",
+        body: "Press {edit:ToggleFileTree} for the **Files** tree (same as the notes list). Arrows move, ``Enter`` opens, ``Left``/``Right`` collapse/expand.",
+    },
+    PopupHelp {
+        name: "Tabs",
+        body: "Tabs keep notes open: {edit:NewTab} new (Markdown/Text/Draw/Canvas), {edit:CloseTab} close, {edit:NextTab}/{edit:PrevTab} switch. Click × to close.",
+    },
+    PopupHelp {
+        name: "Link Suggestions",
+        body: "Type `` [[ `` for **Link Suggestions** (existing titles filtered by your text). ``Up``/``Down`` move, ``Tab``/``Enter`` completes, ``Esc`` dismisses, clicking a row accepts.",
+    },
 ];
 
 const GRAPH_POPUPS: &[PopupHelp] = &[PopupHelp {
@@ -820,7 +844,7 @@ mod tests {
         fn expected_count(tab: HelpTab) -> usize {
             match tab {
                 HelpTab::Notes => 6,
-                HelpTab::Editor => 5,
+                HelpTab::Editor => 8,
                 HelpTab::Graph => 1,
                 HelpTab::Draw => 2,
                 HelpTab::Canvas => 3,

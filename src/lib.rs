@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 pub mod actions;
 pub mod app_theme;
+pub(crate) mod auto_pairs;
 pub mod backup {
     pub mod app;
     pub mod git_ops;

@@ -112,7 +112,27 @@ while older text above and all text below the current paragraph are dimmed.
 
 ## Sidebars + Wikilink Previews
 
-The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. `Ctrl+o` toggles Outline, `Ctrl+b` toggles Links, and `Ctrl+t` cycles focus to a visible sidebar. `Alt+l` previews the link under the cursor.
+The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. `Ctrl+o` toggles Outline, `Ctrl+b` toggles Links, `Ctrl+e` toggles the left file-tree sidebar, and `Ctrl+t` cycles focus (Title → Body → Files → Sidebar). `Alt+l` previews the link under the cursor.
+
+## Tabs + File Sidebar + Duplicate Titles
+
+The edit view has a merged one-row header (status info + tabs) and a left file-tree pane. Tabs keep several notes open: the selected tab shows the note title and the only save indicator (`●` = unsaved) — click a tab (or `Alt+Right` / `Alt+Left`) to switch, click the selected tab to rename it inline, `Ctrl+n` for a new note, `Ctrl+w` (or click a tab's `×`, or middle-click it) to close the current tab (autosaves first). `Ctrl+Tab` is intentionally not used: most terminals swallow it for their own tab switching. The `+` button and `Ctrl+n` open the same new-file selector as the notes list (Markdown, Text, Draw, Canvas). Focus mode (`F8`) hides the tab strip and file sidebar along with the header and hint bar. The file tree (`Ctrl+e`) takes ~22% of the editor width (never a fixed column count) and is the notes list tree reused verbatim — same rows, folder icons, note counts and density, with collapse state shared with the notes list; click a note to open it in a tab, `Enter` on a selected row does the same, `Left`/`Right` collapse/expand folders. All tab and sidebar shortcuts are listed in the `F2` keybinds overlay and the `F1` help editor tab.
+
+Note titles are not required to be unique: creating, renaming, or saving a duplicate title is allowed. Notes are identified by id (path), so title-based lookups (`[[wikilink]]` follow, backlinks, graph edges) resolve to the last matching note when titles collide.
+
+## Wikilink Follow
+
+`Enter` on a `[[wikilink]]` follows it: existing targets autosave and open, missing targets offer a confirm popup to create the note in the current note's folder (vault root for folder-less notes). Double-clicking a `[[wikilink]]` with the mouse does the same; single click only moves the cursor. `[[alias|Title]]` pipe syntax resolves to the part before `|`.
+
+## Link Suggestions
+
+Typing `[[` in the body opens a suggestion popup listing existing note titles filtered by what you typed (prefix matches rank first, up to 8 rows). `Up`/`Down` move, `Tab` or `Enter` completes to `[[Title]]`, `Esc` dismisses, and clicking a row accepts it. With nothing typed it shows the first notes in vault order; with no matches it says so — keep typing or finish the link manually. Typing past the `|` alias separator dismisses the popup (you are writing display text then). Toggle with `[editor] link_suggestions` (default `true`).
+
+The popup only appears while the link text is actually being typed or edited: moving the cursor (arrow keys, mouse click) or skipping over an auto-inserted `]` dismisses it, so `Enter` on a finished link follows it instead of re-completing it. Typing another letter inside an existing link reopens suggestions around the cursor.
+
+## Auto-Close Pairs
+
+Typing `(` `[` `{` `"` `'` `` ` `` auto-inserts its counterpart and places the cursor between them (VS Code style). Typing the closing char when it is already under the cursor skips over it instead of duplicating; `Backspace` between an empty pair deletes both halves. Typing an opener around a keyboard/mouse selection wraps it. Quotes refuse to pair inside words (`don't` stays single). Toggle with `[editor] auto_close_pairs` (default `true`).
 
 ## Keyboard Text Selection
 
@@ -176,6 +196,8 @@ The `[editor]` section in `config.toml`:
 | `date_format` | String | `"%Y-%m-%d %H:%M"` | Format for insert-date action |
 | `soft_wrap` | bool | `false` | Soft-wrap the editor body |
 | `copy_on_select` | bool | `true` | Copy to clipboard immediately when a mouse drag selects text |
+| `auto_close_pairs` | bool | `true` | Auto-close brackets/quotes; skip-over closers; pair-aware Backspace |
+| `link_suggestions` | bool | `true` | Suggest existing note titles while typing `[[...]]` |
 | `edit_mode_highlight` | `bool` | `true` | Apply Markdown highlighting to the editable body |
 | `ghost_syntax` | `bool` | `true` | Dim Markdown delimiters |
 | `extended_markdown_features` | `bool` | `true` | Highlight extended Markdown syntax |
@@ -198,6 +220,8 @@ show_line_numbers = true
 date_format = "%Y-%m-%d %H:%M"
 soft_wrap = false
 copy_on_select = true
+auto_close_pairs = true
+link_suggestions = true
 zen_hide_line_numbers = true
 zen_hide_scrollbar = true
 zen_focus_dimming = false

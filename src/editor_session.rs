@@ -159,7 +159,7 @@ where
             let has_selection = match *focus {
                 EditFocus::Title => app.editor.title_editor.has_selection(),
                 EditFocus::Body => app.editor.body.has_selection(),
-                EditFocus::Sidebar => false,
+                EditFocus::Sidebar | EditFocus::FileTree => false,
             };
             if has_selection {
                 let notice = if *focus == EditFocus::Title {

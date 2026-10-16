@@ -134,6 +134,8 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
 | `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
 | `copy_on_select` | `bool` | `true` | Copy to clipboard immediately when a mouse drag selects text; `false` keeps the selection for the copy keybind |
+| `auto_close_pairs` | `bool` | `true` | Auto-close `() [] {} "" '' ``` in the editor body; typing the closer skips over it, Backspace between an empty pair deletes both |
+| `link_suggestions` | `bool` | `true` | Suggest existing note titles while typing `[[...]]` links in the editor body |
 | `edit_mode_highlight` | `bool` | `true` | Apply Markdown syntax highlighting to the editable body |
 | `ghost_syntax` | `bool` | `true` | Visually dim markdown delimiters (brackets, URLs, etc.) in edit view |
 | `extended_markdown_features` | `bool` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |
@@ -641,6 +643,11 @@ These global handlers take precedence over per-view bindings.
 | `insert_date` | `Ctrl+;` | Insert date/time |
 | `toggle_outline` | `Ctrl+o` | Toggle outline pane |
 | `toggle_links` | `Ctrl+b` | Toggle links pane |
+| `toggle_file_tree` | `Ctrl+e` | Toggle file-tree sidebar |
+| `new_tab` | `Ctrl+n` | Open new note tab |
+| `close_tab` | `Ctrl+w` | Close current tab |
+| `next_tab` | `Alt+Right` | Next tab |
+| `prev_tab` | `Alt+Left` | Previous tab |
 | `preview_link` | `Alt+l` | Preview linked note under cursor |
 
 ### Help Actions (`[help]`)

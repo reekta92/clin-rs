@@ -165,7 +165,7 @@ impl App {
 /// If the cursor at char `col` sits within a `[[...]]` span on `line`,
 /// return the link target (text before `|`, trimmed). Byte-offset scan
 /// mirroring storage::extract_wikilinks, with char-index boundary check.
-fn wikilink_at_cursor(line: &str, col: usize) -> Option<String> {
+pub(crate) fn wikilink_at_cursor(line: &str, col: usize) -> Option<String> {
     let mut cursor = 0;
     while let Some(rel) = line[cursor..].find("[[") {
         let open = cursor + rel; // byte offset of first '['
@@ -194,7 +194,7 @@ fn wikilink_at_cursor(line: &str, col: usize) -> Option<String> {
 impl App {
     /// Resolve a wikilink target string to a note id (title match, lowercased;
     /// fallback exact id). Mirrors graf/graph.rs:78-97 + the backlinks matcher.
-    fn resolve_wikilink_target(&self, target: &str) -> Option<String> {
+    pub(crate) fn resolve_wikilink_target(&self, target: &str) -> Option<String> {
         let lower = target.to_lowercase();
         self.visible_notes()
             .find(|(_, n)| n.title.to_lowercase() == lower || n.id == target)
@@ -262,5 +262,47 @@ impl App {
 
     pub fn close_link_preview(&mut self) {
         self.editor.link_preview = false;
+    }
+
+    /// Folder of the note currently open in the editor (physical paths only;
+    /// virtual paths and bare ids fall back to the list folder context).
+    pub(crate) fn editing_folder_context(&self) -> String {
+        if let Some(id) = &self.editor.editing_id
+            && let Some((folder, _)) = id.rsplit_once('/')
+            && !Self::is_virtual_path(folder)
+        {
+            return folder.to_string();
+        }
+        self.get_current_folder_context()
+    }
+
+    /// Follow the `[[wikilink]]` under the body cursor.
+    ///
+    /// Existing target → autosave + open it. Missing target → confirm popup
+    /// offering to create it in the current note's folder. Returns `true`
+    /// when the cursor was on a link (key/mouse event consumed), `false`
+    /// otherwise (caller falls through to the default behavior).
+    pub fn follow_wikilink_under_cursor(&mut self) -> bool {
+        let cursor = self.editor.body.cursor();
+        let line = match self.editor.body.lines().get(cursor.row) {
+            Some(l) => l.clone(),
+            None => return false,
+        };
+        let target = match wikilink_at_cursor(&line, cursor.col) {
+            Some(t) => t,
+            None => return false,
+        };
+        if let Some(id) = self.resolve_wikilink_target(&target) {
+            let _ = self.autosave();
+            self.close_link_preview();
+            self.open_note_at_line(&id, None);
+        } else {
+            let folder = self.editing_folder_context();
+            self.show_confirm(crate::popups::ConfirmAction::CreateNoteFromWikilink {
+                folder,
+                title: target,
+            });
+        }
+        true
     }
 }

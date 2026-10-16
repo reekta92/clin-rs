@@ -31,6 +31,16 @@ pub enum ConfirmAction {
         path: String,
     },
     RemoveAllTagsFromSelected,
+    CreateNoteFromWikilink {
+        folder: String,
+        title: String,
+    },
+    UpdateBacklinks {
+        old_title: String,
+        old_id: String,
+        new_title: String,
+        note_ids: Vec<String>,
+    },
 }
 
 pub struct ConfirmPopup {

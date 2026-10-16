@@ -300,7 +300,7 @@ pub fn handle_bracketed_paste(
                 app.request_editor_preview_update();
                 true
             }
-            EditFocus::Sidebar => false,
+            EditFocus::Sidebar | EditFocus::FileTree => false,
         },
         ViewMode::Canvas => {
             if let Some(canvas) = &mut app.canvas_state {
@@ -439,8 +439,12 @@ pub struct EditLayout {
     pub body: Rect,
     /// Preview pane rect (outer, for rendering the snapshot widget).
     pub preview: Option<Rect>,
-    /// Sidebar pane rect.
+    /// Sidebar pane rect (outline/links, right side).
     pub sidebar: Option<Rect>,
+    /// File-tree pane rect (left side).
+    pub file_tree: Option<Rect>,
+    /// Splitter between file-tree and the rest.
+    pub file_tree_splitter: Option<Rect>,
     /// Vertical splitter line rect between main pane and sidebar/preview.
     pub splitter: Option<Rect>,
 }
@@ -461,6 +465,7 @@ pub fn compute_edit_layout(
     sidebar: EditSidebar,
     preview_position: PreviewPosition,
     zen_padding: u16,
+    file_tree_visible: bool,
 ) -> EditLayout {
     let editor_area = if zen_padding > 0 {
         let w = body_area.width;
@@ -477,13 +482,36 @@ pub fn compute_edit_layout(
     };
     let title = Rect::default();
 
+    // Carve out the left file-tree pane first so it can coexist with
+    // the right outline/links sidebar or the markdown preview.
+    // Relative width (22% of the editor area) so the tree scales with the
+    // terminal instead of pinning a fixed column count; clamped so the
+    // tree stays usable on narrow screens and the editor keeps >=40 cols.
+    let (work_area, file_tree, file_tree_splitter) = if file_tree_visible && !fullscreen {
+        let max_allowed = editor_area.width.saturating_sub(40).clamp(18, 40);
+        let tree_w = ((editor_area.width as u32 * 22 / 100) as u16).clamp(18, max_allowed.max(18));
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(tree_w),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ])
+            .split(editor_area);
+        (cols[2], Some(cols[0]), Some(cols[1]))
+    } else {
+        (editor_area, None, None)
+    };
+
     if fullscreen {
         // Fullscreen preview — editor is hidden
         return EditLayout {
             title,
-            body: editor_area,
-            preview: Some(editor_area),
+            body: work_area,
+            preview: Some(work_area),
             sidebar: None,
+            file_tree: None,
+            file_tree_splitter: None,
             splitter: None,
         };
     }
@@ -511,12 +539,14 @@ pub fn compute_edit_layout(
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(editor_area);
+            .split(work_area);
         return EditLayout {
             title,
             body: cols[main_idx],
             preview: None,
             sidebar: Some(cols[sb_idx]),
+            file_tree,
+            file_tree_splitter,
             splitter: Some(cols[1]),
         };
     }
@@ -547,12 +577,14 @@ pub fn compute_edit_layout(
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(editor_area);
+            .split(work_area);
         return EditLayout {
             title,
             body: cols[main_idx],
             preview: Some(cols[p_idx]),
             sidebar: None,
+            file_tree,
+            file_tree_splitter,
             splitter: Some(cols[1]),
         };
     }
@@ -560,14 +592,16 @@ pub fn compute_edit_layout(
     // Plain editor — no sidebar, no preview, no fullscreen
     EditLayout {
         title,
-        body: editor_area,
+        body: work_area,
         preview: None,
         sidebar: None,
+        file_tree,
+        file_tree_splitter,
         splitter: None,
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 pub fn edit_view_input_areas(
     area: Rect,
     fullscreen: bool,
@@ -578,20 +612,20 @@ pub fn edit_view_input_areas(
     sidebar_position: crate::config::PreviewPosition,
     header_title_rect: Rect,
     zen_padding: u16,
-) -> (Rect, Rect, Option<Rect>) {
-    // Outer vertical split (pad / body / footer) to find the body area.
+    file_tree_visible: bool,
+) -> (Rect, Rect, Option<Rect>, Option<Rect>) {
+    // Outer vertical split (merged header / body / footer) to find the body area.
     // This matches the layout used by draw_edit_view.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // header
-            Constraint::Length(1), // spacer (matches draw_edit_view)
+            Constraint::Length(1), // merged header + tab bar
             Constraint::Min(8),    // body
             Constraint::Length(1), // hint bar
         ])
         .split(area);
 
-    let body_area = chunks[2];
+    let body_area = chunks[1];
 
     let layout = compute_edit_layout(
         body_area,
@@ -600,6 +634,7 @@ pub fn edit_view_input_areas(
         sidebar,
         sidebar_position,
         zen_padding,
+        file_tree_visible,
     );
     // Apply gutter offset to the body rect for mouse hit-testing.
     // In fullscreen (READ) mode the preview has no editor gutter.
@@ -618,7 +653,12 @@ pub fn edit_view_input_areas(
         layout.body.height,
     );
 
-    (header_title_rect, body_inner, layout.sidebar)
+    (
+        header_title_rect,
+        body_inner,
+        layout.sidebar,
+        layout.file_tree,
+    )
 }
 
 pub fn edit_view_md_preview_area(
@@ -626,18 +666,18 @@ pub fn edit_view_md_preview_area(
     sidebar: crate::editor::EditSidebar,
     preview_position: crate::config::PreviewPosition,
     zen_padding: u16,
+    file_tree_visible: bool,
 ) -> Option<Rect> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // header
-            Constraint::Length(1), // spacer (matches draw_edit_view)
+            Constraint::Length(1), // merged header + tab bar
             Constraint::Min(8),    // body
             Constraint::Length(1), // hint bar
         ])
         .split(area);
 
-    let body_area = chunks[2];
+    let body_area = chunks[1];
 
     let layout = compute_edit_layout(
         body_area,
@@ -646,6 +686,7 @@ pub fn edit_view_md_preview_area(
         sidebar,
         preview_position,
         zen_padding,
+        file_tree_visible,
     );
     layout.preview.map(|r| {
         Rect::new(
@@ -2366,6 +2407,7 @@ mod tests {
             EditSidebar::None,
             PreviewPosition::Right,
             0,
+            false,
         );
         let zen = compute_edit_layout(
             area,
@@ -2374,6 +2416,7 @@ mod tests {
             EditSidebar::None,
             PreviewPosition::Right,
             15,
+            false,
         );
         assert_eq!(plain.body, area);
         assert_eq!(zen.body, Rect::new(15, 0, 70, 40));
@@ -2385,6 +2428,7 @@ mod tests {
             EditSidebar::None,
             PreviewPosition::Right,
             15,
+            false,
         );
         assert_eq!(narrow.body, Rect::new(0, 0, 20, 40));
     }
@@ -2432,7 +2476,7 @@ mod tests {
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
 
-        let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
+        let (_, _, sidebar_inner, _) = crate::events::edit_view_input_areas(
             terminal_area,
             false,
             false,
@@ -2442,6 +2486,7 @@ mod tests {
             crate::config::PreviewPosition::Right,
             Rect::default(),
             0,
+            false,
         );
         let sb = sidebar_inner.unwrap();
         app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
@@ -2527,7 +2572,7 @@ mod tests {
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
 
-        let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
+        let (_, _, sidebar_inner, _) = crate::events::edit_view_input_areas(
             terminal_area,
             false,
             false,
@@ -2537,6 +2582,7 @@ mod tests {
             crate::config::PreviewPosition::Right,
             Rect::default(),
             0,
+            false,
         );
         let sb = sidebar_inner.unwrap();
         app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
@@ -2610,7 +2656,7 @@ mod tests {
         let mut focus = EditFocus::Body;
         let mut selection = crate::text_edit::MouseTextSelection::default();
 
-        let (_, body_inner, _) = crate::events::edit_view_input_areas(
+        let (_, body_inner, _, _) = crate::events::edit_view_input_areas(
             terminal_area,
             false,
             app.editor.editor_preview_enabled,
@@ -2620,6 +2666,7 @@ mod tests {
             app.preview_position,
             app.editor.header_title_rect,
             0,
+            false,
         );
 
         // Put cursor at the start

@@ -271,7 +271,15 @@ impl App {
                 title_result_ids.push(note_id_arc.clone());
             }
 
-            if !grep_query.is_empty() && matched_title {
+            if !grep_query.is_empty() {
+                // `g:` mode: content-scan the title matches (historic behavior).
+                if matched_title {
+                    candidate_ids.push(note_id_arc);
+                }
+            } else if !title_query.is_empty() {
+                // Plain text searches content as well as titles: every visible
+                // note is a grep candidate. The worker scans in the background
+                // (debounced, generation-guarded, line-capped).
                 candidate_ids.push(note_id_arc);
             }
         }
@@ -283,13 +291,21 @@ impl App {
             }
         }
 
-        if !grep_query.is_empty() {
+        // Literal content query: `g:` text, else the plain title text (plain
+        // queries scan content too).
+        let worker_query = if !grep_query.is_empty() {
+            grep_query.clone()
+        } else {
+            title_query.clone()
+        };
+
+        if !worker_query.is_empty() {
             let gen_num = self.search_query_generation.fetch_add(1, Ordering::SeqCst) + 1;
             self.search_status = Some("Searching…".to_string());
             self.search_debounce_deadline = Some(Instant::now() + Duration::from_millis(150));
             self.unsent_search_request = Some(crate::app::search_worker::SearchRequest {
                 generation: gen_num,
-                query: grep_query,
+                query: worker_query,
                 candidate_ids: candidate_ids.into_boxed_slice(),
             });
         } else {
@@ -695,6 +711,71 @@ mod tests {
     }
 
     #[test]
+    fn plain_text_searches_note_content_not_just_titles() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut storage = make_test_storage(tmp.path());
+        for (file, title, content) in [
+            ("alpha.md", "Alpha", "nothing relevant here"),
+            ("beta.md", "Beta", "a line about zebras grazing"),
+        ] {
+            storage
+                .save_note(
+                    file,
+                    &crate::storage::Note {
+                        title: title.to_string(),
+                        content: content.to_string(),
+                        updated_at: 1000,
+                        tags: vec![],
+                    },
+                )
+                .unwrap();
+        }
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.begin_search();
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
+            popup.input.insert_str("zebra");
+        }
+        app.update_search();
+
+        // No title matches, but a content search must be queued anyway.
+        let popup = match &app.popups.active {
+            Some(crate::popups::ActivePopup::Search(p)) => p,
+            _ => panic!("search popup missing"),
+        };
+        assert!(popup.title_result_ids.is_empty());
+        let req = app
+            .unsent_search_request
+            .as_ref()
+            .expect("plain text queues a content search");
+        assert_eq!(req.query, "zebra");
+
+        // Drain the real worker until the content hit lands.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            app.handle_search_events();
+            let done = app.popups.active.as_ref().is_some_and(|p| {
+                matches!(p, crate::popups::ActivePopup::Search(sp) if !sp.grep_results.is_empty())
+            });
+            if done || std::time::Instant::now() > deadline {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let popup = match &app.popups.active {
+            Some(crate::popups::ActivePopup::Search(p)) => p,
+            _ => panic!("search popup missing"),
+        };
+        assert!(
+            popup
+                .grep_results
+                .iter()
+                .any(|h| h.note_id.as_ref() == "beta.md"),
+            "content hit missing: {:?}",
+            popup.grep_results,
+        );
+    }
+
+    #[test]
     fn clearing_grep_filter_cancels_pending_request() {
         let tmp = tempfile::TempDir::new().unwrap();
         let storage = make_test_storage(tmp.path());
@@ -713,8 +794,13 @@ mod tests {
         }
         app.update_search();
 
-        assert!(app.unsent_search_request.is_none());
-        assert!(app.search_debounce_deadline.is_none());
+        // Plain text falls back to literal content search over all notes.
+        let req = app
+            .unsent_search_request
+            .as_ref()
+            .expect("plain text queues a content search");
+        assert_eq!(req.query, "zebra");
+        assert!(app.search_debounce_deadline.is_some());
 
         let popup = match &app.popups.active {
             Some(crate::popups::ActivePopup::Search(p)) => p,

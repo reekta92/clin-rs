@@ -457,6 +457,8 @@ pub struct EditorConfig {
     pub extended_markdown_features: bool,
     pub soft_wrap: bool,
     pub copy_on_select: bool,
+    pub auto_close_pairs: bool,
+    pub link_suggestions: bool,
     pub text_align: TextAlignment,
     pub zen_padding_percent: u16,
 }
@@ -479,6 +481,8 @@ impl Default for EditorConfig {
             extended_markdown_features: true,
             soft_wrap: false,
             copy_on_select: true,
+            auto_close_pairs: true,
+            link_suggestions: true,
             text_align: TextAlignment::default(),
             zen_padding_percent: 15,
         }

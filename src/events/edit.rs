@@ -17,6 +17,7 @@ fn leave_editor(app: &mut App, focus: &mut EditFocus) {
         return;
     }
     app.editor.find_popup = None;
+    app.editor.link_complete = None;
     let prev_id = app.editor.editing_id.clone();
     let new_id = app.editor.editing_id.clone();
     app.back_to_list(prev_id.as_deref(), new_id.as_deref());
@@ -191,6 +192,44 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
+    // Completion only lives in the body; any other focus drops it.
+    if *focus != EditFocus::Body {
+        app.editor.link_complete = None;
+    }
+    // Inline `[[...]]` completion owns Up/Down/Tab/Enter/Esc while open.
+    // Other keys fall through to normal handling; the Body arm refreshes.
+    if *focus == EditFocus::Body
+        && app.popups.confirm.is_none()
+        && app.editor.link_complete.is_some()
+    {
+        let bare = key.modifiers == KeyModifiers::NONE;
+        match key.code {
+            KeyCode::Up if bare => {
+                app.link_complete_move(-1);
+                return false;
+            }
+            KeyCode::Down if bare => {
+                app.link_complete_move(1);
+                return false;
+            }
+            KeyCode::Tab if bare => {
+                if app.accept_link_completion() {
+                    return false;
+                }
+            }
+            KeyCode::Enter if bare => {
+                if app.accept_link_completion() {
+                    return false;
+                }
+            }
+            KeyCode::Esc if bare => {
+                app.editor.link_complete = None;
+                return false;
+            }
+            _ => {}
+        }
+    }
+
     // Esc: leave editor.
     if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
         leave_editor(app, focus);
@@ -208,6 +247,15 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 *focus = match *focus {
                     EditFocus::Title => EditFocus::Body,
                     EditFocus::Body => {
+                        if app.editor.file_tree_visible {
+                            EditFocus::FileTree
+                        } else if app.editor.sidebar != EditSidebar::None {
+                            EditFocus::Sidebar
+                        } else {
+                            EditFocus::Title
+                        }
+                    }
+                    EditFocus::FileTree => {
                         if app.editor.sidebar != EditSidebar::None {
                             EditFocus::Sidebar
                         } else {
@@ -260,6 +308,34 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 if app.editor.sidebar == EditSidebar::None && *focus == EditFocus::Sidebar {
                     *focus = EditFocus::Body;
                 }
+                return false;
+            }
+            EditAction::ToggleFileTree => {
+                app.toggle_file_tree();
+                if !app.editor.file_tree_visible && *focus == EditFocus::FileTree {
+                    *focus = EditFocus::Body;
+                }
+                return false;
+            }
+            EditAction::NewTab => {
+                app.new_editor_tab();
+                *focus = EditFocus::Title;
+                return false;
+            }
+            EditAction::CloseTab => {
+                let idx = app.editor.active_tab;
+                app.close_editor_tab(idx);
+                if app.mode != crate::app::ViewMode::Edit {
+                    *focus = EditFocus::Body;
+                }
+                return false;
+            }
+            EditAction::NextTab => {
+                app.next_editor_tab();
+                return false;
+            }
+            EditAction::PrevTab => {
+                app.prev_editor_tab();
                 return false;
             }
             EditAction::PreviewLink => {
@@ -323,7 +399,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.body.insert_str(&s);
                     }
-                    EditFocus::Sidebar => {
+                    EditFocus::Sidebar | EditFocus::FileTree => {
                         // no-op
                     }
                 }
@@ -350,7 +426,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.body.insert_str("\t");
                     }
-                    EditFocus::Sidebar => {
+                    EditFocus::Sidebar | EditFocus::FileTree => {
                         // no-op
                     }
                 }
@@ -381,6 +457,56 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     }
 
     match *focus {
+        EditFocus::FileTree => {
+            app.seq_matcher.clear();
+            // Same keys as the notes list tree view.
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::MoveUp, &key)
+            {
+                app.file_tree_move(-1);
+                return false;
+            }
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::MoveDown, &key)
+            {
+                app.file_tree_move(1);
+                return false;
+            }
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::MoveLeft, &key)
+                || app
+                    .keybinds
+                    .matches_list(crate::keybinds::ListAction::CollapseFolder, &key)
+            {
+                app.file_tree_collapse();
+                return false;
+            }
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::MoveRight, &key)
+                || app
+                    .keybinds
+                    .matches_list(crate::keybinds::ListAction::ExpandFolder, &key)
+            {
+                app.file_tree_expand();
+                return false;
+            }
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::Confirm, &key)
+            {
+                app.file_tree_activate();
+                return false;
+            }
+            if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
+                *focus = EditFocus::Body;
+                return false;
+            }
+            return false;
+        }
         EditFocus::Sidebar => {
             app.seq_matcher.clear();
             if app
@@ -437,19 +563,66 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
+            // Context-aware Enter: on a [[wikilink]], follow it (open or
+            // offer to create) instead of inserting a newline.
+            if key.code == KeyCode::Enter && key.modifiers == KeyModifiers::NONE {
+                // Don't hijack Enter while a confirm popup is up.
+                if app.popups.confirm.is_none() && app.follow_wikilink_under_cursor() {
+                    app.request_editor_preview_update();
+                    app.write_draft();
+                    app.sync_link_completion(false);
+                    return false;
+                }
+            }
             let revision = app.editor.body.revision();
             update_selection_for_move(&mut app.editor.body, &key);
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.body, key) {
-                if app.editor.body.revision() != revision {
+                let changed = app.editor.body.revision() != revision;
+                if changed {
                     app.request_editor_preview_update();
                     app.write_draft();
                 }
+                app.sync_link_completion(changed);
                 return false;
             }
-            if app.editor.body.input(Input::from(key)).content_changed {
+            // Pair-aware Backspace: between an empty auto-inserted pair,
+            // remove both halves in one keystroke.
+            if app.config.editor.auto_close_pairs
+                && key.code == KeyCode::Backspace
+                && key.modifiers == KeyModifiers::NONE
+                && crate::auto_pairs::is_empty_pair_at_cursor(&app.editor.body)
+            {
+                let changed = app.editor.body.input(Input::from(key)).content_changed;
+                if changed {
+                    app.editor.body.delete_next_chars(1);
+                    app.request_editor_preview_update();
+                    app.write_draft();
+                }
+                app.sync_link_completion(changed);
+                return false;
+            }
+            // VS Code-style auto-close for brackets + quotes.
+            if app.config.editor.auto_close_pairs
+                && matches!(key.modifiers, KeyModifiers::NONE | KeyModifiers::SHIFT)
+                && let KeyCode::Char(typed) = key.code
+                && crate::auto_pairs::handle_body_char(&mut app.editor.body, typed)
+            {
+                // Skip-over moves the cursor without editing; only real
+                // inserts keep the completion alive.
+                let changed = app.editor.body.revision() != revision;
+                if changed {
+                    app.request_editor_preview_update();
+                    app.write_draft();
+                }
+                app.sync_link_completion(changed);
+                return false;
+            }
+            let changed = app.editor.body.input(Input::from(key)).content_changed;
+            if changed {
                 app.request_editor_preview_update();
                 app.write_draft();
             }
+            app.sync_link_completion(changed);
         }
     }
 
@@ -519,7 +692,10 @@ pub(crate) fn handle_edit_mouse(
         return;
     }
 
-    let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
+    // Focus (zen) mode hides the tab bar and file sidebar; hit-testing
+    // follows the same flag so hidden panes never intercept mouse.
+    let file_tree_visible = app.editor.file_tree_visible && !app.zen_mode;
+    let (title_inner, body_inner, sidebar_inner, file_tree_inner) = edit_view_input_areas(
         terminal_area,
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
@@ -529,6 +705,7 @@ pub(crate) fn handle_edit_mouse(
         app.preview_position,
         app.editor.header_title_rect,
         app.zen_padding(),
+        file_tree_visible,
     );
 
     let md_area = if app.preview_fullscreen {
@@ -547,6 +724,7 @@ pub(crate) fn handle_edit_mouse(
             app.editor.sidebar,
             app.preview_position,
             app.zen_padding(),
+            file_tree_visible,
         )
     } else {
         None
@@ -609,6 +787,73 @@ pub(crate) fn handle_edit_mouse(
         }
     }
 
+    // Tab bar: `+` opens the new-file selector, `×` closes, click switches,
+    // middle-click closes. Hidden in focus (zen) mode.
+    if !app.zen_mode && contains_cell(app.editor.tab_bar_rect, mouse_event.column, mouse_event.row)
+    {
+        match mouse_event.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if contains_cell(app.editor.new_tab_rect, mouse_event.column, mouse_event.row) {
+                    app.new_editor_tab();
+                    *focus = EditFocus::Title;
+                    return;
+                }
+                for (i, rect) in app.editor.tab_close_rects.clone().iter().enumerate() {
+                    if contains_cell(*rect, mouse_event.column, mouse_event.row) {
+                        app.close_editor_tab(i);
+                        return;
+                    }
+                }
+                for (i, rect) in app.editor.tab_bar_rects.clone().iter().enumerate() {
+                    if contains_cell(*rect, mouse_event.column, mouse_event.row) {
+                        if i == app.editor.active_tab {
+                            // The active tab carries the title: clicking it
+                            // focuses the title field (merged header).
+                            *focus = EditFocus::Title;
+                            move_textarea_cursor_to_mouse(
+                                &mut app.editor.title_editor,
+                                *rect,
+                                mouse_event.column,
+                                mouse_event.row,
+                                app.editor.title_viewport_row as usize,
+                                app.editor.title_viewport_col as usize,
+                            );
+                        } else {
+                            app.switch_editor_tab(i);
+                        }
+                        return;
+                    }
+                }
+                return;
+            }
+            MouseEventKind::Down(MouseButton::Middle) => {
+                for (i, rect) in app.editor.tab_bar_rects.clone().iter().enumerate() {
+                    if contains_cell(*rect, mouse_event.column, mouse_event.row) {
+                        app.close_editor_tab(i);
+                        return;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    // File-tree pane: scroll + click to select / double-click to open.
+    if let Some(ft) = file_tree_inner
+        && contains_cell(ft, mouse_event.column, mouse_event.row)
+    {
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                app.file_tree_move(-1);
+                return;
+            }
+            MouseEventKind::ScrollDown => {
+                app.file_tree_move(1);
+                return;
+            }
+            _ => {}
+        }
+    }
+
     if app.preview_fullscreen {
         return;
     }
@@ -638,10 +883,37 @@ pub(crate) fn handle_edit_mouse(
         MouseEventKind::Down(MouseButton::Left) => {
             mouse_selection.active = false;
             mouse_selection.dragged = false;
+            if let Some(ft) = file_tree_inner
+                && contains_cell(ft, mouse_event.column, mouse_event.row)
+            {
+                *focus = EditFocus::FileTree;
+                // Same row pitch as the notes list tree (Comfortable = 2).
+                let pitch = crate::app::tabs::tree_row_pitch(app).max(1);
+                let len = app.file_tree_len();
+                if let Some(clicked) = crate::ui::list_index_at(
+                    mouse_event.row,
+                    app.editor.file_tree_list_rect.y,
+                    pitch,
+                    app.editor.file_tree_scroll,
+                    len,
+                ) {
+                    app.editor.file_tree_selected = clicked;
+                    let opened_note = matches!(
+                        app.list.visual_list.get(clicked),
+                        Some(crate::list_view::VisualItem::Note { .. })
+                    );
+                    app.file_tree_activate();
+                    if opened_note {
+                        *focus = EditFocus::Body;
+                    }
+                }
+                return;
+            }
             if let Some(sb) = sidebar_inner
                 && contains_cell(sb, mouse_event.column, mouse_event.row)
             {
                 *focus = EditFocus::Sidebar;
+                app.editor.last_body_click = None;
                 let len = app.sidebar_len();
                 if let Some(clicked) = crate::ui::list_index_at(
                     mouse_event.row,
@@ -673,8 +945,41 @@ pub(crate) fn handle_edit_mouse(
                 return;
             }
             app.editor.last_sidebar_click = None;
+            // Click a completion row to accept it; clicks elsewhere
+            // (borders, hint) fall through to normal body handling.
+            let mut accept_idx = None;
+            if let Some(comp) = app.editor.link_complete.as_mut()
+                && contains_cell(
+                    app.editor.link_complete_rect,
+                    mouse_event.column,
+                    mouse_event.row,
+                )
+            {
+                let idx = mouse_event
+                    .row
+                    .saturating_sub(app.editor.link_complete_rect.y + 1)
+                    as usize;
+                if idx < comp.matches.len() {
+                    accept_idx = Some(idx);
+                }
+            }
+            if let Some(idx) = accept_idx {
+                *focus = EditFocus::Body;
+                if let Some(comp) = app.editor.link_complete.as_mut() {
+                    comp.selected = idx;
+                }
+                app.accept_link_completion();
+                return;
+            }
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
+                let is_double_click = if let Some((lx, ly, lt)) = app.editor.last_body_click {
+                    lx == mouse_event.column
+                        && ly == mouse_event.row
+                        && lt.elapsed().as_millis() < 500
+                } else {
+                    false
+                };
                 let align = app.editor.text_align;
                 let wrap_mode = app.editor.body.textarea().wrap_mode();
                 if align != crate::config::TextAlignment::Left
@@ -714,9 +1019,29 @@ pub(crate) fn handle_edit_mouse(
                         app.editor.body_viewport_col,
                     );
                 }
+                // Double-click on a [[wikilink]] follows it (open or offer
+                // to create); otherwise record the click for the next pair.
+                if is_double_click {
+                    app.editor.last_body_click = None;
+                    if app.popups.confirm.is_none() && app.follow_wikilink_under_cursor() {
+                        app.request_editor_preview_update();
+                        app.write_draft();
+                        return;
+                    }
+                } else {
+                    app.editor.last_body_click = Some((
+                        mouse_event.column,
+                        mouse_event.row,
+                        std::time::Instant::now(),
+                    ));
+                }
                 mouse_selection.begin(&mut app.editor.body);
+                // Clicks only move the cursor; suggestions return on the
+                // next actual edit inside the link.
+                app.editor.link_complete = None;
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
+                app.editor.last_body_click = None;
                 move_textarea_cursor_to_mouse(
                     &mut app.editor.title_editor,
                     title_inner,
@@ -773,6 +1098,7 @@ pub(crate) fn handle_edit_mouse(
                             app.editor.body_viewport_col,
                         );
                     }
+                    app.editor.link_complete = None;
                 } else {
                     move_textarea_cursor_to_mouse(
                         &mut app.editor.title_editor,

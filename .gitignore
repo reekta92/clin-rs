@@ -9,3 +9,6 @@ checks.md
 .direnv/
 *-out/
 result/
+
+# local build output (never commit binaries)
+bin/clin.exe

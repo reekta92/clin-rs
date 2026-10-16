@@ -90,6 +90,7 @@ fn run_search(
     let mut global_line_count = 0usize;
     let mut cumulative_errors = 0usize;
     let mut globally_truncated = false;
+    let mut matched_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     let chunks = req.candidate_ids.chunks(128);
 
@@ -156,6 +157,7 @@ fn run_search(
             }
 
             if !lines.is_empty() {
+                matched_ids.insert(id_arc.to_string());
                 hits.push(SearchNoteHit {
                     note_id: id_arc,
                     match_count,
@@ -255,7 +257,10 @@ mod tests {
         while let Ok(evt) = rx.try_recv() {
             let SearchEvent::Batch {
                 hits: batch_hits, ..
-            } = evt;
+            } = evt
+            else {
+                continue;
+            };
             hits.extend(batch_hits);
         }
 

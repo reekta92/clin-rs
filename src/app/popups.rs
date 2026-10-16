@@ -427,6 +427,35 @@ template = """
                 "Remove All".into(),
                 true,
             ),
+            ConfirmAction::CreateNoteFromWikilink { folder, title } => {
+                let where_text = if folder.is_empty() {
+                    "vault root".to_string()
+                } else {
+                    format!("folder \"{folder}\"")
+                };
+                (
+                    format!("Create note \"{title}\" in {where_text}?"),
+                    Some(format!("[[{title}]] does not exist yet.")),
+                    "Create".into(),
+                    false,
+                )
+            }
+            ConfirmAction::UpdateBacklinks {
+                old_title,
+                new_title,
+                note_ids,
+                ..
+            } => (
+                format!(
+                    "Update {} note(s) linking to \"{old_title}\"?",
+                    note_ids.len()
+                ),
+                Some(format!(
+                    "Replaces [[{old_title}]] with [[{new_title}]] (aliases kept)."
+                )),
+                "Update".into(),
+                false,
+            ),
         };
 
         self.popups.confirm = Some(ConfirmPopup {
@@ -474,6 +503,19 @@ template = """
                 }
                 ConfirmAction::RemoveAllTagsFromSelected => {
                     self.confirm_remove_all_tags();
+                }
+                ConfirmAction::CreateNoteFromWikilink { folder, title } => {
+                    let _ = self.autosave();
+                    self.close_link_preview();
+                    self.start_new_note_with_title(folder, title);
+                }
+                ConfirmAction::UpdateBacklinks {
+                    old_title,
+                    old_id,
+                    new_title,
+                    note_ids,
+                } => {
+                    self.confirm_update_backlinks(old_title, old_id, new_title, note_ids);
                 }
             }
         }
