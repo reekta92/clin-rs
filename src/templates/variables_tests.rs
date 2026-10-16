@@ -12,6 +12,7 @@ fn storage(root: &Path) -> Storage {
         notes_dir: root.to_path_buf(),
         templates_dir: root.join(".clin/templates"),
         skip_dir_patterns: Vec::new(),
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     }
 }
 

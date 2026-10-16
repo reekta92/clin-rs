@@ -23,32 +23,104 @@ pub struct Frontmatter {
     pub extra: serde_yaml_ng::Mapping,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TimestampFormat {
+    #[default]
+    Unix,
+    Iso8601,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct WritePolicy {
+    pub title: bool,
+    pub tags: bool,
+    pub pinned: bool,
+    pub links: bool,
+    pub text_align: bool,
+    pub updated_at: TimestampFormat,
+    /// Compatibility only: the original extension has no automatic producer.
+    pub original_ext: bool,
+}
+impl Default for WritePolicy {
+    fn default() -> Self {
+        Self {
+            title: true,
+            tags: true,
+            pinned: true,
+            links: true,
+            text_align: true,
+            updated_at: TimestampFormat::Unix,
+            original_ext: true,
+        }
+    }
+}
+
 pub fn parse(content: &str) -> (Frontmatter, &str) {
-    if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
+    let Ok(frame) = properties::PropertyFrame::parse(content) else {
         return (Frontmatter::default(), content);
+    };
+    let Ok(mapping) = properties::parse_mapping(frame.yaml()) else {
+        return (Frontmatter::default(), frame.body);
+    };
+    let mut fm = Frontmatter {
+        extra: mapping.clone(),
+        ..Frontmatter::default()
+    };
+    fm.title = mapping
+        .get("title")
+        .and_then(serde_yaml_ng::Value::as_str)
+        .map(str::to_owned);
+    fm.updated_at = mapping.get("updated_at").and_then(timestamp);
+    fm.tags = mapping
+        .get("tags")
+        .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    fm.pinned = mapping
+        .get("pinned")
+        .and_then(serde_yaml_ng::Value::as_bool)
+        .unwrap_or(false);
+    fm.links = mapping
+        .get("links")
+        .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
+    fm.original_ext = mapping
+        .get("original_ext")
+        .and_then(serde_yaml_ng::Value::as_str)
+        .map(str::to_owned);
+    fm.text_align = mapping
+        .get("text_align")
+        .and_then(|v| serde_yaml_ng::from_value(v.clone()).ok());
+    for key in [
+        "title",
+        "updated_at",
+        "tags",
+        "pinned",
+        "links",
+        "original_ext",
+        "text_align",
+    ] {
+        fm.extra.remove(key);
     }
+    (fm, frame.body)
+}
 
-    let end_marker = "\n---";
-    if let Some(end_idx) = content[3..].find(end_marker) {
-        let frontmatter_str = &content[3..3 + end_idx];
-
-        let remaining_start = 3 + end_idx + end_marker.len();
-
-        let mut content_start = remaining_start;
-        if content[remaining_start..].starts_with("\r\n") {
-            content_start += 2;
-        } else if content[remaining_start..].starts_with('\n') {
-            content_start += 1;
-        }
-
-        let remaining_content = &content[content_start..];
-
-        if let Ok(frontmatter) = serde_yaml_ng::from_str::<Frontmatter>(frontmatter_str) {
-            return (frontmatter, remaining_content);
-        }
+pub(crate) fn timestamp(value: &serde_yaml_ng::Value) -> Option<u64> {
+    if let Some(value) = value.as_u64() {
+        return Some(value);
     }
-
-    (Frontmatter::default(), content)
+    let text = value.as_str()?;
+    let seconds = chrono::DateTime::parse_from_rfc3339(text)
+        .map(|date| date.timestamp())
+        .ok()
+        .or_else(|| {
+            chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
+                .ok()?
+                .and_hms_opt(0, 0, 0)
+                .map(|date| date.and_utc().timestamp())
+        })?;
+    u64::try_from(seconds).ok()
 }
 
 pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {

@@ -1232,6 +1232,7 @@ mod tests {
             notes_dir: root.join("notes"),
             templates_dir: root.join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(&storage.notes_dir).unwrap();
         (

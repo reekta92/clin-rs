@@ -213,6 +213,8 @@ Browser/plugin runtimes and official Maps are not provided. `html()` remains
 inert text with diagnostics. See [IMAGE_RENDERING.md](IMAGE_RENDERING.md) for
 public image activation and remote-request limits.
 
+The editor's hidden **F7** properties/raw-YAML region can edit custom and managed fields above Body. Unsaved header changes feed live embed/sidebar host metadata without becoming Markdown text. Metadata-only revisions refresh host-dependent queries. A Bases write targeting an active or suspended editor with pending frontmatter rejects until that editor is saved. Metadata-only rebases may retain pending body edits when no local header changes would be replaced; source handoff, undo/redo, and return routes retain their document/recovery identity. The public-file boundary is unchanged.
+
 ## Acceptance and compatibility
 
 [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) records the Notes-design audit, native

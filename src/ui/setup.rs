@@ -1114,6 +1114,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = crate::app::App::new(storage).unwrap();
         app.setup_state = Some(crate::setup::SetupState::from_config(

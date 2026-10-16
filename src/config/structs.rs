@@ -402,9 +402,24 @@ pub enum FocusUnit {
     Line,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontmatterMode {
+    #[default]
+    Properties,
+    RawYaml,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct NotesConfig {
+    pub frontmatter: crate::frontmatter::WritePolicy,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EditorConfig {
+    pub frontmatter_mode: FrontmatterMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_command: Option<String>,
     #[serde(default)]
@@ -430,6 +445,7 @@ pub struct EditorConfig {
 impl Default for EditorConfig {
     fn default() -> Self {
         Self {
+            frontmatter_mode: FrontmatterMode::default(),
             external_command: None,
             external_enabled: false,
             preview_enabled: false,
@@ -709,6 +725,7 @@ impl FeaturesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ClinConfig {
+    pub notes: NotesConfig,
     #[serde(default)]
     pub core: CoreConfig,
     #[serde(default)]

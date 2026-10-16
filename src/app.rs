@@ -550,8 +550,9 @@ impl App {
         Ok(Arc::new(pool))
     }
 
-    pub fn new(storage: Storage) -> Result<Self> {
+    pub fn new(mut storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
+        storage.frontmatter_policy = bootstrap_config.notes.frontmatter.clone();
         let notes_worker_pool = Self::build_notes_worker_pool()?;
         let config_errors = bootstrap_config.validate();
         let (keybinds, keybind_warnings) =
@@ -806,11 +807,13 @@ impl App {
         {
             app.ensure_graph_preview();
         }
+        app.restore_editor_draft();
         Ok(app)
     }
 
-    pub fn new_deferred(storage: Storage) -> Result<Self> {
+    pub fn new_deferred(mut storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
+        storage.frontmatter_policy = bootstrap_config.notes.frontmatter.clone();
         let config_errors = bootstrap_config.validate();
         let notes_worker_pool = Self::build_notes_worker_pool().unwrap_or_else(|_| {
             Arc::new(
@@ -1082,6 +1085,7 @@ impl App {
         app.rebuild_note_index();
         app.sort_notes();
         app.refresh_visual_list();
+        app.restore_editor_draft();
         Ok(app)
     }
     pub fn reload_config(&mut self) {
@@ -1104,6 +1108,7 @@ impl App {
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
+        self.storage.frontmatter_policy = self.config.notes.frontmatter.clone();
         self.preview_wrap = self.config.core.preview_wrap;
         let mut theme_warnings = Vec::new();
         self.app_theme =
@@ -1739,6 +1744,12 @@ impl App {
     }
 
     pub fn write_draft(&mut self) {
+        if self.editor.frontmatter_supported() {
+            if let Err(error) = self.queue_editor_draft() {
+                self.set_temporary_status(&format!("Editor recovery unavailable: {error:#}"));
+            }
+            return;
+        }
         if let Some(baseline) = self.editor.public_document.clone() {
             if let Some(source) = self.editor.public_document_source() {
                 self.queue_draft(baseline, source);
@@ -1783,6 +1794,9 @@ impl App {
             || self.editor.public_document.is_some()
             || self.editor.template_edit_path.is_some();
         let result = self.autosave_inner();
+        if let Err(error) = &result {
+            self.set_temporary_status(error);
+        }
         if has_editor {
             if result.is_ok() {
                 self.editor.autosave_status = AutosaveStatus::RecentlySaved;
@@ -1797,16 +1811,29 @@ impl App {
     }
 
     fn autosave_inner(&mut self) -> Result<(), String> {
+        self.editor
+            .ensure_frontmatter()
+            .map_err(|error| format!("Frontmatter: {error:#}"))?;
         if let Err(error) = self.flush_drafts() {
             self.set_temporary_status(&format!("Recovery draft failed: {error:#}"));
         }
         if let Some(baseline) = self.editor.public_document.clone() {
-            let source = self.editor.public_document_source().ok_or_else(|| {
-                "Public document source cannot be serialized; original retained".to_owned()
-            })?;
+            let source = if self.editor.public_document_body_only {
+                self.prepare_editor_note_source()
+                    .map_err(|error| format!("Frontmatter: {error:#}"))?
+            } else {
+                self.editor.public_document_source().ok_or_else(|| {
+                    "Public document source cannot be serialized; original retained".to_owned()
+                })?
+            };
             match self.storage.save_document(&baseline, &source) {
                 Ok(snapshot) => {
                     let cleanup = self.clear_saved_draft(&snapshot);
+                    self.editor
+                        .adopt_frontmatter(snapshot.source())
+                        .map_err(|error| {
+                            format!("Saved; editor synchronization failed: {error:#}")
+                        })?;
                     self.editor.public_document = Some(snapshot.clone());
                     self.synchronize_public_change(&baseline, &snapshot);
                     if self.editor.public_document_body_only {
@@ -1921,11 +1948,29 @@ impl App {
             updated_at,
             tags,
         };
-        match self.storage.save_note_snapshot(&id, &note) {
+        let prepared = (|| -> anyhow::Result<_> {
+            let target = self.storage.note_target_id(&id, &note)?;
+            let source = self.prepare_editor_note_source()?;
+            let baseline = self
+                .editor
+                .note_baseline
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("missing note baseline"))?;
+            let saved = if baseline.exists() {
+                self.storage.save_document(baseline, &source)?
+            } else {
+                self.storage.create_document(&target, &source)?
+            };
+            Ok(saved.retain_recovery_id(baseline))
+        })();
+        match prepared {
             Ok(snapshot) => {
                 let saved_id = snapshot.id().to_owned();
-                self.editor.note_baseline = Some(snapshot.clone());
                 self.editor.editing_id = Some(saved_id.clone());
+                self.editor
+                    .adopt_frontmatter(snapshot.source())
+                    .map_err(|error| format!("Saved; editor synchronization failed: {error:#}"))?;
+                self.editor.note_baseline = Some(snapshot.clone());
 
                 let current_words = crate::goals::count_words(&note.content);
                 let mut diff = 0;
@@ -1950,6 +1995,7 @@ impl App {
                 if let Err(error) = self.save_goals_progress(&progress) {
                     self.set_temporary_status(&format!("Failed to save local state: {error}"));
                 }
+                self.request_notes_reconcile();
                 self.clear_saved_draft(&snapshot)
                     .map_err(|error| format!("Note saved; draft cleanup failed: {error:#}"))?;
                 Ok(())
@@ -2221,6 +2267,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
@@ -2259,6 +2306,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2318,6 +2366,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2353,6 +2402,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.external_editor_enabled = false;
@@ -2424,6 +2474,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2525,6 +2576,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2562,6 +2614,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2647,6 +2700,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2687,6 +2741,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2724,6 +2779,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2753,6 +2809,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2785,6 +2842,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2850,6 +2908,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Write default config
         std::fs::write(&config_path, crate::config::merge::default_config_content())

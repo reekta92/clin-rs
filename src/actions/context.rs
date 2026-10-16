@@ -211,6 +211,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "settings.goals"
         | "settings.syntax_highlighting"
         | "settings.code_line_numbers" => Presentation,
+        "editor.frontmatter" => Editor,
         "settings.zen"
         | "settings.line_numbers"
         | "settings.edit_mode_highlight"
@@ -305,7 +306,10 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
                     }))
         }
         Presentation => list || context.mode == ViewMode::Edit,
-        Editor => context.mode == ViewMode::Edit,
+        Editor => {
+            context.mode == ViewMode::Edit
+                && (id != "editor.frontmatter" || app.editor.frontmatter_supported())
+        }
         Markdown => context.markdown_editor(app),
         Insert => {
             context.mode == ViewMode::Edit

@@ -2324,6 +2324,7 @@ mod tests {
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.data_dir,
@@ -2616,6 +2617,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).unwrap();
 

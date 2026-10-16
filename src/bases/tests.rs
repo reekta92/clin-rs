@@ -16,6 +16,7 @@ pub(super) fn vault() -> (tempfile::TempDir, Storage) {
         notes_dir: dir.path().to_owned(),
         templates_dir: dir.path().join("templates"),
         skip_dir_patterns: Vec::new(),
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     };
     (dir, storage)
 }

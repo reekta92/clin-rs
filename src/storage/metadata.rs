@@ -773,6 +773,7 @@ mod tests {
             notes_dir: dir.path().to_owned(),
             templates_dir: dir.path().join("templates"),
             skip_dir_patterns: vec![regex::Regex::new("^ignored$").unwrap()],
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (dir, storage)
     }

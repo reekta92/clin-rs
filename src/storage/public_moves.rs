@@ -402,6 +402,7 @@ mod tests {
             config_dir: root.path().into(),
             templates_dir: root.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (root, storage)
     }
@@ -544,6 +545,7 @@ mod tests {
             config_dir: source.path().join(".clin"),
             templates_dir: source.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let id = source
             .path()

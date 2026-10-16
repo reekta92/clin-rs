@@ -77,15 +77,34 @@ where
             pending.push(events.read()?);
         }
         for event in coalesce_editor_events(pending) {
+            let frontmatter_visible = app
+                .editor
+                .frontmatter
+                .as_ref()
+                .is_some_and(|state| state.visible);
+            let header_before = app.editor.frontmatter_mutation();
             let body_rev_before = app.editor.body.revision();
             let title_before = crate::events::get_title_text(&app.editor.title_editor).into_owned();
 
             dirty |= dispatch_editor_event(terminal, app, event, &mut focus, &mut mouse_selection)?;
 
+            let frontmatter_now_visible = app
+                .editor
+                .frontmatter
+                .as_ref()
+                .is_some_and(|state| state.visible);
+            if frontmatter_now_visible && !frontmatter_visible {
+                focus = EditFocus::Frontmatter;
+            } else if !frontmatter_now_visible && focus == EditFocus::Frontmatter {
+                focus = EditFocus::Body;
+            }
             let body_rev_after = app.editor.body.revision();
             let title_after = crate::events::get_title_text(&app.editor.title_editor).into_owned();
 
-            if body_rev_before != body_rev_after || title_before != title_after {
+            if body_rev_before != body_rev_after
+                || title_before != title_after
+                || header_before != app.editor.frontmatter_mutation()
+            {
                 if body_rev_before != body_rev_after
                     && let Some(change) = app.editor.body.take_change()
                 {
@@ -204,10 +223,24 @@ where
             let has_selection = match *focus {
                 EditFocus::Title => app.editor.title_editor.has_selection(),
                 EditFocus::Body => app.editor.body.has_selection(),
+                EditFocus::Frontmatter => app.editor.frontmatter.as_ref().is_some_and(|state| {
+                    state.raw.has_selection()
+                        || state.input.as_ref().is_some_and(|input| {
+                            input.name.has_selection() || input.value.has_selection()
+                        })
+                }),
                 EditFocus::Sidebar => false,
             };
             if has_selection {
-                let notice = if *focus == EditFocus::Title {
+                let notice = if *focus == EditFocus::Frontmatter {
+                    let raw = app.config.editor.frontmatter_mode
+                        == crate::config::FrontmatterMode::RawYaml;
+                    app.editor
+                        .frontmatter
+                        .as_mut()
+                        .and_then(|state| state.input_mut(raw))
+                        .and_then(copy_mouse_selection)
+                } else if *focus == EditFocus::Title {
                     copy_mouse_selection(&mut app.editor.title_editor)
                 } else {
                     copy_mouse_selection(&mut app.editor.body)
@@ -277,6 +310,7 @@ mod tests {
             notes_dir: dir.path().join("notes"),
             templates_dir: dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.data_dir,

@@ -897,19 +897,47 @@ impl App {
     /// the editor's input-to-draw path.
     pub(crate) fn poll_editor_renderers(&mut self) -> bool {
         let mut updated = false;
+        let host_revision = self.editor.live_note_revision();
+        let needs_source = [
+            &self.editor.md_preview_renderer,
+            &self.editor.bases_sidebar_renderer,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|renderer| {
+            renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(revision, _)| *revision != host_revision)
+        });
+        let host_source = needs_source
+            .then(|| self.editor.live_note_source())
+            .flatten()
+            .map(std::sync::Arc::<str>::from);
         if self.editor.sidebar == crate::editor::EditSidebar::Bases
             && let Some(renderer) = &mut self.editor.bases_sidebar_renderer
         {
-            let revision = self.editor.body.revision();
+            let revision = host_revision;
             if renderer
                 .base_host_source
                 .as_ref()
                 .is_none_or(|(old, _)| *old != revision)
             {
-                renderer.base_host_source = Some((revision, self.editor.body.snapshot()));
+                renderer.base_host_source = host_source.clone().map(|source| (revision, source));
+                renderer.base_body_only = false;
                 updated = true;
             }
             updated |= renderer.poll();
+        }
+        if let Some(renderer) = &mut self.editor.md_preview_renderer
+            && renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(old, _)| *old != host_revision)
+        {
+            renderer.base_host_source = host_source.map(|source| (host_revision, source));
+            renderer.base_body_only = false;
+            updated = true;
         }
         if let Some((_, instant)) = self.editor.pending_markdown_resize
             && instant.elapsed() >= Duration::from_millis(50)
@@ -1914,8 +1942,11 @@ impl App {
         let width = self.desired_editor_preview_width();
         let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
         renderer.base_host.clone_from(&self.editor.editing_id);
-        renderer.base_body_only =
-            self.editor.public_document.is_none() || self.editor.public_document_body_only;
+        renderer.base_host_source = self
+            .editor
+            .live_note_source()
+            .map(|source| (self.editor.live_note_revision(), source.into()));
+        renderer.base_body_only = false;
         let mut opts = crate::markdown::MdRenderOpts::from_config(
             &self.config,
             self.editor.editing_id.as_deref(),
@@ -1990,6 +2021,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (temp_dir, App::new(storage).unwrap())
     }

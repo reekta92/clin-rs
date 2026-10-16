@@ -43,6 +43,8 @@ pub mod outline {
     pub mod render;
     pub mod state;
 }
+#[cfg(test)]
+mod frontmatter_tests;
 pub mod overlay;
 pub mod palette;
 #[cfg(test)]
@@ -1864,6 +1866,7 @@ mod tests {
             notes_dir: PathBuf::from("/tmp"),
             templates_dir: PathBuf::from("/tmp"),
             skip_dir_patterns: vec![],
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).unwrap();
         app.mode = ViewMode::List;

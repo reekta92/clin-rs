@@ -20,6 +20,18 @@ enum Record<T> {
         entries: Vec<super::public_moves::FileMove>,
         committed: bool,
     },
+    Editor(EditorRecovery),
+}
+/// Editor input is deliberately never replayed into a canonical document.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct EditorRecovery {
+    pub id: String,
+    pub before: Option<String>,
+    pub title: String,
+    pub loaded_title: String,
+    pub yaml: String,
+    pub body: String,
+    pub input: Option<(String, String, bool, Option<String>)>,
 }
 type Entry = (String, String, String);
 pub(crate) struct DocumentTransaction(PathBuf);
@@ -160,6 +172,81 @@ impl Storage {
             )
         }
     }
+    fn read_document_record(&self, path: &Path) -> Result<Record<Entry>> {
+        let metadata = fs::symlink_metadata(path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            bail!("recovery record is not a real file");
+        }
+        let mut bytes = Vec::new();
+        fs::File::open(path)?
+            .take((MAX_BYTES + 1) as u64)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > MAX_BYTES || bytes.is_empty() {
+            bail!("invalid recovery record size");
+        }
+        let ((version, record), used) = bincode::serde::decode_from_slice::<(u8, Record<Entry>), _>(
+            &bytes,
+            bincode::config::standard().with_limit::<MAX_BYTES>(),
+        )?;
+        if version != 2 || used != bytes.len() {
+            bail!("unsupported document recovery record");
+        }
+        Ok(record)
+    }
+    pub(crate) fn write_editor_draft(
+        &self,
+        baseline: &DocumentSnapshot,
+        editor: &EditorRecovery,
+    ) -> Result<()> {
+        self.document_path(&editor.id)?;
+        let path = self
+            .document_recovery_dir(true)?
+            .join(format!("draft-{}.bin", baseline.recovery_id()));
+        self.write_document_record::<Entry>(&path, &Record::Editor(editor.clone()))
+    }
+    pub(crate) fn editor_drafts(&self) -> Result<Vec<(DocumentSnapshot, EditorRecovery)>> {
+        let directory = self.document_recovery_dir(false)?;
+        if !directory.exists() {
+            return Ok(Vec::new());
+        }
+        let mut paths = fs::read_dir(directory)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        paths.sort_by_key(|path| {
+            fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+        });
+        let mut drafts = Vec::new();
+        for path in paths {
+            if let Ok(Record::Editor(editor)) = self.read_document_record(&path) {
+                self.document_path(&editor.id)?;
+                let extension = Path::new(&editor.id)
+                    .extension()
+                    .and_then(|ext| ext.to_str());
+                if !(matches!(extension, Some("md" | "txt"))
+                    || (editor.before.is_none() && extension.is_none()))
+                {
+                    continue;
+                }
+                let Some(identity) = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .and_then(|name| name.strip_prefix("draft-"))
+                    .and_then(|name| uuid::Uuid::parse_str(name).ok())
+                else {
+                    continue;
+                };
+                let baseline = DocumentSnapshot::from_recovery(
+                    editor.id.clone(),
+                    editor.before.clone(),
+                    identity,
+                );
+                drafts.push((baseline, editor));
+            }
+        }
+        Ok(drafts)
+    }
     pub fn clear_document_draft(&self, baseline: &DocumentSnapshot) -> Result<()> {
         let directory = self.document_recovery_dir(false)?;
         if directory.exists() {
@@ -182,26 +269,9 @@ impl Storage {
         paths.sort();
         for path in paths {
             let result = (|| {
-                let metadata = fs::symlink_metadata(&path)?;
-                if metadata.file_type().is_symlink() || !metadata.is_file() {
-                    bail!("recovery record is not a real file");
-                }
-                let mut bytes = Vec::new();
-                fs::File::open(&path)?
-                    .take((MAX_BYTES + 1) as u64)
-                    .read_to_end(&mut bytes)?;
-                if bytes.len() > MAX_BYTES || bytes.is_empty() {
-                    bail!("invalid recovery record size");
-                }
-                let ((version, record), used) =
-                    bincode::serde::decode_from_slice::<(u8, Record<Entry>), _>(
-                        &bytes,
-                        bincode::config::standard().with_limit::<MAX_BYTES>(),
-                    )?;
-                if version != 2 || used != bytes.len() {
-                    bail!("unsupported document recovery record");
-                }
+                let record = self.read_document_record(&path)?;
                 match record {
+                    Record::Editor(_) => return Ok(()),
                     Record::Moves { entries, committed } => {
                         let _guard = self.write_guard()?;
                         self.recover_public_moves(&entries, committed)?;
@@ -281,6 +351,7 @@ mod tests {
             notes_dir: dir.path().into(),
             templates_dir: dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (dir, storage)
     }

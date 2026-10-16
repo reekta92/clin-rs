@@ -9,6 +9,7 @@ fn fixture(root: &std::path::Path) -> Storage {
         config_dir: root.join("config"),
         templates_dir: root.join("templates"),
         skip_dir_patterns: Vec::new(),
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     }
 }
 

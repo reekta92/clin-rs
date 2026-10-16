@@ -89,7 +89,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
-- [ ] **Properties edit** — allow for editing the frontmatter of the files directly from the editor, design is considered to be similar to Obsidian's properties pane/section
+- [x] **Properties edit** — hidden F7 properties/raw-YAML region above Body, lossless edits, managed-output policy, guarded recovery, and live Bases host metadata
 
 #### Graph View
 - [ ] **Date/time linking** — categorize nodes by note date

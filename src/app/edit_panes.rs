@@ -84,8 +84,11 @@ impl App {
         renderer.base_host.clone_from(&self.editor.editing_id);
         renderer.base_body_only =
             self.editor.public_document.is_none() || self.editor.public_document_body_only;
-        renderer.base_host_source =
-            Some((self.editor.body.revision(), self.editor.body.snapshot()));
+        renderer.base_body_only = false;
+        renderer.base_host_source = self
+            .editor
+            .live_note_source()
+            .map(|source| (self.editor.live_note_revision(), source.into()));
         let opts = crate::markdown::MdRenderOpts::from_config(
             &self.config,
             self.editor.editing_id.as_deref(),

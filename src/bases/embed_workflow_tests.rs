@@ -989,3 +989,79 @@ fn notes_preview_and_linked_note_popup_use_the_public_containing_file() {
         Some("public.md")
     );
 }
+
+#[test]
+fn frontmatter_pending_header_rejects_bases_writes_for_live_and_suspended_editor() {
+    let (_root, mut app) = fixture();
+    app.bases_state = None;
+    app.mode = ViewMode::List;
+    app.load_and_open_note("public.md", None);
+    let before = app.storage.load_document("public.md").unwrap();
+    app.guard_embed_host(&before).unwrap();
+    app.editor
+        .frontmatter
+        .as_mut()
+        .unwrap()
+        .patch("score".into(), Some(serde_yaml_ng::Value::Number(7.into())))
+        .unwrap();
+    for suspended in [false, true] {
+        if suspended {
+            app.embedded_host_editor = Some(Box::new(std::mem::take(&mut app.editor)));
+        }
+        let task = super::super::write::WriteTask::for_app(
+            &app,
+            super::super::write::Operation::Commit {
+                snapshots: vec![before.clone()],
+                key: "score".into(),
+                value: Some(serde_yaml_ng::Value::Number(9.into())),
+            },
+        );
+        assert!(task.poll().unwrap().is_err());
+        assert_eq!(
+            app.storage.load_document("public.md").unwrap().source(),
+            before.source()
+        );
+    }
+}
+
+#[test]
+fn frontmatter_metadata_only_edits_refresh_real_preview_and_sidebar_before_save() {
+    let (_root, mut app) = fixture();
+    app.bases_state = None;
+    app.mode = ViewMode::List;
+    let before = app.storage.load_document("public.md").unwrap();
+    let host = app
+        .storage
+        .save_document(&before, "---\nscore: 2\n---\n![[board.base#List]]\n")
+        .unwrap();
+    app.load_and_open_note("public.md", None);
+    app.editor.editor_preview_enabled = true;
+    app.update_editor_markdown_preview();
+    app_rendered(&mut app, "• public.md, 2");
+    let body_revision = app.editor.body.revision();
+    app.editor
+        .frontmatter
+        .as_mut()
+        .unwrap()
+        .patch(
+            "score".into(),
+            Some(serde_yaml_ng::Value::Number(87.into())),
+        )
+        .unwrap();
+    app_rendered(&mut app, "• public.md, 87");
+    assert_eq!(app.editor.body.revision(), body_revision);
+    assert_eq!(
+        app.storage.load_document("public.md").unwrap().source(),
+        host.source()
+    );
+    app.editor
+        .body
+        .move_cursor(ratatui_textarea::CursorMove::Jump(0, 8));
+    app.toggle_bases_pane();
+    assert_eq!(app.editor.sidebar, crate::editor::EditSidebar::Bases);
+    app_rendered(&mut app, "• public.md, 87");
+    assert_eq!(
+        app.storage.load_document("public.md").unwrap().source(),
+        host.source()
+    );
+}

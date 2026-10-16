@@ -35,6 +35,18 @@ impl DocumentSnapshot {
             recovery_id: uuid::Uuid::new_v4(),
         }
     }
+    pub(crate) fn from_recovery(
+        id: String,
+        source: Option<String>,
+        recovery_id: uuid::Uuid,
+    ) -> Self {
+        Self {
+            id,
+            existing: source.is_some(),
+            source: source.unwrap_or_default().into(),
+            recovery_id,
+        }
+    }
     pub(crate) fn exists(&self) -> bool {
         self.existing
     }
@@ -266,6 +278,7 @@ mod tests {
             config_dir: dir.path().to_owned(),
             templates_dir: dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (dir, storage)
     }

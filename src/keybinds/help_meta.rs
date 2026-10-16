@@ -176,6 +176,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::MoveToTop => meta("Editing", "Move cursor to top"),
         EditAction::MoveToBottom => meta("Editing", "Move cursor to bottom"),
         EditAction::ManageSubnotes => meta("Editing", "Manage subnotes"),
+        EditAction::ToggleFrontmatter => meta("Editing", "Show/hide frontmatter"),
         EditAction::ToggleMarkdownPreview => meta("Preview", "Toggle markdown preview"),
         EditAction::ToggleMermaidRendering => {
             meta("Preview", "Toggle Mermaid diagrams / code blocks")

@@ -1,6 +1,6 @@
 # Editor View
 
-Press unmodified `F6` for editor settings, applicable body commands, shared settings, and guarded navigation. Custom editor F6 bindings take priority. Title/sidebar focus hides body insertion; Markdown-only commands are unavailable in structured public/template source buffers. Cancelling preserves focus, cursor, selection, and pending edits. Palette navigation saves the editor before departure; failure retains the buffer and recovery draft. `Ctrl+p` still toggles Markdown preview.
+Press unmodified `F6` for editor settings, applicable body commands, shared settings, and guarded navigation. Custom editor F6 bindings take priority. Title/frontmatter/sidebar focus hides body insertion; Markdown-only commands are unavailable in structured public/template source buffers. Cancelling preserves focus, cursor, selection, and pending edits. Palette navigation saves the editor before departure; failure retains the buffer and recovery draft. `Ctrl+p` still toggles Markdown preview.
 
 ## Overview
 
@@ -21,6 +21,29 @@ public query worker, without replacing unsaved editor text.
 
 `EditorDocument` currently wraps `ratatui-textarea` behind body APIs; title,
 canvas JSON, popups, and Draw retain their own `TextArea` instances.
+
+## Frontmatter properties
+
+**F7** (`edit.toggle_frontmatter`, remappable) shows or hides one region above Body. It starts hidden on existing and new Markdown/text notes, opens with focus, and retains edits and undo when hidden. The command palette also offers **Toggle Frontmatter**. Sidebars remain available. Metadata stays outside Markdown preview, outline, body links, and writing counts.
+
+The default properties presentation lists fields in source order with their YAML types. Use arrows or the mouse to select, **a** to add, **Enter** to edit (or toggle a boolean), and **Delete** to remove. The value input accepts YAML scalars, null, lists, and mappings. **Tab** switches Name/Value, **Ctrl+Enter** applies, and **Esc** cancels the value input. Removing a field and setting `null` are different operations. Changed values follow the same declared types as Bases, read from `.obsidian/types.json`; an unrelated existing type mismatch does not block editing another field. Complex keys or unsafe alias/tag patches require raw editing.
+
+To edit YAML directly in the same region:
+
+```toml
+[editor]
+frontmatter_mode = "raw_yaml" # default: "properties"
+```
+
+Raw mode supports multiline editing, paste, selection, clipboard, mouse scrolling, and undo/redo. Edit the YAML inside the delimiters. Invalid input remains editable and blocks save, exit, and navigation. Switching presentation/configuration retains pending input; an open property value input remains available until applied or cancelled.
+
+Explicit header edits/removals win over automatic managed output for that save. Conflicting edits to Title and YAML `title` require correction before saving. Removing `title` uses the filename for display. Existing filenames remain stable after title edits, so `[[CL-01]]` keeps its target; renaming a file is a separate explicit operation.
+
+Body-only saves preserve unrelated header bytes, comments, quoting, order, blank lines, BOM, newline convention, and Unix permissions. Missing managed fields stay missing. `[notes.frontmatter]` controls automatic output; see [Configuration](CONFIG_REFERENCE.md#notesfrontmatter). A later body edit can refresh enabled links/timestamps already present. Uninterpretable managed values remain untouched.
+
+Invalid YAML, unfinished property inputs, and Title conflicts use private repair-only recovery records. On restart the newest repair draft opens in the editor without publishing invalid content; other repair drafts remain on disk. Correct and save the restored input. External source changes still reject saving against the original baseline. See [Upgrading](UPGRADING.md) for recovery privacy and compatibility.
+
+Templates, verbatim `.base`/Canvas/Draw source, attachments, legacy encrypted notes, and virtual subnotes have no frontmatter region. Whole-file external editing remains unchanged.
 
 ## Preview Lifecycle
 

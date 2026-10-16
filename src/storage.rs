@@ -80,6 +80,7 @@ pub(crate) struct VaultScan {
 
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
     let mut links = Vec::new();
+    let mut seen = HashSet::new();
     let mut cursor = 0;
     while let Some(start_offset) = content[cursor..].find("[[") {
         let absolute_start = cursor + start_offset;
@@ -93,8 +94,12 @@ pub fn extract_wikilinks(content: &str) -> Vec<String> {
                 None => inner_text,
             };
 
-            if !link_part.is_empty() && !link_part.contains(']') {
-                links.push(link_part.trim().to_string());
+            let link_part = link_part.trim();
+            if !link_part.is_empty()
+                && !link_part.contains(']')
+                && seen.insert(link_part.to_owned())
+            {
+                links.push(link_part.to_owned());
             }
             cursor = absolute_end + 2;
         } else {
@@ -109,6 +114,7 @@ pub fn is_image_ext(ext: &str) -> bool {
 
 #[derive(Clone, Debug)]
 pub struct Storage {
+    pub frontmatter_policy: frontmatter::WritePolicy,
     pub data_dir: PathBuf,
     pub config_dir: PathBuf,
     pub notes_dir: PathBuf,
@@ -278,6 +284,7 @@ impl Storage {
             notes_dir,
             templates_dir,
             skip_dir_patterns,
+            frontmatter_policy: bootstrap.notes.frontmatter.clone(),
         };
         storage.migrate_native_subnotes_metadata()?;
         storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
@@ -827,6 +834,9 @@ impl Storage {
 
         let baseline = self.load_document(id)?;
         let file_content = baseline.source();
+        if matches!(ext, "md" | "txt") {
+            frontmatter::properties::PropertyFrame::parse(file_content)?;
+        }
         let (fm, plain_content) = frontmatter::parse(file_content);
 
         let title = if let Some(t) = fm.title {
@@ -899,64 +909,142 @@ impl Storage {
         {
             return Ok(note.content.clone());
         }
-        if let Some(baseline) = note.baseline.as_ref().filter(|baseline| baseline.exists()) {
-            let (original, body) = frontmatter::parse(baseline.source());
-            let title = original.title.as_deref().unwrap_or_else(|| {
-                Path::new(baseline.id())
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .unwrap_or("Note")
-            });
-            if title == note.title
-                && body.replace("\r\n", "\n") == note.content
-                && original.tags == note.tags
+        let baseline = note.baseline.as_ref();
+        let before = baseline.map_or("", documents::DocumentSnapshot::source);
+        let frame = frontmatter::properties::PropertyFrame::parse(before)?;
+        let source = frame.with_yaml_and_body(frame.yaml(), &note.content);
+        let (original, _) = frontmatter::parse(before);
+        let old_title = original.title.unwrap_or_else(|| {
+            Path::new(id)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Note")
+                .to_owned()
+        });
+        self.prepare_note_source(
+            id,
+            baseline,
+            &source,
+            &note.title,
+            baseline.is_some_and(documents::DocumentSnapshot::exists) && old_title != note.title,
+            (original.tags != note.tags).then_some(&note.tags),
+            note.updated_at,
+        )
+    }
+
+    /// Explicit working-header changes win over automatic managed output for this save.
+    pub(crate) fn prepare_note_source(
+        &self,
+        id: &str,
+        baseline: Option<&documents::DocumentSnapshot>,
+        source: &str,
+        title: &str,
+        title_changed: bool,
+        tags: Option<&Vec<String>>,
+        updated_at: u64,
+    ) -> Result<String> {
+        use frontmatter::properties::{PropertyDocument, edit_properties};
+        use serde_yaml_ng::Value;
+        self.document_path(id)?;
+        let before = baseline.map_or("", documents::DocumentSnapshot::source);
+        let working = PropertyDocument::parse(source)?;
+        let old = match PropertyDocument::parse(before) {
+            Ok(old) => old,
+            Err(_) => {
+                frontmatter::properties::PropertyFrame::parse(before)?;
+                let types = self.load_property_types()?;
+                for (key, value) in &working.properties {
+                    if let Some(key) = key.as_str() {
+                        types.validate(key, value)?;
+                    }
+                }
+                if title_changed {
+                    if working
+                        .properties
+                        .get("title")
+                        .is_some_and(|value| value.as_str() != Some(title))
+                    {
+                        anyhow::bail!(
+                            "Title and frontmatter title disagree; correct one before saving"
+                        );
+                    }
+                    return edit_properties(
+                        source,
+                        &[("title".into(), Some(Value::String(title.to_owned())))],
+                    );
+                }
+                return Ok(source.to_owned());
+            }
+        };
+        let explicit = |key: &str| old.properties.get(key) != working.properties.get(key);
+        if title_changed
+            && working.properties.contains_key("title")
+            && explicit("title")
+            && working.properties.get("title").and_then(Value::as_str) != Some(title)
+        {
+            anyhow::bail!("Title and frontmatter title disagree; correct one before saving");
+        }
+        let types = self.load_property_types()?;
+        for (key, value) in &working.properties {
+            if old.properties.get(key) != Some(value)
+                && let Some(key) = key.as_str()
             {
-                return Ok(baseline.source().to_owned());
+                types.validate(key, value)?;
             }
         }
-        if let Some(baseline) = note.baseline.as_ref().filter(|baseline| baseline.exists()) {
-            use serde_yaml_ng::Value;
-            let (original, _) = frontmatter::parse(baseline.source());
-            let changes: [(String, Option<Value>); 4] = [
-                ("title".into(), Some(Value::String(note.title.clone()))),
-                (
-                    "updated_at".into(),
-                    Some(serde_yaml_ng::to_value(note.updated_at)?),
-                ),
-                ("tags".into(), Some(serde_yaml_ng::to_value(&note.tags)?)),
-                (
-                    "links".into(),
-                    Some(serde_yaml_ng::to_value(extract_wikilinks(&note.content))?),
-                ),
-            ];
-            let changes: Vec<_> = changes
-                .into_iter()
-                .filter(|(key, value)| {
-                    let old = match key.as_str() {
-                        "title" => serde_yaml_ng::to_value(&original.title),
-                        "updated_at" => serde_yaml_ng::to_value(original.updated_at),
-                        "tags" => serde_yaml_ng::to_value(&original.tags),
-                        _ => serde_yaml_ng::to_value(&original.links),
-                    };
-                    old.ok().as_ref() != value.as_ref()
-                })
-                .collect();
-            let updated = frontmatter::properties::edit_properties(baseline.source(), &changes)?;
-            let parsed = frontmatter::properties::PropertyDocument::parse(&updated)?;
-            let header_end = updated.len() - parsed.body.len();
-            return Ok(format!("{}{}", &updated[..header_end], note.content));
+        let new = baseline.is_none_or(|snapshot| !snapshot.exists());
+        if !new && before == source && !title_changed && tags.is_none() {
+            return Ok(source.to_owned());
         }
-        let mut fm = note
-            .baseline
-            .as_ref()
-            .map_or_else(frontmatter::Frontmatter::default, |baseline| {
-                frontmatter::parse(baseline.source()).0
-            });
-        fm.title = Some(note.title.clone());
-        fm.updated_at = Some(note.updated_at);
-        fm.tags.clone_from(&note.tags);
-        fm.links = Some(extract_wikilinks(&note.content));
-        Ok(frontmatter::serialize(&fm, &note.content))
+        let policy = &self.frontmatter_policy;
+        let mut changes = Vec::new();
+        if title_changed || (policy.title && new && !explicit("title")) {
+            changes.push(("title".into(), Some(Value::String(title.to_owned()))));
+        }
+        if let Some(tags) = tags {
+            changes.push(("tags".into(), Some(serde_yaml_ng::to_value(tags)?)));
+        } else if policy.tags && new && !explicit("tags") {
+            changes.push(("tags".into(), Some(Value::Sequence(Vec::new()))));
+        }
+        if policy.pinned && new && !explicit("pinned") {
+            changes.push(("pinned".into(), Some(Value::Bool(false))));
+        }
+        for (key, enabled, value, interpretable) in [
+            (
+                "links",
+                policy.links,
+                serde_yaml_ng::to_value(extract_wikilinks(working.body))?,
+                working
+                    .properties
+                    .get("links")
+                    .is_none_or(|v| serde_yaml_ng::from_value::<Vec<String>>(v.clone()).is_ok()),
+            ),
+            (
+                "updated_at",
+                policy.updated_at != frontmatter::TimestampFormat::None,
+                match policy.updated_at {
+                    frontmatter::TimestampFormat::Iso8601 => Value::String(
+                        chrono::DateTime::from_timestamp(i64::try_from(updated_at)?, 0)
+                            .context("timestamp out of range")?
+                            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    ),
+                    _ => Value::Number(updated_at.into()),
+                },
+                working
+                    .properties
+                    .get("updated_at")
+                    .is_none_or(|v| frontmatter::timestamp(v).is_some()),
+            ),
+        ] {
+            if enabled
+                && interpretable
+                && !explicit(key)
+                && (new || old.properties.contains_key(key))
+            {
+                changes.push((key.into(), Some(value)));
+            }
+        }
+        edit_properties(source, &changes)
     }
 
     pub(crate) fn save_note_snapshot(
@@ -1653,6 +1741,7 @@ impl Storage {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 }
@@ -1762,6 +1851,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "Test content for duplicate";
@@ -1821,6 +1911,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -1855,6 +1946,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         fs::write(
@@ -1890,6 +1982,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         fs::write(
@@ -1924,6 +2017,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Extension-less transient id, file absent: creation path must still
@@ -1952,6 +2046,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let content = "---\ntitle: original\ntype: knowledge_concept\nconfidence: 0.9\nsources:\n  - \"[[kimball-dwt]]\"\n---\nbody";
@@ -1986,6 +2081,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // 1. Plain note subnotes
@@ -2064,6 +2160,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Subnotes metadata is always owned by the storage root.
         fs::create_dir_all(storage.data_dir.join(".clin"))?;
@@ -2100,6 +2197,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Create an unreadable .md file
@@ -2145,6 +2243,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Write a binary PDF file with non-UTF-8 bytes
@@ -2195,6 +2294,7 @@ mod tests {
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let preset = crate::config::KeybindPreset::Vim;
         let path = storage.keybinds_path_for_preset(preset);

@@ -930,27 +930,28 @@ impl StatuslineContext<'_> {
                             })
                             .unwrap_or(true)
                         {
-                            let is_mod = if let Some(id) = &app.editor.editing_id {
-                                if let Ok(note) = app.storage.load_note(id) {
-                                    let current_title =
-                                        crate::events::get_title_text(&app.editor.title_editor);
-                                    let mut memo = self.edit_memo.borrow_mut();
-                                    let content = memo.content(app);
-                                    current_title != note.title || content != note.content
+                            let is_mod = app.editor.header_pending()
+                                || if let Some(id) = &app.editor.editing_id {
+                                    if let Ok(note) = app.storage.load_note(id) {
+                                        let current_title =
+                                            crate::events::get_title_text(&app.editor.title_editor);
+                                        let mut memo = self.edit_memo.borrow_mut();
+                                        let content = memo.content(app);
+                                        current_title != note.title || content != note.content
+                                    } else {
+                                        false
+                                    }
+                                } else if let Some(path) = &app.editor.template_edit_path {
+                                    if let Ok(orig_content) = std::fs::read_to_string(path) {
+                                        let mut memo = self.edit_memo.borrow_mut();
+                                        let content = memo.content(app);
+                                        content != orig_content
+                                    } else {
+                                        false
+                                    }
                                 } else {
                                     false
-                                }
-                            } else if let Some(path) = &app.editor.template_edit_path {
-                                if let Ok(orig_content) = std::fs::read_to_string(path) {
-                                    let mut memo = self.edit_memo.borrow_mut();
-                                    let content = memo.content(app);
-                                    content != orig_content
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            };
+                                };
                             *cache = Some((now, is_mod));
                         }
                         (if cache.unwrap().1 { "on" } else { "off" }).to_string()

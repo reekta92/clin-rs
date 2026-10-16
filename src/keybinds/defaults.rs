@@ -88,6 +88,7 @@ const DEFAULT_EDIT: &[(EditAction, &[&str])] = &[
     (EditAction::DeleteNextWord, &["Ctrl+Delete"]),
     (EditAction::MoveToTop, &["Ctrl+Home"]),
     (EditAction::MoveToBottom, &["Ctrl+End"]),
+    (EditAction::ToggleFrontmatter, &["F7"]),
     (EditAction::ToggleMarkdownPreview, &["Ctrl+p"]),
     (EditAction::ToggleMermaidRendering, &["Alt+m"]),
     (EditAction::TogglePreviewFullscreen, &["F11"]),

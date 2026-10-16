@@ -416,15 +416,25 @@ impl App {
         let new_align = self.editor.text_align.cycle();
         self.editor.text_align = new_align;
 
-        // Persist to frontmatter of current note.
-        if let Some(note_id) = self.editor.editing_id.clone()
-            && let Ok(mut note) = self.storage.load_note(&note_id)
+        if self.editor.frontmatter_supported()
+            && let Err(error) = self.editor.ensure_frontmatter().and_then(|()| {
+                self.editor
+                    .frontmatter
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("alignment requires a text note"))?
+                    .patch(
+                        "text_align".into(),
+                        Some(serde_yaml_ng::to_value(new_align)?),
+                    )
+            })
         {
-            let (mut fm, body) = crate::frontmatter::parse(&note.content);
-            fm.text_align = Some(new_align);
-            note.content = crate::frontmatter::serialize(&fm, body);
-            let _ = self.storage.save_note(&note_id, &note);
+            self.set_temporary_status(&format!("Alignment: {error:#}"));
+            return;
         }
+        self.write_draft();
+        self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+        self.editor.autosave_timer =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
 
         if self.mode == ViewMode::Edit {
             self.update_editor_markdown_preview();
@@ -434,6 +444,7 @@ impl App {
     }
 
     pub fn apply_editor_prefs(&mut self) {
+        let _ = self.editor.ensure_frontmatter();
         let mode = if self.config.editor.soft_wrap {
             ratatui_textarea::WrapMode::WordOrGlyph
         } else {
@@ -1120,6 +1131,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         App::new(storage).unwrap()
     }
@@ -1544,6 +1556,7 @@ mod tests {
             notes_dir: old_path.join("notes"),
             templates_dir: old_path.join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).unwrap();
         let mut state =

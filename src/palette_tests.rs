@@ -42,6 +42,7 @@ impl Fixture {
             config_dir: root.path().join("vault/.clin"),
             templates_dir: root.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.notes_dir,

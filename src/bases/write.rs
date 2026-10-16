@@ -96,6 +96,50 @@ pub struct WriteTask {
     pub writing: bool,
 }
 impl WriteTask {
+    pub(crate) fn for_app(app: &crate::app::App, operation: Operation) -> Self {
+        let targets: Vec<&str> = match &operation {
+            Operation::Prepare { ids, .. } | Operation::MovePublic { ids, .. } => {
+                ids.iter().map(String::as_str).collect()
+            }
+            Operation::Commit { snapshots, .. } | Operation::AssignGroup { snapshots, .. } => {
+                snapshots.iter().map(DocumentSnapshot::id).collect()
+            }
+            Operation::Replay { transaction, .. } => transaction
+                .changes
+                .iter()
+                .map(|change| change.before.id())
+                .chain(
+                    transaction
+                        .moves
+                        .iter()
+                        .flat_map(|plan| [plan.source_id(), plan.destination_id()]),
+                )
+                .collect(),
+            Operation::Save { baseline, .. } => vec![baseline.id()],
+            _ => Vec::new(),
+        };
+        if std::iter::once(&app.editor)
+            .chain(app.embedded_host_editor.as_deref())
+            .any(|editor| {
+                editor.header_pending()
+                    && editor
+                        .editing_id
+                        .as_deref()
+                        .is_some_and(|id| targets.contains(&id))
+            })
+        {
+            let (sender, receiver) = channel();
+            let _ = sender.send(Err(anyhow::anyhow!(
+                "save pending frontmatter before editing this document from Bases"
+            )));
+            return Self {
+                receiver,
+                cancelled: Arc::new(AtomicBool::new(false)),
+                writing: false,
+            };
+        }
+        Self::spawn(app.storage.clone(), &app.notes_worker_pool, operation)
+    }
     pub fn spawn(storage: Storage, pool: &rayon::ThreadPool, operation: Operation) -> Self {
         let writing = !matches!(
             operation,

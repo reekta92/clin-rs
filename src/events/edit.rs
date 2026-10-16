@@ -191,6 +191,27 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
+    let _ = app.editor.ensure_frontmatter();
+    if *focus == EditFocus::Frontmatter
+        && app
+            .editor
+            .frontmatter
+            .as_ref()
+            .is_none_or(|state| !state.visible)
+    {
+        *focus = EditFocus::Body;
+    }
+    if *focus == EditFocus::Frontmatter
+        && key.code == KeyCode::Esc
+        && app
+            .editor
+            .frontmatter
+            .as_ref()
+            .is_some_and(|state| state.input.is_some())
+    {
+        app.frontmatter_key(key);
+        return false;
+    }
     // Esc: leave editor.
     if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
         leave_editor(app, focus);
@@ -204,9 +225,32 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         .resolve_edit(&mut app.seq_matcher, key, seq, counts)
     {
         crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
+            EditAction::ToggleFrontmatter => {
+                app.toggle_frontmatter();
+                *focus = if app
+                    .editor
+                    .frontmatter
+                    .as_ref()
+                    .is_some_and(|state| state.visible)
+                {
+                    EditFocus::Frontmatter
+                } else {
+                    EditFocus::Body
+                };
+                return false;
+            }
             EditAction::CycleFocus => {
                 *focus = match *focus {
-                    EditFocus::Title => EditFocus::Body,
+                    EditFocus::Title
+                        if app
+                            .editor
+                            .frontmatter
+                            .as_ref()
+                            .is_some_and(|state| state.visible) =>
+                    {
+                        EditFocus::Frontmatter
+                    }
+                    EditFocus::Frontmatter | EditFocus::Title => EditFocus::Body,
                     EditFocus::Body => {
                         if app.editor.sidebar != EditSidebar::None {
                             EditFocus::Sidebar
@@ -314,6 +358,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 }
                 return false;
             }
+            EditAction::GoToLine if *focus != EditFocus::Body => return false,
             EditAction::GoToLine => {
                 app.editor.go_to_line_input = if app.editor.go_to_line_input.is_some() {
                     None
@@ -333,7 +378,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.body.insert_str(&s);
                     }
-                    EditFocus::Sidebar => {
+                    EditFocus::Frontmatter | EditFocus::Sidebar => {
                         // no-op
                     }
                 }
@@ -352,6 +397,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 app.cycle_text_alignment();
                 return false;
             }
+            EditAction::InsertTab if *focus == EditFocus::Frontmatter => {
+                app.frontmatter_key(key);
+                return false;
+            }
             EditAction::InsertTab => {
                 match *focus {
                     EditFocus::Title => {
@@ -360,13 +409,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.body.insert_str("\t");
                     }
-                    EditFocus::Sidebar => {
+                    EditFocus::Frontmatter | EditFocus::Sidebar => {
                         // no-op
                     }
                 }
                 app.request_editor_preview_update();
                 return false;
             }
+            EditAction::Find if *focus != EditFocus::Body => return false,
             EditAction::Find => {
                 let theme = &app.app_theme;
                 let mut popup = crate::ui::quick_search::QuickSearch::new("Find", theme);
@@ -391,6 +441,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     }
 
     match *focus {
+        EditFocus::Frontmatter => {
+            app.seq_matcher.clear();
+            app.frontmatter_key(key);
+        }
         EditFocus::Sidebar => {
             app.seq_matcher.clear();
             if app
@@ -526,8 +580,24 @@ pub(crate) fn handle_edit_mouse(
         return;
     }
 
+    if app.frontmatter_mouse(mouse_event, focus, mouse_selection) {
+        return;
+    }
+    let metadata_height = crate::editor::frontmatter::region_height(
+        terminal_area.height.saturating_sub(2),
+        app.editor
+            .frontmatter
+            .as_ref()
+            .is_some_and(|state| state.visible),
+    );
+    let input_area = Rect::new(
+        terminal_area.x,
+        terminal_area.y + metadata_height,
+        terminal_area.width,
+        terminal_area.height.saturating_sub(metadata_height),
+    );
     let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
-        terminal_area,
+        input_area,
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
         app.editor.body.lines().len(),
@@ -546,11 +616,11 @@ pub(crate) fn handle_edit_mouse(
                 Constraint::Min(0),
                 Constraint::Length(1),
             ])
-            .split(terminal_area);
+            .split(input_area);
         Some(chunks[1])
     } else if app.editor.editor_preview_enabled {
         edit_view_md_preview_area(
-            terminal_area,
+            input_area,
             app.editor.sidebar,
             app.preview_position,
             app.zen_padding(),

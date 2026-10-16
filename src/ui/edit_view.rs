@@ -259,7 +259,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         app.editor.header_title_rect = center_area;
     }
-    let body_area = outer_chunks[1];
+    let body_area = crate::editor::frontmatter::draw_region(frame, app, focus, outer_chunks[1]);
     let hint_area = outer_chunks[2];
 
     let layout = crate::events::compute_edit_layout(

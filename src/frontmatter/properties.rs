@@ -20,7 +20,15 @@ pub struct PropertyDocument<'a> {
     newline: &'static str,
 }
 
-impl<'a> PropertyDocument<'a> {
+/// Framing is independent of YAML validity so an editor can repair malformed values.
+pub struct PropertyFrame<'a> {
+    source: &'a str,
+    pub body: &'a str,
+    yaml_range: Option<Range<usize>>,
+    bom_len: usize,
+    newline: &'static str,
+}
+impl<'a> PropertyFrame<'a> {
     pub fn parse(source: &'a str) -> Result<Self> {
         let bom_len = usize::from(source.starts_with('\u{feff}')) * '\u{feff}'.len_utf8();
         let after_bom = &source[bom_len..];
@@ -30,30 +38,86 @@ impl<'a> PropertyDocument<'a> {
         } else {
             "\n"
         };
-        if first.trim_end() != "---" {
-            return Ok(Self {
-                properties: Mapping::new(),
-                body: after_bom,
-                yaml_range: None,
-                bom_len,
-                newline,
-            });
-        }
-        let start = bom_len + first.len();
-        let mut end = start;
-        for line in source[start..].split_inclusive('\n') {
-            if matches!(line.trim_end(), "---" | "...") {
-                return Ok(Self {
-                    properties: parse_mapping(&source[start..end])?,
-                    body: &source[end + line.len()..],
-                    yaml_range: Some(start..end),
-                    bom_len,
-                    newline,
-                });
+        let mut frame = Self {
+            source,
+            body: after_bom,
+            yaml_range: None,
+            bom_len,
+            newline,
+        };
+        if first.trim_end() == "---" {
+            let start = bom_len + first.len();
+            let mut end = start;
+            for line in source[start..].split_inclusive('\n') {
+                if matches!(line.trim_end(), "---" | "...") {
+                    frame.yaml_range = Some(start..end);
+                    frame.body = &source[end + line.len()..];
+                    return Ok(frame);
+                }
+                end += line.len();
             }
-            end += line.len();
+            bail!("frontmatter opening delimiter has no closing delimiter");
         }
-        bail!("frontmatter opening delimiter has no closing delimiter");
+        Ok(frame)
+    }
+    pub fn yaml(&self) -> &'a str {
+        self.yaml_range
+            .as_ref()
+            .map_or("", |range| &self.source[range.clone()])
+    }
+    pub fn with_yaml_and_body(&self, yaml: &str, body: &str) -> String {
+        let yaml = if yaml.replace("\r\n", "\n") == self.yaml().replace("\r\n", "\n") {
+            self.yaml().to_owned()
+        } else {
+            let mut yaml = yaml.replace("\r\n", "\n");
+            if !yaml.is_empty() && !yaml.ends_with('\n') {
+                yaml.push('\n');
+            }
+            if self.newline == "\r\n" {
+                yaml.replace('\n', "\r\n")
+            } else {
+                yaml
+            }
+        };
+        let body = if body.replace("\r\n", "\n") == self.body.replace("\r\n", "\n") {
+            self.body.to_owned()
+        } else if self.newline == "\r\n" {
+            body.replace("\r\n", "\n").replace('\n', "\r\n")
+        } else {
+            body.to_owned()
+        };
+        if let Some(range) = &self.yaml_range {
+            format!(
+                "{}{}{}{}",
+                &self.source[..range.start],
+                yaml,
+                &self.source[range.end..self.source.len() - self.body.len()],
+                body
+            )
+        } else if yaml.is_empty() {
+            format!("{}{body}", &self.source[..self.bom_len])
+        } else {
+            format!(
+                "{}---{}{}---{}{body}",
+                &self.source[..self.bom_len],
+                self.newline,
+                yaml,
+                self.newline
+            )
+        }
+    }
+}
+
+impl<'a> PropertyDocument<'a> {
+    pub fn parse(source: &'a str) -> Result<Self> {
+        let frame = PropertyFrame::parse(source)?;
+        Ok(Self {
+            properties: parse_mapping(frame.yaml())?,
+            body: frame.body,
+            yaml_range: frame.yaml_range,
+            bom_len: frame.bom_len,
+            newline: frame.newline,
+        })
     }
 }
 

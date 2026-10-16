@@ -387,6 +387,7 @@ mod tests {
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

@@ -8,7 +8,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-type Jobs = Arc<Mutex<HashMap<uuid::Uuid, (DocumentSnapshot, String)>>>;
+enum DraftContent {
+    Source(String),
+    Editor(super::document_recovery::EditorRecovery),
+}
+type Jobs = Arc<Mutex<HashMap<uuid::Uuid, (DocumentSnapshot, DraftContent)>>>;
 enum Command {
     Wake,
     Flush(mpsc::Sender<Result<(), String>>),
@@ -27,7 +31,11 @@ fn persist(storage: &Storage, pending: &Jobs, error: &Mutex<Option<String>>) -> 
     let jobs = std::mem::take(&mut *pending.lock().expect("draft queue poisoned"));
     let mut failure = None;
     for (id, (baseline, source)) in jobs {
-        if let Err(err) = storage.write_document_draft(&baseline, &source) {
+        let result = match &source {
+            DraftContent::Source(source) => storage.write_document_draft(&baseline, source),
+            DraftContent::Editor(editor) => storage.write_editor_draft(&baseline, editor),
+        };
+        if let Err(err) = result {
             failure = Some(format!(
                 "Recovery draft failed; pending content retained in memory: {err:#}"
             ));
@@ -97,6 +105,16 @@ impl DraftWorker {
     }
 
     pub(crate) fn submit(&self, baseline: DocumentSnapshot, source: String) -> Result<()> {
+        self.submit_content(baseline, DraftContent::Source(source))
+    }
+    pub(crate) fn submit_editor(
+        &self,
+        baseline: DocumentSnapshot,
+        editor: super::document_recovery::EditorRecovery,
+    ) -> Result<()> {
+        self.submit_content(baseline, DraftContent::Editor(editor))
+    }
+    fn submit_content(&self, baseline: DocumentSnapshot, source: DraftContent) -> Result<()> {
         self.pending
             .lock()
             .map_err(|_| anyhow!("draft queue poisoned"))?

@@ -1481,6 +1481,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Find" => kb.edit_keys_display(EditAction::Find),
             "InsertDate" => kb.edit_keys_display(EditAction::InsertDate),
             "ToggleWrap" => kb.edit_keys_display(EditAction::ToggleWrap),
+            "ToggleFrontmatter" => kb.edit_keys_display(EditAction::ToggleFrontmatter),
             "ToggleOutline" => kb.edit_keys_display(EditAction::ToggleOutline),
             "ToggleLinks" => kb.edit_keys_display(EditAction::ToggleLinks),
             "PreviewLink" => kb.edit_keys_display(EditAction::PreviewLink),
@@ -1724,6 +1725,7 @@ mod tests {
             notes_dir: std::path::PathBuf::from("/test/data/notes"),
             templates_dir: std::path::PathBuf::from("/test/data/templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About, &storage);
         let displays: Vec<&str> = rows.iter().map(|row| row.display.as_str()).collect();

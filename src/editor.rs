@@ -1,3 +1,4 @@
+pub(crate) mod frontmatter;
 use crate::editor_document::EditorDocument;
 use crate::markdown::MarkdownRenderer;
 use ratatui_textarea::TextArea;
@@ -9,6 +10,7 @@ pub enum EditFocus {
     Title,
     Body,
     Sidebar,
+    Frontmatter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -126,6 +128,7 @@ pub enum AutosaveStatus {
 }
 
 pub struct NoteEditor {
+    pub(crate) frontmatter: Option<frontmatter::FrontmatterEditor>,
     pub autosave_status: AutosaveStatus,
     pub autosave_timer: Option<Instant>,
     pub last_saved_time: Option<Instant>,
@@ -202,6 +205,7 @@ pub struct NoteEditor {
 impl Default for NoteEditor {
     fn default() -> Self {
         Self {
+            frontmatter: None,
             autosave_status: AutosaveStatus::default(),
             autosave_timer: None,
             last_saved_time: None,
@@ -278,14 +282,41 @@ impl NoteEditor {
     pub fn public_document_source(&self) -> Option<String> {
         let baseline = self.public_document.as_ref()?;
         let body = self.body.text();
-        let content = if self.public_document_body_only {
-            let document =
-                crate::frontmatter::properties::PropertyDocument::parse(baseline.source()).ok()?;
-            let prefix = &baseline.source()[..baseline.source().len() - document.body.len()];
-            format!("{}{body}", prefix.replace("\r\n", "\n"))
-        } else {
-            body
-        };
+        if self.public_document_body_only {
+            let mut source = self.note_working_source().ok()?;
+            let title = crate::events::get_title_text(&self.title_editor);
+            let original = self
+                .frontmatter
+                .as_ref()
+                .map(|state| state.loaded_title.as_str())
+                .or(self.public_document_title.as_deref());
+            if original.is_some_and(|original| title.as_ref() != original) {
+                let before =
+                    crate::frontmatter::properties::PropertyDocument::parse(baseline.source())
+                        .ok()?;
+                let after =
+                    crate::frontmatter::properties::PropertyDocument::parse(&source).ok()?;
+                if before.properties.get("title") != after.properties.get("title")
+                    && after
+                        .properties
+                        .get("title")
+                        .and_then(serde_yaml_ng::Value::as_str)
+                        != Some(title.as_ref())
+                {
+                    return None;
+                }
+                source = crate::frontmatter::properties::edit_properties(
+                    &source,
+                    &[(
+                        "title".into(),
+                        Some(serde_yaml_ng::Value::String(title.into_owned())),
+                    )],
+                )
+                .ok()?;
+            }
+            return Some(source);
+        }
+        let content = body;
         let mut source = if baseline.source().replace("\r\n", "\n") == content {
             baseline.source().to_owned()
         } else if baseline.source().contains("\r\n") {
@@ -327,9 +358,10 @@ impl NoteEditor {
         } else {
             None
         };
-        let can_rebase = bodies
-            .as_ref()
-            .is_some_and(|(before, after)| before.body == after.body)
+        let can_rebase = !self.header_pending()
+            && bodies
+                .as_ref()
+                .is_some_and(|(before, after)| before.body == after.body)
             && self
                 .public_document
                 .as_ref()
@@ -386,6 +418,9 @@ impl NoteEditor {
                 self.title_editor.insert_str(&title);
                 self.public_document_title = Some(title);
             }
+        }
+        if self.adopt_frontmatter(after.source()).is_err() {
+            return false;
         }
         self.public_document = Some(after.clone());
         true

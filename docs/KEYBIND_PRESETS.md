@@ -137,3 +137,7 @@ then returns focus to the containing surface.
 [edit]
 toggle_bases = ["Ctrl+g Ctrl+b"]
 ```
+
+## Shared frontmatter shortcut
+
+**F7** maps to `edit.toggle_frontmatter` in every preset. It opens and focuses the configured properties/raw-YAML region above Body; repeat to hide while retaining input. Remap it in the active keybind file with `toggle_frontmatter = ["Alt+f"]` under `[edit]`. `Ctrl+t` includes the region in focus cycling when visible. Body insertion/image actions remain scoped to Body. Unbound F6 continues to open the contextual command palette.

@@ -592,8 +592,11 @@ impl ClinConfig {
 
         changed = changed || state_changed;
         if changed {
-            let migrated_content =
-                toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
+            let migrated: toml_edit::DocumentMut = toml::to_string_pretty(&value)
+                .context("failed to serialize migrated config")?
+                .parse()?;
+            merge::merge_edit_item(document.as_item_mut(), migrated.into_item());
+            let migrated_content = document.to_string();
             let _ = crate::fsutil::atomic_write(&config_path, migrated_content.as_bytes());
             let mut config: ClinConfig =
                 toml::from_str(&migrated_content).context("failed to parse migrated config")?;

@@ -127,6 +127,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `external_enabled` | `bool` | `false` | Enable external editor mode |
 | `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
+| `frontmatter_mode` | `enum` | `"properties"` | F7 presentation: `"properties"` or `"raw_yaml"`; region remains hidden initially |
 | `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
 | `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
 | `copy_on_select` | `bool` | `true` | Copy to clipboard immediately when a mouse drag selects text; `false` keeps the selection for the copy keybind |
@@ -140,6 +141,28 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `zen_focus_dimming` | `bool` | `false` | Dim content outside the active neighborhood in zen mode |
 | `zen_focus_unit` | `enum` | `"paragraph"` | Unit for focus neighborhood (`"paragraph"`, `"line"`) |
 | `zen_focus_context` | `usize` | `3` | Number of units above the cursor to keep bright |
+### `[notes.frontmatter]`
+
+Automatic note-output policy. Existing body-only saves do not add absent managed fields. Disabled fields retain their existing bytes; explicit Title/property/YAML/tag/pin/alignment edits still save. New notes use enabled output. Generated links are unique in first-seen order. Filenames never follow title changes automatically.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `title` | `bool` | `true` | Automatic initial title output |
+| `tags` | `bool` | `true` | Automatic initial tags output |
+| `pinned` | `bool` | `true` | Automatic initial pin output; explicit pin actions always persist |
+| `links` | `bool` | `true` | Generated body wikilinks |
+| `text_align` | `bool` | `true` | Automatic alignment output where produced; explicit alignment always persists |
+| `updated_at` | `enum` | `"unix"` | `"unix"`, `"iso8601"` (UTC RFC 3339), or `"none"` |
+| `original_ext` | `bool` | `true` | Accepted compatibility no-op; there is no automatic extension producer |
+
+```toml
+[notes.frontmatter]
+links = false
+updated_at = "iso8601"
+```
+
+Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Disabled or uninterpretable fields are preserved. To maintain a field manually, disable its automatic output; changing the policy does not delete any existing value. The retired `notes.rename_on_title_change` option remains retired. Nested policy settings and comments survive config cleanup.
+
 ### `[ui]`
 
 

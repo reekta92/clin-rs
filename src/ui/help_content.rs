@@ -241,6 +241,10 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
         "For heavy editing tasks, mark a note to open in your external `` $EDITOR `` via the list's {list:ToggleExternalEditor} action.",
     ),
     tip(
+        "Frontmatter",
+        "Press {edit:ToggleFrontmatter} to show properties above Body. Arrows select; a adds, Enter edits, Del removes, Ctrl+Enter applies. Set editor.frontmatter_mode to raw_yaml for raw text.",
+    ),
+    tip(
         "Outline pane",
         "Press {edit:ToggleOutline} to dock a sidebar listing the note's markdown headers. Use {edit:CycleFocus} to move focus into the pane, select a header, and press Enter to jump the cursor to that line.",
     ),

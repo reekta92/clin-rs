@@ -7,6 +7,7 @@ fn fixture(root: &Path) -> Storage {
         config_dir: root.join("config"),
         templates_dir: root.join("templates"),
         skip_dir_patterns: Vec::new(),
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     }
 }
 
@@ -260,7 +261,7 @@ fn body_edits_preserve_frontmatter_comments_quotes_and_unknown_values() -> Resul
     assert!(saved.contains("# keep header\r\n"));
     assert!(saved.contains("title: 'Display title' # keep quote\r\n"));
     assert!(saved.contains("custom: [a, b] # plugin data\r\n"));
-    assert!(saved.ends_with("---\r\nedited body\n"));
+    assert!(saved.ends_with("---\r\nedited body\r\n"));
     Ok(())
 }
 
@@ -280,5 +281,25 @@ fn format_migration_never_touches_git_history_or_private_legacy_records() -> Res
         );
         assert!(!root.path().join(directory).join("legacy.canvas").exists());
     }
+    Ok(())
+}
+
+#[test]
+fn issue_181_body_edit_preserves_schema_and_missing_managed_fields() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut storage = fixture(root.path());
+    let header = "---\r\n# user schema\r\nid: CL-01\r\ntype: claim\r\nstatus: 'supported'\r\nconfidence: high\r\ncreated: 2026-07-20\r\nupdated: 2026-09-19\r\n\r\n---\r\n";
+    fs::write(root.path().join("CL-01.md"), format!("{header}Before"))?;
+    let mut note = storage.load_note("CL-01.md")?;
+    note.content = "After [[CL-02]] [[CL-02|again]] [[CL-03]]".into();
+    assert_eq!(storage.save_note("CL-01.md", &note)?, "CL-01.md");
+    assert_eq!(
+        fs::read_to_string(root.path().join("CL-01.md"))?,
+        format!("{header}{}", note.content)
+    );
+    assert_eq!(
+        storage.load_note_summary("CL-01.md")?.links,
+        ["CL-02", "CL-03"]
+    );
     Ok(())
 }

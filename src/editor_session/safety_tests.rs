@@ -16,6 +16,7 @@ fn fixture() -> (crate::config::ConfigTestGuard, tempfile::TempDir, App) {
         config_dir: root.path().join("config"),
         templates_dir: root.path().join("templates"),
         skip_dir_patterns: Vec::new(),
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     };
     for directory in [
         &storage.notes_dir,

@@ -2828,6 +2828,7 @@ mod markdown_highlight_tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

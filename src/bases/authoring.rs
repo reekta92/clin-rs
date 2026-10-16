@@ -492,11 +492,7 @@ impl BasesState {
             if !app.config.features.images.is_enabled() || app.image_picker.is_none() {
                 bail!("native image preview unavailable; enable images and restart");
             }
-            self.write_task = Some(WriteTask::spawn(
-                app.storage.clone(),
-                &app.notes_worker_pool,
-                Operation::OpenRemoteImage { url },
-            ));
+            self.write_task = Some(WriteTask::for_app(app, Operation::OpenRemoteImage { url }));
             return Ok(());
         }
         let id = match value {
@@ -523,9 +519,8 @@ impl BasesState {
         {
             bail!("native image preview unavailable; enable images and restart");
         }
-        self.write_task = Some(WriteTask::spawn(
-            app.storage.clone(),
-            &app.notes_worker_pool,
+        self.write_task = Some(WriteTask::for_app(
+            app,
             Operation::Open {
                 id,
                 metadata: loaded.metadata.clone(),
@@ -559,11 +554,7 @@ impl BasesState {
             },
             super::media::CoverSource::Remote(url) => Operation::OpenRemoteImage { url },
         };
-        self.write_task = Some(WriteTask::spawn(
-            app.storage.clone(),
-            &app.notes_worker_pool,
-            operation,
-        ));
+        self.write_task = Some(WriteTask::for_app(app, operation));
         Ok(())
     }
     pub fn start_edit(&mut self, app: &mut App, intent: EditIntent) -> Result<()> {
@@ -605,9 +596,8 @@ impl BasesState {
             return self.start_folder_move(app, ids, folder);
         }
         self.edit_intent = Some(intent);
-        self.write_task = Some(WriteTask::spawn(
-            app.storage.clone(),
-            &app.notes_worker_pool,
+        self.write_task = Some(WriteTask::for_app(
+            app,
             Operation::Prepare {
                 metadata: loaded.metadata.clone(),
                 ids,
@@ -650,9 +640,8 @@ impl BasesState {
                 app.ensure_inline_host_write(baseline)?;
             }
         }
-        self.write_task = Some(WriteTask::spawn(
-            app.storage.clone(),
-            &app.notes_worker_pool,
+        self.write_task = Some(WriteTask::for_app(
+            app,
             Operation::Replay {
                 transaction,
                 forward,
@@ -724,9 +713,8 @@ impl BasesState {
                         source,
                         ..
                     } => {
-                        self.write_task = Some(WriteTask::spawn(
-                            app.storage.clone(),
-                            &app.notes_worker_pool,
+                        self.write_task = Some(WriteTask::for_app(
+                            app,
                             Operation::AssignGroup {
                                 snapshots,
                                 key,
@@ -737,9 +725,8 @@ impl BasesState {
                         ));
                     }
                     EditIntent::Move(source) if source.trim().is_empty() => {
-                        self.write_task = Some(WriteTask::spawn(
-                            app.storage.clone(),
-                            &app.notes_worker_pool,
+                        self.write_task = Some(WriteTask::for_app(
+                            app,
                             Operation::Commit {
                                 snapshots,
                                 key,
@@ -983,11 +970,7 @@ impl BasesState {
                 }
             }
         };
-        self.write_task = Some(WriteTask::spawn(
-            app.storage.clone(),
-            &app.notes_worker_pool,
-            operation,
-        ));
+        self.write_task = Some(WriteTask::for_app(app, operation));
         Ok(())
     }
     pub fn dialog_event(&mut self, event: &Event, app: &mut App) -> bool {
@@ -1114,9 +1097,8 @@ impl BasesState {
                         Command::Source => {
                             match self.ensure_idle() {
                                 Ok(()) => {
-                                    self.write_task = Some(WriteTask::spawn(
-                                        app.storage.clone(),
-                                        &app.notes_worker_pool,
+                                    self.write_task = Some(WriteTask::for_app(
+                                        app,
                                         Operation::OpenSource {
                                             id: self.id.clone(),
                                         },

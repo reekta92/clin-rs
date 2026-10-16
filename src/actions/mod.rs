@@ -109,6 +109,17 @@ macro_rules! toggle_action {
 }
 
 simple_action!(
+    ToggleFrontmatterAction,
+    "editor.frontmatter",
+    "Toggle Frontmatter",
+    "Show or hide note properties above Body",
+    ActionCategory::Views,
+    "",
+    "",
+    toggle_frontmatter
+);
+
+simple_action!(
     EditFolderTemplateVariablesAction,
     "templates.edit_folder_variables",
     "Edit Folder Template Variables",
@@ -240,6 +251,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(insert_date::InsertDateAction),
         Box::new(outline::OpenOutlineAction),
         Box::new(CreateDrawAction),
+        Box::new(ToggleFrontmatterAction),
         Box::new(EditFolderTemplateVariablesAction),
         Box::new(CreateCanvasAction),
         Box::new(CreateBaseAction),
@@ -492,6 +504,7 @@ mod tests {
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
             skip_dir_patterns: vec![],
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

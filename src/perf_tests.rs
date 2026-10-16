@@ -27,6 +27,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let lines = vec![
@@ -74,6 +75,7 @@ mod tests {
             notes_dir: temp_dir.path().join("notes_b"),
             templates_dir: temp_dir.path().join("templates_b"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(storage_b.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_b.config_dir.clone()).unwrap();
@@ -141,6 +143,7 @@ mod tests {
             notes_dir: temp_dir.path().join("notes_c"),
             templates_dir: temp_dir.path().join("templates_c"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(storage_c.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_c.config_dir.clone()).unwrap();
@@ -203,6 +206,7 @@ mod tests {
             notes_dir: dirs[2].clone(),
             templates_dir: dirs[3].clone(),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Generate 5000-line synthetic markdown

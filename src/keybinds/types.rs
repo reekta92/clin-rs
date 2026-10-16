@@ -99,6 +99,7 @@ pub enum EditAction {
     DeleteNextWord,
     MoveToTop,
     MoveToBottom,
+    ToggleFrontmatter,
     ToggleMarkdownPreview,
     ToggleMermaidRendering,
     TogglePreviewFullscreen,

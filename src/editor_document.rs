@@ -31,6 +31,7 @@ pub(crate) struct EditEffect {
 pub(crate) struct EditorDocument {
     textarea: TextArea<'static>,
     revision: u64,
+    identity: uuid::Uuid,
     counts: std::cell::Cell<Option<(usize, usize)>>,
     snapshot: Option<Arc<str>>,
     change: Option<DocumentChange>,
@@ -48,6 +49,7 @@ impl EditorDocument {
         Self {
             textarea: TextArea::from(normalized.lines().map(String::from).collect::<Vec<_>>()),
             revision: 0,
+            identity: uuid::Uuid::new_v4(),
             counts: std::cell::Cell::new(None),
             snapshot: Some(Arc::from(normalized)),
             change: Some(DocumentChange::Full),
@@ -60,6 +62,7 @@ impl EditorDocument {
         Self {
             textarea: TextArea::from(normalized.split('\n').map(String::from).collect::<Vec<_>>()),
             revision: 0,
+            identity: uuid::Uuid::new_v4(),
             counts: std::cell::Cell::new(None),
             snapshot: Some(Arc::from(normalized)),
             change: Some(DocumentChange::Full),
@@ -72,12 +75,16 @@ impl EditorDocument {
         Self {
             textarea,
             revision: 0,
+            identity: uuid::Uuid::new_v4(),
             counts: std::cell::Cell::new(None),
             snapshot: None,
             change: Some(DocumentChange::Full),
         }
     }
 
+    pub(crate) fn identity(&self) -> uuid::Uuid {
+        self.identity
+    }
     pub(crate) fn revision(&self) -> u64 {
         self.revision
     }

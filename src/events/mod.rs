@@ -304,6 +304,21 @@ pub fn handle_bracketed_paste(
                 app.request_editor_preview_update();
                 true
             }
+            EditFocus::Frontmatter => {
+                let raw =
+                    app.config.editor.frontmatter_mode == crate::config::FrontmatterMode::RawYaml;
+                if let Some(input) = app
+                    .editor
+                    .frontmatter
+                    .as_mut()
+                    .and_then(|state| state.input_mut(raw))
+                {
+                    input.insert_str(&data);
+                    true
+                } else {
+                    false
+                }
+            }
             EditFocus::Sidebar => false,
         },
         ViewMode::Canvas => {
@@ -2074,6 +2089,7 @@ mod tests {
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.data_dir,
@@ -2437,6 +2453,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
@@ -2522,6 +2539,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
@@ -2616,6 +2634,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor
@@ -2758,6 +2777,7 @@ mod tests {
             notes_dir,
             templates_dir,
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.body =
@@ -2820,6 +2840,7 @@ mod tests {
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
             skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(&storage.data_dir).unwrap();
         std::fs::create_dir_all(&storage.config_dir).unwrap();
