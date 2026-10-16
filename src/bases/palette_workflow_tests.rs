@@ -129,6 +129,10 @@ fn palette_navigation_and_vault_switch_wait_for_public_write_completion() {
     app.activate_palette(palette, selected);
     assert_eq!(app.mode, ViewMode::Bases);
     assert!(app.status.contains("Write in progress"));
+    for id in ["help.open", "setup_wizard"] {
+        assert!(crate::actions::execute_action(id, &mut app, None).is_err());
+        assert_eq!(app.mode, ViewMode::Bases);
+    }
     app.switch_vault(app.storage.data_dir.join("another-vault"));
     assert!(app.setup_rebootstrap.is_none());
     assert!(app.bases_state.as_ref().unwrap().write_task.is_some());

@@ -32,6 +32,8 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        crate::text_edit::TEST_CLIPBOARD
+            .with(|clipboard| *clipboard.borrow_mut() = Some(String::new()));
         let guard = ConfigTestGuard::lock();
         let root = tempfile::tempdir().unwrap();
         crate::config::set_config_path_override(root.path().join("config.toml"));
@@ -111,7 +113,7 @@ impl Fixture {
                     Some("art.draw".into()),
                     app.app_theme.clone(),
                     app.keybinds.clone(),
-                    Default::default(),
+                    crate::keybinds::KeyMatcher::default(),
                 ));
             }
             ViewMode::Canvas => {
@@ -120,7 +122,7 @@ impl Fixture {
                         &app.storage.note_path("map.canvas"),
                         &app.config,
                         app.keybinds.clone(),
-                        Default::default(),
+                        crate::keybinds::KeyMatcher::default(),
                         None,
                         &app.storage.data_dir,
                     )
@@ -142,10 +144,16 @@ impl Fixture {
     }
 }
 
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        crate::text_edit::TEST_CLIPBOARD.with(|clipboard| *clipboard.borrow_mut() = None);
+    }
+}
+
 fn key(code: KeyCode) -> Event {
     Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
 }
-fn drive(app: &mut App, event: Event) {
+pub(crate) fn drive(app: &mut App, event: Event) {
     drive_focus(app, event, &mut EditFocus::Body);
 }
 fn drive_focus(app: &mut App, event: Event, focus: &mut EditFocus) {
@@ -156,7 +164,7 @@ fn drive_focus(app: &mut App, event: Event, focus: &mut EditFocus) {
             app,
             event,
             focus,
-            &mut Default::default(),
+            &mut crate::text_edit::MouseTextSelection::default(),
         )
         .unwrap();
     } else {
@@ -358,6 +366,18 @@ fn palette_paste_refresh_input_isolation_resize_and_empty_clicks() {
         f.app.command_palette.as_ref().unwrap().items[0].id,
         "switch_theme"
     );
+    for code in ['a', 'c', 'a', 'x'] {
+        drive(
+            &mut f.app,
+            Event::Key(KeyEvent::new(KeyCode::Char(code), KeyModifiers::CONTROL)),
+        );
+    }
+    assert_eq!(
+        crate::text_edit::read_system_clipboard().as_deref(),
+        Some("Switch Theme")
+    );
+    assert_eq!(f.app.command_palette.as_ref().unwrap().input.lines(), [""]);
+    drive(&mut f.app, Event::Paste("Switch Theme".into()));
     for kind in [KeyEventKind::Repeat, KeyEventKind::Release] {
         drive(
             &mut f.app,
@@ -451,7 +471,7 @@ fn palette_modal_gates_preserve_each_owners_pending_input() {
             }
             ViewMode::Canvas => {
                 f.app.canvas_state.as_mut().unwrap().state.floating_editor =
-                    Some(Default::default());
+                    Some(ratatui_textarea::TextArea::default());
             }
             ViewMode::Bases => {
                 f.app.bases_state.as_mut().unwrap().matcher.clear();
@@ -825,5 +845,186 @@ fn palette_help_to_setup_restores_original_editor_and_drafts_on_save_failure() {
     assert_eq!(
         f.app.editor.autosave_status,
         crate::editor::AutosaveStatus::Unsaved
+    );
+}
+
+#[test]
+fn palette_notes_alias_and_right_click_preserve_tree_and_grid_targets() {
+    for layout in [
+        crate::config::NotesLayout::Tree,
+        crate::config::NotesLayout::Grid,
+    ] {
+        let mut f = Fixture::new();
+        f.app.list.notes_layout = layout.clone();
+        f.app.list.preview_enabled = false;
+        f.app.refresh_visual_list();
+        let target = f.app.list.visual_list.iter().position(|item| matches!(item,
+            crate::list_view::VisualItem::Note { summary_idx, .. } if f.app.notes[*summary_idx].id == "editing.md")).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let (column, row) = if layout == crate::config::NotesLayout::Grid {
+            let tile = f
+                .app
+                .list
+                .grid_tiles
+                .iter()
+                .find(|tile| tile.visual_index == target)
+                .unwrap();
+            (tile.rect.x + 1, tile.rect.y + 1)
+        } else {
+            (3, 2 + target as u16)
+        };
+        drive(
+            &mut f.app,
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        assert_eq!(
+            f.app
+                .command_palette
+                .as_ref()
+                .unwrap()
+                .context_note_id
+                .as_deref(),
+            Some("editing.md")
+        );
+    }
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Bases);
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL)),
+    );
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.id == "bases.refresh")
+    );
+    assert!(f.app.bases_state.is_some());
+}
+
+#[test]
+fn palette_autosave_rename_rejects_stale_insertion_but_keeps_shared_commands() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    f.app.storage.rename_on_title_change = true;
+    f.app.editor.title_editor = crate::events::make_title_editor(
+        "Renamed",
+        f.app.app_theme.highlight_fg,
+        f.app.app_theme.highlight_bg,
+    );
+    drive(&mut f.app, key(KeyCode::F(6)));
+    let context = f.app.command_palette.as_ref().unwrap().context.clone();
+    f.app.autosave().unwrap();
+    assert_ne!(f.app.editor.editing_id.as_deref(), Some("editing.md"));
+    let before = f.app.editor.body.text();
+    assert!(execute_action_in_context("editor.insert_date", &mut f.app, &context).is_err());
+    assert_eq!(f.app.editor.body.text(), before);
+    assert!(execute_action_in_context("switch_theme", &mut f.app, &context).is_ok());
+}
+
+#[test]
+fn palette_retained_draw_canvas_outline_settings_survive_help_and_setup() {
+    for mode in [ViewMode::Draw, ViewMode::Canvas, ViewMode::Outline] {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        f.app.open_help_page();
+        f.app.config.ui.theme = "dracula".into();
+        f.app.refresh_theme_from_config();
+        f.app.config.features.tags = FeatureState::Deleted;
+        f.app.apply_keybind_preset(KeybindPreset::Helix);
+        match mode {
+            ViewMode::Draw => {
+                let state = f.app.draw_state.as_ref().unwrap();
+                assert_eq!(state.theme.fg, f.app.app_theme.fg);
+                assert_eq!(state.keybinds.draw, f.app.keybinds.draw);
+            }
+            ViewMode::Canvas => assert_eq!(
+                f.app.canvas_state.as_ref().unwrap().keybinds.canvas,
+                f.app.keybinds.canvas
+            ),
+            ViewMode::Outline => assert_eq!(
+                f.app.outline_state.as_ref().unwrap().keybinds.outline,
+                f.app.keybinds.outline
+            ),
+            _ => unreachable!(),
+        }
+        assert!(!f.app.keybinds.list.contains_key(&ListAction::ManageTags));
+        f.app.open_setup_view();
+        assert_eq!(f.app.return_mode, Some(mode));
+        f.app.abort_setup();
+        assert_eq!(f.app.mode, mode);
+    }
+}
+
+#[test]
+fn palette_strokes_connections_and_setup_rebootstrap_preserve_pending_owners() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Draw);
+    f.app.draw_state.as_mut().unwrap().current_stroke = Some(crate::draw::state::Stroke {
+        points: vec![(1.0, 2.0)],
+        color: (255, 255, 255),
+    });
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert!(f.app.command_palette.is_none());
+    assert_eq!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .current_stroke
+            .as_ref()
+            .unwrap()
+            .points,
+        [(1.0, 2.0)]
+    );
+    f.enter(ViewMode::Canvas);
+    f.app
+        .canvas_state
+        .as_mut()
+        .unwrap()
+        .state
+        .connection_source_id = Some("pending-node".into());
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert!(f.app.command_palette.is_none());
+    assert_eq!(
+        f.app
+            .canvas_state
+            .as_ref()
+            .unwrap()
+            .state
+            .connection_source_id
+            .as_deref(),
+        Some("pending-node")
+    );
+    f.enter(ViewMode::Edit);
+    f.app.editor.body.insert_str("pending wizard source ");
+    f.app.editor.editing_id = None;
+    let blocker = f.root.path().join("blocked");
+    fs::write(&blocker, "block").unwrap();
+    f.app.editor.template_edit_path = Some(blocker.join("template.toml"));
+    let expected = f.app.editor.body.text();
+    let config = fs::read(crate::config::ClinConfig::config_path().unwrap()).unwrap();
+    f.app.open_setup_view();
+    f.app.setup_state.as_mut().unwrap().vault_path = f.root.path().join("other-vault");
+    activate(&mut f.app, "setup.finish");
+    assert_eq!(f.app.mode, ViewMode::Setup);
+    assert_eq!(f.app.return_mode, Some(ViewMode::Edit));
+    assert_eq!(f.app.editor.body.text(), expected);
+    assert!(f.app.setup_rebootstrap.is_none());
+    assert!(!f.app.should_quit);
+    assert_eq!(
+        fs::read(crate::config::ClinConfig::config_path().unwrap()).unwrap(),
+        config
     );
 }

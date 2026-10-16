@@ -163,7 +163,7 @@ fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialog
                     &path,
                     &app.config,
                     app.keybinds.clone(),
-                    Default::default(),
+                    crate::keybinds::KeyMatcher::default(),
                     None,
                     &app.storage.data_dir,
                 )
@@ -184,11 +184,17 @@ fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialog
         );
         embedded_key(&mut app, KeyCode::Char(':'));
         assert!(app.base_embeds.has_popup());
-        embedded_key(&mut app, KeyCode::F(6));
+        crate::palette_tests::drive(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::F(6), KeyModifiers::NONE)),
+        );
         assert_eq!(app.mode, mode);
         assert!(app.base_embeds.has_popup());
         embedded_key(&mut app, KeyCode::Esc);
-        embedded_key(&mut app, KeyCode::F(6));
+        crate::palette_tests::drive(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::F(6), KeyModifiers::NONE)),
+        );
         assert_eq!(app.mode, ViewMode::Bases);
         assert!(
             app.command_palette
@@ -723,6 +729,47 @@ fn source_handoff_returns_to_saved_inline_definition_and_suspended_host() {
             .source()
             .contains("Final")
     );
+}
+
+#[test]
+fn palette_failed_navigation_restores_taken_boxed_editor_and_expanded_bases_route() {
+    let (_root, mut app) = fixture();
+    app.bases_state = None;
+    let old = app.storage.load_document("public.md").unwrap();
+    let source = "```base\nfilters: file.ext == 'md'\nviews: [{type: list, name: Inline, order: [file.name]}]\n```\n";
+    let host = app.storage.save_document(&old, source).unwrap();
+    app.open_public_document(host);
+    let renderer = markdown(source, Some("public.md"));
+    expand_first(&mut app, &renderer);
+    key(&mut app, KeyCode::Enter);
+    wait(&mut app, |app| app.mode == ViewMode::Edit);
+    let active = app.editor.body.text();
+    let blocked = app.storage.notes_dir.join("blocked");
+    fs::write(&blocked, "not a directory").unwrap();
+    let boxed = app.embedded_host_editor.as_mut().unwrap();
+    boxed.public_document = None;
+    boxed.editing_id = Some("blocked/host.md".into());
+    boxed.body.insert_str("pending host ");
+    let pending = boxed.body.text();
+    assert!(crate::actions::execute_action("notes.open", &mut app, None).is_err());
+    assert_eq!(app.mode, ViewMode::Edit);
+    assert_eq!(app.return_mode, Some(ViewMode::Bases));
+    assert_eq!(app.editor.body.text(), active);
+    assert_eq!(
+        app.embedded_host_editor.as_ref().unwrap().body.text(),
+        pending
+    );
+    assert!(app.bases_state.is_some());
+    assert!(app.storage.editor_draft_path().is_file());
+    app.back_to_list(None, None);
+    assert_eq!(app.mode, ViewMode::Bases);
+    crate::finish_overlay_event(
+        &mut app,
+        crate::overlay::ViewKind::Bases,
+        OverlayResult::Exit,
+    );
+    assert_eq!(app.mode, ViewMode::Edit);
+    assert_eq!(app.editor.body.text(), pending);
 }
 #[test]
 fn canvas_inline_write_and_history_reload_native_state_and_reject_pending_raw_editor() {

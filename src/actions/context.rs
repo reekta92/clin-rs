@@ -146,7 +146,10 @@ pub(super) enum Scope {
 
 /// Exhaustive inventory: a newly registered action must choose its owner explicitly.
 pub(super) fn scope(id: &str) -> Option<Scope> {
-    use Scope::*;
+    use Scope::{
+        Bases, CreateBase, Decrypt, Editor, Encrypt, Graph, Image, Info, Insert, List, Markdown,
+        Navigation, Note, Presentation, Setup, Shared,
+    };
     Some(match id {
         "switch_theme"
         | "keybind.preset"
@@ -252,7 +255,10 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
 }
 
 pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
-    use Scope::*;
+    use Scope::{
+        Bases, CreateBase, Decrypt, Editor, Encrypt, Graph, Image, Info, Insert, List, Markdown,
+        Navigation, Note, Presentation, Setup, Shared,
+    };
     if !context.origin_current(app) {
         return false;
     }

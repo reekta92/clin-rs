@@ -8,6 +8,8 @@ use std::process::{Command, Stdio};
 
 thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
+    #[cfg(test)]
+    pub(crate) static TEST_CLIPBOARD: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 thread_local! {
@@ -29,6 +31,18 @@ fn is_wayland() -> bool {
 }
 
 pub fn write_system_clipboard(text: &str) {
+    #[cfg(test)]
+    if TEST_CLIPBOARD.with(|clipboard| {
+        let mut clipboard = clipboard.borrow_mut();
+        if clipboard.is_some() {
+            *clipboard = Some(text.to_owned());
+            true
+        } else {
+            false
+        }
+    }) {
+        return;
+    }
     if is_wayland()
         && let Ok(mut child) = Command::new("wl-copy").stdin(Stdio::piped()).spawn()
     {
@@ -50,6 +64,10 @@ pub fn write_system_clipboard(text: &str) {
 }
 
 pub fn read_system_clipboard() -> Option<String> {
+    #[cfg(test)]
+    if let Some(text) = TEST_CLIPBOARD.with(|clipboard| clipboard.borrow().clone()) {
+        return Some(text);
+    }
     if is_wayland()
         && let Ok(out) = Command::new("wl-paste").arg("--no-newline").output()
         && out.status.success()
