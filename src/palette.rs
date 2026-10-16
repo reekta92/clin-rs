@@ -84,6 +84,7 @@ pub struct CommandPalette {
     pub(crate) context: crate::actions::ActionContext,
     pub tabs: Vec<PaletteTab>,
     pub active_tab: usize,
+    last_filter: Option<(String, usize)>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<i32>,
     pub last_results_area: Option<ratatui::layout::Rect>,
@@ -91,6 +92,11 @@ pub struct CommandPalette {
 }
 
 impl CommandPalette {
+    pub(crate) fn paste_text(&mut self, data: &str, app: &crate::app::App) {
+        self.input
+            .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
+        self.refresh_items(app);
+    }
     pub fn new(context_note_id: Option<String>, app: &crate::app::App) -> Self {
         Self::with_context(
             crate::actions::ActionContext::capture(app, None, context_note_id.as_deref()),
@@ -118,6 +124,7 @@ impl CommandPalette {
             context,
             tabs: Vec::new(),
             active_tab: 0,
+            last_filter: None,
             last_scroll: None,
             scroll_drag: None,
             last_results_area: None,
@@ -129,6 +136,10 @@ impl CommandPalette {
 
     pub fn refresh_items(&mut self, app: &crate::app::App) {
         let query = self.input.lines()[0].as_str();
+        let filter_changed = self
+            .last_filter
+            .as_ref()
+            .is_none_or(|(previous, tab)| previous != query || *tab != self.active_tab);
         let selected = self
             .state
             .selected()
@@ -142,6 +153,7 @@ impl CommandPalette {
         if self.active_tab >= tabs.len() {
             self.active_tab = 0;
         }
+        self.last_filter = Some((query.to_owned(), self.active_tab));
         let category_filter = tabs[self.active_tab].2;
         if query.is_empty() {
             for action in actions {
@@ -180,11 +192,11 @@ impl CommandPalette {
         if self.items.is_empty() {
             self.state.select(None);
         } else {
-            self.state.select(Some(
+            self.state.select(
                 selected
                     .and_then(|id| self.items.iter().position(|item| item.id == id))
-                    .unwrap_or(0),
-            ));
+                    .or_else(|| filter_changed.then_some(0)),
+            );
         }
     }
 
@@ -245,6 +257,14 @@ impl CommandPalette {
                 return true;
             }
             _ => {
+                if app
+                    .keybinds
+                    .matches_edit(crate::keybinds::EditAction::Paste, &key)
+                    && let Some(text) = crate::text_edit::read_system_clipboard()
+                {
+                    self.paste_text(&text, app);
+                    return false;
+                }
                 crate::text_edit::feed_key(&app.keybinds, &mut self.input, key);
                 self.refresh_items(app);
             }

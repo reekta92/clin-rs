@@ -246,7 +246,6 @@ pub(crate) fn handle_command_palette_mouse(
                 ) {
                     palette.active_tab = i;
                     palette.refresh_items(app);
-                    palette.state.select(Some(0));
                 }
             } else if contains_cell(chunks[2], mouse.column, mouse.row) {
                 let Some(clicked) = crate::ui::list_index_at(

@@ -276,10 +276,7 @@ pub fn handle_bracketed_paste(
 
     // 2. Command palette
     if let Some(mut palette) = app.command_palette.take() {
-        palette
-            .input
-            .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
-        palette.refresh_items(app);
+        palette.paste_text(&data, app);
         app.command_palette = Some(palette);
         return true;
     }
@@ -842,10 +839,7 @@ pub(crate) fn handle_open_palette_event(
         }
         crossterm::event::Event::Paste(data) => {
             let mut palette = app.command_palette.take().expect("open palette");
-            palette
-                .input
-                .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
-            palette.refresh_items(app);
+            palette.paste_text(data, app);
             app.command_palette = Some(palette);
         }
         _ => {}

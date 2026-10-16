@@ -377,6 +377,21 @@ fn palette_paste_refresh_input_isolation_resize_and_empty_clicks() {
         Some("Switch Theme")
     );
     assert_eq!(f.app.command_palette.as_ref().unwrap().input.lines(), [""]);
+    crate::text_edit::write_system_clipboard("Switch\r\nTheme");
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
+    );
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().input.lines(),
+        ["Switch Theme"]
+    );
+    for code in ['a', 'x'] {
+        drive(
+            &mut f.app,
+            Event::Key(KeyEvent::new(KeyCode::Char(code), KeyModifiers::CONTROL)),
+        );
+    }
     drive(&mut f.app, Event::Paste("Switch Theme".into()));
     for kind in [KeyEventKind::Repeat, KeyEventKind::Release] {
         drive(
@@ -925,10 +940,30 @@ fn palette_autosave_rename_rejects_stale_insertion_but_keeps_shared_commands() {
     );
     drive(&mut f.app, key(KeyCode::F(6)));
     let context = f.app.command_palette.as_ref().unwrap().context.clone();
+    let palette = f.app.command_palette.as_mut().unwrap();
+    let selected = palette
+        .items
+        .iter()
+        .position(|item| item.id == "editor.insert_date")
+        .unwrap();
+    palette.state.select(Some(selected));
     f.app.autosave().unwrap();
     assert_ne!(f.app.editor.editing_id.as_deref(), Some("editing.md"));
     let before = f.app.editor.body.text();
     assert!(execute_action_in_context("editor.insert_date", &mut f.app, &context).is_err());
+    assert_eq!(f.app.editor.body.text(), before);
+    f.app.refresh_command_palette();
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .state
+            .selected()
+            .is_none()
+    );
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.popups.active.is_none());
     assert_eq!(f.app.editor.body.text(), before);
     assert!(execute_action_in_context("switch_theme", &mut f.app, &context).is_ok());
 }
