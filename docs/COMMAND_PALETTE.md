@@ -1,14 +1,15 @@
 # Command Palette
 
-Technical docs for the command palette and Action trait — an extensible action system accessible from List with `:` or `Ctrl+p` in the default preset. In Editor, `Ctrl+p` toggles Markdown preview. In a focused live Bases region, the
-configured Bases palette binding expands the region and opens its public palette.
+The same command palette opens with unmodified **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Backup, Outline, and Setup. Only key presses open it. Existing custom bindings containing F6 anywhere in the focused view's sequence take priority; free that binding to use the fallback. The F2 keybind overlay advertises F6 when available.
+
+Notes keeps its preset-specific palette shortcuts and right-click targeting. Bases keeps its configured palette shortcut. In Edit, `Ctrl+p` still toggles Markdown preview; Emacs navigation bindings are unchanged. A focused live Bases region expands into standalone Bases before opening its palette, preserving the host's return route. Dialogs and active gestures retain input ownership.
 
 ---
 
 ## Overview
 
-The command palette provides a searchable list of actions. Users can invoke any registered action without navigating menus. The palette opens over the current view, intercepts input, and closes after executing or canceling.
-**Source:** `src/actions/mod.rs` (Action trait + registry), `src/palette.rs` (popup widget)
+The command palette provides a searchable list of actions. Users can invoke applicable registered actions without navigating menus. The palette opens over the current view, intercepts input, and closes after executing or canceling.
+**Source:** `src/actions/mod.rs` (registry and dispatch), `src/actions/context.rs` (eligibility), `src/app/command_palette.rs` (opening and activation), `src/palette.rs` (search and tabs).
 
 ---
 
@@ -49,29 +50,21 @@ pub trait Action: Send + Sync {
 
 ## Registration
 
-Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. The visible action list depends on feature toggles; it is not a fixed action count. Add an action there after implementing `Action`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
+Actions are registered in the static `ACTIONS` lazy vector in `src/actions/mod.rs`. The visible action list depends on features, active view, live owner, supported file format, and captured focus; it is not a fixed action count. Add an action there after implementing `Action` and classify its ID explicitly in `actions/context.rs`; the palette consumes the registry through `get_all_actions()` and `get_all_action_infos()`.
 
-Action metadata is built from the registry, filtered by enabled features, with dynamic names/descriptions:
+Unknown IDs are denied. A registration test checks unique IDs and complete classification. Each refresh builds eligible metadata once, then derives category tabs and fuzzy results from that snapshot. Presentation categories never grant execution permissions.
 
-```rust
-pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
-    let icon_mode = app.config.ui.icon_mode;
-    ACTIONS
-        .iter()
-        .filter(|a| action_feature_enabled(&a.id(), app))
-        .map(|a| {
-            let (nerd, unicode) = a.glyph();
-            ActionInfo {
-                id: a.id().to_string(),
-                name: a.name_dynamic(app),
-                description: a.description_dynamic(app),
-                category: a.category(),
-                glyph: crate::ui::get_icon(nerd, unicode, icon_mode).to_string(),
-            }
-        })
-        .collect()
-}
-```
+| View | Commands |
+| --- | --- |
+| Notes | Applicable selected-file operations, creation/import, list settings, feature management, shared note settings |
+| Edit | Editor settings and applicable body insertion; title/sidebar focus excludes body insertion |
+| Graph | Live legend, minimap, and orphan settings |
+| Bases | Guarded public operations and public Bases creation in the active file's parent folder |
+| Canvas | Image insertion through Canvas history, raw-editor synchronization, and fallible save |
+| Draw, Backup, Outline, Help | Shared settings and valid navigation |
+| Setup | Pending theme/preset selectors, Finish Setup, and Cancel Setup only |
+
+Established views also offer shared appearance, keybind, and behavior settings, plus available navigation. Redundant current-view destinations are hidden. Raw Bases/Canvas/drawing/template source buffers do not receive Markdown-only operations.
 
 
 ## Available Actions
@@ -84,32 +77,18 @@ Actions are grouped by category:
 | **Notes** | Encrypt, decrypt, manage sub-notes, outline, insert date, rasterize |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note; OCR paste |
-| **Views** | Graph, draw, canvas, backup, vault switcher |
+| **Views** | Notes, Help, Graph, Backup, Setup, Setup Finish/Cancel, document creation, public Bases operations, vault switcher |
 | **Settings** | Setup wizard, theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
 File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Views/Settings categories; General actions appear under All, not a separate General tab.
 
 ## Execution
 
-```rust
-pub fn execute_action(
-    action_id: &str,
-    app: &mut App,
-    context_note_id: Option<&str>,
-) -> Result<()> {
-    if !action_feature_enabled(action_id, app) {
-        anyhow::bail!("Action disabled: {action_id}");
-    }
-    for action in get_all_actions() {
-        if action.id() == action_id {
-            return action.execute(app, context_note_id);
-        }
-    }
-    anyhow::bail!("Action not found: {action_id}")
-}
-```
+`get_all_action_infos(app)` and `execute_action(id, app, note_id)` retain their existing signatures. Both derive current context and delegate to the same eligibility policy as the palette. A supplied note ID outside Notes cannot grant access to the Notes selection. A caller without editor focus cannot enable body insertion.
 
-The context note ID is the currently selected note (from `App::list.visual_index`), passed so actions know which note to operate on.
+The palette captures origin, vault, applicable owner path, Notes file/folder identity, and actual editor focus. Targeted execution revalidates the live owner and file; changed/deleted targets, renamed editors, replaced origins, and vault changes are rejected. Shared settings remain usable after a document-only invalidation.
+
+Keyboard and mouse activation share one operation: select the action ID, release palette input ownership, validate, execute once, and report failure. Info/Outline/subnotes commands reject changed Notes selections instead of retargeting through a visual index.
 
 ---
 
@@ -135,7 +114,10 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 
 - Fuzzy matching against dynamic action **names**, not descriptions
 - Results ranked by `SkimMatcherV2` score
-- Results update on every keystroke
+- Results update on every keystroke and relevant context/config refresh
+- Pasted CR/LF sequences become spaces; paste refreshes before Enter can activate
+- Copy/cut/select-all operate on the query without changing the background editor or quitting
+- Resize preserves the query; blank result-space clicks retain the palette; outside clicks dismiss and are consumed
 - If no results, shows "No matching actions" message
 
 ### Keyboard Navigation
@@ -153,19 +135,13 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 
 ## View Lifecycle
 
-```
-User presses List's OpenCommandPalette binding (: or Ctrl+p by default)
-  └─ app.command_palette = Some(CommandPalette::new(context_note_id, app))
-  └─ draw_ui() renders palette overlay
-  └─ global popup dispatch checks for active palette
-      ├─ If palette active → route keys to palette navigation
-      │   ├─ Up/Down → change selection
-      │   ├─ Type chars → filter
-      │   └─ Enter → execute_action()
-      └─ If not active → normal view navigation
-```
+All opening paths use `App::open_command_palette`. Overlay aliases return `OverlayResult::OpenCommandPalette` so the live owner is restored before command construction. Both real event dispatchers route open-palette input before background copy/force-quit handling. Background autosave and Bases completion polling continue.
 
-The palette is modeless-modal: it's rendered as a centered popup over the current view, but key events are intercepted before reaching the view handler.
+`notes.open`, `graph.open`, and `backup.open` validate the destination, guard active operations, save owners, and prepare the destination before cleanup. A failed save or preparation retains source buffers, recovery drafts, workers, and return metadata. A successful save may remain on disk after failed destination preparation. Explicit Notes navigation ends at List; Graph/Backup destinations return to Notes on normal exit.
+
+Help and Setup temporarily retain their caller and its return route. Opening Setup from Help first resolves Help to its caller. Expanded Bases restores its host through the existing lifecycle. Vault commitment and Setup vault rebootstrap use the same save/write guard. A writing Bases task must complete before departure.
+
+Theme/preset/UI changes update retained owners, including those suspended under Help/Setup. Setup selectors update pending wizard state and live preview without persisting; Finish saves through the existing validation/confirmation workflow, and Cancel requests the existing discard confirmation.
 
 ---
 
@@ -208,7 +184,8 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
 3. Register in `src/actions/mod.rs`:
    - Add `pub mod my_action;`
    - Add `Box::new(my_action::MyAction),` to the `ACTIONS` vec
-4. Build and test — the palette will auto-discover the new action
+4. Classify the ID in `src/actions/context.rs` and test its permitted and forbidden contexts.
+5. Build and test; unclassified commands remain unavailable.
 
 ---
 
@@ -219,7 +196,7 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — `SwitchThemeAction`
 - [CANVAS.md](CANVAS.md) — `CreateCanvasAction`
 - [DRAW.md](DRAW.md) — `CreateDrawAction`
-- [GRAPH_VIEW.md](GRAPH_VIEW.md) — `OpenGraphAction`
+- [GRAPH_VIEW.md](GRAPH_VIEW.md) — `NavigationAction`
 
 ## Bases scope
 
@@ -229,4 +206,4 @@ history, saved views, configuration, source/image opening, grouping, creation an
 export. Encrypted-note catalog actions and context are excluded. The default
 Bases binding is `Ctrl+p`; configurable sequences and preset counts remain owned
 by the shared keybinding resolver. Closing the full view restores its live region
-and original editor/overlay return stack.
+and original editor/overlay return route. Shared settings/navigation do not inherit a private Notes target.

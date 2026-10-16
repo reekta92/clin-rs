@@ -34,7 +34,7 @@ Default bindings include:
 | `n` | Create a Markdown note; Kanban uses the focused column |
 | `u` / `Ctrl+r` | Guarded session undo/redo of property and configuration edits |
 | `:` | Bases configuration menu |
-| `Ctrl+p` | Notes' shared command palette, scoped to public Bases commands |
+| `Ctrl+p` | Shared command palette with public Bases commands and approved globals |
 | `r`, `x`, `Esc` / `q` | Refresh, export, leave Bases |
 
 Prompts accept Enter to apply, Shift+Enter for a newline, and Esc to cancel.
@@ -140,7 +140,7 @@ and Canvas `.base` file nodes and text nodes containing Bases definitions.
 
 Click a region to focus its rows/properties, then use the configured Bases
 bindings. Esc closes its popup first, then returns keyboard focus to the host.
-The Bases command-palette binding (`Ctrl+p` by default) expands the focused region
+Unmodified `F6` (unless custom-bound) or the Bases command-palette binding (`Ctrl+p` by default) expands the focused region
 into the full view and opens its public-scoped palette. Ctrl+Enter also expands
 a focused region. Leaving returns to the
 original region. Source handoffs preserve an unsaved containing editor buffer.
@@ -226,3 +226,5 @@ Implementation: `src/bases/`; guarded document/property storage:
 `src/storage/{documents.rs,metadata.rs,public_moves.rs,document_recovery.rs}` and
 `src/frontmatter/properties.rs`. Dependency remediation and immutable Mermaid
 compatibility pin: [DEPENDENCY_PATCHES.md](DEPENDENCY_PATCHES.md).
+
+Shared theme/preset/settings and guarded navigation are available in the Bases palette. Private Notes actions and targets remain excluded. Creating another Bases file uses the active public file's parent folder. Navigation and vault commitment wait for an active write to finish; completion and undo state continue polling while the palette is open.
