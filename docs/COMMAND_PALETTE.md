@@ -207,3 +207,11 @@ export. Encrypted-note catalog actions and context are excluded. The default
 Bases binding is `Ctrl+p`; configurable sequences and preset counts remain owned
 by the shared keybinding resolver. Closing the full view restores its live region
 and original editor/overlay return route. Shared settings/navigation do not inherit a private Notes target.
+
+## Verification
+
+The implementation has 26 focused `palette_` tests covering real main/editor dispatch, all ten views and four presets, custom F6 sequences, Notes right-click targets, focused embeds, modal ownership, query clipboard/paste, stale targets, failed saves/preparation, suspended owners, active writes, retained settings, and Setup persistence.
+
+Run `cargo test --locked palette_`, the existing `actions::`, `editor_session::`, and `bases::` suites, then `development/scripts/check.sh --strict`. The final strict run passed all six gates: formatting, locked check, Clippy, full tests (639 unit and 12 integration tests passed; 5 ignored), dependency auditing, and Rust 1.90.0 checking. Temporary XDG directories isolate configuration during the full suite.
+
+A disposable-vault PTY smoke check exercised F6/search/copy/cancel in every view, blank-click retention and outside dismissal, editor date insertion, Bases property edit/undo, failed-save departure, live Graph theme/preset switching, and Setup preview/Finish/Cancel. Native OS clipboard integration and the five ignored performance/large-vault checks were not exercised; automated query clipboard tests use an isolated test clipboard.
