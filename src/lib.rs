@@ -2,6 +2,8 @@
 pub mod actions;
 pub mod app_theme;
 pub mod bases;
+#[cfg(test)]
+mod palette_tests;
 pub mod backup {
     pub mod app;
     pub mod git_ops;
@@ -1274,6 +1276,9 @@ fn drain_queued_mouse_events<V: OverlayView>(
 fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::OverlayResult) {
     use crate::overlay::OverlayResult;
     match res {
+        OverlayResult::OpenCommandPalette => {
+            app.open_command_palette(None);
+        }
         OverlayResult::OpenHelp(tab) => {
             app.reload_theme();
             app.open_help_page_with_tab(tab);
@@ -1653,6 +1658,11 @@ fn dispatch_event<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
+    let size = terminal.size().context("failed to get terminal size")?;
+    if crate::events::handle_open_palette_event(app, &ev, Rect::new(0, 0, size.width, size.height))
+    {
+        return Ok(());
+    }
     match ev {
         // All-keys keyboard mode reports bare modifier presses and text-less
         // IME events (key code 0); drop them before any handler sees them.

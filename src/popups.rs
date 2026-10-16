@@ -66,6 +66,7 @@ pub enum ThemePopupFocus {
 }
 
 pub struct ThemePopup {
+    pub setup_owned: bool,
     pub themes: Vec<String>,
     pub is_custom: Vec<bool>,
     pub selected: usize,

@@ -130,6 +130,8 @@ use crate::app::HelpTab;
 pub enum OverlayResult {
     /// Event consumed (or no action); stay in the overlay.
     Continue,
+    /// Open the palette after the overlay has been restored to App.
+    OpenCommandPalette,
     /// Leave the overlay and return to the previous view.
     Exit,
     /// Open the help page on the given tab.

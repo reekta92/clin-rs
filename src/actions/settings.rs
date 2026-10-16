@@ -121,7 +121,8 @@ toggle_action!(
     "\u{1f6aa}",
     toggle_confirm_on_quit,
     app,
-    if app.confirm_on_quit { "On" } else { "Off" }
+    if app.confirm_on_quit { "On" } else { "Off" },
+    fallible
 );
 
 toggle_action!(
@@ -215,7 +216,8 @@ toggle_action!(
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -382,7 +384,8 @@ toggle_action!(
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -399,7 +402,8 @@ toggle_action!(
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(

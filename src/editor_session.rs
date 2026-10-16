@@ -135,7 +135,7 @@ pub(crate) fn synchronize_source_highlight(
     highlighter.apply_change(&app.editor.body, change);
 }
 
-fn dispatch_editor_event<B: ratatui::backend::Backend>(
+pub(crate) fn dispatch_editor_event<B: ratatui::backend::Backend>(
     terminal: &mut ratatui::Terminal<B>,
     app: &mut App,
     event: Event,
@@ -147,7 +147,21 @@ where
 {
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
+    if crate::events::handle_open_palette_event(app, &event, area) {
+        return Ok(true);
+    }
     if app.base_embed_event(&event, area) {
+        return Ok(true);
+    }
+    if let Event::Key(key) = &event
+        && key.kind == KeyEventKind::Press
+        && key.code == KeyCode::F(6)
+        && key.modifiers.is_empty()
+        && app.palette_fallback_available(app.mode)
+    {
+        if !mouse_selection.active {
+            app.open_command_palette(Some(*focus));
+        }
         return Ok(true);
     }
     match event {

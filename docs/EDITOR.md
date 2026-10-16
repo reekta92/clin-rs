@@ -1,5 +1,7 @@
 # Editor View
 
+Press unmodified `F6` for editor settings, applicable body commands, shared settings, and guarded navigation. Custom editor F6 bindings take priority. Title/sidebar focus hides body insertion; Markdown-only commands are unavailable in structured public/template source buffers. Cancelling preserves focus, cursor, selection, and pending edits. Palette navigation saves the editor before departure; failure retains the buffer and recovery draft. `Ctrl+p` still toggles Markdown preview.
+
 ## Overview
 
 A built-in title/body editor with find popup, soft-wrap, sidebars with wikilink

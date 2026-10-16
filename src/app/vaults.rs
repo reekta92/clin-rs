@@ -77,6 +77,10 @@ impl App {
             self.set_temporary_status_static("Vault already active");
             return;
         }
+        if let Err(error) = self.save_before_session_replace() {
+            self.set_temporary_status(&format!("Vault switch blocked: {error:#}"));
+            return;
+        }
         let previous_config = self.config.clone();
         let mut candidate = self.config.clone();
 

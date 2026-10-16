@@ -4,6 +4,8 @@ This document details the editor-style keybind presets available in clin-rs: Hel
 
 These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, search boxes, templates, tag managers, and popups).
 
+**Command palette:** unmodified `F6` works in all ten views under every shipped preset. Custom F6 bindings, including sequence strokes, take priority in the focused scope. Notes/Bases aliases remain available; `Ctrl+p` keeps its existing editor and Emacs behavior. Palette body insertion requires editor Body focus. Modal dialogs and active gestures block opening.
+
 ---
 
 ## Configuration

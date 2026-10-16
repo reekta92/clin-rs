@@ -199,7 +199,7 @@ impl BasesState {
                 self.expand_requested = true;
             }
             BasesAction::CommandPalette => {
-                app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
+                return Ok(OverlayResult::OpenCommandPalette);
             }
             BasesAction::Back => {
                 if self.drag.take().is_some() {

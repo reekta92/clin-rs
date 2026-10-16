@@ -85,6 +85,9 @@ fn event(app: &mut App, event: Event) -> OverlayResult {
     let mut state = app.bases_state.take().unwrap();
     let result = state.overlay_handle_event(event, app, AREA).unwrap();
     app.bases_state = Some(state);
+    if matches!(result, OverlayResult::OpenCommandPalette) {
+        crate::finish_overlay_event(app, crate::overlay::ViewKind::Bases, result.clone());
+    }
     result
 }
 fn key(app: &mut App, code: KeyCode) -> OverlayResult {

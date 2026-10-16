@@ -86,6 +86,7 @@ pub struct PreviewHeaderInfo {
 }
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
+    app.refresh_command_palette();
     app.base_embeds.begin_frame();
     // Suppress background element hover when a popup is active
     let popup_hover_pos = app.mouse_pos;

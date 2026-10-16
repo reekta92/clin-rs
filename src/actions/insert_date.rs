@@ -27,10 +27,17 @@ impl Action for InsertDateAction {
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        anyhow::ensure!(
+            app.mode == crate::app::ViewMode::Edit,
+            "Insert Date needs the active editor"
+        );
         let s = chrono::Local::now()
             .format(&app.config.editor.date_format)
             .to_string();
         app.editor.body.insert_str(&s);
+        app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+        app.editor.autosave_timer =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
         app.request_editor_preview_update();
         Ok(())
     }

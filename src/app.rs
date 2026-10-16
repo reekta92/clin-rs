@@ -1,6 +1,7 @@
 pub mod messages;
 
 pub(crate) mod catalog;
+mod command_palette;
 mod edit_panes;
 mod folders;
 mod import_ops;
@@ -428,6 +429,9 @@ pub struct App {
     pub date_format: String,
     pub last_auto_backup: Option<std::time::Instant>,
     pub return_mode: Option<ViewMode>,
+    pub(crate) visit_return_mode: Option<ViewMode>,
+    #[cfg(test)]
+    pub(crate) palette_destination_failure: bool,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_plugin: Option<crate::graf_adapter::GrafPlugin>,
     pub draw_state: Option<crate::draw::app::DrawAppState>,
@@ -707,6 +711,9 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
+            visit_return_mode: None,
+            #[cfg(test)]
+            palette_destination_failure: false,
             app_theme,
             canvas_state: None,
             bases_state: None,
@@ -987,6 +994,9 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
+            visit_return_mode: None,
+            #[cfg(test)]
+            palette_destination_failure: false,
             app_theme,
             canvas_state: None,
             bases_state: None,
@@ -1723,9 +1733,14 @@ impl App {
                 if let Some(timer) = self.editor.autosave_timer
                     && now >= timer
                 {
-                    let _ = self.autosave();
-                    self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
-                    self.editor.last_saved_time = Some(std::time::Instant::now());
+                    if let Err(error) = self.autosave() {
+                        self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+                        self.write_draft();
+                        self.set_temporary_status(&error);
+                    } else {
+                        self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                        self.editor.last_saved_time = Some(std::time::Instant::now());
+                    }
                     self.editor.autosave_timer = None;
                     dirty = true;
                 }
@@ -2006,6 +2021,15 @@ impl App {
         self.editor.source_highlighter = None;
         self.editor.md_highlight_memo.clear();
         self.editor.md_highlight_lines = 0;
+        if let Some(editor) = &mut self.embedded_host_editor {
+            editor.source_highlighter = None;
+            editor.md_highlight_memo.clear();
+            editor.md_highlight_lines = 0;
+        }
+        if let Some(graph) = &mut self.graph_plugin {
+            graph.refresh_palette_theme(&self.app_theme);
+        }
+        self.sync_retained_view_settings();
     }
 
     pub fn default_status_text(&self) -> Cow<'static, str> {

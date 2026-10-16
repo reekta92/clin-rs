@@ -278,14 +278,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::OpenCommandPalette => {
-                if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-                    app.list.visual_list.get(app.list.visual_index)
-                {
-                    let id = app.notes[*summary_idx].id.clone();
-                    app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-                } else {
-                    app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-                }
+                app.open_command_palette(None);
                 return false;
             }
             ListAction::Duplicate => {
@@ -988,14 +981,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     break;
                 }
             }
-            if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-                app.list.visual_list.get(app.list.visual_index)
-            {
-                let id = app.notes[*summary_idx].id.clone();
-                app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-            } else {
-                app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-            }
+            app.open_command_palette(None);
             return;
         }
         return; // grid never uses the row-based mapping below
@@ -1018,14 +1004,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         app.list.list_viewport_offset = None;
         app.list.visual_index = clicked_visual_index;
         app.request_preview_update();
-        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let id = app.notes[*summary_idx].id.clone();
-            app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-        } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-        }
+        app.open_command_palette(None);
         return;
     }
 

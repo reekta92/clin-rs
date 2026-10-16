@@ -69,7 +69,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     }
 
     let theme: &AppThemeColors = &app.app_theme;
-    let lines: Vec<(String, String)> = match app.mode {
+    let mut lines: Vec<(String, String)> = match app.mode {
         ViewMode::List => scope_keybind_lines::<crate::keybinds::ListAction>(
             &app.keybinds,
             Keybinds::list_keys_display,
@@ -111,6 +111,15 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
             Keybinds::setup_keys_display,
         ),
     };
+
+    let scope = if app.base_embeds.focused() {
+        ViewMode::Bases
+    } else {
+        app.mode
+    };
+    if app.palette_fallback_available(scope) {
+        lines.insert(0, ("F6".into(), "Command palette".into()));
+    }
 
     let frame_area = frame.area();
 

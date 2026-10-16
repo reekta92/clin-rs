@@ -137,7 +137,7 @@ App
   ├── notes: Vec<NoteSummary>             // filtered/sorted note list
   ├── editor: NoteEditor                  // title TextArea + EditorDocument body
   ├── mode: ViewMode                      // current active view
-  ├── command_palette: Option<CommandPalette>  // Ctrl+P popup
+  ├── command_palette: Option<CommandPalette>  // shared contextual palette; F6 fallback
   ├── popups: PopupManager                // confirm, folder, tag, template, theme popups
   ├── app_theme: AppThemeColors           // derived colors from theme config
   ├── return_mode: Option<ViewMode>       // where to return after overlay exit
@@ -432,7 +432,9 @@ pub trait Action: Send + Sync {
 }
 ```
 
-Actions are registered in a `LazyLock<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides a searchable popup. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
+Actions are registered in a `LazyLock<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides one searchable popup across all ten views. `actions/context.rs` owns explicit view/target eligibility, used for listing and execution. `app/command_palette.rs` owns modal opening, binding-aware F6 availability, matcher cleanup, and shared activation. Both dispatchers route palette input before background copy/force-quit. Overlay palette requests are applied after `put_back`.
+
+Palette top-level navigation in `app/views.rs` guards writes, saves active/suspended editors and document owners, prepares destinations, then commits cleanup. Help/Setup retain their caller's existing return metadata; explicit Notes navigation terminates at List. Shared settings synchronize retained owner copies; Setup previews remain pending until Finish/Cancel. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
 
 ### Theme System
 

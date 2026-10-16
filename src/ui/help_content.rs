@@ -109,7 +109,7 @@ const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Authoring",
-        "Use {bases:Configure} to edit layout, filters, grouping, sorts, formulas and summaries, or add/hide/reorder columns. {bases:CommandPalette} opens Notes' shared command palette, restricted to public Bases commands. Drag writable Kanban cards between columns. {bases:NewNote} creates in focused column. Invalid or stale edits retain original data.",
+        "Use {bases:Configure} to edit layout, filters, grouping, sorts, formulas and summaries, or add/hide/reorder columns. {bases:CommandPalette} opens the shared command palette with public Bases commands, shared settings, and guarded navigation. Drag writable Kanban cards between columns. {bases:NewNote} creates in focused column. Invalid or stale edits retain original data.",
     ),
     tip(
         "Public exports",
@@ -133,7 +133,7 @@ const BASES_POPUPS: &[PopupHelp] = &[
 const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Command palette",
-        "Press {list:OpenCommandPalette} to open the **Command Palette** and execute any action by typing its name.",
+        "Press unbound ``F6`` in any view, or {list:OpenCommandPalette} in Notes, to open the **Command Palette** and run an applicable command by typing its name.",
     ),
     tip(
         "Select mode",
