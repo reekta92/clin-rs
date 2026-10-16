@@ -7,6 +7,24 @@ use std::path::{Path, PathBuf};
 /// sync it (unix only), optionally set permissions (unix only), then
 /// atomically rename over `path`.
 fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool) -> Result<()> {
+    #[cfg(unix)]
+    let mut mode = mode;
+    if replace {
+        match fs::metadata(path) {
+            Ok(metadata) => {
+                if metadata.permissions().readonly() {
+                    anyhow::bail!("file is read-only: {}", path.display());
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    mode = mode.or(Some(metadata.permissions().mode()));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("failed to inspect replacement destination"),
+        }
+    }
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
         ".{}.{}.tmp",
@@ -62,8 +80,20 @@ pub fn atomic_create(path: &Path, data: &[u8]) -> Result<()> {
     atomic_write_impl(path, data, None, false)
 }
 
-/// Publish a copy with its source's Unix permission bits, without replacing a destination.
-pub fn atomic_create_preserving_permissions(path: &Path, data: &[u8], source: &Path) -> Result<()> {
+/// Replace an existing file while preserving its Unix permission bits.
+pub fn atomic_write_preserving_permissions(path: &Path, data: &[u8]) -> Result<()> {
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(fs::metadata(path)?.permissions().mode())
+    };
+    #[cfg(not(unix))]
+    let mode = None;
+    atomic_write_impl(path, data, mode, true)
+}
+
+/// Publish a duplicate without broadening its source's Unix permissions.
+pub fn atomic_create_preserving_permissions(path: &Path, source: &Path, data: &[u8]) -> Result<()> {
     #[cfg(unix)]
     let mode = {
         use std::os::unix::fs::PermissionsExt;
@@ -75,18 +105,6 @@ pub fn atomic_create_preserving_permissions(path: &Path, data: &[u8], source: &P
         None
     };
     atomic_write_impl(path, data, mode, false)
-}
-
-/// Replace an existing file while preserving its Unix permission bits.
-pub fn atomic_write_preserving_permissions(path: &Path, data: &[u8]) -> Result<()> {
-    #[cfg(unix)]
-    let mode = {
-        use std::os::unix::fs::PermissionsExt;
-        Some(fs::metadata(path)?.permissions().mode())
-    };
-    #[cfg(not(unix))]
-    let mode = None;
-    atomic_write_impl(path, data, mode, true)
 }
 
 /// Write the string `s` to `path` atomically via [`atomic_write`].

@@ -609,9 +609,7 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
         }
     }
 
@@ -623,6 +621,7 @@ mod tests {
             .save_note(
                 "grepme.md",
                 &crate::storage::Note {
+                    baseline: None,
                     title: "Grep Target".to_string(),
                     content: "alpha zebra\nno match\nbeta zebra\n".to_string(),
                     updated_at: 1000,
@@ -758,6 +757,7 @@ mod tests {
             .save_note(
                 "sub/target.md",
                 &crate::storage::Note {
+                    baseline: None,
                     title: "Target".to_string(),
                     content: "hello".to_string(),
                     updated_at: 1000,
@@ -802,6 +802,7 @@ mod tests {
             .save_note(
                 "parent.md",
                 &crate::storage::Note {
+                    baseline: None,
                     title: "Parent".to_string(),
                     content: "hello".to_string(),
                     updated_at: 1000,

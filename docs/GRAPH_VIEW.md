@@ -14,7 +14,7 @@ The graph view displays all notes as nodes with edges representing `[[wikilinks]
 
 ## Graph Construction
 
-Clin creates `graf::NodeSpec` values from note summaries (ID, title, encryption state, tags, folder, links), then delegates construction to upstream `graf::graph::build_graph()`:
+Clin creates `graf::NodeSpec` values from note summaries (ID, title, tags, folder, links), then delegates construction to upstream `graf::graph::build_graph()`:
 
 1. Exclude notes carrying a tag listed in `[graf.filter] exclude_tags`.
 2. Resolve links against titles case-insensitively; self-links and unresolved links do not create edges.
@@ -28,7 +28,6 @@ Clin does not expose an `exclude_patterns` graph option. Vault listing rules and
 pub struct GraphNodeData {
     pub note_id: String,
     pub title: String,
-    pub is_encrypted: bool,
     pub tags: Vec<String>,
     pub link_count: usize,
     pub folder: String,

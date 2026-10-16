@@ -20,7 +20,6 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Draw view** — freehand drawing, shapes, text, `.draw` file format
 - [X] **Obsidian .canvas import** — read and display existing Obsidian canvas files
 - [X] **Command palette** — extensible action system with search
-- [X] **Encryption** — on-demand ChaCha20-Poly1305, `.clin` files
 - [X] **Templates** — TOML-based with variable substitution
 - [X] **Markdown preview** — built-in renderer (comrak + syntect) in list preview and editor split pane
 - [X] **External editor** — VISUAL/EDITOR env or configured command
@@ -37,7 +36,6 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **PDF import** — convert PDFs to markdown
 - [X] **CSV to markdown** — import CSV tables
 - [X] **URL import** — fetch article content as formatted markdown
-- [X] **Git integration** — vault versioning and backup
 - [X] **Grid view notes** — file manager like grid/icon view in notes list
 - [X] **Daily goals** — daily word count and note count goals with in-app progress bars
 - [X] **Calendar** — rolling-week activity heatmap widget in the notes list view
@@ -50,7 +48,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Folders-first toggle** — folders_first config + Ctrl+H shortcut
 - [X] **Path expansion** — ~ and $VAR/${VAR} expansion in storage_path
 - [X] **Smart folders** — virtual smart folders (Today, This Week, Untagged) with custom rules (tags, title, folder, age)
-- [X] **Sub-notes** — virtual notes attached to physical notes, with full management UI; encryption when saved under encrypted parents
+- [X] **Sub-notes** — virtual notes attached to physical notes, with full management UI
 - [X] **Word frequency** — show most used words in note info popup
 - [X] **Word & character metrics** — writing statistics and goals
 - [X] **Draw smoothing** — drawing canvas stroke smoothing implemented via a binomial filter
@@ -59,7 +57,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Global UI hover highlights** — mouse hover highlights for TUI panels and interactive lists
 - [X] **Editor enhancements** — right-click editor context menu and merged title bar
 - [X] **Help view (3-pane)** — tabbed help with auto-generated keybind index, per-tab descriptions, popup accordion, preset-aware tips, page indicator
-- [X] **Subnotes browsable view** — Subnotes grid tab + virtual tree folder in notes list, radial braille graph with zoom/pan, subnotes manager popup (add/edit/delete, parent-dependent encryption)
+- [X] **Subnotes browsable view** — Subnotes grid tab + virtual tree folder in notes list, radial braille graph with zoom/pan, subnotes manager popup (add/edit/delete)
 - [X] **Editor text and preview** — title/body editing, selection/clipboard, Markdown source highlighting, optional rendered preview (current editor has no READ/EDIT modal state)
 - [X] **Editor find popup** — custom find popup replacing textarea search
 - [X] **Editor soft-wrap toggle** — configurable soft-wrap for the editor body
@@ -72,12 +70,10 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Tree folder enhancements** — expand-all, expand-to-level (with count prefix), recursive folder counts in header, folder state persistence, dim empty folders
 - [X] **Scrollbars** — scrollbars on all scrollable panes
 - [X] **Global hover highlights** — mouse hover highlights across all interactive TUI panels and lists
-- [X] **Backup libgit2 auth callbacks** — push/pull auth callbacks for remote sync
 - [X] **Config-gated markdown features** — per-feature toggles for syntax highlighting, code theme, code line numbers, preview wrap, wrap indicator, link URL max length
-- [X] **Pin status preserved through encrypt/decrypt** — pinned flag survives `.md` ↔ `.clin` conversion
 - [X] **Hint bar style customization** — custom `hint_bar_style` options (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blurred`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
 - [X] **CLI mode** — list/new/open/cat/quick/search, config, storage, keybind, template, and cache tools via `clin` subcommands
-- [X] **Feature toggles** — `[features]` controls views/features; disabled entry points are hidden, deleted features release keybinds, images/backup workers require restart
+- [X] **Feature toggles** — `[features]` controls views/features; disabled entry points are hidden, deleted features release keybinds, image workers require restart
 - [X] **Selection-aware metrics** — editor header shows selected/total word and character counts via statusline tokens
 - [x] **todo.txt** — todo.txt standardization support
 

@@ -68,18 +68,10 @@ impl App {
             ViewMode::Graph => {
                 self.config.save()?;
             }
-            ViewMode::Backup => {
-                anyhow::ensure!(
-                    self.backup_state
-                        .as_ref()
-                        .is_some_and(|s| s.palette_input_available()),
-                    "Finish the Backup interaction before leaving"
-                );
-            }
             _ => {}
         }
         let editor_live = host == ViewMode::Edit
-            || (matches!(host, ViewMode::Graph | ViewMode::Backup | ViewMode::Outline)
+            || (matches!(host, ViewMode::Graph | ViewMode::Outline)
                 && (self.return_mode == Some(ViewMode::Edit)
                     || self.visit_return_mode == Some(ViewMode::Edit)));
         if editor_live
@@ -134,16 +126,12 @@ impl App {
             return Ok(());
         }
         ensure!(
-            matches!(destination, "notes.open" | "graph.open" | "backup.open"),
+            matches!(destination, "notes.open" | "graph.open"),
             "Unknown destination"
         );
         ensure!(
             destination != "graph.open" || self.config.features.graph_view.is_enabled(),
             "Graph disabled"
-        );
-        ensure!(
-            destination != "backup.open" || self.config.features.backup.is_enabled(),
-            "Backup disabled"
         );
         self.save_before_session_replace()?;
         #[cfg(test)]
@@ -163,20 +151,6 @@ impl App {
         } else {
             None
         };
-        let backup = if destination == "backup.open" {
-            Some(crate::backup::state::BackupState::new(
-                crate::config::vault_path_or_dot(&self.config),
-                self.config.features.backup.is_enabled(),
-                &self.config.backup,
-                self.app_theme.clone(),
-                self.keybinds.clone(),
-                self.config.ui.tab_icons_only,
-                self.git_lock.clone(),
-                crate::keybinds::KeyMatcher::default(),
-            ))
-        } else {
-            None
-        };
         // Everything that can fail has completed; now release the old owners.
         if self.mode == ViewMode::Help {
             self.close_help_page();
@@ -193,14 +167,9 @@ impl App {
         } else {
             None
         };
-        if self.palette_source() == ViewMode::Backup {
-            self.reload_config();
-            self.refresh_theme_from_config();
-        }
         self.graph_plugin = None;
         self.draw_state = None;
         self.canvas_state = None;
-        self.backup_state = None;
         self.outline_state = None;
         self.bases_state = None;
         self.embedded_host_editor = None;
@@ -211,18 +180,10 @@ impl App {
         self.return_mode = None;
         self.visit_return_mode = None;
         self.back_to_list(None, None);
-        match destination {
-            "graph.open" => {
-                self.graph_plugin = graph.or(retained_graph);
-                self.mode = ViewMode::Graph;
-                self.return_mode = Some(ViewMode::List);
-            }
-            "backup.open" => {
-                self.backup_state = backup;
-                self.mode = ViewMode::Backup;
-                self.return_mode = Some(ViewMode::List);
-            }
-            _ => {}
+        if destination == "graph.open" {
+            self.graph_plugin = graph.or(retained_graph);
+            self.mode = ViewMode::Graph;
+            self.return_mode = Some(ViewMode::List);
         }
         self.sync_retained_view_settings();
         Ok(())
@@ -550,29 +511,6 @@ impl App {
         }
     }
 
-    pub fn open_backup_view(&mut self) {
-        if self.feature_disabled(self.config.features.backup.is_enabled(), "Backup", "backup") {
-            return;
-        }
-        let vault_path = crate::config::vault_path_or_dot(&self.config);
-        let config = &self.config;
-
-        self.backup_state = Some(crate::backup::state::BackupState::new(
-            vault_path,
-            config.features.backup.is_enabled(),
-            &config.backup,
-            self.app_theme.clone(),
-            self.keybinds.clone(),
-            config.ui.tab_icons_only,
-            self.git_lock.clone(),
-            self.seq_matcher.clone(),
-        ));
-        if self.mode != ViewMode::Backup {
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Backup;
-        }
-    }
-
     pub fn open_draw_view(&mut self) {
         if self.feature_disabled(
             self.config.features.draw_view.is_enabled(),
@@ -796,9 +734,7 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
         }
     }
 

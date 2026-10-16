@@ -1,8 +1,6 @@
 mod context;
 pub(crate) use context::ActionContext;
 mod bases;
-pub mod decrypt;
-pub mod encrypt;
 pub mod import;
 pub mod info;
 pub mod insert_date;
@@ -197,8 +195,8 @@ toggle_action!(
 simple_action!(
     SwitchKeybindPresetAction,
     "keybind.preset",
-    "Switch Keybind Preset",
-    "Choose a keybind preset (default, helix, vim, emacs)",
+    "Switch Navigation Preset",
+    "Choose navigation keys (default, helix, vim, emacs); text editing remains non-modal",
     ActionCategory::Settings,
     "\u{f11c}",
     "\u{2328}",
@@ -237,8 +235,6 @@ pub struct ActionInfo {
 pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyLock::new(|| {
     let mut actions: Vec<Box<dyn Action>> = vec![
         Box::new(OpenVaultSwitcherAction),
-        Box::new(encrypt::EncryptNoteAction),
-        Box::new(decrypt::DecryptNoteAction),
         Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
         Box::new(insert_date::InsertDateAction),
@@ -264,7 +260,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleConfirmDeleteAction),
         Box::new(settings::TogglePinnedOnTopAction),
         Box::new(settings::ToggleConfirmQuitAction),
-        Box::new(settings::TogglePreviewEncryptionAction),
         Box::new(settings::CycleSortAction),
         Box::new(settings::ToggleShowHiddenFilesAction),
         Box::new(settings::ToggleShowAllFilesAction),
@@ -298,7 +293,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleSubnotesAction),
         Box::new(settings::ToggleTemplatesAction),
         Box::new(settings::ToggleImportAction),
-        Box::new(settings::ToggleEncryptionAction),
         Box::new(settings::ToggleGraphPreviewAction),
         Box::new(settings::ToggleGraphShowLegendAction),
         Box::new(settings::ToggleGraphShowMinimapAction),
@@ -355,14 +349,9 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
                 "Visualize note connections as a force-directed graph",
             ),
             (
-                "backup.open",
-                "Open Backup Dashboard",
-                "View git backup status, commit history, and push to remote",
-            ),
-            (
                 "setup_wizard",
                 "Run Setup Wizard",
-                "Choose theme, keybinds, backup, and more",
+                "Choose theme, navigation keys, and appearance",
             ),
             ("setup.finish", "Finish Setup", "Save the wizard settings"),
             (
@@ -392,14 +381,12 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
             app.config.features.templates.is_enabled() && app.mode == crate::app::ViewMode::List
         }
         "help.open" => app.config.features.help_view.is_enabled(),
-        "backup.open" => app.config.features.backup.is_enabled(),
         "draw.create" => app.config.features.draw_view.is_enabled(),
         "graph.open" => app.config.features.graph_view.is_enabled(),
         "create_canvas" => app.config.features.canvas_view.is_enabled(),
         "bases.create" => app.config.features.bases_view.is_enabled(),
         "outline.open" => app.config.features.outline_view.is_enabled(),
         "manage_subnotes_list" => app.config.features.subnotes.is_enabled(),
-        "note.encrypt" | "note.decrypt" => app.config.features.encryption.is_enabled(),
         "settings.configure_smart_folders" => app.config.features.smart_folders.is_enabled(),
         "ocr.paste" | "paste_image" | "insert_image_from_file" => {
             app.config.features.import.is_enabled()
@@ -415,7 +402,6 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
         "settings.toggle_subnotes" => !app.config.features.subnotes.is_deleted(),
         "settings.toggle_templates" => !app.config.features.templates.is_deleted(),
         "settings.toggle_import" => !app.config.features.import.is_deleted(),
-        "settings.toggle_encryption" => !app.config.features.encryption.is_deleted(),
         "settings.goals" => !app.config.features.goals.is_deleted(),
         "settings.calendar" => !app.config.features.calendar.is_deleted(),
         "settings.smart_folders" => !app.config.features.smart_folders.is_deleted(),
@@ -505,9 +491,7 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
         }
     }
 

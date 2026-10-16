@@ -15,9 +15,7 @@ pub(super) fn vault() -> (tempfile::TempDir, Storage) {
         config_dir: dir.path().to_owned(),
         notes_dir: dir.path().to_owned(),
         templates_dir: dir.path().join("templates"),
-        key: rand::random(),
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
     };
     (dir, storage)
 }

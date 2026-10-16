@@ -37,8 +37,8 @@ replacement. The unchanged existing snapshot corpus also passes:
 clin's existing bounded YAML visitor and lossless `yaml-edit` CST edits remain
 unchanged. Tests exercise duplicate-key rejection, expanded-node/depth bounds,
 malformed frontmatter, opaque tagged values, aliases, LF/CRLF, comments, body
-preservation, Base authoring, encrypted-note round trips, and native Mermaid
-previews. Encrypted `Note` and bincode schemas are unchanged.
+preservation, Base authoring, legacy opaque-data preservation, and native Mermaid
+previews. New recovery records use version 2; legacy encrypted formats remain untouched.
 
 Run `development/scripts/check.sh` for the complete clin gates. `cargo tree -i
 yaml_serde` should show the shared maintained backend; `unsafe-libyaml`,

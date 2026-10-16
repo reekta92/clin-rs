@@ -6,9 +6,7 @@
   rustfmt,
   clippy,
   rust-analyzer,
-  openssl,
   zlib,
-  libgit2,
   libx11,
   libxcb,
 }:
@@ -26,9 +24,7 @@ mkShell {
     clippy
     rust-analyzer
 
-    openssl
     zlib
-    libgit2
     libx11
     libxcb
   ];

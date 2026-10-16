@@ -156,6 +156,9 @@ impl App {
     }
 
     fn open_template_path_in_editor(&mut self, path: &std::path::Path) {
+        if !self.prepare_editor_transition() {
+            return;
+        }
         let folder_config = crate::templates::is_folder_template_config(path);
         if self.editor.external_editor_enabled {
             self.open_path_in_external_editor(path);
@@ -190,11 +193,12 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editor.editing_id = None;
         self.editor.public_document = None;
-        self.editor.public_opening_snapshot = None;
         self.editor.bases_sidebar_renderer = None;
         if self.editor.sidebar == crate::editor::EditSidebar::Bases {
             self.editor.sidebar = crate::editor::EditSidebar::None;
         }
+        self.editor.note_baseline = None;
+        self.editor.template_source = Some(content.clone());
         self.editor.template_edit_path = Some(path.to_path_buf());
         self.editor.title_editor = make_title_editor(
             &format!(
@@ -211,7 +215,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.body = EditorDocument::from_text(&content);
+        self.editor.body = EditorDocument::from_source(&content);
         self.apply_editor_prefs();
         self.set_temporary_status_static(if folder_config {
             "Editing folder variables (Esc to validate, save and return)"
@@ -766,7 +770,9 @@ template = """
             } else {
                 self.config.core.keybind_preset = new;
                 self.apply_keybind_preset(new);
-                self.set_temporary_status(&format!("Keybind preset: {new}"));
+                self.set_temporary_status(&format!(
+                    "Navigation preset: {new} (text editing unchanged)"
+                ));
                 let _ = self.persist_config(|config| config.core.keybind_preset = new);
             }
             self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(popup));

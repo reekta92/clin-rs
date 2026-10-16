@@ -1,6 +1,6 @@
 # Command Palette
 
-The same command palette opens with unmodified **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Backup, Outline, and Setup. Only key presses open it. Existing custom bindings containing F6 anywhere in the focused view's sequence take priority; free that binding to use the fallback. The F2 keybind overlay advertises F6 when available.
+The same command palette opens with unmodified **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Outline, and Setup. Only key presses open it. Existing custom bindings containing F6 anywhere in the focused view's sequence take priority; free that binding to use the fallback. The F2 keybind overlay advertises F6 when available.
 
 Notes keeps its preset-specific palette shortcuts and right-click targeting. Bases keeps its configured palette shortcut. In Edit, `Ctrl+p` still toggles Markdown preview; Emacs navigation bindings are unchanged. A focused live Bases region expands into standalone Bases before opening its palette, preserving the host's return route. Dialogs and active gestures retain input ownership.
 
@@ -39,7 +39,6 @@ pub trait Action: Send + Sync {
 
 | Method | Description |
 |---|---|
-| `id()` | Unique identifier string (e.g. `"note.encrypt"`) |
 | `name()` | Human-readable name for the palette |
 | `description()` | Short help text shown in palette |
 | `category()` | Grouping (General, Notes, Import, Append, Views, Settings) |
@@ -61,7 +60,7 @@ Unknown IDs are denied. A registration test checks unique IDs and complete class
 | Graph | Live legend, minimap, and orphan settings |
 | Bases | Guarded public operations and public Bases creation in the active file's parent folder |
 | Canvas | Image insertion through Canvas history, raw-editor synchronization, and fallible save |
-| Draw, Backup, Outline, Help | Shared settings and valid navigation |
+| Draw, Outline, Help | Shared settings and valid navigation |
 | Setup | Pending theme/preset selectors, Finish Setup, and Cancel Setup only |
 
 Established views also offer shared appearance, keybind, and behavior settings, plus available navigation. Redundant current-view destinations are hidden. Raw Bases/Canvas/drawing/template source buffers do not receive Markdown-only operations.
@@ -74,10 +73,9 @@ Actions are grouped by category:
 | Category | Shipped actions |
 |---|---|
 | **General** | Show info, paste image, insert image from file (shown under All) |
-| **Notes** | Encrypt, decrypt, manage sub-notes, outline, insert date, rasterize |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note; OCR paste |
-| **Views** | Notes, Help, Graph, Backup, Setup, Setup Finish/Cancel, document creation, public Bases operations, vault switcher |
+| **Views** | Notes, Help, Graph, Setup, Setup Finish/Cancel, document creation, public Bases operations, vault switcher |
 | **Settings** | Setup wizard, theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
 File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Views/Settings categories; General actions appear under All, not a separate General tab.
@@ -102,8 +100,6 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ├─────────────────────────────────────────────┤
 │ All · Notes · Import · Append · Views · Set │
 ├─────────────────────────────────────────────┤
-│   Encrypt Note               Encrypt..      │
-│   Decrypt Note               Decrypt..      │
 │   Outline               Headers..      │
 │   Open Graph View            Switch..       │
 │   Create Drawing             Create..       │
@@ -137,7 +133,7 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 
 All opening paths use `App::open_command_palette`. Overlay aliases return `OverlayResult::OpenCommandPalette` so the live owner is restored before command construction. Both real event dispatchers route open-palette input before background copy/force-quit handling. Background autosave and Bases completion polling continue.
 
-`notes.open`, `graph.open`, and `backup.open` validate the destination, guard active operations, save owners, and prepare the destination before cleanup. A failed save or preparation retains source buffers, recovery drafts, workers, and return metadata. A successful save may remain on disk after failed destination preparation. Explicit Notes navigation ends at List; Graph/Backup destinations return to Notes on normal exit.
+`notes.open` and `graph.open` validate the destination, guard active operations, save owners, and prepare the destination before cleanup. A failed save or preparation retains source buffers, recovery drafts, workers, and return metadata. A successful save may remain on disk after failed destination preparation. Explicit Notes navigation ends at List; Graph destinations return to Notes on normal exit.
 
 Help and Setup temporarily retain their caller and its return route. Opening Setup from Help first resolves Help to its caller. Expanded Bases restores its host through the existing lifecycle. Vault commitment and Setup vault rebootstrap use the same save/write guard. A writing Bases task must complete before departure.
 
@@ -192,7 +188,6 @@ Theme/preset/UI changes update retained owners, including those suspended under 
 ## Connections
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, App state
-- [ENCRYPTION.md](ENCRYPTION.md) — `EncryptNoteAction`, `DecryptNoteAction`
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — `SwitchThemeAction`
 - [CANVAS.md](CANVAS.md) — `CreateCanvasAction`
 - [DRAW.md](DRAW.md) — `CreateDrawAction`

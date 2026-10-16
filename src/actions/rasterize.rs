@@ -34,7 +34,9 @@ impl Action for RasterizeNoteAction {
             .ok_or_else(|| anyhow!("No note selected"))?;
 
         if note_id.ends_with(".clin") {
-            app.set_temporary_status_static("Cannot rasterize encrypted notes. Decrypt first.");
+            app.set_temporary_status_static(
+                "Legacy encrypted notes require the previous release; data retained.",
+            );
             return Ok(());
         }
 
@@ -62,7 +64,6 @@ impl Action for RasterizeNoteAction {
         }
 
         app.refresh_note_single(None, &note_id);
-        app.enqueue_backup(format!("auto: {}", note.title));
         app.set_temporary_status_static("Note spacing rasterized");
         Ok(())
     }

@@ -11,7 +11,7 @@ use crossterm::event::{
 use ratatui::{Terminal, backend::TestBackend, layout::Rect};
 use std::{fs, sync::mpsc};
 
-const MODES: [ViewMode; 10] = [
+const MODES: [ViewMode; 9] = [
     ViewMode::List,
     ViewMode::Edit,
     ViewMode::Help,
@@ -19,7 +19,6 @@ const MODES: [ViewMode; 10] = [
     ViewMode::Draw,
     ViewMode::Canvas,
     ViewMode::Bases,
-    ViewMode::Backup,
     ViewMode::Outline,
     ViewMode::Setup,
 ];
@@ -42,9 +41,7 @@ impl Fixture {
             notes_dir: root.path().join("vault"),
             config_dir: root.path().join("vault/.clin"),
             templates_dir: root.path().join("templates"),
-            key: rand::random(),
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: false,
         };
         for path in [
             &storage.notes_dir,
@@ -79,11 +76,9 @@ impl Fixture {
         config.features.draw_view = FeatureState::Enabled;
         config.features.canvas_view = FeatureState::Enabled;
         config.features.bases_view = FeatureState::Enabled;
-        config.features.backup = FeatureState::Enabled;
         config.features.outline_view = FeatureState::Enabled;
         config.features.help_view = FeatureState::Enabled;
         config.features.import = FeatureState::Enabled;
-        config.features.encryption = FeatureState::Enabled;
         config.save().unwrap();
         let mut app = App::new(storage).unwrap();
         app.config = config;
@@ -135,7 +130,6 @@ impl Fixture {
                     None,
                 ));
             }
-            ViewMode::Backup => app.open_backup_view(),
             ViewMode::Outline => app.open_outline_view(),
             ViewMode::Setup => app.open_setup_view(),
             ViewMode::List => {}
@@ -377,7 +371,7 @@ fn palette_paste_refresh_input_isolation_resize_and_empty_clicks() {
         Some("Switch Theme")
     );
     assert_eq!(f.app.command_palette.as_ref().unwrap().input.lines(), [""]);
-    crate::text_edit::write_system_clipboard("Switch\r\nTheme");
+    crate::text_edit::write_system_clipboard("Switch\r\nTheme").unwrap();
     drive(
         &mut f.app,
         Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
@@ -492,10 +486,6 @@ fn palette_modal_gates_preserve_each_owners_pending_input() {
                 f.app.bases_state.as_mut().unwrap().matcher.clear();
                 f.app.begin_set_word_goal();
             }
-            ViewMode::Backup => {
-                f.app.backup_state.as_mut().unwrap().input_mode =
-                    crate::backup::state::BackupInputMode::EditCommitMessage;
-            }
             ViewMode::Outline => {
                 f.app.open_vault_switcher();
             }
@@ -529,6 +519,7 @@ fn palette_navigation_saves_dirty_edit_public_and_template_owners() {
             let path = f.app.storage.templates_dir.join("example.toml");
             fs::write(&path, "original").unwrap();
             f.app.editor.template_edit_path = Some(path.clone());
+            f.app.editor.template_source = Some("original".into());
             f.app.editor.editing_id = None;
             path
         } else {
@@ -577,7 +568,12 @@ fn palette_save_failure_keeps_editor_draft_and_suspended_return_routes() {
         f.app.editor.autosave_status,
         crate::editor::AutosaveStatus::Unsaved
     );
-    assert!(f.app.editor.autosave_timer.is_none());
+    assert!(
+        f.app
+            .editor
+            .autosave_timer
+            .is_some_and(|timer| timer > std::time::Instant::now())
+    );
     f.app.switch_vault(f.root.path().join("another-vault"));
     assert!(f.app.setup_rebootstrap.is_none());
     assert!(!f.app.should_quit);
@@ -793,12 +789,6 @@ fn palette_live_settings_reach_retained_owners_without_resetting_graph_or_histor
             .unwrap()
     ));
     activate(&mut f.app, "notes.open");
-    f.enter(ViewMode::Backup);
-    activate(&mut f.app, "settings.tab_icons_only");
-    activate(&mut f.app, "settings.scrollbars");
-    let backup = f.app.backup_state.as_ref().unwrap();
-    assert_eq!(backup.tab_icons_only, f.app.config.ui.tab_icons_only);
-    assert_eq!(backup.scrollbars_enabled, f.app.config.ui.scrollbars);
 }
 
 #[test]
@@ -849,14 +839,21 @@ fn palette_help_to_setup_restores_original_editor_and_drafts_on_save_failure() {
     drive(&mut f.app, key(KeyCode::Char('q')));
     assert_eq!(f.app.mode, ViewMode::Edit);
     assert_eq!(f.app.editor.body.text(), expected);
-    let blocker = f.root.path().join("blocked");
-    fs::write(&blocker, "block").unwrap();
-    f.app.storage.notes_dir = blocker;
+    fs::write(f.app.storage.note_path("editing.md"), "External change\n").unwrap();
     f.app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
     activate(&mut f.app, "notes.open");
     assert_eq!(f.app.mode, ViewMode::Edit);
     assert_eq!(f.app.editor.body.text(), expected);
-    assert!(f.app.storage.editor_draft_path().is_file());
+    f.app.flush_drafts().unwrap();
+    assert!(
+        fs::read_dir(f.app.storage.data_dir.join(".clin/document-recovery-v2"))
+            .unwrap()
+            .any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("draft-"))
+    );
     assert_eq!(
         f.app.editor.autosave_status,
         crate::editor::AutosaveStatus::Unsaved
@@ -929,10 +926,9 @@ fn palette_notes_alias_and_right_click_preserve_tree_and_grid_targets() {
 }
 
 #[test]
-fn palette_autosave_rename_rejects_stale_insertion_but_keeps_shared_commands() {
+fn palette_autosave_title_change_keeps_filename_and_insertion_context() {
     let mut f = Fixture::new();
     f.enter(ViewMode::Edit);
-    f.app.storage.rename_on_title_change = true;
     f.app.editor.title_editor = crate::events::make_title_editor(
         "Renamed",
         f.app.app_theme.highlight_fg,
@@ -940,32 +936,16 @@ fn palette_autosave_rename_rejects_stale_insertion_but_keeps_shared_commands() {
     );
     drive(&mut f.app, key(KeyCode::F(6)));
     let context = f.app.command_palette.as_ref().unwrap().context.clone();
-    let palette = f.app.command_palette.as_mut().unwrap();
-    let selected = palette
-        .items
-        .iter()
-        .position(|item| item.id == "editor.insert_date")
-        .unwrap();
-    palette.state.select(Some(selected));
     f.app.autosave().unwrap();
-    assert_ne!(f.app.editor.editing_id.as_deref(), Some("editing.md"));
-    let before = f.app.editor.body.text();
-    assert!(execute_action_in_context("editor.insert_date", &mut f.app, &context).is_err());
-    assert_eq!(f.app.editor.body.text(), before);
-    f.app.refresh_command_palette();
-    assert!(
-        f.app
-            .command_palette
-            .as_ref()
-            .unwrap()
-            .state
-            .selected()
-            .is_none()
+    assert_eq!(f.app.editor.editing_id.as_deref(), Some("editing.md"));
+    assert_eq!(
+        f.app.storage.load_note("editing.md").unwrap().title,
+        "Renamed"
     );
-    drive(&mut f.app, key(KeyCode::Enter));
-    assert!(f.app.popups.active.is_none());
-    assert_eq!(f.app.editor.body.text(), before);
-    assert!(execute_action_in_context("switch_theme", &mut f.app, &context).is_ok());
+    assert!(!f.app.storage.notes_dir.join("Renamed.md").exists());
+    let before = f.app.editor.body.text();
+    assert!(execute_action_in_context("editor.insert_date", &mut f.app, &context).is_ok());
+    assert_ne!(f.app.editor.body.text(), before);
 }
 
 #[test]

@@ -56,7 +56,7 @@ The screen is centered both horizontally and vertically. The left column contain
 | Icons | `[Icons]` | Nerd / Unicode / None |
 | Layout | `[Layout]` | Notes view Grid / Tree |
 | Features | `[Features]` | Default / Expanded / Minimal / Custom feature toggles |
-| Keybinds | `[Keybinds]` | Default / Helix / Vim / Emacs |
+| Keybinds | `[Keybinds]` | Default / Helix / Vim / Emacs (navigation only) |
 ---
 
 ## Keybindings

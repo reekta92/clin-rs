@@ -772,9 +772,7 @@ mod tests {
             config_dir: dir.path().to_owned(),
             notes_dir: dir.path().to_owned(),
             templates_dir: dir.path().join("templates"),
-            key: [0; 32],
             skip_dir_patterns: vec![regex::Regex::new("^ignored$").unwrap()],
-            rename_on_title_change: true,
         };
         (dir, storage)
     }

@@ -377,7 +377,7 @@ fn abort(
     }
     if retain || !failures.is_empty() {
         bail!(
-            "{error:#}; encrypted recovery record retained; inspect affected files: {}",
+            "{error:#}; private plaintext recovery record retained; inspect affected files: {}",
             failures.join("; ")
         );
     }

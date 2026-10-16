@@ -10,6 +10,7 @@ thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
     #[cfg(test)]
     pub(crate) static TEST_CLIPBOARD: RefCell<Option<String>> = const { RefCell::new(None) };
+    static FALLBACK_CLIPBOARD: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 thread_local! {
@@ -30,7 +31,85 @@ fn is_wayland() -> bool {
     std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY_NAME").is_ok()
 }
 
-pub fn write_system_clipboard(text: &str) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardWrite {
+    System,
+    Terminal,
+}
+
+pub fn clipboard_notice(result: anyhow::Result<ClipboardWrite>) -> &'static str {
+    match result {
+        Ok(ClipboardWrite::System) => "Copied to clipboard",
+        Ok(ClipboardWrite::Terminal) => "Copy sent to terminal (OSC 52)",
+        Err(_) => "Copied internally; system clipboard unavailable",
+    }
+}
+
+fn osc52_sequence(text: &str, tmux: bool) -> anyhow::Result<String> {
+    use base64::Engine;
+    if text.len() > 100 * 1024 {
+        anyhow::bail!("terminal clipboard copy exceeds 100 KiB limit");
+    }
+    let encoded = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+    let sequence = format!("\x1b]52;c;{encoded}\x07");
+    Ok(if tmux {
+        format!("\x1bPtmux;{}\x1b\\", sequence.replace('\x1b', "\x1b\x1b"))
+    } else {
+        sequence
+    })
+}
+
+fn write_terminal_clipboard(text: &str) -> anyhow::Result<ClipboardWrite> {
+    use anyhow::Context;
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() || std::env::var("TERM").as_deref() == Ok("dumb") {
+        anyhow::bail!("terminal clipboard transport unavailable");
+    }
+    let sequence = osc52_sequence(text, std::env::var_os("TMUX").is_some())?;
+    let mut output = std::io::stdout().lock();
+    output
+        .write_all(sequence.as_bytes())
+        .context("terminal clipboard write failed")?;
+    output.flush().context("terminal clipboard flush failed")?;
+    Ok(ClipboardWrite::Terminal)
+}
+
+fn write_native_clipboard(text: &str) -> anyhow::Result<ClipboardWrite> {
+    use anyhow::Context;
+    if is_wayland()
+        && let Ok(mut child) = Command::new("wl-copy").stdin(Stdio::piped()).spawn()
+    {
+        let write = child
+            .stdin
+            .take()
+            .context("wl-copy stdin unavailable")
+            .and_then(|mut input| {
+                input
+                    .write_all(text.as_bytes())
+                    .context("wl-copy write failed")
+            });
+        let status = child.wait().context("wl-copy wait failed")?;
+        write?;
+        if !status.success() {
+            anyhow::bail!("wl-copy exited with {status}");
+        }
+        return Ok(ClipboardWrite::System);
+    }
+    CLIPBOARD.with(|cell| {
+        let mut clipboard = cell.borrow_mut();
+        if clipboard.is_none() {
+            *clipboard = Some(arboard::Clipboard::new().context("system clipboard unavailable")?);
+        }
+        clipboard
+            .as_mut()
+            .expect("clipboard initialized")
+            .set_text(text)
+            .context("clipboard write failed")?;
+        Ok(ClipboardWrite::System)
+    })
+}
+
+pub fn write_system_clipboard(text: &str) -> anyhow::Result<ClipboardWrite> {
     #[cfg(test)]
     if TEST_CLIPBOARD.with(|clipboard| {
         let mut clipboard = clipboard.borrow_mut();
@@ -41,26 +120,25 @@ pub fn write_system_clipboard(text: &str) {
             false
         }
     }) {
-        return;
+        return Ok(ClipboardWrite::System);
     }
-    if is_wayland()
-        && let Ok(mut child) = Command::new("wl-copy").stdin(Stdio::piped()).spawn()
-    {
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(text.as_bytes());
-        }
-        let _ = child.wait();
-        return;
+
+    FALLBACK_CLIPBOARD.with(|fallback| *fallback.borrow_mut() = Some(text.to_owned()));
+    // Unit tests must never replace the developer's desktop clipboard.
+    if cfg!(test) {
+        anyhow::bail!("desktop clipboard disabled in unit tests");
     }
-    CLIPBOARD.with(|cb_cell| {
-        let mut cb = cb_cell.borrow_mut();
-        if cb.is_none() {
-            *cb = arboard::Clipboard::new().ok();
-        }
-        if let Some(clipboard) = cb.as_mut() {
-            let _ = clipboard.set_text(text);
-        }
-    });
+    let result =
+        if std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some() {
+            write_terminal_clipboard(text)
+        } else {
+            write_native_clipboard(text)
+                .or_else(|native_error| write_terminal_clipboard(text).map_err(|_| native_error))
+        };
+    if matches!(result, Ok(ClipboardWrite::System)) {
+        FALLBACK_CLIPBOARD.with(|fallback| *fallback.borrow_mut() = None);
+    }
+    result
 }
 
 pub fn read_system_clipboard() -> Option<String> {
@@ -68,8 +146,13 @@ pub fn read_system_clipboard() -> Option<String> {
     if let Some(text) = TEST_CLIPBOARD.with(|clipboard| clipboard.borrow().clone()) {
         return Some(text);
     }
+    if let Some(text) = FALLBACK_CLIPBOARD.with(|fallback| fallback.borrow().clone()) {
+        return Some(text);
+    }
     if is_wayland()
-        && let Ok(out) = Command::new("wl-paste").arg("--no-newline").output()
+        && let Ok(out) = Command::new("wl-paste")
+            .args(["--no-newline", "--type", "text"])
+            .output()
         && out.status.success()
     {
         return Some(String::from_utf8_lossy(&out.stdout).into_owned());
@@ -195,8 +278,9 @@ pub(crate) fn copy_mouse_selection<T: TextEditTarget>(target: &mut T) -> Option<
         return None;
     }
     target.copy();
-    write_system_clipboard(&target.yank_text());
-    Some("Copied to clipboard")
+    Some(clipboard_notice(write_system_clipboard(
+        &target.yank_text(),
+    )))
 }
 
 /// Extend or collapse the selection for a cursor-movement key before it is fed
@@ -294,8 +378,9 @@ pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
     }
     if keybinds.matches_edit(EditAction::Cut, &key) {
         if target.cut() {
-            write_system_clipboard(&target.yank_text());
-            set_clipboard_notice("Cut to clipboard");
+            set_clipboard_notice(clipboard_notice(write_system_clipboard(
+                &target.yank_text(),
+            )));
         } else {
             set_clipboard_notice("Nothing selected");
         }
@@ -354,6 +439,9 @@ pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
 }
 
 #[cfg(test)]
+mod clipboard_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crossterm::event::{KeyCode, KeyModifiers};
@@ -372,7 +460,7 @@ mod tests {
         selection.mark_drag();
         assert_eq!(
             selection.finish(&mut area, true),
-            Some("Copied to clipboard")
+            Some("Copied internally; system clipboard unavailable")
         );
 
         selection.begin(&mut area);
@@ -487,7 +575,10 @@ mod tests {
             &mut area,
             KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
         ));
-        assert_eq!(take_clipboard_notice(), Some("Copied to clipboard"));
+        assert_eq!(
+            take_clipboard_notice(),
+            Some("Copied internally; system clipboard unavailable")
+        );
     }
 
     #[test]

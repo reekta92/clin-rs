@@ -1,8 +1,7 @@
-//! Encrypted auxiliary recovery for guarded public documents, never encrypted notes.
+//! Private plaintext recovery for guarded documents. Legacy encrypted records stay untouched.
 
 use super::{Storage, documents::DocumentSnapshot};
 use anyhow::{Context, Result, bail};
-use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce, aead::AeadInPlace};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -11,12 +10,12 @@ use std::{
 };
 
 const MAX_BYTES: usize = 40 * 1024 * 1024;
-const AAD: &[u8] = b"clin-document-recovery-v1";
 #[derive(Serialize, Deserialize)]
 enum Record<T> {
     Pending(Vec<T>),
     Committed(Vec<T>),
     Draft(T),
+    NewDraft((String, String)),
     Moves {
         entries: Vec<super::public_moves::FileMove>,
         committed: bool,
@@ -36,7 +35,7 @@ impl Storage {
     fn document_recovery_dir(&self, create: bool) -> Result<PathBuf> {
         let root = self.data_dir.canonicalize()?;
         let mut directory = root;
-        for part in [".clin", "document-recovery"] {
+        for part in [".clin", "document-recovery-v2"] {
             directory.push(part);
             match fs::symlink_metadata(&directory) {
                 Ok(metadata) => {
@@ -62,21 +61,19 @@ impl Storage {
                 }
                 Err(error) => return Err(error.into()),
             }
+            #[cfg(unix)]
+            if create {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))?;
+            }
         }
         Ok(directory)
     }
     fn write_document_record<T: Serialize>(&self, path: &Path, record: &Record<T>) -> Result<()> {
-        let mut bytes = bincode::serde::encode_to_vec((1u8, record), bincode::config::standard())?;
-        if bytes.len() > MAX_BYTES - 28 {
+        let bytes = bincode::serde::encode_to_vec((2u8, record), bincode::config::standard())?;
+        if bytes.len() > MAX_BYTES {
             bail!("document recovery record exceeds safety limit");
         }
-        // Encrypt the owned buffer in place: bulk undo must not duplicate all source bytes again.
-        let nonce: [u8; 12] = rand::random();
-        ChaCha20Poly1305::new_from_slice(&self.key)
-            .expect("fixed-size vault key")
-            .encrypt_in_place(Nonce::from_slice(&nonce), AAD, &mut bytes)
-            .map_err(|_| anyhow::anyhow!("document recovery encryption failed"))?;
-        bytes.extend_from_slice(&nonce);
         crate::fsutil::atomic_write_with_mode(path, &bytes, 0o600)?;
         sync_directory(path.parent().context("recovery record has no directory")?)
     }
@@ -151,10 +148,17 @@ impl Storage {
         let path = self
             .document_recovery_dir(true)?
             .join(format!("draft-{}.bin", baseline.recovery_id()));
-        self.write_document_record(
-            &path,
-            &Record::Draft((baseline.id(), baseline.source(), source)),
-        )
+        if baseline.exists() {
+            self.write_document_record(
+                &path,
+                &Record::Draft((baseline.id(), baseline.source(), source)),
+            )
+        } else {
+            self.write_document_record::<Entry>(
+                &path,
+                &Record::NewDraft((baseline.id().to_owned(), source.to_owned())),
+            )
+        }
     }
     pub fn clear_document_draft(&self, baseline: &DocumentSnapshot) -> Result<()> {
         let directory = self.document_recovery_dir(false)?;
@@ -186,25 +190,21 @@ impl Storage {
                 fs::File::open(&path)?
                     .take((MAX_BYTES + 1) as u64)
                     .read_to_end(&mut bytes)?;
-                if bytes.len() > MAX_BYTES || bytes.len() < 28 {
+                if bytes.len() > MAX_BYTES || bytes.is_empty() {
                     bail!("invalid recovery record size");
                 }
-                let nonce = bytes.split_off(bytes.len() - 12);
-                ChaCha20Poly1305::new_from_slice(&self.key)
-                    .expect("fixed-size vault key")
-                    .decrypt_in_place(Nonce::from_slice(&nonce), AAD, &mut bytes)
-                    .map_err(|_| anyhow::anyhow!("document recovery authentication failed"))?;
                 let ((version, record), used) =
                     bincode::serde::decode_from_slice::<(u8, Record<Entry>), _>(
                         &bytes,
                         bincode::config::standard().with_limit::<MAX_BYTES>(),
                     )?;
-                if version != 1 || used != bytes.len() {
+                if version != 2 || used != bytes.len() {
                     bail!("unsupported document recovery record");
                 }
                 match record {
                     Record::Moves { entries, committed } => {
-                        self.recover_public_moves(&entries, committed)?
+                        let _guard = self.write_guard()?;
+                        self.recover_public_moves(&entries, committed)?;
                     }
                     Record::Committed(entries) => {
                         let mut rollback = false;
@@ -239,6 +239,16 @@ impl Storage {
                             }
                         }
                     }
+                    Record::NewDraft((id, after)) => {
+                        let path = self.document_path(&id)?;
+                        if !path.exists() {
+                            self.create_document(&id, &after)?;
+                        } else if self.load_document(&id)?.source() != after {
+                            bail!(
+                                "{id}: new-note recovery conflicts with existing file; draft retained"
+                            );
+                        }
+                    }
                     Record::Draft((id, before, after)) => {
                         let current = self.load_document(&id)?;
                         if current.source() == before {
@@ -270,14 +280,12 @@ mod tests {
             config_dir: dir.path().into(),
             notes_dir: dir.path().into(),
             templates_dir: dir.path().join("templates"),
-            key: rand::random(),
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         (dir, storage)
     }
     #[test]
-    fn interrupted_bulk_recovers_exact_public_bytes_from_encrypted_record() {
+    fn interrupted_bulk_recovers_exact_public_bytes_from_private_record() {
         let (dir, storage) = vault();
         let a = storage.create_document("a.md", "original a").unwrap();
         let b = storage.create_document("b.md", "original b").unwrap();
@@ -288,7 +296,7 @@ mod tests {
             ])
             .unwrap();
         let bytes = fs::read(&journal.0).unwrap();
-        assert!(!bytes.windows(10).any(|window| window == b"original a"));
+        assert!(bytes.windows(10).any(|window| window == b"original a"));
         storage.save_document(&a, "edited a").unwrap();
         assert_eq!(storage.recover_documents().unwrap(), Vec::<String>::new());
         assert_eq!(
@@ -300,7 +308,7 @@ mod tests {
             "original b"
         );
         assert!(!journal.0.exists());
-        assert!(dir.path().join(".clin/document-recovery").exists());
+        assert!(dir.path().join(".clin/document-recovery-v2").exists());
     }
     #[test]
     fn committed_records_never_rollback_and_draft_conflicts_are_retained() {

@@ -4,9 +4,7 @@
   rustPlatform,
   makeBinaryWrapper,
   pkg-config,
-  openssl,
   zlib,
-  libgit2,
   libx11,
   libxcb,
 
@@ -53,9 +51,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   ++ lib.optional doWrap makeBinaryWrapper;
 
   buildInputs = [
-    openssl
     zlib
-    libgit2
     libx11
     libxcb
   ];

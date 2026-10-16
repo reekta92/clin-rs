@@ -139,19 +139,6 @@ toggle_action!(
 );
 
 toggle_action!(
-    TogglePreviewEncryptionAction,
-    "settings.preview_encryption",
-    "Toggle Encrypted Note Preview",
-    "Show or hide previews of encrypted (.clin) notes",
-    ActionCategory::Settings,
-    "\u{f06e}",
-    "\u{1f441}",
-    toggle_preview_encryption,
-    app,
-    if app.preview_encryption { "On" } else { "Off" }
-);
-
-toggle_action!(
     CycleSortAction,
     "settings.cycle_sort",
     "Select Sort Order",
@@ -668,23 +655,6 @@ toggle_action!(
     toggle_import,
     app,
     if app.config.features.import.is_enabled() {
-        "On"
-    } else {
-        "Off"
-    }
-);
-
-toggle_action!(
-    ToggleEncryptionAction,
-    "settings.toggle_encryption",
-    "Toggle Encryption",
-    "Enable or disable encrypt/decrypt actions",
-    ActionCategory::Settings,
-    "\u{f023}",
-    "\u{1f512}",
-    toggle_encryption,
-    app,
-    if app.config.features.encryption.is_enabled() {
         "On"
     } else {
         "Off"

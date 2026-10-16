@@ -42,7 +42,7 @@ Configured Bases Back binding closes the image popup without leaving Bases;
 a full redraw clears terminal image artifacts. `[features] images = false` or
 an unavailable picker produces an explicit diagnostic. Other attachment types
 without a native preview also diagnose explicitly rather than entering the
-ordinary note/decryption path. These activation limits do not change the
+ordinary note-loading path. These activation limits do not change the
 normal List/Edit image worker policy.
 
 ### Remote Bases images

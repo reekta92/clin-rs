@@ -148,19 +148,12 @@ fn selected_counts(document: &crate::editor_document::EditorDocument) -> Option<
 
 #[derive(Default)]
 pub(crate) struct EditMemo {
-    pub(crate) counts: Option<(usize, usize)>,
     pub(crate) content: Option<String>,
     selected_counts: std::cell::OnceCell<Option<(usize, usize)>>,
 }
 impl EditMemo {
     pub(crate) fn counts(&mut self, app: &crate::app::App) -> (usize, usize) {
-        *self.counts.get_or_insert_with(|| {
-            let lines = app.editor.body.lines();
-            let words: usize = lines.iter().map(|l| crate::goals::count_words(l)).sum();
-            let chars: usize = lines.iter().map(|l| l.chars().count()).sum::<usize>()
-                + lines.len().saturating_sub(1);
-            (words, chars)
-        })
+        app.editor.body.counts()
     }
     pub(crate) fn content<'a>(&'a mut self, app: &'a crate::app::App) -> &'a str {
         self.content
@@ -186,7 +179,6 @@ pub struct StatuslineContext<'a> {
     // active overlay states:
     pub graph: Option<&'a graf::GraphState>,
     pub draw: Option<&'a crate::draw::app::DrawAppState>,
-    pub backup: Option<&'a crate::backup::state::BackupState>,
     pub outline: Option<&'a crate::outline::state::OutlineState>,
     pub canvas: Option<&'a pinstar::PinstarState>,
     pub setup: Option<&'a crate::setup::SetupState>,
@@ -219,7 +211,6 @@ impl<'a> StatuslineContext<'a> {
             app: Some(app),
             graph: None,
             draw: None,
-            backup: None,
             outline: None,
             canvas: None,
             setup: None,
@@ -248,7 +239,6 @@ impl<'a> StatuslineContext<'a> {
             app: None,
             graph: None,
             draw: None,
-            backup: None,
             outline: None,
             canvas: None,
             setup: None,
@@ -354,7 +344,6 @@ impl StatuslineContext<'_> {
                     ViewMode::Draw => "Draw",
                     ViewMode::Canvas => "Canvas",
                     ViewMode::Bases => "Bases",
-                    ViewMode::Backup => "Backup",
                     ViewMode::Outline => "Outline",
                     ViewMode::Setup => "Setup",
                 };
@@ -514,7 +503,6 @@ impl StatuslineContext<'_> {
                     ViewMode::Draw => "Draw".to_string(),
                     ViewMode::Canvas => "Canvas".to_string(),
                     ViewMode::Bases => "Bases".to_string(),
-                    ViewMode::Backup => "Backup".to_string(),
                     ViewMode::Outline => self.outline.map_or_else(
                         || "Outline".to_string(),
                         |tree| format!("OUTLINE — {}", tree.note_title),
@@ -1284,120 +1272,6 @@ impl StatuslineContext<'_> {
                 Some(val.into())
             }
 
-            // Backup view
-            "branch" | "ahead" | "behind" | "staged" | "unstaged" | "untracked"
-            | "commit_count" | "last_commit" | "last_commit_msg" | "last_commit_author"
-            | "last_commit_time" | "remote" | "remote_url" | "backup_section" | "input_mode"
-            | "auto_push" | "repo_dirty" | "modified_text" => {
-                let backup = match self.backup {
-                    Some(b) => b,
-                    None => return Some("".into()),
-                };
-
-                let val = match name {
-                    "branch" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.branch.clone())
-                        .unwrap_or_default(),
-                    "ahead" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.ahead.to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "behind" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.behind.to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "staged" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.staged.len().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "unstaged" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.unstaged.len().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "untracked" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.untracked.len().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "commit_count" => backup.commits.len().to_string(),
-                    "last_commit" => backup
-                        .commits
-                        .first()
-                        .map(|c| c.id[..std::cmp::min(7, c.id.len())].to_string())
-                        .unwrap_or_default(),
-                    "last_commit_msg" => backup
-                        .commits
-                        .first()
-                        .map(|c| c.message.clone())
-                        .unwrap_or_default(),
-                    "last_commit_author" => backup
-                        .commits
-                        .first()
-                        .map(|c| c.author.clone())
-                        .unwrap_or_default(),
-                    "last_commit_time" => backup
-                        .commits
-                        .first()
-                        .map(|c| list_relative_age(c.time))
-                        .unwrap_or_default(),
-                    "remote" => backup.settings.remote_name.lines().join(""),
-                    "remote_url" => backup.settings.remote_url.lines().join(""),
-                    "backup_section" => match backup.selected_section {
-                        crate::backup::state::BackupSection::Status => "status",
-                        crate::backup::state::BackupSection::History => "history",
-                    }
-                    .to_string(),
-                    "input_mode" => match backup.input_mode {
-                        crate::backup::state::BackupInputMode::Normal => "normal",
-                        crate::backup::state::BackupInputMode::EditCommitMessage => "edit_commit",
-                        crate::backup::state::BackupInputMode::EditSettings => "edit_settings",
-                        crate::backup::state::BackupInputMode::EditSettingsField => {
-                            "edit_settings_field"
-                        }
-                    }
-                    .to_string(),
-                    "auto_push" => (if backup.settings.auto_push {
-                        "on"
-                    } else {
-                        "off"
-                    })
-                    .to_string(),
-                    "repo_dirty" => {
-                        let dirty = backup
-                            .status
-                            .as_ref()
-                            .map(|s| {
-                                !s.staged.is_empty()
-                                    || !s.unstaged.is_empty()
-                                    || !s.untracked.is_empty()
-                            })
-                            .unwrap_or(false);
-                        (if dirty { "on" } else { "off" }).to_string()
-                    }
-                    "modified_text" => if let Some(status) = &backup.status {
-                        if !status.staged.is_empty()
-                            || !status.unstaged.is_empty()
-                            || !status.untracked.is_empty()
-                        {
-                            "modified"
-                        } else {
-                            "clean"
-                        }
-                    } else {
-                        ""
-                    }
-                    .to_string(),
-                    _ => unreachable!(),
-                };
-                Some(val.into())
-            }
-
             _ => None,
         }
     }
@@ -1990,7 +1864,6 @@ pub fn effective_templates(cfg: &StatuslineConfig, view: ViewMode) -> Statusline
         ViewMode::Draw => cfg.draw.as_ref(),
         ViewMode::Canvas => cfg.canvas.as_ref(),
         ViewMode::Bases => None,
-        ViewMode::Backup => cfg.backup.as_ref(),
         ViewMode::Outline => cfg.outline.as_ref(),
         ViewMode::Setup => None,
     };

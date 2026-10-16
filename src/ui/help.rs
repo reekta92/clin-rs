@@ -14,7 +14,7 @@ use strum::IntoEnumIterator;
 
 ///
 /// Help-view tab (label, glyph) pairs, in `HelpTab` order.
-/// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
+/// Mirrors list grid tabs. Glyphs are (nerd_font, unicode).
 pub fn help_tabs(
     icon_mode: crate::config::IconMode,
     features: &crate::config::FeaturesConfig,
@@ -25,7 +25,6 @@ pub fn help_tabs(
         (HelpTab::Graph, "Graph", "\u{f1e0}", "\u{1f5c2}"),
         (HelpTab::Draw, "Draw", "\u{f1fc}", "\u{1f3a8}"),
         (HelpTab::Canvas, "Canvas", "\u{f0b2}", "\u{1f4cc}"),
-        (HelpTab::Backup, "Backup", "\u{f1d3}", "\u{1f4be}"),
         (HelpTab::Templates, "Templates", "\u{f15b}", "\u{1f4c4}"),
         (HelpTab::About, "About", "\u{f05a}", "\u{2139}"),
         (HelpTab::Bases, "Bases", "\u{f0ce}", "\u{25a6}"),
@@ -44,7 +43,6 @@ pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool
         HelpTab::Graph => f.graph_view.is_enabled(),
         HelpTab::Draw => f.draw_view.is_enabled(),
         HelpTab::Canvas => f.canvas_view.is_enabled(),
-        HelpTab::Backup => f.backup.is_enabled(),
         HelpTab::Templates => f.templates.is_enabled(),
         HelpTab::Notes | HelpTab::Editor | HelpTab::About => true,
     }
@@ -56,7 +54,6 @@ fn help_tab_flag(tab: HelpTab) -> &'static str {
         HelpTab::Graph => "graph_view",
         HelpTab::Draw => "draw_view",
         HelpTab::Canvas => "canvas_view",
-        HelpTab::Backup => "backup",
         HelpTab::Templates => "templates",
         _ => "",
     }
@@ -447,7 +444,6 @@ pub fn help_text_for_tab(
             |kb, a| kb.bases_keys_display(a),
         ),
         HelpTab::Canvas => canvas_help_text(keybinds, theme),
-        HelpTab::Backup => backup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme, tab, storage),
         HelpTab::About => about_help_text(keybinds, theme, config, tab, storage),
     }
@@ -579,16 +575,6 @@ fn canvas_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
         help_meta::canvas_group_order(),
         help_meta::canvas_action_meta,
         |kb, a| kb.canvas_keys_display(a),
-    )
-}
-fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
-    generate_scope_help(
-        keybinds,
-        theme,
-        HelpTab::Backup,
-        help_meta::backup_group_order(),
-        help_meta::backup_action_meta,
-        |kb, a| kb.backup_keys_display(a),
     )
 }
 
@@ -1262,7 +1248,6 @@ fn tab_display_name(tab: HelpTab) -> &'static str {
         HelpTab::Draw => "Draw",
         HelpTab::Bases => "Bases",
         HelpTab::Canvas => "Canvas",
-        HelpTab::Backup => "Backup",
         HelpTab::Templates => "Templates",
         HelpTab::About => "About",
     }
@@ -1574,23 +1559,6 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "EditorUnfocus" => kb.canvas_keys_display(CanvasAction::EditorUnfocus),
             _ => format!("[ERR:{}]", token),
         },
-        "backup" => match action {
-            "StageFile" => kb.backup_keys_display(BackupAction::StageFile),
-            "UnstageFile" => kb.backup_keys_display(BackupAction::UnstageFile),
-            "StageAll" => kb.backup_keys_display(BackupAction::StageAll),
-            "EnterCommit" => kb.backup_keys_display(BackupAction::EnterCommit),
-            "ConfirmCommit" => kb.backup_keys_display(BackupAction::ConfirmCommit),
-            "CancelCommit" => kb.backup_keys_display(BackupAction::CancelCommit),
-            "Push" => kb.backup_keys_display(BackupAction::Push),
-            "Pull" => kb.backup_keys_display(BackupAction::Pull),
-            "Refresh" => kb.backup_keys_display(BackupAction::Refresh),
-            "CycleSection" => kb.backup_keys_display(BackupAction::CycleSection),
-            "OpenSettings" => kb.backup_keys_display(BackupAction::OpenSettings),
-            "CloseSettings" => kb.backup_keys_display(BackupAction::CloseSettings),
-            "NextField" => kb.backup_keys_display(BackupAction::NextField),
-            "PrevField" => kb.backup_keys_display(BackupAction::PrevField),
-            _ => format!("[ERR:{}]", token),
-        },
         "outline" => match action {
             "Open" => kb.outline_keys_display(OutlineAction::Open),
             "MoveUp" => kb.outline_keys_display(OutlineAction::MoveUp),
@@ -1755,9 +1723,7 @@ mod tests {
             config_dir: std::path::PathBuf::from("/test/config"),
             notes_dir: std::path::PathBuf::from("/test/data/notes"),
             templates_dir: std::path::PathBuf::from("/test/data/templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About, &storage);
         let displays: Vec<&str> = rows.iter().map(|row| row.display.as_str()).collect();

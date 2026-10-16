@@ -2,16 +2,6 @@
 pub mod actions;
 pub mod app_theme;
 pub mod bases;
-#[cfg(test)]
-mod palette_tests;
-pub mod backup {
-    pub mod app;
-    pub mod git_ops;
-    pub mod input;
-    pub mod render;
-    pub mod state;
-    pub mod worker;
-}
 pub mod calendar;
 pub mod cli;
 pub mod config;
@@ -55,6 +45,8 @@ pub mod outline {
 }
 pub mod overlay;
 pub mod palette;
+#[cfg(test)]
+mod palette_tests;
 pub mod paths;
 #[cfg(test)]
 pub mod perf_tests;
@@ -191,6 +183,22 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
     run_tui_session(&mut app)
 }
 
+#[cfg(test)]
+mod stdin_tests;
+
+fn read_note_stdin(input: impl std::io::Read) -> Result<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    input
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_string(&mut text)
+        .context("failed to read UTF-8 note body from stdin")?;
+    if text.len() > 16 * 1024 * 1024 {
+        anyhow::bail!("stdin note body exceeds 16 MiB safety limit");
+    }
+    Ok(text)
+}
+
 fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
@@ -210,9 +218,23 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             template,
             folder,
             body,
+            stdin,
             no_tui,
             title,
         } => {
+            use std::io::IsTerminal;
+            let piped = !std::io::stdin().is_terminal();
+            let body = if body.is_none() && (stdin || piped) {
+                let text = read_note_stdin(std::io::stdin().lock())?;
+                if stdin || !text.is_empty() {
+                    Some(text)
+                } else {
+                    None
+                }
+            } else {
+                body
+            };
+            let no_tui = no_tui || stdin || piped;
             let (storage, _) = Storage::init();
             let storage = storage?;
             let mut app = App::new(storage)?;
@@ -261,6 +283,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
                 format!("{folder}/{stem}")
             };
             let note = Note {
+                baseline: None,
                 title: final_title.clone(),
                 content,
                 updated_at: crate::ui::now_unix_secs(),
@@ -318,6 +341,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
             let note = Note {
+                baseline: None,
                 title: final_title.clone(),
                 content,
                 updated_at: crate::ui::now_unix_secs(),
@@ -831,27 +855,23 @@ fn process_watcher_events(app: &mut App) -> bool {
     let Some(ref rx) = app.fs_event_rx else {
         return false;
     };
-    let pending_start = app.watcher_pending_events.len();
     let mut overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
+    let mut template_config_changed = false;
     while let Ok(evt) = rx.try_recv() {
         if app.watcher_pending_events.len() >= 512 {
             overflow = true;
             break;
         }
         if !matches!(evt.event.kind, notify::EventKind::Access(_)) {
+            template_config_changed |= evt.event.paths.iter().any(|path| {
+                path.starts_with(&app.storage.notes_dir)
+                    && crate::templates::is_folder_template_config(path)
+            });
             app.watcher_pending_events.push(evt);
         }
     }
     // Configs are UI items, not note summaries. Refresh them immediately, even
     // while note-catalog events wait for the debounce window.
-    let template_config_changed = app.watcher_pending_events[pending_start..]
-        .iter()
-        .any(|event| {
-            event.event.paths.iter().any(|path| {
-                path.starts_with(&app.storage.notes_dir)
-                    && crate::templates::is_folder_template_config(path)
-            })
-        });
     if template_config_changed {
         let selected = app.list.visual_list.get(app.list.visual_index).cloned();
         let mut selections = HashMap::new();
@@ -1347,15 +1367,6 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
                     app.set_default_status();
                 }
             }
-            ViewKind::Backup => {
-                if matches!(other, OverlayResult::Exit) {
-                    app.reload_config();
-                    app.backup_state = None;
-                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                    app.reload_theme();
-                }
-            }
             ViewKind::Outline => match other {
                 OverlayResult::Exit | OverlayResult::JumpToLine { .. } => {
                     app.outline_state = None;
@@ -1445,13 +1456,6 @@ where
                 list_dirty = true;
             } else if app.mode == ViewMode::Graph {
                 graph_dirty = true;
-            }
-        }
-        let failed = app.backup_status.lock().take();
-        if let Some(msg) = failed {
-            app.set_temporary_status(&format!("Backup failed: {msg}"));
-            if app.mode == ViewMode::List {
-                list_dirty = true;
             }
         }
 
@@ -1582,19 +1586,6 @@ where
                 }
             }
             need_redraw = true;
-        }
-
-        // Auto-backup check
-        if let Some(interval_mins) = app.config.backup.auto_backup_interval {
-            let now = std::time::Instant::now();
-            let should_backup = match app.last_auto_backup {
-                Some(last) => now.duration_since(last).as_secs() >= interval_mins * 60,
-                None => true,
-            };
-            if should_backup {
-                app.enqueue_backup("auto: scheduled backup");
-                app.last_auto_backup = Some(now);
-            }
         }
 
         if app.mode != ViewMode::List && need_redraw {
@@ -1751,7 +1742,6 @@ where
                         | ViewMode::Canvas
                         | ViewMode::Bases
                         | ViewMode::Draw
-                        | ViewMode::Backup
                         | ViewMode::Outline => match OverlayState::take(app) {
                             Some(mut view) => {
                                 let kind = view.kind();
@@ -1798,7 +1788,6 @@ where
                         | ViewMode::Canvas
                         | ViewMode::Bases
                         | ViewMode::Draw
-                        | ViewMode::Backup
                         | ViewMode::Outline => {
                             let kind = ViewKind::from_mode(app.mode);
                             let scrolls = matches!(kind, Some(ViewKind::Draw | ViewKind::Canvas));
@@ -1874,9 +1863,7 @@ mod tests {
             config_dir: PathBuf::from("/tmp"),
             notes_dir: PathBuf::from("/tmp"),
             templates_dir: PathBuf::from("/tmp"),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
         app.mode = ViewMode::List;

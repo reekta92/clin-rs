@@ -569,12 +569,6 @@ impl GrafPlugin {
 
         let is_draw = key.note_id.ends_with(".draw");
         let is_canvas = key.note_id.ends_with(".canvas");
-        let is_clin = key.note_id.ends_with(".clin");
-
-        if config.list.preview_encryption && is_clin {
-            self.preview_content = None;
-            return;
-        }
 
         if is_draw {
             let path = self.storage.note_path(&key.note_id);
@@ -1805,18 +1799,11 @@ fn draw_reload_notification(
 }
 
 fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafPlugin, config: &ClinConfig) {
-    let hide_encrypted = config.list.preview_encryption
-        && state
-            .preview_note_id
-            .as_ref()
-            .is_some_and(|id| id.ends_with(".clin"));
-
     crate::preview::draw_preview_pane(
         frame,
         preview_rect,
         &state.app_theme,
         state.preview_content.as_ref(),
-        hide_encrypted,
         0,
         config,
         None,

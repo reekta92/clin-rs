@@ -131,8 +131,6 @@ pub(super) enum Scope {
     List,
     Note,
     Info,
-    Encrypt,
-    Decrypt,
     Presentation,
     Editor,
     Insert,
@@ -147,8 +145,8 @@ pub(super) enum Scope {
 /// Exhaustive inventory: a newly registered action must choose its owner explicitly.
 pub(super) fn scope(id: &str) -> Option<Scope> {
     use Scope::{
-        Bases, CreateBase, Decrypt, Editor, Encrypt, Graph, Image, Info, Insert, List, Markdown,
-        Navigation, Note, Presentation, Setup, Shared,
+        Bases, CreateBase, Editor, Graph, Image, Info, Insert, List, Markdown, Navigation, Note,
+        Presentation, Setup, Shared,
     };
     Some(match id {
         "switch_theme"
@@ -159,8 +157,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "settings.scrollbars"
         | "settings.scrollbar_pan_mode"
         | "settings.confirm_quit" => Shared,
-        "notes.open" | "help.open" | "graph.open" | "backup.open" | "setup_wizard"
-        | "vault.switch" => Navigation,
+        "notes.open" | "help.open" | "graph.open" | "setup_wizard" | "vault.switch" => Navigation,
         "draw.create"
         | "create_canvas"
         | "external_editor.toggle"
@@ -171,7 +168,6 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "settings.confirm_delete"
         | "settings.pinned_on_top"
         | "settings.inline_info"
-        | "settings.preview_encryption"
         | "settings.cycle_sort"
         | "settings.show_hidden_files"
         | "settings.show_all_files"
@@ -193,7 +189,6 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "settings.toggle_subnotes"
         | "settings.toggle_templates"
         | "settings.toggle_import"
-        | "settings.toggle_encryption"
         | "insert.file_new"
         | "insert.csv_new"
         | "insert.json_new"
@@ -209,8 +204,6 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "insert.url_append"
         | "insert.clipboard_append" => Note,
         "info.show" => Info,
-        "note.encrypt" => Encrypt,
-        "note.decrypt" => Decrypt,
         "bases.create" => CreateBase,
         "settings.wrap"
         | "settings.word_goal"
@@ -256,8 +249,8 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
 
 pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
     use Scope::{
-        Bases, CreateBase, Decrypt, Editor, Encrypt, Graph, Image, Info, Insert, List, Markdown,
-        Navigation, Note, Presentation, Setup, Shared,
+        Bases, CreateBase, Editor, Graph, Image, Info, Insert, List, Markdown, Navigation, Note,
+        Presentation, Setup, Shared,
     };
     if !context.origin_current(app) {
         return false;
@@ -281,7 +274,6 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
             "notes.open" => !list,
             "help.open" => context.mode != ViewMode::Help,
             "graph.open" => context.mode != ViewMode::Graph,
-            "backup.open" => context.mode != ViewMode::Backup,
             _ => true,
         },
         List => {
@@ -312,8 +304,6 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
                             && *folder == app.get_current_folder_context()
                     }))
         }
-        Encrypt => list && text,
-        Decrypt => list && note.is_some_and(|id| id.ends_with(".clin")),
         Presentation => list || context.mode == ViewMode::Edit,
         Editor => context.mode == ViewMode::Edit,
         Markdown => context.markdown_editor(app),

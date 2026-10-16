@@ -44,10 +44,9 @@ fn shared_palette_executes_guarded_property_commands_without_encrypted_catalog_c
     let actions = crate::actions::get_all_action_infos(&app);
     assert!(actions.iter().any(|action| action.id == "switch_theme"));
     assert!(actions.iter().any(|action| action.id == "notes.open"));
-    app.config.features.encryption = FeatureState::Enabled;
     for id in ["note.decrypt", "note.encrypt"] {
         assert!(
-            crate::actions::get_all_actions()
+            !crate::actions::get_all_actions()
                 .iter()
                 .any(|action| action.id() == id)
         );

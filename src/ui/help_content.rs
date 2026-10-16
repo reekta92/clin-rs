@@ -77,9 +77,7 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
         HelpTab::Canvas => {
             "An infinite pinstar canvas for connecting notes and drawings spatially. Move and zoom freely, open notes inline, connect nodes with edges, and manage everything through a context menu. Toggle the editor pane and grid to suit your workflow."
         }
-        HelpTab::Backup => {
-            "Git-backed vault backup dashboard. Stage and unstage file changes, review diffs, write commit messages, push to or pull from a remote, and toggle auto-backup settings inline — all without leaving the app."
-        }
+
         HelpTab::Templates => {
             "Create reusable TOML note templates with variable substitution. Pick a template from the notes view, search by name, and auto-fill date tokens when generating a new note. Add .toml files to the active storage templates directory."
         }
@@ -236,7 +234,7 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Auto-save & Recovery",
-        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Editor changes also attempt to write an encrypted recovery draft. Recovery is best effort, not a substitute for backups.",
+        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Editor changes queue private plaintext recovery drafts off the input thread. Failed records are retained and reported. Recovery is best effort, not a substitute for independent backups.",
     ),
     tip(
         "External editor workflow",
@@ -397,60 +395,7 @@ const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
         "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane.",
     ),
 ];
-const BACKUP_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip(
-        "Stage changes",
-        "Press {backup:StageFile} to stage the currently highlighted git file modification.",
-    ),
-    tip(
-        "Unstage changes",
-        "Press {backup:UnstageFile} to unstage the highlighted file from the next commit.",
-    ),
-    tip(
-        "Stage all files",
-        "Press {backup:StageAll} to stage all modified and untracked files in the repository.",
-    ),
-    tip(
-        "Enter commit mode",
-        "Press {backup:EnterCommit} to focus the commit message field and prepare to commit staged files.",
-    ),
-    tip(
-        "Confirm commit",
-        "Press {backup:ConfirmCommit} to confirm the typed commit message and record the changes.",
-    ),
-    tip(
-        "Cancel commit",
-        "Press {backup:CancelCommit} to discard the typed commit message and exit commit mode.",
-    ),
-    tip(
-        "Push commits",
-        "Use {backup:Push} to push all your local commits to the configured remote repository.",
-    ),
-    tip(
-        "Pull changes",
-        "Use {backup:Pull} to pull the latest changes from your remote repository.",
-    ),
-    tip(
-        "Git status refresh",
-        "Press {backup:Refresh} to run a fresh git status and update the modifications pane.",
-    ),
-    tip(
-        "Cycle sections",
-        "Press {backup:CycleSection} to quickly jump between **Staged**, **Unstaged**, and **Untracked** sections.",
-    ),
-    tip(
-        "Open settings",
-        "Press {backup:OpenSettings} to configure git author name, email, and remote URL from within the app.",
-    ),
-    tip(
-        "Settings fields",
-        "Use {backup:NextField} or {backup:PrevField} to navigate between git settings fields in the settings popup.",
-    ),
-    tip(
-        "Close settings",
-        "Press {backup:CloseSettings} to dismiss the settings popup and return to the backup view.",
-    ),
-];
+
 const TEMPLATES_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Note templates",
@@ -564,7 +509,6 @@ pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
         HelpTab::Draw => DRAW_SUGGESTIONS,
         HelpTab::Bases => BASES_SUGGESTIONS,
         HelpTab::Canvas => CANVAS_SUGGESTIONS,
-        HelpTab::Backup => BACKUP_SUGGESTIONS,
         HelpTab::Templates => TEMPLATES_SUGGESTIONS,
         HelpTab::About => ABOUT_SUGGESTIONS,
     }
@@ -594,7 +538,6 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
         HelpTab::Draw => DRAW_POPUPS,
         HelpTab::Bases => BASES_POPUPS,
         HelpTab::Canvas => CANVAS_POPUPS,
-        HelpTab::Backup => BACKUP_POPUPS,
         HelpTab::Templates => TEMPLATES_POPUPS,
         HelpTab::About => &[],
     }
@@ -681,17 +624,6 @@ const CANVAS_POPUPS: &[PopupHelp] = &[
     },
 ];
 
-const BACKUP_POPUPS: &[PopupHelp] = &[
-    PopupHelp {
-        name: "Commit Message",
-        body: "Press {backup:EnterCommit} for **commit editor**. Type message, ``Enter`` commits. ``Esc`` cancels.",
-    },
-    PopupHelp {
-        name: "Settings",
-        body: "Press {backup:OpenSettings} for **backup settings**. ``Tab`` moves, ``Enter`` toggles/edits. Save to persist, ``Esc`` discards.",
-    },
-];
-
 const TEMPLATES_POPUPS: &[PopupHelp] = &[PopupHelp {
     name: "Template Picker",
     body: "Press {list:NewFromTemplate} for **template picker**. Type to search, ``Tab`` switches focus. Arrows move, ``Enter`` creates note. In results: ``Space`` edits, ``d`` deletes, ``n`` creates template.",
@@ -708,7 +640,6 @@ mod tests {
             HelpTab::Graph,
             HelpTab::Draw,
             HelpTab::Canvas,
-            HelpTab::Backup,
             HelpTab::Templates,
             HelpTab::About,
         ];
@@ -772,7 +703,6 @@ mod tests {
             HelpTab::Graph,
             HelpTab::Draw,
             HelpTab::Canvas,
-            HelpTab::Backup,
             HelpTab::Templates,
             HelpTab::About,
         ];
@@ -870,7 +800,6 @@ mod tests {
                 HelpTab::Draw => 2,
                 HelpTab::Bases => 2,
                 HelpTab::Canvas => 3,
-                HelpTab::Backup => 2,
                 HelpTab::Templates => 1,
                 HelpTab::About => 0,
             }
@@ -882,7 +811,6 @@ mod tests {
             HelpTab::Graph,
             HelpTab::Draw,
             HelpTab::Canvas,
-            HelpTab::Backup,
             HelpTab::Templates,
             HelpTab::About,
         ];

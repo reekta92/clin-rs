@@ -480,7 +480,7 @@ impl App {
         }
         let baseline = self
             .editor
-            .public_opening_snapshot
+            .note_baseline
             .clone()
             .context("reopen the containing public note before editing Bases")?;
         let parsed = crate::frontmatter::properties::PropertyDocument::parse(baseline.source())?;
@@ -508,7 +508,7 @@ impl App {
                     cursor.col as u16,
                 ));
         }
-        self.editor.public_opening_snapshot = None;
+        self.editor.note_baseline = None;
         self.editor.public_document = Some(baseline);
         self.editor.public_document_body_only = true;
         self.editor.public_document_title = Some(title);
@@ -556,7 +556,18 @@ impl App {
                     .public_document_source()
                     .expect("guarded public source");
                 let pending = source != after.source();
-                if !pending || self.storage.write_document_draft(after, &source).is_ok() {
+                let recovery = (|| -> anyhow::Result<()> {
+                    if let Some(worker) = &self.drafts
+                        && let Some(old) = &old
+                    {
+                        worker.forget(old.recovery_id())?;
+                    }
+                    if pending {
+                        self.storage.write_document_draft(after, &source)?;
+                    }
+                    Ok(())
+                })();
+                if recovery.is_ok() {
                     if let Some(old) = old
                         && (!pending || old.recovery_id() != after.recovery_id())
                         && let Err(error) = self.storage.clear_document_draft(&old)

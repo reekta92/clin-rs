@@ -620,6 +620,40 @@ fn ordinary_host_promotion_preserves_bytes_title_filename_and_opening_baseline()
     );
 }
 #[test]
+fn ordinary_host_promotion_reuses_queued_recovery_identity() {
+    let (_root, mut app) = fixture();
+    app.bases_state = None;
+    app.load_and_open_note("public.md", None);
+    let baseline = app.editor.note_baseline.clone().unwrap();
+    app.editor.body.insert_str("pending ");
+    app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+    app.write_draft();
+    app.guard_embed_host(&baseline).unwrap();
+    assert_eq!(
+        app.editor.public_document.as_ref().unwrap().recovery_id(),
+        baseline.recovery_id()
+    );
+    app.autosave().unwrap();
+    app.flush_drafts().unwrap();
+    assert_eq!(
+        app.storage.recover_documents().unwrap(),
+        Vec::<String>::new()
+    );
+    assert!(
+        app.storage
+            .load_document("public.md")
+            .unwrap()
+            .source()
+            .contains("pending ")
+    );
+    assert_eq!(
+        fs::read_dir(app.storage.data_dir.join(".clin/document-recovery-v2"))
+            .unwrap()
+            .count(),
+        0
+    );
+}
+#[test]
 fn metadata_rebase_retains_unsaved_body_and_recovery_draft_through_undo() {
     let (_root, mut app) = fixture();
     app.bases_state = None;
@@ -643,6 +677,7 @@ fn metadata_rebase_retains_unsaved_body_and_recovery_draft_through_undo() {
     assert!(app.editor.body.text().contains("unsaved"));
     let restored = app.storage.save_document(&after, host.source()).unwrap();
     app.synchronize_public_change(&after, &restored);
+    app.flush_drafts().unwrap();
     assert!(
         app.editor
             .public_document_source()
@@ -744,11 +779,12 @@ fn palette_failed_navigation_restores_taken_boxed_editor_and_expanded_bases_rout
     key(&mut app, KeyCode::Enter);
     wait(&mut app, |app| app.mode == ViewMode::Edit);
     let active = app.editor.body.text();
-    let blocked = app.storage.notes_dir.join("blocked");
-    fs::write(&blocked, "not a directory").unwrap();
+    let baseline = app.storage.load_document("public.md").unwrap();
+    fs::write(app.storage.notes_dir.join("public.md"), "External change\n").unwrap();
     let boxed = app.embedded_host_editor.as_mut().unwrap();
     boxed.public_document = None;
-    boxed.editing_id = Some("blocked/host.md".into());
+    boxed.editing_id = Some("public.md".into());
+    boxed.note_baseline = Some(baseline);
     boxed.body.insert_str("pending host ");
     let pending = boxed.body.text();
     assert!(crate::actions::execute_action("notes.open", &mut app, None).is_err());
@@ -760,7 +796,16 @@ fn palette_failed_navigation_restores_taken_boxed_editor_and_expanded_bases_rout
         pending
     );
     assert!(app.bases_state.is_some());
-    assert!(app.storage.editor_draft_path().is_file());
+    app.flush_drafts().unwrap();
+    assert!(
+        fs::read_dir(app.storage.data_dir.join(".clin/document-recovery-v2"))
+            .unwrap()
+            .any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("draft-"))
+    );
     app.back_to_list(None, None);
     assert_eq!(app.mode, ViewMode::Bases);
     crate::finish_overlay_event(

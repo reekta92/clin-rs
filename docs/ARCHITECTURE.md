@@ -17,7 +17,6 @@ pub enum ViewMode {
     Draw,    // Freehand drawing canvas
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
     Bases,   // Public-only .base queries and native authoring
-    Backup,  // Git backup dashboard
     Outline,  // Header-based note outline
     Setup,   // First-run setup wizard
 }
@@ -39,15 +38,13 @@ Draw  ──Esc───► List
 Canvas──Esc───► List
 List  ──?/F1──► Help
 Help  ──Esc───► previous view
-List  ──palette──► Backup   (via command palette backup.open)
 List  ──palette──► Outline  (via command palette outline.open)
 List  ──palette──► Setup   (via setup_wizard)
 Setup ──Esc───► List
-Backup ──Esc───► List
 Outline ──Esc───► List
 ```
 
-Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Bases, Backup, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
+Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Bases, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
 
 ---
 
@@ -61,7 +58,7 @@ main()
       ├─ no subcommand → session::bootstrap_app() → run_tui_session() → run_app()
       ├─ --help / --version → clap output, exit
       ├─ Command::Notes → list/new/open/cat/quick/search
-      │    └─ new opens TUI unless --body or --no-tui is supplied
+      │    └─ new opens TUI unless --body, --stdin, --no-tui, or non-terminal stdin is supplied
       └─ Command::{Storage,Keybinds,Templates,Config,Cache} → operation, exit
 ```
 
@@ -79,7 +76,7 @@ run_tui_session(app)
 ### Main Event Loop (`run_app()`)
 
 `run_app()` owns generic application work: catalog/search/watcher
-drains, backup scheduling, list and graph state, then generic rendering.
+drains, list and graph state, then generic rendering.
 
 When `app.mode == ViewMode::Edit`, it enters `editor_session::run_editor_session`
 and continues the generic loop only after Edit exits. Edit remains in same
@@ -102,12 +99,12 @@ loop resumes.
 
 ### Sub-view Overlays (OverlayView trait)
 
-Six sub-views (Graph, Draw, Canvas, Bases, Backup, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
+Five sub-views (Graph, Draw, Canvas, Bases, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
 
 - [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
 - [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
 
-Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawAppState>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Backup/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawAppState>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Bases/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
 
 Bases stores its original return mode on `BasesState`, preserving it through
 public-source handoff and reopening. No sub-view takes terminal ownership or
@@ -132,7 +129,7 @@ there is no second Canvas engine or new dependency fork. `serde_json`'s existing
 `App` is the central state struct. It owns everything:
 ```
 App
-  ├── storage: Storage                    // file I/O, encryption, templates
+  ├── storage: Storage                    // file I/O, guarded saves, templates
   ├── keybinds: Keybinds                  // <config-dir>/keybinds/<preset>.toml
   ├── notes: Vec<NoteSummary>             // filtered/sorted note list
   ├── editor: NoteEditor                  // title TextArea + EditorDocument body
@@ -144,7 +141,6 @@ App
   ├── graph_plugin: Option<GrafPlugin>         // clin adapter over upstream graf
   ├── draw_state: Option<DrawAppState>         // freehand drawing overlay
   ├── canvas_state: Option<PinstarPlugin>      // clin adapter over upstream pinstar
-  ├── backup_state: Option<BackupState>        // git backup dashboard overlay
   ├── outline_state: Option<OutlineState>  // header-based outline overlay
   └── ...status helpers, config, caches
 ```
@@ -165,7 +161,7 @@ App::new(storage)
     ├── App::autosave()
     │     └─ storage.save_note() → writes to disk
     │
-    └── Overlay state (graph_plugin, draw_state, canvas_state, backup_state, outline_state)
+    └── Overlay state (graph_plugin, draw_state, canvas_state, bases_state, outline_state)
           └─ Owned by App as Option<X>. Created on view transition via mode change.
              Dropped (set to None) on overlay exit. No separate event loop.
 ```
@@ -186,7 +182,6 @@ lib.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
             ├─ Graph → graph_plugin.overlay_render(frame, area, theme, config, status)
             ├─ Draw  → draw_state.overlay_render(frame, area, theme, config, status)
             ├─ Canvas→ canvas_state.overlay_render(frame, area, theme, config, status)
-            ├─ Backup→ backup_state.overlay_render(frame, area, theme, config, status)
             ├─ Outline → outline_state.overlay_render(frame, area, theme, config, status)
             └─ Setup → draw_setup()
        │
@@ -218,7 +213,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 
 **Help view layout:**
 ```
-┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Backup · Templates · About) ─┐
+┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Templates · About) ─┐
 │                                                              │
 │  Keybind index       │ Tab description + popup accordion     │
 │  (paginated)         ├───────────────────────────────────────┤
@@ -262,7 +257,7 @@ src/
 ├── setup.rs              — First-run setup wizard constants and state
 ├── session.rs            — Terminal bootstrap and teardown orchestration
 ├── statusline.rs         — Statusline/header/footer template rendering
-├── storage.rs            — Note persistence, encryption, vault management
+├── storage.rs            — Note persistence, recovery, vault management
 ├── todo.rs               — todo.txt parsing and rendering
 ├── app/                  — App logic: catalog, edit panes, folder preview, etc.
 │   ├── catalog.rs        — Background note catalog worker
@@ -323,8 +318,6 @@ src/
 │   └── braille.rs        — Braille sub-pixel dot and line drawing
 ├── actions/              — Action trait ecosystem and ACTIONS registry
 │   ├── mod.rs            — Action trait, macros, ACTIONS LazyLock
-│   ├── decrypt.rs        — Decrypt .clin to .md
-│   ├── encrypt.rs        — Encrypt .md to .clin
 │   ├── import.rs         — Import from external sources (File/CSV/JSON/URL/Clipboard)
 │   ├── info.rs           — Show note/folder metrics popup
 │   ├── insert_date.rs    — Insert current date/time at cursor
@@ -345,13 +338,6 @@ src/
 ├── image_render/         — Native image rendering
 │   ├── cache.rs          — LRU image cache
 │   └── worker.rs         — Background decode worker
-├── backup/               — Git backup dashboard
-│   ├── app.rs            — BackupState, OverlayView implementation
-│   ├── git_ops.rs        — GitOps safe wrappers
-│   ├── input.rs          — Keyboard/mouse event handling
-│   ├── render.rs         — Dashboard rendering
-│   ├── state.rs          — BackupState, BackupSection, BackupInputMode
-│   └── worker.rs         — Background auto-backup worker
 ├── graf_adapter.rs       — GrafPlugin: host preview/search/config/status, note I/O
 ├── pinstar_adapter.rs    — PinstarPlugin: host keybinds/status/clipboard/images
 ├── snapshot.rs           — Canvas and Draw preview snapshots
@@ -415,7 +401,7 @@ Graph construction, physics, spatial indexing, viewport, and node rendering live
 
 ---
 
-Other background work includes catalog enumeration, search, folder previews, image decoding, and auto-backup. Worker results are installed by the host loop; Editor deliberately defers generic queues until it exits. Feature flags gate worker startup (images/backup changes require restart).
+Other background work includes catalog enumeration, search, folder previews, image decoding, and recovery persistence. Worker results are installed by the host loop; Editor deliberately defers generic queues until it exits. Feature flags gate worker startup (image worker changes require restart).
 
 ## Key Patterns
 
@@ -440,6 +426,11 @@ Palette top-level navigation in `app/views.rs` guards writes, saves active/suspe
 
 `UiConfig` from `[ui]` in config.toml → `AppThemeColors` derived at load time. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details.
 
-### Storage / Encryption
 
-`Storage` handles all file I/O, key management, and ChaCha20-Poly1305 encryption for `.clin` files. See [ENCRYPTION.md](ENCRYPTION.md) for details.
+## Persistence ownership
+
+A loaded `Note` carries an immutable raw-source `DocumentSnapshot`. Ordinary note saves reuse guarded public document storage for baseline validation, read-only checks, permission-preserving atomic publication, and native write coordination. New notes publish without replacing an existing file. Ordinary saves keep filenames stable.
+
+`storage::drafts::DraftWorker` coalesces latest recovery sources off the input thread. Save/session boundaries flush it before recovery cleanup. `storage::document_recovery` stores version-2 plaintext drafts and transaction journals under private Unix permissions; old encrypted journals remain separate and untouched.
+
+There is no backup worker, Git dashboard, encryption action, or key lifecycle. Native terminal clipboard transport and shell stdin ingestion are documented with their limitations.

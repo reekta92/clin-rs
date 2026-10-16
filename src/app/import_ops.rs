@@ -2,11 +2,6 @@ use super::*;
 use crate::popups::*;
 
 impl App {
-    pub fn enqueue_backup(&self, message: impl Into<String>) {
-        if let Some(tx) = &self.backup_tx {
-            let _ = tx.send(crate::backup::worker::BackupJob::Auto(message.into()));
-        }
-    }
     pub fn begin_import(
         &mut self,
         source: ImportSource,

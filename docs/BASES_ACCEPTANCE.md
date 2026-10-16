@@ -49,8 +49,8 @@ controls, aliases/tags/duplicates and malformed YAML, lossless configuration and
 frontmatter edits, CRLF/BOM/comments, private/hidden/symlink boundaries,
 ECMAScript regex/UTF-16/date semantics, bounded evaluation, stale dialog/history
 rejection, permission preservation, atomic publication, binary folder moves,
-rollback, encrypted recovery and retained conflicts. Existing encrypted Note and
-bincode compatibility tests remain in the full suite.
+rollback, private plaintext recovery and retained conflicts. Legacy encrypted data
+remains untouched; see [UPGRADING.md](UPGRADING.md).
 
 Live-host regressions cover named/inline/missing/ambiguous definitions, multiple
 references on one line, unsaved/external host changes, metadata/schema changes,
@@ -64,7 +64,7 @@ backlink changes use copy-on-write and never mutate older snapshots.
 
 Inline save/undo/redo tests assert exact Markdown/Canvas bytes and synchronized
 native editors. Pending host body/title/raw changes reject configuration writes.
-Metadata-only updates preserve pending body edits and migrate encrypted drafts,
+Metadata-only updates preserve pending body edits and migrate plaintext drafts,
 including replay using the same recovery identity. Ordinary public Markdown hosts
 retain their real opening baseline when promoted to guarded saving. No-op saves
 retain trailing bytes and CRLF; title changes update YAML without renaming files.

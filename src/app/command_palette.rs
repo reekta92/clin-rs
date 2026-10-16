@@ -17,7 +17,6 @@ impl App {
             ViewMode::Graph => self.graph_plugin.as_ref().map(|s| &s.keybinds),
             ViewMode::Draw => self.draw_state.as_ref().map(|s| &s.keybinds),
             ViewMode::Canvas => self.canvas_state.as_ref().map(|s| &s.keybinds),
-            ViewMode::Backup => self.backup_state.as_ref().map(|s| &s.keybinds),
             ViewMode::Outline => self.outline_state.as_ref().map(|s| &s.keybinds),
             _ => None,
         }
@@ -30,7 +29,6 @@ impl App {
             ViewMode::Draw => claimed(&keybinds.draw),
             ViewMode::Canvas => claimed(&keybinds.canvas),
             ViewMode::Bases => claimed(&keybinds.bases),
-            ViewMode::Backup => claimed(&keybinds.backup),
             ViewMode::Outline => claimed(&keybinds.outline),
             ViewMode::Setup => claimed(&keybinds.setup),
         }
@@ -78,10 +76,6 @@ impl App {
                 .bases_state
                 .as_ref()
                 .is_some_and(|s| s.palette_input_available()),
-            ViewMode::Backup => self
-                .backup_state
-                .as_ref()
-                .is_some_and(|s| s.palette_input_available()),
             ViewMode::Outline => self.outline_state.is_some(),
             ViewMode::Setup => self
                 .setup_state
@@ -100,9 +94,6 @@ impl App {
             s.seq_matcher.clear();
         }
         if let Some(s) = &mut self.canvas_state {
-            s.seq_matcher.clear();
-        }
-        if let Some(s) = &mut self.backup_state {
             s.seq_matcher.clear();
         }
         if let Some(s) = &mut self.outline_state {

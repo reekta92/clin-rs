@@ -22,13 +22,6 @@ impl App {
             s.keybinds = self.keybinds.clone();
             s.seq_matcher.clear();
         }
-        if let Some(s) = &mut self.backup_state {
-            s.theme = theme.clone();
-            s.keybinds = self.keybinds.clone();
-            s.seq_matcher.clear();
-            s.tab_icons_only = self.config.ui.tab_icons_only;
-            s.scrollbars_enabled = self.config.ui.scrollbars;
-        }
     }
     /// Load, patch, and save an editor config field.  Replaces the
     /// `ClinConfig::load().0 → set → save()` boilerplate used by toggle methods.
@@ -482,20 +475,6 @@ impl App {
             "Quit confirmation disabled",
             |c, v| c.core.confirm_on_quit = v,
         )
-    }
-
-    pub fn toggle_preview_encryption(&mut self) {
-        self.preview_encryption = !self.preview_encryption;
-        if self.list.preview_enabled {
-            self.update_preview();
-        }
-        let val = self.preview_encryption;
-        let _ = self.flag_status_persist(
-            val,
-            "Encrypted note previews enabled",
-            "Encrypted note previews hidden",
-            |c, v| c.list.preview_encryption = v,
-        );
     }
 
     pub fn toggle_pinned_on_top(&mut self) {
@@ -1068,19 +1047,6 @@ impl App {
         });
     }
 
-    pub fn toggle_encryption(&mut self) {
-        self.config.features.encryption = !self.config.features.encryption;
-        let val = self.config.features.encryption.is_enabled();
-        let _ =
-            self.flag_status_persist(val, "Encryption enabled", "Encryption disabled", |c, v| {
-                c.features.encryption = if v {
-                    crate::config::FeatureState::Enabled
-                } else {
-                    crate::config::FeatureState::Disabled
-                }
-            });
-    }
-
     pub fn toggle_folder_graph_preview(&mut self) {
         self.config.list.folder_graph_preview = !self.config.list.folder_graph_preview;
         self.refresh_visual_list();
@@ -1153,9 +1119,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         App::new(storage).unwrap()
     }
@@ -1579,9 +1543,7 @@ mod tests {
             config_dir: temp.path().join("config"),
             notes_dir: old_path.join("notes"),
             templates_dir: old_path.join("templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = App::new(storage).unwrap();
         let mut state =

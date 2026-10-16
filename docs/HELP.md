@@ -8,7 +8,7 @@ The help view provides a 3-pane layout: a left pane with a keybind table for the
 
 ## Tabs
 
-The help view has up to 9 tabs in order. Disabled-feature tabs are omitted:
+The help view has up to 8 tabs in order. Disabled-feature tabs are omitted:
 
 | # | Tab | Description |
 |---|---|---|
@@ -17,10 +17,9 @@ The help view has up to 9 tabs in order. Disabled-feature tabs are omitted:
 | 3 | **Graph** | Visualize your notes as a force-directed graph |
 | 4 | **Draw** | Freehand strokes, shapes, and text on a drawing canvas |
 | 5 | **Canvas** | Infinite pinstar canvas for connecting notes and drawings |
-| 6 | **Backup** | Git-backed vault backup dashboard |
-| 7 | **Templates** | Reusable note templates with variable substitution |
-| 8 | **About** | Application metadata, config paths, CLI reference |
-| 9 | **Bases** | Public queries, four layouts, guarded authoring and live-region bindings |
+| 6 | **Templates** | Reusable note templates with variable substitution |
+| 7 | **About** | Application metadata, config paths, CLI reference |
+| 8 | **Bases** | Public queries, four layouts, guarded authoring and live-region bindings |
 
 Digits `1`–`9` jump to visible tabs by position; `Tab`/`Right` and `Shift+Tab`/`Left` cycle them. If a custom help binding matches a digit, it takes precedence.
 

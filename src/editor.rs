@@ -133,9 +133,10 @@ pub struct NoteEditor {
     pub public_document: Option<crate::storage::documents::DocumentSnapshot>,
     pub(crate) public_document_body_only: bool,
     pub(crate) public_document_title: Option<String>,
-    pub(crate) public_opening_snapshot: Option<crate::storage::documents::DocumentSnapshot>,
+    pub note_baseline: Option<crate::storage::documents::DocumentSnapshot>,
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
+    pub(crate) template_source: Option<String>,
     pub title_editor: TextArea<'static>,
     pub(crate) body: EditorDocument,
     pub external_editor_enabled: bool,
@@ -189,14 +190,9 @@ pub struct NoteEditor {
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<i32>,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
-    /// Cache of per-line highlight styles, one entry per source line, rebuilt when the doc changes.
-    pub md_highlight_cache: Vec<std::rc::Rc<[ratatui::style::Style]>>,
-    /// `Instant` of the last editor change when cache was built.
-    pub md_highlight_change: Option<std::time::Instant>,
-    /// Number of lines in the document when cache was built.
-    pub md_highlight_lines: usize,
-    /// Bounded visible-line style memo, keyed by content and fence role.
-    pub md_highlight_memo: lru::LruCache<(u64, bool), std::rc::Rc<[ratatui::style::Style]>>,
+    /// Bounded visible-line styles, keyed by exact content, fence role, and todo mode.
+    pub md_highlight_memo:
+        lru::LruCache<(String, bool, bool), std::rc::Rc<[ratatui::style::Style]>>,
     pub(crate) visual_row_cache: EditorVisualRowCache,
     /// TTL cache for {modified} statusline token (500ms bounded).
     pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
@@ -213,9 +209,10 @@ impl Default for NoteEditor {
             public_document: None,
             public_document_body_only: false,
             public_document_title: None,
-            public_opening_snapshot: None,
+            note_baseline: None,
             initial_word_count: 0,
             template_edit_path: None,
+            template_source: None,
             title_editor: TextArea::default(),
             body: EditorDocument::default(),
             external_editor_enabled: false,
@@ -267,9 +264,6 @@ impl Default for NoteEditor {
             body_viewport_col: 0,
             title_viewport_row: 0,
             title_viewport_col: 0,
-            md_highlight_cache: Vec::new(),
-            md_highlight_change: None,
-            md_highlight_lines: 0,
             md_highlight_memo: lru::LruCache::new(std::num::NonZeroUsize::MIN),
             visual_row_cache: EditorVisualRowCache::default(),
             modified_status_cache: std::cell::RefCell::new(None),

@@ -29,9 +29,9 @@ A terminal note-taking app with `inline code`, **bold**, and _italics_.
 
 - Markdown rendering
 - Tags and folders
-- Encryption & backups
+- Coalesced recovery drafts
 
-> Encrypt individual notes from the command palette.
+> Recovery drafts are plaintext with private Unix permissions, not encryption.
 
 ```rust
 fn main() {
@@ -622,7 +622,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let mut lines: Vec<Line> = Vec::new();
         if !is_custom {
             let desc = match state.feature_preset {
-                1 => "Most features, no graph/canvas/draw/backup",
+                1 => "Most features, no graph/canvas/draw",
                 2 => "Core features only",
                 _ => "All features enabled",
             };
@@ -836,12 +836,11 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             ))
             .padding(Padding::new(1, 1, 1, 0));
-        let pairs: [((&str, &str), &'static str, Color); 5] = [
+        let pairs: [((&str, &str), &'static str, Color); 4] = [
             (("\u{f07b}", "\u{1f4c1}"), "Folder", theme.folder),
             (("\u{f15c}", "\u{1f4c4}"), "Note", theme.text),
             (("\u{f4cc}", "\u{1f4cc}"), "Pinned", theme.heading),
             (("\u{f02b}", "\u{1f3f7}"), "Tagged", theme.tag),
-            (("\u{f023}", "\u{1f512}"), "Encrypted", theme.warning),
         ];
         let lines: Vec<Line> = pairs
             .iter()
@@ -866,7 +865,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title(Span::styled(
-                " Keybind Preview ",
+                " Navigation Keys ",
                 Style::default()
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
@@ -1114,9 +1113,7 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
         };
         let mut app = crate::app::App::new(storage).unwrap();
         app.setup_state = Some(crate::setup::SetupState::from_config(

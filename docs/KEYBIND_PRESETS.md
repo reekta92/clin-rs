@@ -1,6 +1,6 @@
 # Keybind Presets
 
-This document details the editor-style keybind presets available in clin-rs: Helix, Vim, and Emacs.
+This document details the navigation keybind presets available in clin-rs: Helix, Vim, and Emacs.
 
 These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, search boxes, templates, tag managers, and popups).
 
@@ -28,7 +28,7 @@ enable_key_sequences = true
 
 ### Helix Preset
 
-Helix style mappings rely on the `Space` key as a leader key for application-level commands, and selection-first navigation.
+Helix style mappings rely on the `Space` key as a leader key for application-level commands, and application navigation.
 
 | View | Action | Key Sequence |
 |---|---|---|
@@ -57,7 +57,7 @@ Helix style mappings rely on the `Space` key as a leader key for application-lev
 
 ### Vim Preset
 
-Vim style mappings support standard hjkl navigation, double-key operators, and Ex-style colon commands.
+Vim style mappings support standard hjkl navigation, multi-key application commands and colon shortcuts.
 
 | View | Action | Key Sequence |
 |---|---|---|
