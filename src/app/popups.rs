@@ -593,13 +593,8 @@ template = """
     }
 
     pub fn begin_theme_selection(&mut self) {
-        let builtin_count = crate::config::Theme::BUILTIN_NAMES.len();
-        let mut themes: Vec<String> = crate::config::Theme::BUILTIN_NAMES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        themes.extend(crate::config::custom_themes::list_custom_themes());
-        let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
+        let (themes, is_custom) =
+            crate::config::custom_themes::theme_choices(crate::config::Theme::BUILTIN_NAMES);
 
         let config = &self.config;
         let current = self

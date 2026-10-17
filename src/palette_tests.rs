@@ -1669,3 +1669,111 @@ fn palette_notes_categories_follow_target_and_survive_settings_steps() {
     assert!(!visible(&f.app, "manage_subnotes_list"));
     assert!(!visible(&f.app, "insert.url_append"));
 }
+
+#[test]
+fn palette_custom_theme_sources_survive_filter_apply_and_setup() {
+    let mut f = Fixture::new();
+    let themes = f.root.path().join("themes");
+    fs::create_dir(&themes).unwrap();
+    fs::write(
+        themes.join("test_aurora.toml"),
+        include_str!("../examples/themes/test_aurora.toml"),
+    )
+    .unwrap();
+    fs::write(
+        themes.join("nord.toml"),
+        include_str!("../examples/themes/test_ember.toml"),
+    )
+    .unwrap();
+    fs::write(
+        themes.join("test_paper.toml"),
+        include_str!("../examples/themes/test_paper.toml"),
+    )
+    .unwrap();
+    for name in ["test_aurora", "nord", "test_paper"] {
+        let mut warnings = Vec::new();
+        assert!(matches!(
+            crate::config::custom_themes::resolve_theme(name, &mut warnings),
+            crate::config::custom_themes::ResolvedTheme::Custom(_)
+        ));
+        assert_eq!(warnings, Vec::<String>::new());
+    }
+    activate(&mut f.app, "switch_theme");
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .filter(|item| item.name == "nord")
+            .count(),
+        1
+    );
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .find(|item| item.name == "nord")
+            .unwrap()
+            .description,
+        "Custom theme"
+    );
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .find(|item| item.name == "test_aurora")
+            .unwrap()
+            .description,
+        "Custom theme"
+    );
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .find(|item| item.name == "gruvbox")
+            .unwrap()
+            .description,
+        "Built-in theme"
+    );
+    replace_step_input(&mut f.app, "nord");
+    let id = f.app.command_palette.as_ref().unwrap().items[0].id.clone();
+    select_step(&mut f.app, &id);
+    assert_eq!(f.app.config.ui.theme, "nord");
+    let buffer = render_palette(&mut f.app);
+    assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Custom theme · Current")));
+    let results = f
+        .app
+        .command_palette
+        .as_ref()
+        .unwrap()
+        .last_results_area
+        .unwrap();
+    assert!((results.x + 1..results.right() - 1).any(|x| {
+        let cell = &buffer[(x, results.y + 2)];
+        cell.symbol() == "█" && cell.fg == ratatui::style::Color::Rgb(255, 180, 84)
+    }));
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.app.begin_theme_selection();
+    let Some(crate::popups::ActivePopup::Theme(popup)) = &f.app.popups.active else {
+        panic!("original theme popup")
+    };
+    assert_eq!(
+        popup.themes.iter().filter(|name| *name == "nord").count(),
+        1
+    );
+    assert!(popup.is_custom[popup.selected]);
+    f.app.close_theme_popup();
+    f.enter(ViewMode::Setup);
+    assert!(
+        f.app
+            .setup_state
+            .as_ref()
+            .unwrap()
+            .row_value(1)
+            .contains("[custom]")
+    );
+    activate(&mut f.app, "switch_theme");
+    let buffer = render_palette(&mut f.app);
+    assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Custom theme · Current")));
+}

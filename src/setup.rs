@@ -222,14 +222,11 @@ pub fn feature_visible_rows(inner_h: u16) -> usize {
 }
 
 /// Build the full theme list for the setup wizard: built-in baseline ordered by
-/// `SETUP_THEMES`, then custom themes from `~/.config/clin/themes/`. Returns
-/// `(themes, is_custom)` where `is_custom[i]` is true for user-installed themes.
+/// `SETUP_THEMES`, then custom themes from the active config directory. Returns
+/// `(themes, is_custom)` where `is_custom[i]` is true for user-installed themes,
+/// including overrides of built-in names.
 pub fn build_theme_list() -> (Vec<String>, Vec<bool>) {
-    let builtin_count = SETUP_THEMES.len();
-    let mut themes: Vec<String> = SETUP_THEMES.iter().map(|s| s.to_string()).collect();
-    themes.extend(crate::config::custom_themes::list_custom_themes());
-    let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
-    (themes, is_custom)
+    crate::config::custom_themes::theme_choices(SETUP_THEMES)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

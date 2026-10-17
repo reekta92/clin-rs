@@ -207,17 +207,19 @@ impl CommandPalette {
                     state.themes[state.theme].as_str()
                 });
             for (index, name) in popup.themes.iter().enumerate() {
+                let source = if popup.is_custom[index] {
+                    "Custom theme"
+                } else {
+                    "Built-in theme"
+                };
                 rows.push((
                     format!("theme:{index}"),
                     name.clone(),
                     if name == current {
-                        "Current theme"
-                    } else if popup.is_custom[index] {
-                        "Custom theme"
+                        format!("{source} · Current")
                     } else {
-                        "Built-in theme"
-                    }
-                    .to_owned(),
+                        source.to_owned()
+                    },
                 ));
             }
         }

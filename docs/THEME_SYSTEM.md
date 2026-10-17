@@ -52,8 +52,14 @@ A custom theme with the same name as a built-in overrides it.
 ### Switcher
 
 The theme switcher (Ctrl+P → "Switch Theme") lists built-in themes first, then
-appends any custom theme names found in the themes directory. Selecting a custom
-name applies it immediately.
+appends custom theme names found in the themes directory. A custom override of a
+built-in name appears once, labeled custom. The palette keeps the custom/built-in
+label visible for the current theme too. Selecting a custom name applies it immediately.
+
+Three sample themes are included in [`examples/themes/`](../examples/themes/):
+`test_aurora` (cool dark), `test_ember` (warm dark), and `test_paper` (light).
+Copy their TOML files into `themes/` beside your active `config.toml`, then reopen
+the switcher. Turn Background On with Alt+B to see each sample's background.
 
 ### No-Recompile Path
 
