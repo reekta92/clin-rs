@@ -1487,7 +1487,16 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
         ]
     );
     let bar_y = results.y - 1;
-    assert!(rendered_text(&buffer, bar_y).contains("Background: On (Alt+B)"));
+    assert!(rendered_text(&buffer, bar_y).contains("Background: On"));
+    let bar = rendered_text(&buffer, bar_y);
+    assert!(!bar.contains("Alt+"));
+    let background_x = bar.find("Background:").unwrap() as u16;
+    assert_eq!(buffer[(background_x, bar_y)].fg, f.app.app_theme.accent);
+    let footer = (0..AREA.height)
+        .map(|y| rendered_text(&buffer, y))
+        .find(|line| line.contains("Alt+B"))
+        .unwrap();
+    assert!(footer.contains("Alt+B bg") && footer.contains("Alt+G graph"));
     assert_eq!(
         buffer[(1, bar_y)].bg,
         f.app.app_theme.hint_line_bg_style().bg.unwrap()
@@ -1509,7 +1518,7 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
     );
     let buffer = render_palette(&mut f.app);
     let bar = rendered_text(&buffer, bar_y);
-    assert!(bar.contains("Background: Off (Alt+B)"));
+    assert!(bar.contains("Background: Off"));
     let graph_before = f.app.config.graf.visual.graph_background.clone();
     let column = bar.find("Graph background").unwrap() as u16;
     drive(
@@ -1534,6 +1543,8 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
     activate(&mut f.app, "switch_theme");
     let buffer = render_palette(&mut f.app);
     assert!(!(0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Graph background")));
+    assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Alt+B bg")));
+    assert!(!(0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Alt+G")));
     let persisted = fs::read(crate::config::ClinConfig::config_path().unwrap()).unwrap();
     drive(
         &mut f.app,
@@ -1570,6 +1581,13 @@ fn palette_settings_rows_render_previews_and_current_values() {
     assert!(none.contains("Note   Folder   Settings"));
     assert!(!none.contains('📄') && !none.contains('\u{f15c}'));
     assert!(rendered_text(&buffer, results.y - 1).contains("Current: Nerd Font"));
+    let current_x = rendered_text(&buffer, results.y - 1)
+        .find("Current:")
+        .unwrap() as u16;
+    assert_eq!(
+        buffer[(current_x, results.y - 1)].fg,
+        f.app.app_theme.accent
+    );
     drive(&mut f.app, key(KeyCode::Esc));
     activate(&mut f.app, "settings.hint_bar_style");
     for (index, style) in crate::config::HintBarStyle::ALL.iter().enumerate() {

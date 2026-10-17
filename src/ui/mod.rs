@@ -758,7 +758,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         && let Some(palette) = &mut app.command_palette
     {
         let area = frame.area();
-        let hints = if palette.workflow.is_none() {
+        let mut hints = if palette.workflow.is_none() {
             vec![
                 ("Tab".to_string(), "category"),
                 ("Enter".to_string(), "run"),
@@ -772,6 +772,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ("Esc".to_string(), "back"),
             ]
         };
+        if let Some(crate::palette::workflows::Workflow::Theme(popup, _)) = &palette.workflow {
+            hints[0].1 = "apply";
+            hints.push(("Alt+B".to_string(), "bg"));
+            if !popup.setup_owned {
+                hints.push(("Alt+G".to_string(), "graph"));
+            }
+        }
         let content = draw_popup_frame(
             frame,
             area,
@@ -853,7 +860,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     })
                     .flatten()
             });
-            let spans = build_tab_spans(
+            let mut spans = build_tab_spans(
                 &tabs,
                 usize::MAX,
                 hovered,
@@ -861,6 +868,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 false,
                 crate::config::IconMode::None,
             );
+            for span in &mut spans {
+                span.style = span
+                    .style
+                    .fg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD);
+            }
             frame.render_widget(
                 Paragraph::new(Line::from(spans))
                     .alignment(Alignment::Center)
