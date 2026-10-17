@@ -1,6 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use unicode_width::UnicodeWidthStr;
 
 use super::PopupSize;
 use crate::app::{ConfirmPopup, TemplatePopup, ThemePopup};
@@ -530,14 +531,14 @@ pub fn draw_option_list_popup(
 
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
     let display_text = format!(" {} ", title.to_uppercase());
-    let width = display_text.len() as u16;
+    let width = display_text.width().min(popup_area.width as usize) as u16;
     if popup_area.y == 0 {
         return;
     }
     let banner_area = Rect::new(
         popup_area.x + (popup_area.width.saturating_sub(width)) / 2,
         popup_area.y - 1,
-        width.min(popup_area.width),
+        width,
         1,
     );
     frame.render_widget(Clear, banner_area);
@@ -1553,6 +1554,46 @@ mod tests {
 
     fn has_mod(st: Style, m: Modifier) -> bool {
         st.add_modifier.contains(m)
+    }
+
+    #[test]
+    fn popup_banner_preserves_background_outside_unicode_title() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let theme = AppThemeColors::default();
+        for (title, popup_width, expected_width) in [
+            ("COMMANDS", 60, 10),
+            ("COMMANDS › Switch Theme", 60, 25),
+            ("COMMANDS › Switch Vault › Rename", 60, 34),
+            ("命令 › 主题", 60, 13),
+            ("Cafe\u{301} › Theme", 60, 14),
+            ("Straße › Theme", 60, 17),
+            ("COMMANDS › Switch Theme", 10, 10),
+        ] {
+            let mut terminal = Terminal::new(TestBackend::new(80, 8)).unwrap();
+            let popup = Rect::new(10, 3, popup_width, 4);
+            terminal
+                .draw(|frame| {
+                    frame.render_widget(
+                        Block::default().style(Style::default().bg(Color::Blue)),
+                        frame.area(),
+                    );
+                    draw_popup_banner(frame, popup, title, &theme);
+                })
+                .unwrap();
+            let start = popup.x + (popup.width - expected_width) / 2;
+            let end = start + expected_width;
+            let buffer = terminal.backend().buffer();
+            assert_eq!(buffer[(start, popup.y - 1)].bg, theme.heading);
+            assert_eq!(buffer[(end - 1, popup.y - 1)].bg, theme.heading);
+            for x in (0..start).chain(end..80) {
+                assert_eq!(
+                    buffer[(x, popup.y - 1)].bg,
+                    Color::Blue,
+                    "{title:?} at x={x}, width={popup_width}"
+                );
+            }
+        }
     }
 
     #[test]
