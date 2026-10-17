@@ -243,10 +243,11 @@ pub(crate) fn handle_command_palette_mouse(
                 }
             } else if contains_cell(chunks[1], mouse.column, mouse.row) && !workflow_bar.is_empty()
             {
-                let tabs: Vec<_> = workflow_bar
+                let labels: Vec<_> = workflow_bar
                     .iter()
-                    .map(|(label, _)| (label.as_str(), None))
+                    .map(|(line, _)| line.to_string())
                     .collect();
+                let tabs: Vec<_> = labels.iter().map(|label| (label.as_str(), None)).collect();
                 if let Some(focus) = crate::ui::hit_test_tabs(
                     &tabs,
                     chunks[1].x,

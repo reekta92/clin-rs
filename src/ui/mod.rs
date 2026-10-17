@@ -840,10 +840,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .style(app.app_theme.hint_line_bg_style());
             frame.render_widget(tabs_w, chunks[1]);
         } else if !workflow_bar.is_empty() {
-            let tabs: Vec<_> = workflow_bar
+            let labels: Vec<_> = workflow_bar
                 .iter()
-                .map(|(label, _)| (label.as_str(), None))
+                .map(|(line, _)| line.to_string())
                 .collect();
+            let tabs: Vec<_> = labels.iter().map(|label| (label.as_str(), None)).collect();
             let hovered = app.mouse_pos.and_then(|(col, row)| {
                 (row == chunks[1].y)
                     .then(|| {
@@ -860,19 +861,23 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     })
                     .flatten()
             });
-            let mut spans = build_tab_spans(
-                &tabs,
-                usize::MAX,
-                hovered,
-                &app.app_theme,
-                false,
-                crate::config::IconMode::None,
-            );
-            for span in &mut spans {
-                span.style = span
-                    .style
+            let mut spans = Vec::new();
+            for (i, (line, _)) in workflow_bar.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::raw(" "));
+                }
+                let mut style = Style::default()
                     .fg(app.app_theme.accent)
                     .add_modifier(Modifier::BOLD);
+                if hovered == Some(i) {
+                    style = style.patch(app.app_theme.hover_style());
+                }
+                spans.push(Span::styled(" ", style));
+                spans.extend(line.spans.iter().cloned().map(|mut span| {
+                    span.style = style.patch(span.style);
+                    span
+                }));
+                spans.push(Span::styled(" ", style));
             }
             frame.render_widget(
                 Paragraph::new(Line::from(spans))

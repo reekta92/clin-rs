@@ -1492,6 +1492,10 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
     assert!(!bar.contains("Alt+"));
     let background_x = bar.find("Background:").unwrap() as u16;
     assert_eq!(buffer[(background_x, bar_y)].fg, f.app.app_theme.accent);
+    let on_x = background_x + "Background: ".len() as u16;
+    for x in on_x..on_x + 2 {
+        assert_eq!(buffer[(x, bar_y)].fg, f.app.app_theme.success);
+    }
     let footer = (0..AREA.height)
         .map(|y| rendered_text(&buffer, y))
         .find(|line| line.contains("Alt+B"))
@@ -1519,6 +1523,10 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
     let buffer = render_palette(&mut f.app);
     let bar = rendered_text(&buffer, bar_y);
     assert!(bar.contains("Background: Off"));
+    let off_x = bar.find("Background: Off").unwrap() as u16 + "Background: ".len() as u16;
+    for x in off_x..off_x + 3 {
+        assert_eq!(buffer[(x, bar_y)].fg, f.app.app_theme.destructive);
+    }
     let graph_before = f.app.config.graf.visual.graph_background.clone();
     let column = bar.find("Graph background").unwrap() as u16;
     drive(
@@ -1531,6 +1539,16 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
         }),
     );
     assert_ne!(f.app.config.graf.visual.graph_background, graph_before);
+    let buffer = render_palette(&mut f.app);
+    let bar = rendered_text(&buffer, bar_y);
+    let graph_x =
+        bar.find("Graph background: ").unwrap() as u16 + "Graph background: ".len() as u16;
+    let expected = if f.app.config.graf.visual.graph_background == Background::Solid {
+        f.app.app_theme.success
+    } else {
+        f.app.app_theme.destructive
+    };
+    assert_eq!(buffer[(graph_x, bar_y)].fg, expected);
     drive(
         &mut f.app,
         Event::Key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::ALT)),

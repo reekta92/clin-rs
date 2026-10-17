@@ -14,17 +14,29 @@ use ratatui::{
 };
 
 impl CommandPalette {
-    pub(crate) fn workflow_bar(&self, app: &App) -> Vec<(String, Option<ThemePopupFocus>)> {
+    pub(crate) fn workflow_bar(&self, app: &App) -> Vec<(Line<'static>, Option<ThemePopupFocus>)> {
         let current = match &self.workflow {
             Some(Workflow::Theme(popup, _)) => {
-                let state = |on| if on { "On" } else { "Off" };
+                let indicator = |label: &str, on| {
+                    Line::from(vec![
+                        Span::raw(format!("{label}: ")),
+                        Span::styled(
+                            if on { "On" } else { "Off" },
+                            Style::default().fg(if on {
+                                app.app_theme.success
+                            } else {
+                                app.app_theme.destructive
+                            }),
+                        ),
+                    ])
+                };
                 let mut controls = vec![(
-                    format!("Background: {}", state(popup.general_is_solid)),
+                    indicator("Background", popup.general_is_solid),
                     Some(ThemePopupFocus::GeneralBg),
                 )];
                 if !popup.setup_owned {
                     controls.push((
-                        format!("Graph background: {}", state(popup.graph_is_solid)),
+                        indicator("Graph background", popup.graph_is_solid),
                         Some(ThemePopupFocus::GraphBg),
                     ));
                 }
@@ -67,10 +79,10 @@ impl CommandPalette {
             _ => return Vec::new(),
         };
         vec![(
-            format!(
+            Line::from(format!(
                 "Current: {}",
                 crate::fsutil::sanitize_for_terminal(&current)
-            ),
+            )),
             None,
         )]
     }
