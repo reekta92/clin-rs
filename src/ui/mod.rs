@@ -758,20 +758,32 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         && let Some(palette) = &mut app.command_palette
     {
         let area = frame.area();
-        let hints = if palette.workflow.is_none() {
-            vec![
-                ("Tab".to_string(), "category"),
-                ("Enter".to_string(), "run"),
-                ("↑/↓".to_string(), "select"),
-                ("Esc".to_string(), "close"),
-            ]
-        } else {
-            vec![
-                ("Enter".to_string(), "select/apply"),
-                ("↑/↓".to_string(), "move"),
-                ("Esc".to_string(), "back"),
-            ]
-        };
+        let hints =
+            if let Some(crate::palette::workflows::Workflow::Theme(popup, _)) = &palette.workflow {
+                let mut hints = vec![
+                    ("Enter".to_string(), "apply"),
+                    ("↑/↓".to_string(), "move"),
+                    ("Esc".to_string(), "back"),
+                    ("Alt+B".to_string(), "bg"),
+                ];
+                if !popup.setup_owned {
+                    hints.push(("Alt+G".to_string(), "Graph"));
+                }
+                hints
+            } else if palette.workflow.is_none() {
+                vec![
+                    ("Tab".to_string(), "category"),
+                    ("Enter".to_string(), "run"),
+                    ("↑/↓".to_string(), "select"),
+                    ("Esc".to_string(), "close"),
+                ]
+            } else {
+                vec![
+                    ("Enter".to_string(), "select/apply"),
+                    ("↑/↓".to_string(), "move"),
+                    ("Esc".to_string(), "back"),
+                ]
+            };
         let content = draw_popup_frame(
             frame,
             area,
@@ -820,7 +832,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     None
                 }
             });
-            let tab_spans = build_tab_spans(
+            let tab_spans = build_action_category_tab_spans(
                 &tabs,
                 palette.active_tab,
                 hovered,

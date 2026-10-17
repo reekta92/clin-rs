@@ -19,7 +19,7 @@ impl CommandPalette {
             Some(Workflow::Theme(popup, _)) => {
                 let state = |on| if on { "On" } else { "Off" };
                 let mut controls = vec![(
-                    format!("Background: {} (Alt+B)", state(popup.general_is_solid)),
+                    format!("Background: {}", state(popup.general_is_solid)),
                     Some(ThemePopupFocus::GeneralBg),
                 )];
                 if !popup.setup_owned {

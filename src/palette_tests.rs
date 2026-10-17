@@ -1487,7 +1487,13 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
         ]
     );
     let bar_y = results.y - 1;
-    assert!(rendered_text(&buffer, bar_y).contains("Background: On (Alt+B)"));
+    assert!(rendered_text(&buffer, bar_y).contains("Background: On"));
+    assert!(!rendered_text(&buffer, bar_y).contains("Alt+B"));
+    let footer = (0..AREA.height)
+        .map(|y| rendered_text(&buffer, y))
+        .find(|line| line.contains("Alt+B"))
+        .unwrap();
+    assert!(footer.contains("Alt+B") && footer.contains("Alt+G") && footer.contains("Graph"));
     assert_eq!(
         buffer[(1, bar_y)].bg,
         f.app.app_theme.hint_line_bg_style().bg.unwrap()
@@ -1509,7 +1515,8 @@ fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
     );
     let buffer = render_palette(&mut f.app);
     let bar = rendered_text(&buffer, bar_y);
-    assert!(bar.contains("Background: Off (Alt+B)"));
+    assert!(bar.contains("Background: Off"));
+    assert!(!bar.contains("Alt+B"));
     let graph_before = f.app.config.graf.visual.graph_background.clone();
     let column = bar.find("Graph background").unwrap() as u16;
     drive(
@@ -1641,6 +1648,15 @@ fn palette_notes_categories_follow_target_and_survive_settings_steps() {
     drive(&mut f.app, key(KeyCode::F(6)));
     let all = vec!["All", "Notes", "Import", "Append", "Views", "Settings"];
     assert_eq!(categories(&f.app), all);
+    f.app.config.ui.icon_mode = crate::config::IconMode::None;
+    let buffer = render_palette(&mut f.app);
+    let palette = f.app.command_palette.as_ref().unwrap();
+    let tab_y = palette.last_results_area.unwrap().y - 1;
+    for label in ["Notes", "Import", "Append", "Views", "Settings"] {
+        let text = rendered_text(&buffer, tab_y);
+        let x = text.find(label).unwrap() as u16;
+        assert_eq!(buffer[(x, tab_y)].fg, f.app.app_theme.accent, "{label}");
+    }
     for action in ["switch_theme", "settings.hint_bar_style", "keybind.preset"] {
         activate(&mut f.app, action);
         select_step(

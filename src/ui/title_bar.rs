@@ -210,7 +210,46 @@ pub fn build_tab_spans(
     icons_only: bool,
     icon_mode: crate::config::IconMode,
 ) -> Vec<Span<'static>> {
-    let inactive_style = Style::default().fg(theme.muted);
+    build_tab_spans_with_inactive_color(
+        tabs,
+        active,
+        hovered,
+        theme,
+        icons_only,
+        icon_mode,
+        theme.muted,
+    )
+}
+
+pub fn build_action_category_tab_spans(
+    tabs: &[(&str, Option<&str>)],
+    active: usize,
+    hovered: Option<usize>,
+    theme: &AppThemeColors,
+    icons_only: bool,
+    icon_mode: crate::config::IconMode,
+) -> Vec<Span<'static>> {
+    build_tab_spans_with_inactive_color(
+        tabs,
+        active,
+        hovered,
+        theme,
+        icons_only,
+        icon_mode,
+        theme.accent,
+    )
+}
+
+fn build_tab_spans_with_inactive_color(
+    tabs: &[(&str, Option<&str>)],
+    active: usize,
+    hovered: Option<usize>,
+    theme: &AppThemeColors,
+    icons_only: bool,
+    icon_mode: crate::config::IconMode,
+    inactive_color: ratatui::style::Color,
+) -> Vec<Span<'static>> {
+    let inactive_style = Style::default().fg(inactive_color);
     let mut spans = Vec::with_capacity(tabs.len() * 2);
     for (i, (label, glyph)) in tabs.iter().enumerate() {
         if i > 0 {
