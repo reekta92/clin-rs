@@ -1618,13 +1618,9 @@ fn palette_settings_rows_render_previews_and_current_values() {
     assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Current: vim")));
     drive(&mut f.app, key(KeyCode::Esc));
     activate(&mut f.app, "insert.url_new");
-    assert!(
-        f.app
-            .command_palette
-            .as_ref()
-            .unwrap()
-            .workflow_bar(&f.app)
-            .is_empty()
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().workflow_bar(&f.app),
+        Vec::new()
     );
     let buffer = render_palette(&mut f.app);
     assert!(!(0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Enter select / apply")));

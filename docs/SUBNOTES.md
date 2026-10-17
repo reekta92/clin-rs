@@ -60,7 +60,7 @@ The notes search popup supports the `sn:` prefix to exclusively search subnotes 
 | `ListAction::ManageSubnotes` | `Alt+s` | List view |
 | `EditAction::ManageSubnotes` | `Alt+s` | Editor view |
 
-Command-palette action `manage_subnotes_list` in `src/actions/mod.rs` opens the subnotes manager.
+Command-palette action `manage_subnotes_list` in `src/actions/mod.rs` opens the original manager popup, with the list, title and content panes. It does not use palette workflow steps.
 
 ## Connections
 

@@ -267,7 +267,7 @@ Only needed if the theme should be bundled into the binary and available without
 
 ## Theme Switcher
 
-The **Switch Theme** command displays themes and background controls in the command palette body. Its input filters themes. Selecting a theme applies it immediately and keeps the selector open; leaving saves to `config.toml`. Esc returns to the original command search. Direct theme shortcuts retain the original popup. In Setup, changes remain pending until Finish.
+The **Switch Theme** command lists themes with four color swatches in the command palette body. Its input filters themes. The category bar has clickable general/Graph background indicators, toggled by Alt+B / Alt+G (On = solid, Off = transparent); Setup only offers general background. Selecting a theme applies it immediately and keeps the selector open; leaving saves to `config.toml`. Esc returns to the original command search. Direct theme shortcuts retain the original popup. In Setup, changes remain pending until Finish.
 
 See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 

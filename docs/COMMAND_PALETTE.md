@@ -146,6 +146,8 @@ When launched from the palette, these workflows keep the same frame:
 
 The header field filters a choice list or edits the requested value, depending on the step. Category tabs appear only at the command root. Esc returns to the parent, restoring its query, selection and scroll. Outside clicks close through the workflow's save/cleanup path. Failed validation or writes retain the input and display the error. Pending writes block departure and duplicate submission.
 
+Settings choices include visual examples: themes show four palette colors, icon modes show note/folder/settings icons, hint styles render a single real hint, and navigation presets describe their keys. The workflow bar uses the root category background and shows the applied value where useful; steps without controls or a current value omit it. Theme background controls are clickable bar items: **Alt+B** toggles general background and **Alt+G** toggles Graph background. On means solid; Off means transparent. Setup omits the Graph control. Validation errors and pending-operation status appear separately, and shortcut instructions stay in the footer.
+
 Theme changes apply immediately and the selector stays open; leaving it saves outside Setup. Hint-style and navigation-preset selectors also stay open. In Setup, theme/preset changes remain pending until Finish. Bases value inputs use Shift+Enter for a newline and Enter to submit. The body Apply row also submits inputs with the mouse.
 
 Direct shortcut launches retain their original popup presentation, including F4 vault switching. The Subnotes action opens its original manager popup with its list, title and content panes. Confirmations, search dialogs (including Bases search), system file/directory pickers, read-only Info/image previews, and destination views/editors remain separate. Removing a Bases view still requires its separate typed DELETE confirmation; clearing a property still requires CLEAR. No other standalone Notes/view dialogs are migrated.
@@ -226,9 +228,11 @@ Bases binding is `Ctrl+p`; configurable sequences and preset counts remain owned
 by the shared keybinding resolver. Closing the full view restores its live region
 and original editor/overlay return route. Shared settings/navigation do not inherit a private Notes target.
 
+Notes has up to six root categories: All, Notes, Import, Append, Views, and Settings. Empty categories are hidden. Notes and Append need a captured Markdown/text-note target; selecting a folder or another file type can leave All, Import, Views, and Settings. Import and Append also require the Import feature. Eligibility is refreshed after actions and before execution so a stale target cannot be edited.
+
 ## Verification
 
-The palette suites cover real main/editor dispatch, every view and preset, custom F6 bindings, captured targets, retained/suspended owners, integrated step navigation, live settings and Setup persistence. Workflow tests cover the standalone subnotes handoff and multiline saving, separate confirmations, stale Bases snapshots, blocked writes and a concurrent Bases filename collision.
+The palette suites cover real main/editor dispatch, every view and preset, custom F6 bindings, captured targets, retained/suspended owners, integrated step navigation, live settings and Setup persistence. Workflow tests cover rendered previews, background controls by mouse/shortcut, category eligibility across settings changes, the standalone subnotes handoff and multiline saving, separate confirmations, stale Bases snapshots, blocked writes and a concurrent Bases filename collision.
 
 Run `cargo test --locked palette_`, `cargo test --locked actions::`, and the affected `bases::` and editor suites. Release checks include `cargo fmt --all --check`, locked all-target checking, Clippy with `-D warnings`, the full test suite with temporary XDG directories, dependency auditing, and Rust 1.90.0 checking. Image HTTP tests need local sockets; opt-in performance checks remain separate.
 
