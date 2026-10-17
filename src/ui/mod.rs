@@ -912,13 +912,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     Line::from(spans),
                     palette.item_preview(item, &app.app_theme),
                 ]);
-                if palette.workflow.is_some() && palette.state.selected() == Some(i) {
-                    list_item = list_item.style(
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.highlight_bg)
-                            .add_modifier(Modifier::BOLD),
-                    );
+                if palette.state.selected() == Some(i) {
+                    list_item =
+                        list_item.style(app.app_theme.hover_style().add_modifier(Modifier::BOLD));
                 } else if Some(i) == hovered_cmd_idx {
                     list_item = list_item.style(app.app_theme.hover_style());
                 }
@@ -934,14 +930,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .border_style(Style::default().fg(app.app_theme.muted))
                     .title(""),
             )
-            .highlight_style(if palette.workflow.is_some() {
-                Style::default()
-            } else {
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD)
-            })
+            .highlight_style(Style::default())
             .highlight_symbol("  ");
 
         frame.render_stateful_widget(list, chunks[3], &mut palette.state);
