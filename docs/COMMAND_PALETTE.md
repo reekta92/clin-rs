@@ -8,7 +8,7 @@ Notes keeps its preset-specific palette shortcuts and right-click targeting. Bas
 
 ## Overview
 
-The command palette provides a searchable list of actions. Users can invoke applicable registered actions without navigating menus. The palette opens over the current view, intercepts input, and closes after executing or canceling.
+The command palette provides a searchable list of actions. Users can invoke applicable registered actions without navigating menus. The palette opens over the current view and owns input. Actions that need a choice or value continue inside its frame; immediate actions close it after execution.
 **Source:** `src/actions/mod.rs` (registry and dispatch), `src/actions/context.rs` (eligibility), `src/app/command_palette.rs` (opening and activation), `src/palette.rs` (search and tabs).
 
 ---
@@ -86,7 +86,7 @@ File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL
 
 The palette captures origin, vault, applicable owner path, Notes file/folder identity, and actual editor focus. Targeted execution revalidates the live owner and file; changed/deleted targets, renamed editors, replaced origins, and vault changes are rejected. Shared settings remain usable after a document-only invalidation.
 
-Keyboard and mouse activation share one operation: select the action ID, release palette input ownership, validate, execute once, and report failure. Info/Outline/subnotes commands reject changed Notes selections instead of retargeting through a visual index.
+Keyboard and mouse activation share one operation: select the action ID, validate, execute once, and report failure. Integrated steps retain the captured action context and revalidate before submission. Info/Outline/subnotes commands reject changed Notes selections instead of retargeting through a visual index.
 
 ---
 
@@ -125,7 +125,31 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 | `Shift+Tab` | Previous category |
 | `Up` / `Down` | Navigate list |
 | `Enter` | Execute selected action |
-| `Esc` | Close palette (cancel) |
+| `Esc` | Return one step; close at the root |
+
+---
+
+## Integrated action steps
+
+When launched from the palette, these workflows keep the same frame:
+
+| Workflow | Body / input |
+| --- | --- |
+| Theme | Filterable built-in/custom themes, current-theme marker, general/Graph background controls |
+| Navigation preset, icon mode, hint-bar style, sort order | Filterable existing options |
+| Word/note goals | Current numeric value in the input field |
+| Drawing, Canvas, Bases creation | Name input; collisions retain input and never overwrite a file |
+| URL import/append | URL input, retaining the original append target |
+| Vault switcher | Filterable vaults; F2 renames the selected vault, Delete requests the existing removal confirmation |
+| Subnotes | Filterable subnotes, add/edit/delete actions, title and multiline content steps |
+| Bases configuration | All 34 existing configuration commands and their follow-up inputs |
+| Bases property edit, public note creation, export, group move | Existing typed value/path inputs with guarded asynchronous writes |
+
+The header field filters a choice list or edits the requested value, depending on the step. Category tabs appear only at the command root. Esc returns to the parent, restoring its query, selection and scroll. Outside clicks close through the workflow's save/cleanup path. Failed validation or writes retain the input and display the error. Pending writes block departure and duplicate submission.
+
+Theme changes apply immediately and the selector stays open; leaving it saves outside Setup. Hint-style and navigation-preset selectors also stay open. In Setup, theme/preset changes remain pending until Finish. Subnote content uses Enter for a newline and Ctrl+Enter to apply; Bases value inputs use Shift+Enter for a newline and Enter to submit. The body Apply row also submits inputs with the mouse.
+
+Direct shortcut launches retain their original popup presentation, including F4 vault switching. Confirmations, search dialogs (including Bases search), system file/directory pickers, read-only Info/image previews, and destination views/editors remain separate. Removing a Bases view still requires its separate typed DELETE confirmation; clearing a property still requires CLEAR. No other standalone Notes/view dialogs are migrated.
 
 ---
 
@@ -205,11 +229,9 @@ and original editor/overlay return route. Shared settings/navigation do not inhe
 
 ## Verification
 
-The implementation has 26 focused `palette_` tests covering real main/editor dispatch, all ten views and four presets, custom F6 sequences, Notes right-click targets, focused embeds, modal ownership, query clipboard/paste, stale targets, failed saves/preparation, suspended owners, active writes, retained settings, and Setup persistence.
+The palette suites cover real main/editor dispatch, every view and preset, custom F6 bindings, captured targets, retained/suspended owners, integrated step navigation, live settings and Setup persistence. Workflow tests cover multiline subnotes, separate confirmations, stale Bases snapshots, blocked writes and a concurrent Bases filename collision.
 
-Run `cargo test --locked palette_`, the existing `actions::`, `editor_session::`, and `bases::` suites, then `development/scripts/check.sh --strict`. The final strict run passed all six gates: formatting, locked check, Clippy, full tests (639 unit and 12 integration tests passed; 5 ignored), dependency auditing, and Rust 1.90.0 checking. Temporary XDG directories isolate configuration during the full suite.
-
-A disposable-vault PTY smoke check exercised F6/search/copy/cancel in every view, blank-click retention and outside dismissal, editor date insertion, Bases property edit/undo, failed-save departure, live Graph theme/preset switching, and Setup preview/Finish/Cancel. Native OS clipboard integration and the five ignored performance/large-vault checks were not exercised; automated query clipboard tests use an isolated test clipboard.
+Run `cargo test --locked palette_`, `cargo test --locked actions::`, and the affected `bases::` and editor suites. Release checks include `cargo fmt --all --check`, locked all-target checking, Clippy with `-D warnings`, the full test suite with temporary XDG directories, dependency auditing, and Rust 1.90.0 checking. Image HTTP tests need local sockets; opt-in performance checks remain separate.
 
 ## Frontmatter in the editor
 

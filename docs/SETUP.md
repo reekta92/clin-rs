@@ -12,6 +12,11 @@ Technical docs for the setup wizard (`ViewMode::Setup`) — a first-run / onboar
 selects vault plus appearance and keybind preset. Vault changes rebootstrap
 same process; content is never copied. Use `clin storage migrate` explicitly.
 
+Palette-launched Theme and Navigation Preset selectors stay inside the palette.
+Changes preview immediately but remain pending until **Finish Setup**; Cancel
+retains its existing discard confirmation. Esc returns from a selector to the
+command list. Direct Setup controls retain their existing presentation.
+
 ---
 
 ## Layout

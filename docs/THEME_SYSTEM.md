@@ -267,7 +267,7 @@ Only needed if the theme should be bundled into the binary and available without
 
 ## Theme Switcher
 
-The `SwitchThemeAction` (via command palette, Ctrl+P) opens a theme popup. Users can cycle through themes live — the change applies immediately and saves to `config.toml`.
+The **Switch Theme** command displays themes and background controls in the command palette body. Its input filters themes. Selecting a theme applies it immediately and keeps the selector open; leaving saves to `config.toml`. Esc returns to the original command search. Direct theme shortcuts retain the original popup. In Setup, changes remain pending until Finish.
 
 See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 

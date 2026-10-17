@@ -9,10 +9,16 @@ implemented. Obsidian runtime parity has not been demonstrated.
 Open a `.base` file from the notes list, or use `clin notes open TITLE`.
 `[features] bases_view` enables the view (default enabled). The first saved view
 opens by default. Create a base through Notes' **Create New → Bases (.base)**
-selector or command palette's **Create Bases File** action. Both reuse the native
-filename popup and current public folder context. Creation runs in the background,
+selector or command palette's **Create Bases File** action. The selector uses the
+existing filename popup; the palette action uses the palette input. Both retain
+the current public folder context. Creation runs in the background,
 uses no-clobber public document storage, and opens the default table. Existing
 files/private paths reject without note serialization or clin/title fields.
+
+Palette-launched configuration, property edits, public note creation, export and
+group moves keep their menus/inputs inside the palette. Esc returns one step.
+Failed writes retain the entered value. Search, cover previews, typed CLEAR/DELETE
+confirmations, and direct shortcut dialogs keep their existing presentation.
 
 Configurable `bases` keybindings control navigation and editing;
 press the Bases Help binding (`?` by default) for the current map.
