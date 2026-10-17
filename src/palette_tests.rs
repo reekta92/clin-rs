@@ -419,7 +419,7 @@ fn palette_paste_refresh_input_isolation_resize_and_empty_clicks() {
     assert!(f.app.popups.active.is_none());
     assert!(matches!(
         f.app.command_palette.as_ref().unwrap().workflow,
-        Some(crate::palette::workflows::Workflow::Theme(_))
+        Some(crate::palette::workflows::Workflow::Theme(..))
     ));
     drive(&mut f.app, key(KeyCode::Esc));
     drive(&mut f.app, key(KeyCode::Esc));
@@ -1380,7 +1380,10 @@ fn palette_workflow_mouse_apply_resize_and_failed_theme_exit() {
     assert!(f.app.command_palette.is_none());
     assert_eq!(f.app.config.goals.word_goal, 456);
     activate(&mut f.app, "switch_theme");
-    select_step(&mut f.app, "background");
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT)),
+    );
     let config = crate::config::ClinConfig::config_path().unwrap();
     let backup = config.with_extension("saved");
     fs::rename(&config, &backup).unwrap();
@@ -1431,4 +1434,242 @@ fn palette_subnotes_save_failure_preserves_original_manager() {
         f.app.storage.get_subnotes("selected.md").unwrap()[0].title,
         "Retained draft"
     );
+}
+
+fn render_palette(app: &mut App) -> ratatui::buffer::Buffer {
+    let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, app, EditFocus::Body))
+        .unwrap();
+    terminal.backend().buffer().clone()
+}
+
+fn rendered_text(buffer: &ratatui::buffer::Buffer, row: u16) -> String {
+    (0..buffer.area.width)
+        .map(|x| buffer[(x, row)].symbol())
+        .collect()
+}
+
+#[test]
+fn palette_theme_previews_and_background_bar_mouse_shortcuts() {
+    use crate::config::Background;
+    let mut f = Fixture::new();
+    f.app.config.ui.background = Background::Solid;
+    f.app.refresh_theme_from_config();
+    activate(&mut f.app, "switch_theme");
+    let buffer = render_palette(&mut f.app);
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert!(
+        !palette
+            .items
+            .iter()
+            .any(|i| i.id == "background" || i.id == "graph_background")
+    );
+    let results = palette.last_results_area.unwrap();
+    let swatches: Vec<_> = (results.x + 1..results.right() - 1)
+        .filter_map(|x| {
+            let cell = &buffer[(x, results.y + 2)];
+            (cell.symbol() == "█").then_some(cell.fg)
+        })
+        .collect();
+    let colors = crate::app_theme::AppThemeColors::default();
+    assert_eq!(
+        swatches,
+        [
+            colors.accent,
+            colors.accent,
+            colors.heading,
+            colors.heading,
+            colors.folder,
+            colors.folder,
+            colors.tag,
+            colors.tag
+        ]
+    );
+    let bar_y = results.y - 1;
+    assert!(rendered_text(&buffer, bar_y).contains("Background: On (Alt+B)"));
+    assert_eq!(
+        buffer[(1, bar_y)].bg,
+        f.app.app_theme.hint_line_bg_style().bg.unwrap()
+    );
+    drive(&mut f.app, Event::Paste("gruv".into()));
+    let selected = f.app.command_palette.as_ref().unwrap().state.selected();
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT)),
+    );
+    assert_eq!(f.app.config.ui.background, Background::Transparent);
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().input.lines()[0],
+        "gruv"
+    );
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().state.selected(),
+        selected
+    );
+    let buffer = render_palette(&mut f.app);
+    let bar = rendered_text(&buffer, bar_y);
+    assert!(bar.contains("Background: Off (Alt+B)"));
+    let graph_before = f.app.config.graf.visual.graph_background.clone();
+    let column = bar.find("Graph background").unwrap() as u16;
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column,
+            row: bar_y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_ne!(f.app.config.graf.visual.graph_background, graph_before);
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::ALT)),
+    );
+    assert_eq!(f.app.config.graf.visual.graph_background, graph_before);
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.as_ref().unwrap().workflow.is_none());
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.enter(ViewMode::Setup);
+    activate(&mut f.app, "switch_theme");
+    let buffer = render_palette(&mut f.app);
+    assert!(!(0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Graph background")));
+    let persisted = fs::read(crate::config::ClinConfig::config_path().unwrap()).unwrap();
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::ALT)),
+    );
+    assert_eq!(f.app.config.graf.visual.graph_background, graph_before);
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::ALT)),
+    );
+    assert!(f.app.setup_state.as_ref().unwrap().background_solid);
+    assert_eq!(
+        fs::read(crate::config::ClinConfig::config_path().unwrap()).unwrap(),
+        persisted
+    );
+}
+
+#[test]
+fn palette_settings_rows_render_previews_and_current_values() {
+    let mut f = Fixture::new();
+    activate(&mut f.app, "settings.icon_mode");
+    let buffer = render_palette(&mut f.app);
+    let results = f
+        .app
+        .command_palette
+        .as_ref()
+        .unwrap()
+        .last_results_area
+        .unwrap();
+    assert!(rendered_text(&buffer, results.y + 2).contains("\u{f15c} Note"));
+    let unicode = rendered_text(&buffer, results.y + 4);
+    assert!(unicode.contains('📄') && unicode.contains("Note"));
+    let none = rendered_text(&buffer, results.y + 6);
+    assert!(none.contains("Note   Folder   Settings"));
+    assert!(!none.contains('📄') && !none.contains('\u{f15c}'));
+    assert!(rendered_text(&buffer, results.y - 1).contains("Current: Nerd Font"));
+    drive(&mut f.app, key(KeyCode::Esc));
+    activate(&mut f.app, "settings.hint_bar_style");
+    for (index, style) in crate::config::HintBarStyle::ALL.iter().enumerate() {
+        f.app
+            .command_palette
+            .as_mut()
+            .unwrap()
+            .state
+            .select(Some(index));
+        let buffer = render_palette(&mut f.app);
+        let palette = f.app.command_palette.as_ref().unwrap();
+        let row =
+            palette.last_results_area.unwrap().y + 2 + (index - palette.state.offset()) as u16 * 2;
+        assert!(
+            rendered_text(&buffer, row).contains("Enter"),
+            "{}",
+            style.name()
+        );
+        if style.has_filled_cells() {
+            assert!(
+                (0..AREA.width).any(|x| buffer[(x, row)].bg == f.app.app_theme.accent),
+                "{}",
+                style.name()
+            );
+        }
+    }
+    select_step(&mut f.app, "4");
+    let buffer = render_palette(&mut f.app);
+    assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Current: Bubbles")));
+    drive(&mut f.app, key(KeyCode::Esc));
+    activate(&mut f.app, "keybind.preset");
+    let buffer = render_palette(&mut f.app);
+    for label in [
+        "Arrow navigation",
+        "Space leader",
+        ": command prefix",
+        "Ctrl+x prefix",
+    ] {
+        assert!(
+            (0..AREA.height).any(|y| rendered_text(&buffer, y).contains(label)),
+            "{label}"
+        );
+    }
+    select_step(&mut f.app, "2");
+    let buffer = render_palette(&mut f.app);
+    assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Current: vim")));
+    drive(&mut f.app, key(KeyCode::Esc));
+    activate(&mut f.app, "insert.url_new");
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .workflow_bar(&f.app)
+            .is_empty()
+    );
+    let buffer = render_palette(&mut f.app);
+    assert!(!(0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Enter select / apply")));
+}
+
+#[test]
+fn palette_notes_categories_follow_target_and_survive_settings_steps() {
+    let mut f = Fixture::new();
+    let categories = |app: &App| {
+        app.command_palette
+            .as_ref()
+            .unwrap()
+            .tabs
+            .iter()
+            .map(|tab| tab.0)
+            .collect::<Vec<_>>()
+    };
+    drive(&mut f.app, key(KeyCode::F(6)));
+    let all = vec!["All", "Notes", "Import", "Append", "Views", "Settings"];
+    assert_eq!(categories(&f.app), all);
+    for action in ["switch_theme", "settings.hint_bar_style", "keybind.preset"] {
+        activate(&mut f.app, action);
+        select_step(
+            &mut f.app,
+            if action == "switch_theme" {
+                "theme:1"
+            } else {
+                "1"
+            },
+        );
+        drive(&mut f.app, key(KeyCode::Esc));
+        render_palette(&mut f.app);
+        assert_eq!(categories(&f.app), all, "{action}");
+    }
+    for icon in ["0", "1", "2"] {
+        activate(&mut f.app, "settings.icon_mode");
+        select_step(&mut f.app, icon);
+        drive(&mut f.app, key(KeyCode::F(6)));
+        render_palette(&mut f.app);
+        assert_eq!(categories(&f.app), all);
+    }
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.app.list.visual_index = usize::MAX;
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert_eq!(categories(&f.app), ["All", "Import", "Views", "Settings"]);
+    assert!(!visible(&f.app, "manage_subnotes_list"));
+    assert!(!visible(&f.app, "insert.url_append"));
 }

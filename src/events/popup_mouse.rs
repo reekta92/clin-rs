@@ -180,14 +180,8 @@ pub(crate) fn handle_command_palette_mouse(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area)[0];
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(palette.input_height(content.height)),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ])
-        .split(content);
+    let workflow_bar = palette.workflow_bar(app);
+    let chunks = palette.content_areas(content, !workflow_bar.is_empty());
 
     // --- Scrollbar handling ---
     if app.config.ui.scrollbars
@@ -247,10 +241,30 @@ pub(crate) fn handle_command_palette_mouse(
                     palette.active_tab = i;
                     palette.refresh_items(app);
                 }
-            } else if contains_cell(chunks[2], mouse.column, mouse.row) {
+            } else if contains_cell(chunks[1], mouse.column, mouse.row) && !workflow_bar.is_empty()
+            {
+                let tabs: Vec<_> = workflow_bar
+                    .iter()
+                    .map(|(label, _)| (label.as_str(), None))
+                    .collect();
+                if let Some(focus) = crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    mouse.column,
+                    false,
+                    crate::config::IconMode::None,
+                )
+                .and_then(|i| workflow_bar[i].1)
+                {
+                    app.toggle_palette_theme_background(palette, focus);
+                    return true;
+                }
+            } else if contains_cell(chunks[3], mouse.column, mouse.row) {
                 let Some(clicked) = crate::ui::list_index_at(
                     mouse.row,
-                    chunks[2].y + 1,
+                    chunks[3].y + 1,
                     2,
                     palette.state.offset(),
                     palette.items.len(),

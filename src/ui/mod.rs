@@ -748,6 +748,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     } else {
         None
     };
+    let workflow_bar = app
+        .command_palette
+        .as_ref()
+        .map(|p| p.workflow_bar(app))
+        .unwrap_or_default();
     // Command palette; separate Bases confirmations render in their original view.
     if !app.palette_bases_dialog_open()
         && let Some(palette) = &mut app.command_palette
@@ -776,14 +781,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             &app.app_theme,
         );
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(palette.input_height(content.height)), // workflow input
-                Constraint::Length(1), // root categories / workflow status
-                Constraint::Min(0),    // results list
-            ])
-            .split(content);
+        let chunks = palette.content_areas(content, !workflow_bar.is_empty());
 
         palette.input.set_block(
             Block::default()
@@ -834,19 +832,58 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .alignment(Alignment::Center)
                 .style(app.app_theme.hint_line_bg_style());
             frame.render_widget(tabs_w, chunks[1]);
-        } else {
+        } else if !workflow_bar.is_empty() {
+            let tabs: Vec<_> = workflow_bar
+                .iter()
+                .map(|(label, _)| (label.as_str(), None))
+                .collect();
+            let hovered = app.mouse_pos.and_then(|(col, row)| {
+                (row == chunks[1].y)
+                    .then(|| {
+                        hit_test_tabs(
+                            &tabs,
+                            chunks[1].x,
+                            chunks[1].width,
+                            chunks[1].x,
+                            col,
+                            false,
+                            crate::config::IconMode::None,
+                        )
+                        .filter(|&i| workflow_bar[i].1.is_some())
+                    })
+                    .flatten()
+            });
+            let spans = build_tab_spans(
+                &tabs,
+                usize::MAX,
+                hovered,
+                &app.app_theme,
+                false,
+                crate::config::IconMode::None,
+            );
             frame.render_widget(
-                Paragraph::new(palette.workflow_hint())
-                    .style(Style::default().fg(app.app_theme.muted)),
+                Paragraph::new(Line::from(spans))
+                    .alignment(Alignment::Center)
+                    .style(app.app_theme.hint_line_bg_style()),
                 chunks[1],
             );
         }
+        frame.render_widget(
+            Paragraph::new(palette.workflow_hint()).style(Style::default().fg(
+                if palette.error.is_some() {
+                    app.app_theme.destructive
+                } else {
+                    app.app_theme.muted
+                },
+            )),
+            chunks[2],
+        );
         let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
-            let inner_y = chunks[2].y + 1;
+            let inner_y = chunks[3].y + 1;
             if !palette.items.is_empty()
                 && row >= inner_y
-                && col > chunks[2].x
-                && col < chunks[2].x + chunks[2].width - 1
+                && col > chunks[3].x
+                && col < chunks[3].x + chunks[3].width - 1
             {
                 crate::ui::list_index_at(
                     row,
@@ -873,12 +910,16 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
                 let mut list_item = ListItem::new(vec![
                     Line::from(spans),
-                    Line::from(Span::styled(
-                        &item.description,
-                        Style::default().fg(app.app_theme.muted),
-                    )),
+                    palette.item_preview(item, &app.app_theme),
                 ]);
-                if Some(i) == hovered_cmd_idx {
+                if palette.workflow.is_some() && palette.state.selected() == Some(i) {
+                    list_item = list_item.style(
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.highlight_bg)
+                            .add_modifier(Modifier::BOLD),
+                    );
+                } else if Some(i) == hovered_cmd_idx {
                     list_item = list_item.style(app.app_theme.hover_style());
                 }
                 list_item
@@ -893,30 +934,32 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .border_style(Style::default().fg(app.app_theme.muted))
                     .title(""),
             )
-            .highlight_style(
+            .highlight_style(if palette.workflow.is_some() {
+                Style::default()
+            } else {
                 Style::default()
                     .fg(app.app_theme.highlight_fg)
                     .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
+                    .add_modifier(Modifier::BOLD)
+            })
             .highlight_symbol("  ");
 
-        frame.render_stateful_widget(list, chunks[2], &mut palette.state);
+        frame.render_stateful_widget(list, chunks[3], &mut palette.state);
         let content_len = palette.items.len();
         if content_len > 0 {
-            let viewport_len = ((chunks[2].height.saturating_sub(2)) / 2) as usize;
+            let viewport_len = ((chunks[3].height.saturating_sub(2)) / 2) as usize;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(chunks[2]),
+                track: crate::ui::scrollbar::track_rect(chunks[3]),
                 content_len,
                 viewport_len,
             };
             palette.last_scroll = Some(meta);
-            palette.last_results_area = Some(chunks[2]);
+            palette.last_results_area = Some(chunks[3]);
             if app.config.ui.scrollbars {
                 let pos = palette.state.selected().unwrap_or(0);
                 crate::ui::scrollbar::draw_scrollbar(
                     frame,
-                    chunks[2],
+                    chunks[3],
                     content_len,
                     viewport_len,
                     pos,

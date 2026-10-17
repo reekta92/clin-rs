@@ -4,6 +4,7 @@ use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
 mod managers;
+mod presentation;
 pub(crate) mod workflows;
 use workflows::{PaletteParent, Workflow};
 

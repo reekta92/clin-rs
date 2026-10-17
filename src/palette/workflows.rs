@@ -10,7 +10,7 @@ use ratatui::widgets::ListState;
 use ratatui_textarea::TextArea;
 
 pub(crate) enum Workflow {
-    Theme(Box<ThemePopup>),
+    Theme(Box<ThemePopup>, Vec<[ratatui::style::Color; 4]>),
     Bases(Box<crate::bases::palette::Page>),
     Goal(GoalsPopupMode),
     Options(OptionKind),
@@ -39,7 +39,7 @@ pub(crate) enum OptionKind {
 }
 
 impl OptionKind {
-    fn labels(self) -> Vec<&'static str> {
+    pub(super) fn labels(self) -> Vec<&'static str> {
         match self {
             Self::Sort => vec![
                 "Title (A-Z)",
@@ -52,12 +52,7 @@ impl OptionKind {
                 .iter()
                 .map(|style| style.name())
                 .collect(),
-            Self::Preset => vec![
-                "default — Default CUA",
-                "helix — Space leader",
-                "vim — : commands",
-                "emacs — Ctrl-x prefix",
-            ],
+            Self::Preset => vec!["Default", "Helix", "Vim", "Emacs"],
         }
     }
 }
@@ -110,7 +105,7 @@ impl CommandPalette {
 
     pub(crate) fn workflow_title(&self) -> &str {
         match &self.workflow {
-            Some(Workflow::Theme(_)) => "COMMANDS › Switch Theme",
+            Some(Workflow::Theme(..)) => "COMMANDS › Switch Theme",
             Some(Workflow::Goal(GoalsPopupMode::WordGoal)) => "COMMANDS › Daily Word Goal",
             Some(Workflow::Goal(GoalsPopupMode::NoteGoal)) => "COMMANDS › Daily Note Goal",
             Some(Workflow::Options(OptionKind::Sort)) => "COMMANDS › Sort Order",
@@ -157,7 +152,7 @@ impl CommandPalette {
         if matches!(self.workflow, Some(Workflow::Create { task: Some(_), .. })) {
             return "Creating document…";
         }
-        "Enter select / apply · Esc back"
+        ""
     }
 
     pub(crate) fn is_value_input(&self) -> bool {
@@ -185,10 +180,25 @@ impl CommandPalette {
                 .labels()
                 .into_iter()
                 .enumerate()
-                .map(|(i, label)| (i.to_string(), label.to_owned(), "Apply this option".into()))
+                .map(|(i, label)| {
+                    (
+                        i.to_string(),
+                        label.to_owned(),
+                        match kind {
+                            OptionKind::Preset => [
+                                "Arrow navigation · Ctrl shortcuts",
+                                "Space leader · hjkl navigation",
+                                ": command prefix · hjkl navigation",
+                                "Ctrl+x prefix · Ctrl navigation",
+                            ][i]
+                                .into(),
+                            _ => String::new(),
+                        },
+                    )
+                })
                 .collect();
         }
-        if let Some(Workflow::Theme(popup)) = &self.workflow {
+        if let Some(Workflow::Theme(popup, _)) = &self.workflow {
             let current = app
                 .setup_state
                 .as_ref()
@@ -208,28 +218,6 @@ impl CommandPalette {
                         "Built-in theme"
                     }
                     .to_owned(),
-                ));
-            }
-            rows.push((
-                "background".into(),
-                "General background".into(),
-                if popup.general_is_solid {
-                    "Solid"
-                } else {
-                    "Transparent"
-                }
-                .into(),
-            ));
-            if !popup.setup_owned {
-                rows.push((
-                    "graph_background".into(),
-                    "Graph background".into(),
-                    if popup.graph_is_solid {
-                        "Solid"
-                    } else {
-                        "Transparent"
-                    }
-                    .into(),
                 ));
             }
         }
@@ -310,10 +298,26 @@ impl App {
             _ => None,
         };
         let (workflow, input) = match popup {
-            ActivePopup::Theme(popup) => (
-                Workflow::Theme(Box::new(popup)),
-                crate::ui::make_popup_textarea(&self.app_theme, "Search themes..."),
-            ),
+            ActivePopup::Theme(popup) => {
+                let previews = popup
+                    .themes
+                    .iter()
+                    .map(|name| {
+                        let colors = crate::app_theme::AppThemeColors::from_config(
+                            &crate::config::UiConfig {
+                                theme: name.clone(),
+                                ..Default::default()
+                            },
+                            &mut Vec::new(),
+                        );
+                        [colors.accent, colors.heading, colors.folder, colors.tag]
+                    })
+                    .collect();
+                (
+                    Workflow::Theme(Box::new(popup), previews),
+                    crate::ui::make_popup_textarea(&self.app_theme, "Search themes..."),
+                )
+            }
             ActivePopup::Goals(popup) => (Workflow::Goal(popup.mode), popup.input),
             ActivePopup::Sort(_) => (
                 Workflow::Options(OptionKind::Sort),
@@ -377,7 +381,7 @@ impl App {
             self.command_palette = Some(palette);
             return;
         }
-        if matches!(palette.workflow, Some(Workflow::Theme(_)))
+        if matches!(palette.workflow, Some(Workflow::Theme(..)))
             && self.mode != ViewMode::Setup
             && let Err(error) = self.config.save()
         {
@@ -427,21 +431,16 @@ impl App {
                 &palette.context,
             )?;
             match palette.workflow.as_mut().expect("workflow") {
-                Workflow::Theme(popup) => {
+                Workflow::Theme(popup, _) => {
                     let Some(item) = palette.items.get(selected) else {
                         return Ok(false);
                     };
-                    popup.focus = match item.id.as_str() {
-                        "background" => ThemePopupFocus::GeneralBg,
-                        "graph_background" => ThemePopupFocus::GraphBg,
-                        id => {
-                            popup.selected = id
-                                .strip_prefix("theme:")
-                                .and_then(|id| id.parse().ok())
-                                .ok_or_else(|| anyhow::anyhow!("Theme unavailable"))?;
-                            ThemePopupFocus::ThemeList
-                        }
-                    };
+                    popup.selected = item
+                        .id
+                        .strip_prefix("theme:")
+                        .and_then(|id| id.parse().ok())
+                        .ok_or_else(|| anyhow::anyhow!("Theme unavailable"))?;
+                    popup.focus = ThemePopupFocus::ThemeList;
                     self.apply_theme_selection(popup);
                     Ok(false)
                 }

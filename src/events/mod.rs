@@ -841,7 +841,7 @@ pub(crate) fn handle_open_palette_event(
     }
     match event {
         crossterm::event::Event::Key(key) => {
-            if app.palette_manager_shortcut(*key) {
+            if app.palette_theme_shortcut(*key) || app.palette_manager_shortcut(*key) {
                 return true;
             }
             let mut palette = app.command_palette.take().expect("open palette");
