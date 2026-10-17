@@ -11,6 +11,7 @@ use parking_lot::Mutex;
 pub mod custom_themes;
 pub mod merge;
 pub mod path;
+mod retired;
 pub mod structs;
 pub mod types;
 
@@ -204,7 +205,16 @@ impl ClinConfig {
             return Ok(config);
         }
 
-        let content = fs::read_to_string(&config_path).context("failed to read config")?;
+        let mut content = fs::read_to_string(&config_path).context("failed to read config")?;
+        let mut document: toml_edit::DocumentMut =
+            content.parse().context("failed to parse config")?;
+        if retired::remove_retired_options(&mut document) {
+            content = document.to_string();
+            match crate::fsutil::atomic_write(&config_path, content.as_bytes()) {
+                Ok(()) => warnings.push("Removed retired backup/encryption options and title-to-filename syncing. Ordinary saves now keep filenames stable; legacy encrypted data and keys remain untouched.".into()),
+                Err(error) => warnings.push(format!("Retired settings ignored, but config cleanup failed: {error:#}")),
+            }
+        }
         // Check if the original config had hint_bar_style = "accent" (migration scan)
         let had_accent = {
             let mut found = false;
@@ -339,7 +349,6 @@ impl ClinConfig {
         let list_legacy_keys = [
             ("preview_enabled", "preview_enabled"),
             ("preview_position", "preview_position"),
-            ("preview_encryption", "preview_encryption"),
             ("date_format", "date_format"),
             ("list_density", "density"),
             ("show_file_size", "show_file_size"),
@@ -499,19 +508,6 @@ impl ClinConfig {
                     }
                 })
                 .unwrap_or(defaults.images);
-            let backup = root
-                .get("backup")
-                .and_then(|s| s.as_table())
-                .and_then(|t| t.get("enabled"))
-                .and_then(|v| v.as_bool())
-                .map(|b| {
-                    if b {
-                        FeatureState::Enabled
-                    } else {
-                        FeatureState::Disabled
-                    }
-                })
-                .unwrap_or(defaults.backup);
             let goals = root
                 .get("goals")
                 .and_then(|s| s.as_table())
@@ -564,9 +560,7 @@ impl ClinConfig {
                 ("subnotes", defaults.subnotes),
                 ("templates", defaults.templates),
                 ("import", defaults.import),
-                ("encryption", defaults.encryption),
                 ("images", images),
-                ("backup", backup),
                 ("goals", goals),
                 ("calendar", calendar),
                 ("smart_folders", smart_folders),
@@ -584,9 +578,6 @@ impl ClinConfig {
             if let Some(t) = root.get_mut("image").and_then(|s| s.as_table_mut()) {
                 t.remove("enabled");
             }
-            if let Some(t) = root.get_mut("backup").and_then(|s| s.as_table_mut()) {
-                t.remove("enabled");
-            }
             if let Some(t) = root.get_mut("goals").and_then(|s| s.as_table_mut()) {
                 t.remove("enabled");
             }
@@ -601,8 +592,11 @@ impl ClinConfig {
 
         changed = changed || state_changed;
         if changed {
-            let migrated_content =
-                toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
+            let migrated: toml_edit::DocumentMut = toml::to_string_pretty(&value)
+                .context("failed to serialize migrated config")?
+                .parse()?;
+            merge::merge_edit_item(document.as_item_mut(), migrated.into_item());
+            let migrated_content = document.to_string();
             let _ = crate::fsutil::atomic_write(&config_path, migrated_content.as_bytes());
             let mut config: ClinConfig =
                 toml::from_str(&migrated_content).context("failed to parse migrated config")?;
@@ -647,6 +641,7 @@ impl ClinConfig {
             }
         }
 
+        retired::remove_retired_options(&mut doc);
         crate::fsutil::atomic_write(&config_path, doc.to_string().as_bytes())?;
         Ok(())
     }
@@ -889,7 +884,6 @@ unknown_field = "ignore me"
         config.list.inline_info = false;
         config.list.default_view = NotesLayout::Tree;
         config.features.calendar = crate::config::FeatureState::Disabled;
-        config.backup.auto_backup_interval = Some(60);
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: ClinConfig = toml::from_str(&toml_str).unwrap();
@@ -901,7 +895,6 @@ unknown_field = "ignore me"
         assert!(!parsed.list.inline_info);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
         assert!(!parsed.features.calendar.is_enabled());
-        assert_eq!(parsed.backup.auto_backup_interval, Some(60));
     }
 
     #[test]
@@ -914,15 +907,6 @@ unknown_field = "ignore me"
         // Explicitly setting it false also survives a round-trip.
         let cfg2: ClinConfig = toml::from_str("[features]\ncalendar = false\n").unwrap();
         assert!(!cfg2.features.calendar.is_enabled());
-    }
-
-    #[test]
-    fn backup_defaults_enabled_when_keys_omitted() {
-        // A [backup] section that omits the enable flags must default to on.
-        let cfg: ClinConfig = toml::from_str("[backup]\nauto_push = false\n").unwrap();
-        assert!(cfg.features.backup.is_enabled());
-        assert!(!cfg.backup.backup_on_save);
-        assert!(!cfg.backup.backup_on_quit);
     }
 
     #[test]
@@ -941,7 +925,7 @@ unknown_field = "ignore me"
         let config = ClinConfig::load().0.unwrap();
 
         assert!(!config.features.images.is_enabled());
-        assert!(config.features.backup.is_enabled());
+
         assert!(!config.features.goals.is_enabled());
         assert!(!config.features.calendar.is_enabled());
         assert!(config.features.smart_folders.is_enabled());
@@ -950,7 +934,7 @@ unknown_field = "ignore me"
 
         let saved = fs::read_to_string(&config_file_path).unwrap();
         assert!(saved.contains("[features]"));
-        assert!(saved.contains("backup = true"));
+        assert!(!saved.contains("backup ="));
         assert!(!saved.contains("enabled ="));
     }
 
@@ -1373,7 +1357,7 @@ sections = ["draw", "draw", "graf"]
         assert_eq!(parsed.graf, default.graf, "graf config mismatch");
         assert_eq!(parsed.goals, default.goals, "goals config mismatch");
         assert_eq!(parsed.image, default.image, "image config mismatch");
-        assert_eq!(parsed.backup, default.backup, "backup config mismatch");
+
         assert_eq!(
             parsed.statusline, default.statusline,
             "statusline config mismatch"
@@ -1393,7 +1377,6 @@ sections = ["draw", "draw", "graf"]
             "ui",
             "list",
             "editor",
-            "backup",
             "graf",
             "goals",
             "image",
@@ -1451,17 +1434,5 @@ max_nodes = 42
             parsed.ui.hint_bar_style.as_config_str(),
             style.as_config_str()
         );
-    }
-
-    #[test]
-    fn notes_config_parses_rename_on_title_change() {
-        let parsed: ClinConfig =
-            toml::from_str("[notes]\nrename_on_title_change = false\n").unwrap();
-        assert!(!parsed.notes.rename_on_title_change);
-
-        // Default preserves current behavior: title-derived renames stay on.
-        assert!(ClinConfig::default().notes.rename_on_title_change);
-        let from_empty: ClinConfig = toml::from_str("").unwrap();
-        assert!(from_empty.notes.rename_on_title_change);
     }
 }

@@ -129,49 +129,32 @@ impl AppPaths {
         &self.cache_dir
     }
 
-    // -- Derived paths ------------------------------------------------------
-
-    /// Path to the encryption key (`<data_local_dir>/key.bin`).
-    pub fn key_path(&self) -> PathBuf {
-        self.data_local_dir.join("key.bin")
-    }
-
     /// Path to versioned local state (`<data_local_dir>/state.json`).
     pub fn state_path(&self) -> PathBuf {
         self.data_local_dir.join("state.json")
     }
 
-    /// Path to the note-summary cache (`<cache_dir>/note_cache.bin`).
+    /// Path to the note-summary cache (`<cache_dir>/note_cache_plain_v4.bin`).
     pub fn summary_cache_path(&self) -> PathBuf {
-        self.cache_dir.join("note_cache.bin")
+        self.cache_dir.join("note_cache_plain_v4.bin")
     }
 
-    /// Path to the vault-scoped note-summary cache (`<cache_dir>/vaults/<hex>/note_cache.bin`).
+    /// Path to the vault-scoped note-summary cache (`<cache_dir>/vaults/<hex>/note_cache_plain_v4.bin`).
     pub fn scoped_summary_cache_path(&self, vault_digest: u64) -> PathBuf {
         self.cache_dir
             .join("vaults")
             .join(format!("{vault_digest:016x}"))
-            .join("note_cache.bin")
+            .join("note_cache_plain_v4.bin")
     }
 
-    /// Legacy key file in the effective config root (`<config_dir>/key.bin`).
-    pub fn config_root_key_path(&self) -> PathBuf {
-        self.config_dir.join("key.bin")
-    }
-
-    /// Legacy key file in the default config root (`<default_config_dir>/key.bin`).
-    pub fn default_config_root_key_path(&self) -> PathBuf {
-        self.default_config_dir.join("key.bin")
-    }
-
-    /// Legacy note cache in the effective config root (`<config_dir>/note_cache.bin`).
+    /// Plaintext cache compatibility path in the effective config root.
     pub fn config_root_cache_path(&self) -> PathBuf {
-        self.config_dir.join("note_cache.bin")
+        self.config_dir.join("note_cache_plain_v4.bin")
     }
 
-    /// Legacy note cache in the default config root (`<default_config_dir>/note_cache.bin`).
+    /// Plaintext cache compatibility path in the default config root.
     pub fn default_config_root_cache_path(&self) -> PathBuf {
-        self.default_config_dir.join("note_cache.bin")
+        self.default_config_dir.join("note_cache_plain_v4.bin")
     }
 }
 
@@ -210,16 +193,19 @@ mod tests {
         assert_eq!(paths.config_dir(), config_file.parent().unwrap());
         assert_eq!(paths.data_local_dir(), data);
         assert_eq!(paths.cache_dir(), cache);
-        assert_eq!(paths.key_path(), data.join("key.bin"));
+
         assert_eq!(paths.state_path(), data.join("state.json"));
-        assert_eq!(paths.summary_cache_path(), cache.join("note_cache.bin"));
+        assert_eq!(
+            paths.summary_cache_path(),
+            cache.join("note_cache_plain_v4.bin")
+        );
     }
 
     #[test]
     fn test_derived_paths_are_absolute() {
         let (_tmp, config_file, default_config, data, cache) = make_dirs();
         let paths = AppPaths::from_roots(config_file, default_config, data, cache).unwrap();
-        assert!(paths.key_path().is_absolute());
+
         assert!(paths.state_path().is_absolute());
         assert!(paths.summary_cache_path().is_absolute());
         assert!(paths.scoped_summary_cache_path(0).is_absolute());

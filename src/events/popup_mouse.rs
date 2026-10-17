@@ -167,7 +167,11 @@ fn handle_confirm_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: 
 // Command palette
 // ---------------------------------------------------------------------------
 
-fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
+pub(crate) fn handle_command_palette_mouse(
+    app: &mut App,
+    mouse: &MouseEvent,
+    terminal_area: Rect,
+) -> bool {
     let Some(mut palette) = app.command_palette.take() else {
         return false;
     };
@@ -176,14 +180,8 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area)[0];
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Length(1),
-            Constraint::Min(0),
-        ])
-        .split(content);
+    let workflow_bar = palette.workflow_bar(app);
+    let chunks = palette.content_areas(content, !workflow_bar.is_empty());
 
     // --- Scrollbar handling ---
     if app.config.ui.scrollbars
@@ -207,6 +205,7 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             if !contains_cell(popup_area, mouse.column, mouse.row) {
+                app.leave_palette_step(palette, true);
                 return true;
             }
             if contains_cell(chunks[0], mouse.column, mouse.row) {
@@ -224,8 +223,9 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                     sc,
                 );
                 palette.mouse_selection.begin(&mut palette.input);
-            } else if mouse.row == chunks[1].y {
-                let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app)
+            } else if palette.workflow.is_none() && mouse.row == chunks[1].y {
+                let tabs: Vec<(&str, Option<&str>)> = palette
+                    .tabs
                     .iter()
                     .map(|(l, g, _)| (*l, Some(*g)))
                     .collect();
@@ -240,31 +240,41 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                 ) {
                     palette.active_tab = i;
                     palette.refresh_items(app);
-                    palette.state.select(Some(0));
                 }
-            } else if contains_cell(chunks[2], mouse.column, mouse.row) {
+            } else if contains_cell(chunks[1], mouse.column, mouse.row) && !workflow_bar.is_empty()
+            {
+                let labels: Vec<_> = workflow_bar
+                    .iter()
+                    .map(|(line, _)| line.to_string())
+                    .collect();
+                let tabs: Vec<_> = labels.iter().map(|label| (label.as_str(), None)).collect();
+                if let Some(focus) = crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    mouse.column,
+                    false,
+                    crate::config::IconMode::None,
+                )
+                .and_then(|i| workflow_bar[i].1)
+                {
+                    app.toggle_palette_theme_background(palette, focus);
+                    return true;
+                }
+            } else if contains_cell(chunks[3], mouse.column, mouse.row) {
                 let Some(clicked) = crate::ui::list_index_at(
                     mouse.row,
-                    chunks[2].y + 1,
+                    chunks[3].y + 1,
                     2,
                     palette.state.offset(),
                     palette.items.len(),
                 ) else {
+                    app.command_palette = Some(palette);
                     return true;
                 };
                 if Some(clicked) == palette.state.selected() {
-                    let item = &palette.items[clicked];
-                    let action_id = item.id.clone();
-                    let note_id = palette.context_note_id.clone();
-                    if let Err(e) =
-                        crate::actions::execute_action(&action_id, app, note_id.as_deref())
-                    {
-                        app.set_temporary_status(&format!("Action failed: {e}"));
-                        app.messages.push(
-                            format!("Action failed: {e}"),
-                            crate::app::messages::MessageSeverity::Warning,
-                        );
-                    }
+                    app.activate_palette(palette, clicked);
                     return true;
                 } else {
                     palette.state.select(Some(clicked));
@@ -393,7 +403,12 @@ impl crate::popups::ActivePopup {
             // === Group A: Simple list-style popups ===
             CreateFormat(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
-                match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
+                match handle_list_popup_mouse(
+                    mouse,
+                    area,
+                    &mut p.selected,
+                    crate::popups::CreateFormatPopup::COUNT,
+                ) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(CreateFormat(p));
                     }
@@ -661,7 +676,7 @@ impl crate::popups::ActivePopup {
                     .constraints([
                         Constraint::Min(0),
                         Constraint::Length(3),
-                        Constraint::Length(3),
+                        Constraint::Length(if p.setup_owned { 0 } else { 3 }),
                     ])
                     .split(content);
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
@@ -1320,6 +1335,10 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
         return true;
     }
 
+    // Separate Bases confirmations retain their own geometry and event routing.
+    if app.palette_bases_dialog_open() {
+        return false;
+    }
     // 2. Command palette
     if app.command_palette.is_some() {
         return handle_command_palette_mouse(app, mouse, terminal_area);

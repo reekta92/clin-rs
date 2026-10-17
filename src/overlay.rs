@@ -1,4 +1,4 @@
-//! Unified overlay contract for sub-view states (Graph, Draw, Canvas, Backup,
+//! Unified overlay contract for sub-view states (Graph, Draw, Canvas,
 //! Outline).
 //!
 //! Each sub-view state implements [`OverlayView`] and signals event outcomes
@@ -21,8 +21,8 @@ use crate::app::ViewMode;
 pub enum ViewKind {
     Graph,
     Canvas,
+    Bases,
     Draw,
-    Backup,
     Outline,
 }
 
@@ -31,8 +31,8 @@ impl ViewKind {
         match mode {
             ViewMode::Graph => Some(Self::Graph),
             ViewMode::Canvas => Some(Self::Canvas),
+            ViewMode::Bases => Some(Self::Bases),
             ViewMode::Draw => Some(Self::Draw),
-            ViewMode::Backup => Some(Self::Backup),
             ViewMode::Outline => Some(Self::Outline),
             _ => None,
         }
@@ -45,8 +45,8 @@ impl ViewKind {
 pub enum OverlayState {
     Graph(crate::graf_adapter::GrafPlugin),
     Canvas(crate::pinstar_adapter::PinstarPlugin),
+    Bases(crate::bases::state::BasesState),
     Draw(crate::draw::app::DrawAppState),
-    Backup(crate::backup::state::BackupState),
     Outline(crate::outline::state::OutlineState),
 }
 
@@ -55,8 +55,8 @@ impl OverlayState {
         match self {
             Self::Graph(_) => ViewKind::Graph,
             Self::Canvas(_) => ViewKind::Canvas,
+            Self::Bases(_) => ViewKind::Bases,
             Self::Draw(_) => ViewKind::Draw,
-            Self::Backup(_) => ViewKind::Backup,
             Self::Outline(_) => ViewKind::Outline,
         }
     }
@@ -67,8 +67,8 @@ impl OverlayState {
         match ViewKind::from_mode(app.mode)? {
             ViewKind::Graph => app.graph_plugin.take().map(Self::Graph),
             ViewKind::Canvas => app.canvas_state.take().map(Self::Canvas),
+            ViewKind::Bases => app.bases_state.take().map(Self::Bases),
             ViewKind::Draw => app.draw_state.take().map(Self::Draw),
-            ViewKind::Backup => app.backup_state.take().map(Self::Backup),
             ViewKind::Outline => app.outline_state.take().map(Self::Outline),
         }
     }
@@ -77,8 +77,8 @@ impl OverlayState {
         match self {
             Self::Graph(p) => app.graph_plugin = Some(p),
             Self::Canvas(s) => app.canvas_state = Some(s),
+            Self::Bases(s) => app.bases_state = Some(s),
             Self::Draw(s) => app.draw_state = Some(s),
-            Self::Backup(s) => app.backup_state = Some(s),
             Self::Outline(s) => app.outline_state = Some(s),
         }
     }
@@ -94,8 +94,8 @@ impl OverlayView for OverlayState {
         match self {
             Self::Graph(p) => p.overlay_render(frame, area, app),
             Self::Canvas(s) => s.overlay_render(frame, area, app),
+            Self::Bases(s) => s.overlay_render(frame, area, app),
             Self::Draw(s) => s.overlay_render(frame, area, app),
-            Self::Backup(s) => s.overlay_render(frame, area, app),
             Self::Outline(s) => s.overlay_render(frame, area, app),
         }
     }
@@ -109,8 +109,8 @@ impl OverlayView for OverlayState {
         match self {
             Self::Graph(p) => p.overlay_handle_event(event, app, term_area),
             Self::Canvas(s) => s.overlay_handle_event(event, app, term_area),
+            Self::Bases(s) => s.overlay_handle_event(event, app, term_area),
             Self::Draw(s) => s.overlay_handle_event(event, app, term_area),
-            Self::Backup(s) => s.overlay_handle_event(event, app, term_area),
             Self::Outline(s) => s.overlay_handle_event(event, app, term_area),
         }
     }
@@ -122,6 +122,8 @@ use crate::app::HelpTab;
 pub enum OverlayResult {
     /// Event consumed (or no action); stay in the overlay.
     Continue,
+    /// Open the palette after the overlay has been restored to App.
+    OpenCommandPalette,
     /// Leave the overlay and return to the previous view.
     Exit,
     /// Open the help page on the given tab.

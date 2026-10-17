@@ -49,6 +49,17 @@ impl SourceHighlighter {
         }
     }
 
+    pub fn matches_settings(
+        &self,
+        theme: &crate::app_theme::AppThemeColors,
+        ghost_syntax: bool,
+        extended_features: bool,
+    ) -> bool {
+        self.theme == MarkdownTheme::from_app_theme(theme)
+            && self.ghost_syntax_enabled == ghost_syntax
+            && self.extended_features == extended_features
+    }
+
     /// Rebuild metadata. Used only for initial/full synchronization.
     pub fn rescan(&mut self, full_doc: &[String]) {
         self.lines.clear();

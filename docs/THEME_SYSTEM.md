@@ -52,8 +52,14 @@ A custom theme with the same name as a built-in overrides it.
 ### Switcher
 
 The theme switcher (Ctrl+P → "Switch Theme") lists built-in themes first, then
-appends any custom theme names found in the themes directory. Selecting a custom
-name applies it immediately.
+appends custom theme names found in the themes directory. A custom override of a
+built-in name appears once, labeled custom. The palette keeps the custom/built-in
+label visible for the current theme too. Selecting a custom name applies it immediately.
+
+Three sample themes are included in [`examples/themes/`](../examples/themes/):
+`test_aurora` (cool dark), `test_ember` (warm dark), and `test_paper` (light).
+Copy their TOML files into `themes/` beside your active `config.toml`, then reopen
+the switcher. Turn Background On with Alt+B to see each sample's background.
 
 ### No-Recompile Path
 
@@ -267,7 +273,7 @@ Only needed if the theme should be bundled into the binary and available without
 
 ## Theme Switcher
 
-The `SwitchThemeAction` (via command palette, Ctrl+P) opens a theme popup. Users can cycle through themes live — the change applies immediately and saves to `config.toml`.
+The **Switch Theme** command lists themes with four color swatches in the command palette body. Its input filters themes. The category bar has clickable accent-colored general/Graph background indicators, with Alt+B / Alt+G hints in the footer (On = solid, Off = transparent); Setup only offers general background. Selecting a theme applies it immediately and keeps the selector open; leaving saves to `config.toml`. Esc returns to the original command search. Direct theme shortcuts retain the original popup. In Setup, changes remain pending until Finish.
 
 See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 

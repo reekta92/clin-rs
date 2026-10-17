@@ -1,11 +1,71 @@
-use crate::keybinds::types::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, ListAction,
-};
+use crate::keybinds::types::{CanvasAction, DrawAction, EditAction, GraphAction, ListAction};
 
 #[derive(Clone, Copy)]
 pub struct HelpMeta {
     pub group: &'static str,
     pub description: &'static str,
+}
+
+pub fn bases_group_order() -> &'static [&'static str] {
+    &["Navigation", "Editing", "Authoring", "General"]
+}
+
+pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
+    use crate::keybinds::BasesAction::{
+        Back, Clear, CommandPalette, Configure, Copy, Edit, Export, First, Help, Last, MoveDown,
+        MoveLeft, MoveRight, MoveToGroup, MoveUp, NewNote, NextProperty, NextView, Open, OpenCover,
+        PageDown, PageUp, Paste, PreviousProperty, PreviousView, Redo, Refresh, Search, SelectAll,
+        ToggleGroup, ToggleSelect, Undo,
+    };
+    match action {
+        Back => meta("General", "Return to previous view"),
+        Help => meta("General", "Bases help"),
+        Refresh => meta("General", "Reload public vault metadata and query"),
+        MoveUp => meta("Navigation", "Previous row"),
+        MoveDown => meta("Navigation", "Next row"),
+        MoveLeft => meta("Navigation", "Previous column"),
+        MoveRight => meta("Navigation", "Next column"),
+        PageUp => meta("Navigation", "Previous page"),
+        PageDown => meta("Navigation", "Next page"),
+        First => meta("Navigation", "First row"),
+        Last => meta("Navigation", "Last row"),
+        Open => meta("Navigation", "Open public source or toggle grouped section"),
+        Search => meta("Navigation", "Search displayed public properties"),
+        OpenCover => meta("Navigation", "Preview configured public cover image"),
+        PreviousProperty => meta("Navigation", "Focus previous displayed property"),
+        NextProperty => meta("Navigation", "Focus next displayed property"),
+        ToggleGroup => meta(
+            "Navigation",
+            "Collapse or expand grouped Table/List/Cards section",
+        ),
+        NextView => meta("Navigation", "Next saved view"),
+        PreviousView => meta("Navigation", "Previous saved view"),
+        Edit => meta("Editing", "Edit typed property on selected rows"),
+        Clear => meta("Editing", "Remove property from selected rows"),
+        Copy => meta("Editing", "Copy selected property values"),
+        Paste => meta("Editing", "Paste typed value into selected rows"),
+        ToggleSelect => meta("Editing", "Toggle row selection"),
+        SelectAll => meta("Editing", "Select all visible query rows"),
+        Undo => meta("Editing", "Undo guarded document transaction"),
+        Redo => meta("Editing", "Redo guarded document transaction"),
+        CommandPalette => meta("Authoring", "Open command palette for public Bases"),
+        Configure => meta(
+            "Authoring",
+            "Configure views, filters, formulas and summaries",
+        ),
+        NewNote => meta(
+            "Authoring",
+            "Create public Markdown note in focused Kanban column",
+        ),
+        Export => meta(
+            "Authoring",
+            "Export visible public results as CSV or Markdown",
+        ),
+        MoveToGroup => meta(
+            "Authoring",
+            "Set grouping property on selected rows; blank clears",
+        ),
+    }
 }
 
 const fn meta(group: &'static str, description: &'static str) -> HelpMeta {
@@ -41,9 +101,6 @@ pub fn canvas_group_order() -> &'static [&'static str] {
         "Menus & Popups",
         "General",
     ]
-}
-pub fn backup_group_order() -> &'static [&'static str] {
-    &["Navigation", "Actions", "Settings Fields", "General"]
 }
 
 pub fn list_action_meta(a: ListAction) -> HelpMeta {
@@ -81,7 +138,7 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
         ListAction::ToggleWrap => meta("Display", "Toggle word wrap (editor and preview)"),
         ListAction::PreviewPageUp => meta("Display", "Page preview up"),
         ListAction::ToggleCalendar => meta("Display", "Toggle widget pane"),
-        ListAction::OpenCommandPalette => meta("Display", "Open command palette"),
+        ListAction::OpenCommandPalette => meta("Display", "Open Notes command palette"),
         ListAction::OpenGraph => meta("Display", "Open graph view"),
         ListAction::OpenCanvas => meta("Display", "Open canvas view"),
         ListAction::CollapseAll => meta("Display", "Collapse all folders"),
@@ -119,6 +176,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::MoveToTop => meta("Editing", "Move cursor to top"),
         EditAction::MoveToBottom => meta("Editing", "Move cursor to bottom"),
         EditAction::ManageSubnotes => meta("Editing", "Manage subnotes"),
+        EditAction::ToggleFrontmatter => meta("Editing", "Show/hide frontmatter"),
         EditAction::ToggleMarkdownPreview => meta("Preview", "Toggle markdown preview"),
         EditAction::ToggleMermaidRendering => {
             meta("Preview", "Toggle Mermaid diagrams / code blocks")
@@ -130,6 +188,7 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::PreviewPageDown => meta("Preview", "Page preview down"),
         EditAction::ToggleOutline => meta("Panels", "Toggle outline pane"),
         EditAction::ToggleLinks => meta("Panels", "Toggle links pane"),
+        EditAction::ToggleBases => meta("Panels", "Open Bases link under cursor in sidebar"),
         EditAction::PreviewLink => meta("Panels", "Preview linked note under cursor"),
         EditAction::GoToLine => meta("Editor", "Go to line number"),
         EditAction::PasteImage => meta("Editing", "Paste image from clipboard"),
@@ -260,34 +319,6 @@ pub fn canvas_action_meta(a: CanvasAction) -> HelpMeta {
     }
 }
 
-pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
-    match a {
-        BackupAction::MoveUp => meta("Navigation", "Move up"),
-        BackupAction::MoveDown => meta("Navigation", "Move down"),
-        BackupAction::ScrollDiffUp => meta("Navigation", "Scroll diff up"),
-        BackupAction::ScrollDiffDown => meta("Navigation", "Scroll diff down"),
-        BackupAction::CycleSection => meta("Navigation", "Cycle sections"),
-        BackupAction::StageFile => meta("Actions", "Stage file"),
-        BackupAction::UnstageFile => meta("Actions", "Unstage file"),
-        BackupAction::StageAll => meta("Actions", "Stage all changes"),
-        BackupAction::Refresh => meta("Actions", "Refresh status"),
-        BackupAction::EnterCommit => meta("Actions", "Enter commit"),
-        BackupAction::ConfirmCommit => meta("Actions", "Confirm commit"),
-        BackupAction::CancelCommit => meta("Actions", "Cancel commit"),
-        BackupAction::Push => meta("Actions", "Push to remote"),
-        BackupAction::Pull => meta("Actions", "Pull from remote"),
-        BackupAction::OpenSettings => meta("Actions", "Open settings"),
-        BackupAction::CloseSettings => meta("Actions", "Close settings"),
-        BackupAction::NextField => meta("Settings Fields", "Next field"),
-        BackupAction::PrevField => meta("Settings Fields", "Previous field"),
-        BackupAction::ActivateField => meta("Settings Fields", "Activate field"),
-        BackupAction::ConfirmEditField => meta("Settings Fields", "Confirm edit field"),
-        BackupAction::CancelEditField => meta("Settings Fields", "Cancel edit field"),
-        BackupAction::Help => meta("General", "Show help"),
-        BackupAction::Back => meta("General", "Back to list"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,9 +352,5 @@ mod tests {
     #[test]
     fn canvas_meta_nonempty() {
         assert_meta_nonempty!(CanvasAction, canvas_action_meta);
-    }
-    #[test]
-    fn backup_meta_nonempty() {
-        assert_meta_nonempty!(BackupAction, backup_action_meta);
     }
 }

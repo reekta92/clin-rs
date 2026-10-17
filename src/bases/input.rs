@@ -1,0 +1,423 @@
+use super::state::BasesState;
+use crate::{
+    app::App,
+    keybinds::{BasesAction, MatchOutcome},
+    overlay::{OverlayResult, OverlayView},
+};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
+use ratatui::{
+    layout::{Constraint, Direction, Layout, Rect},
+    text::Line,
+    widgets::Paragraph,
+};
+
+impl OverlayView for BasesState {
+    fn overlay_render(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
+        self.render_native(frame, area, app);
+    }
+    fn overlay_handle_event(
+        &mut self,
+        event: Event,
+        app: &mut App,
+        area: Rect,
+    ) -> anyhow::Result<OverlayResult> {
+        if self.search_event(&event, app, area) {
+            return Ok(OverlayResult::Continue);
+        }
+        if self.dialog_event(&event, app) {
+            return Ok(OverlayResult::Continue);
+        }
+        let action = match event {
+            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                match app.keybinds.resolve_bases(
+                    &mut self.matcher,
+                    key,
+                    app.config.sequences_enabled(),
+                    app.config.counts_enabled(),
+                ) {
+                    MatchOutcome::Matched(action, count) => Some((action, count.unwrap_or(1))),
+                    _ => None,
+                }
+            }
+            Event::Mouse(mouse) => {
+                let maximum = self.items.len().saturating_sub(1);
+                if let Some(fraction) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                    &mouse,
+                    self.scrollbar,
+                    self.selected as f32 / maximum.max(1) as f32,
+                    &mut self.scroll_drag,
+                ) {
+                    self.selected = (fraction * maximum as f32).round() as usize;
+                    return Ok(OverlayResult::Continue);
+                }
+                match mouse.kind {
+                    MouseEventKind::ScrollDown => Some((BasesAction::MoveDown, 3)),
+                    MouseEventKind::ScrollUp => Some((BasesAction::MoveUp, 3)),
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if let Some((_, item, column)) = self
+                            .hit_rows
+                            .iter()
+                            .find(|(rect, _, _)| rect.contains((mouse.column, mouse.row).into()))
+                        {
+                            self.selected = *item;
+                            self.column = *column;
+                            if !matches!(self.layout(), super::format::Layout::Kanban)
+                                && matches!(
+                                    self.items.get(self.selected),
+                                    Some(super::state::Item::Group(_))
+                                )
+                            {
+                                if let Err(error) = self.toggle_group() {
+                                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                                }
+                                return Ok(OverlayResult::Continue);
+                            }
+                            if matches!(self.layout(), super::format::Layout::Kanban)
+                                && !self.loading
+                                && self.write_task.is_none()
+                            {
+                                self.drag = self.items.get(self.selected).copied();
+                                if self.hit_groups.iter().any(|(rect, _)| {
+                                    rect.y == mouse.row
+                                        && rect.width >= 3
+                                        && rect.right().saturating_sub(2) == mouse.column
+                                }) {
+                                    self.drag = None;
+                                    if let Err(error) = self.prompt_new_note(app) {
+                                        app.set_temporary_status(&format!("Bases: {error:#}"));
+                                    }
+                                }
+                            }
+                        }
+                        None
+                    }
+                    MouseEventKind::Up(MouseButton::Left) => {
+                        if let Some(item) = self.drag.take()
+                            && let Some((_, target)) = self
+                                .hit_groups
+                                .iter()
+                                .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
+                            && let Err(error) = self.drop_in_group(app, item, *target)
+                        {
+                            app.set_temporary_status(&format!("Bases: {error:#}"));
+                        }
+                        None
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let Some((action, count)) = action else {
+            return Ok(OverlayResult::Continue);
+        };
+        self.apply_action(app, action, count)
+    }
+}
+impl BasesState {
+    pub(crate) fn render_native(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &App) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(area);
+        let view = self.loaded.as_ref().map_or("", |loaded| {
+            loaded.document.config.views[loaded.view].name.as_str()
+        });
+        let title = format!(
+            "Bases · {} · {}{}{}",
+            crate::fsutil::sanitize_for_terminal(&self.id),
+            crate::fsutil::sanitize_for_terminal(view),
+            if self.search_text.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " · search: {}",
+                    crate::fsutil::sanitize_for_terminal(&self.search_text)
+                )
+            },
+            if self.loading {
+                " · refreshing…"
+            } else {
+                ""
+            }
+        );
+        let count = self.result().map_or_else(String::new, |result| {
+            format!(
+                "{} / {} files · {} selected",
+                result.rows.len(),
+                result.matched,
+                self.selected_ids.len()
+            )
+        });
+        crate::ui::draw_view_title_bar(
+            frame,
+            chunks[0],
+            &app.app_theme,
+            Line::from(title),
+            Some(Line::from(count)),
+            Some(app.status.as_ref()),
+            app.load_spinner_tick,
+        );
+        super::render::render(frame, chunks[1], self, app);
+        let hints = format!(
+            "{} back  {} open  {} edit  {} views  {} config  {} search  {} refresh",
+            app.keybinds.display_bases(BasesAction::Back),
+            app.keybinds.display_bases(BasesAction::Open),
+            app.keybinds.display_bases(BasesAction::Edit),
+            app.keybinds.display_bases(BasesAction::NextView),
+            app.keybinds.display_bases(BasesAction::Configure),
+            app.keybinds.display_bases(BasesAction::Search),
+            app.keybinds.display_bases(BasesAction::Refresh)
+        );
+        frame.render_widget(
+            Paragraph::new(hints).style(app.app_theme.hint_line_bg_style()),
+            chunks[2],
+        );
+        if self.embedded_request.is_none() || app.mode == crate::app::ViewMode::Bases {
+            self.render_search(frame, area, app);
+            if let Some(dialog) = self.dialog.as_mut() {
+                dialog.render(frame, area, app);
+            }
+        }
+    }
+}
+impl BasesState {
+    pub(crate) fn apply_action(
+        &mut self,
+        app: &mut App,
+        action: BasesAction,
+        count: u32,
+    ) -> anyhow::Result<OverlayResult> {
+        match action {
+            BasesAction::CommandPalette
+                if self.embedded_request.is_some() && app.mode != crate::app::ViewMode::Bases =>
+            {
+                self.expand_requested = true;
+            }
+            BasesAction::CommandPalette => {
+                return Ok(OverlayResult::OpenCommandPalette);
+            }
+            BasesAction::Back => {
+                if self.drag.take().is_some() {
+                    return Ok(OverlayResult::Continue);
+                }
+                if self.write_task.as_ref().is_some_and(|task| task.writing) {
+                    app.set_temporary_status_static("Write in progress; wait before leaving Bases");
+                } else {
+                    return Ok(OverlayResult::Exit);
+                }
+            }
+            BasesAction::Help => return Ok(OverlayResult::OpenHelp(crate::app::HelpTab::Bases)),
+            BasesAction::MoveUp => self.move_row(false, count as usize),
+            BasesAction::MoveDown => self.move_row(true, count as usize),
+            BasesAction::First => self.selected = 0,
+            BasesAction::Last => self.selected = self.items.len().saturating_sub(1),
+            BasesAction::PageUp => self.selected = self.selected.saturating_sub(self.page_len()),
+            BasesAction::PageDown => {
+                self.selected =
+                    (self.selected + self.page_len()).min(self.items.len().saturating_sub(1))
+            }
+            BasesAction::MoveLeft | BasesAction::MoveRight
+                if matches!(self.layout(), super::format::Layout::Kanban) =>
+            {
+                self.move_group(matches!(action, BasesAction::MoveRight), count as usize)
+            }
+            BasesAction::MoveLeft => self.column = self.column.saturating_sub(count as usize),
+            BasesAction::MoveRight => {
+                self.column = (self.column + count as usize).min(
+                    self.loaded
+                        .as_ref()
+                        .map_or(0, |loaded| loaded.columns.len().saturating_sub(1)),
+                )
+            }
+            BasesAction::Refresh => self.refresh(app, true),
+            BasesAction::NextView | BasesAction::PreviousView => {
+                if let Some(loaded) = &self.loaded {
+                    let length = loaded.document.config.views.len();
+                    let index = if matches!(action, BasesAction::NextView) {
+                        (loaded.view + 1) % length
+                    } else {
+                        (loaded.view + length - 1) % length
+                    };
+                    self.named_view = Some(loaded.document.config.views[index].name.clone());
+                    self.environment.random_seed = rand::random();
+                    self.refresh(app, false);
+                }
+            }
+            BasesAction::ToggleSelect => {
+                if let Some(id) = self.row().map(|row| row.id.clone())
+                    && !self.selected_ids.remove(&id)
+                {
+                    self.selected_ids.insert(id);
+                }
+            }
+            BasesAction::SelectAll => {
+                if let Some(result) = self.result() {
+                    self.selected_ids = result.rows.iter().map(|row| row.id.clone()).collect();
+                }
+            }
+            BasesAction::Edit
+            | BasesAction::Clear
+            | BasesAction::Paste
+            | BasesAction::MoveToGroup => {
+                use super::authoring::EditIntent;
+                let intent = match action {
+                    BasesAction::Clear => Some(EditIntent::Clear),
+                    BasesAction::Paste => {
+                        crate::text_edit::read_system_clipboard().map(EditIntent::Paste)
+                    }
+                    BasesAction::MoveToGroup => {
+                        self.present_dialog(
+                            app,
+                            super::authoring::Dialog::prompt(
+                                super::authoring::Target::MoveGroup,
+                                "Move selected notes to group",
+                                "Editable group property value; blank clears group",
+                                "",
+                            ),
+                        );
+                        None
+                    }
+                    _ => Some(EditIntent::Edit),
+                };
+                if let Some(intent) = intent
+                    && let Err(error) = self.start_edit(app, intent)
+                {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::Undo | BasesAction::Redo => {
+                if let Err(error) = self.replay(app, matches!(action, BasesAction::Redo)) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::Configure => self.present_dialog(
+                app,
+                super::authoring::Dialog::Menu {
+                    selected: 0,
+                    offset: 0,
+                    area: Rect::default(),
+                    bounds: Rect::default(),
+                },
+            ),
+            BasesAction::NewNote => {
+                if let Err(error) = self.prompt_new_note(app) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::Export => self.present_dialog(
+                app,
+                super::authoring::Dialog::prompt(
+                    super::authoring::Target::Export,
+                    "Export visible results",
+                    "Vault-relative .csv or .md; spreadsheet formulas escaped in CSV",
+                    "Results.csv",
+                ),
+            ),
+            BasesAction::Copy => {
+                if let Some(value) = self.row().and_then(|row| {
+                    self.loaded
+                        .as_ref()
+                        .and_then(|loaded| loaded.columns.get(self.column))
+                        .and_then(|column| row.values.get(column))
+                }) {
+                    let notice = crate::text_edit::clipboard_notice(
+                        crate::text_edit::write_system_clipboard(&value.to_text().display()),
+                    );
+                    app.set_temporary_status_static(notice);
+                }
+            }
+            BasesAction::Search => {
+                if let Err(error) = self.open_search(app) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::PreviousProperty | BasesAction::NextProperty => {
+                let columns = self
+                    .loaded
+                    .as_ref()
+                    .map_or(0, |loaded| loaded.columns.len());
+                self.column = if matches!(action, BasesAction::NextProperty) {
+                    self.column
+                        .saturating_add(count as usize)
+                        .min(columns.saturating_sub(1))
+                } else {
+                    self.column.saturating_sub(count as usize)
+                };
+            }
+            BasesAction::OpenCover => {
+                if let Err(error) = self.open_cover(app) {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::ToggleGroup => {
+                if let Err(error) = self.toggle_group() {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+            BasesAction::Open => {
+                let result = if matches!(
+                    self.items.get(self.selected),
+                    Some(super::state::Item::Group(_))
+                ) && !matches!(self.layout(), super::format::Layout::Kanban)
+                {
+                    self.toggle_group()
+                } else {
+                    self.open_row(app)
+                };
+                if let Err(error) = result {
+                    app.set_temporary_status(&format!("Bases: {error:#}"));
+                }
+            }
+        }
+        Ok(OverlayResult::Continue)
+    }
+}
+impl BasesState {
+    fn page_len(&self) -> usize {
+        self.hit_rows
+            .iter()
+            .map(|(_, position, _)| position)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            .saturating_sub(1)
+            .max(1)
+    }
+    pub fn refresh(&mut self, app: &mut App, invalidate: bool) {
+        if self.creating {
+            app.bases_refresh_requested = false;
+            return;
+        }
+        self.loading = true;
+        self.environment.now = chrono::Local::now();
+        if invalidate {
+            self.media.invalidate();
+        }
+        app.bases_refresh_requested = false;
+        if let Some(worker) = app.bases_worker.as_mut() {
+            if let Some(embedded) = &self.embedded_request {
+                let mut embedded = embedded.clone();
+                embedded.view.clone_from(&self.named_view);
+                worker.request_embed(
+                    embedded,
+                    self.environment.clone(),
+                    self.search_text.clone(),
+                    invalidate,
+                );
+                return;
+            }
+            worker.request(
+                &self.id,
+                self.named_view.clone(),
+                self.environment.clone(),
+                self.search_text.clone(),
+                invalidate,
+            );
+            app.bases_refresh_requested = false;
+        }
+    }
+}

@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(parsed.graf, default.graf);
         assert_eq!(parsed.goals, default.goals);
         assert_eq!(parsed.image, default.image);
-        assert_eq!(parsed.backup, default.backup);
+
         assert_eq!(parsed.statusline, default.statusline);
         assert_eq!(parsed.features, default.features);
     }

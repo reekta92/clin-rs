@@ -1,14 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 pub mod actions;
 pub mod app_theme;
-pub mod backup {
-    pub mod app;
-    pub mod git_ops;
-    pub mod input;
-    pub mod render;
-    pub mod state;
-    pub mod worker;
-}
+pub mod bases;
 pub mod calendar;
 pub mod cli;
 pub mod config;
@@ -30,6 +23,7 @@ pub mod goals;
 pub mod graf_adapter;
 pub mod image_render {
     pub mod cache;
+    pub(crate) mod remote;
     pub mod worker;
 
     /// Settle duration (150 ms) after the last zoom/scroll event before the
@@ -49,8 +43,12 @@ pub mod outline {
     pub mod render;
     pub mod state;
 }
+#[cfg(test)]
+mod frontmatter_tests;
 pub mod overlay;
 pub mod palette;
+#[cfg(test)]
+mod palette_tests;
 pub mod paths;
 #[cfg(test)]
 pub mod perf_tests;
@@ -187,6 +185,22 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
     run_tui_session(&mut app)
 }
 
+#[cfg(test)]
+mod stdin_tests;
+
+fn read_note_stdin(input: impl std::io::Read) -> Result<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    input
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_string(&mut text)
+        .context("failed to read UTF-8 note body from stdin")?;
+    if text.len() > 16 * 1024 * 1024 {
+        anyhow::bail!("stdin note body exceeds 16 MiB safety limit");
+    }
+    Ok(text)
+}
+
 fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
@@ -206,9 +220,23 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             template,
             folder,
             body,
+            stdin,
             no_tui,
             title,
         } => {
+            use std::io::IsTerminal;
+            let piped = !std::io::stdin().is_terminal();
+            let body = if body.is_none() && (stdin || piped) {
+                let text = read_note_stdin(std::io::stdin().lock())?;
+                if stdin || !text.is_empty() {
+                    Some(text)
+                } else {
+                    None
+                }
+            } else {
+                body
+            };
+            let no_tui = no_tui || stdin || piped;
             let (storage, _) = Storage::init();
             let storage = storage?;
             let mut app = App::new(storage)?;
@@ -257,6 +285,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
                 format!("{folder}/{stem}")
             };
             let note = Note {
+                baseline: None,
                 title: final_title.clone(),
                 content,
                 updated_at: crate::ui::now_unix_secs(),
@@ -314,6 +343,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
             let note = Note {
+                baseline: None,
                 title: final_title.clone(),
                 content,
                 updated_at: crate::ui::now_unix_secs(),
@@ -827,20 +857,23 @@ fn process_watcher_events(app: &mut App) -> bool {
     let Some(ref rx) = app.fs_event_rx else {
         return false;
     };
-    let overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
-
-    let mut events = Vec::new();
+    let mut overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
+    let mut template_config_changed = false;
     while let Ok(evt) = rx.try_recv() {
-        events.push(evt);
+        if app.watcher_pending_events.len() >= 512 {
+            overflow = true;
+            break;
+        }
+        if !matches!(evt.event.kind, notify::EventKind::Access(_)) {
+            template_config_changed |= evt.event.paths.iter().any(|path| {
+                path.starts_with(&app.storage.notes_dir)
+                    && crate::templates::is_folder_template_config(path)
+            });
+            app.watcher_pending_events.push(evt);
+        }
     }
     // Configs are UI items, not note summaries. Refresh them immediately, even
     // while note-catalog events wait for the debounce window.
-    let template_config_changed = events.iter().any(|event| {
-        event.event.paths.iter().any(|path| {
-            path.starts_with(&app.storage.notes_dir)
-                && crate::templates::is_folder_template_config(path)
-        })
-    });
     if template_config_changed {
         let selected = app.list.visual_list.get(app.list.visual_index).cloned();
         let mut selections = HashMap::new();
@@ -878,17 +911,18 @@ fn process_watcher_events(app: &mut App) -> bool {
     }
 
     if overflow {
+        app.watcher_pending_events.clear();
         app.request_notes_reconcile();
         app.watcher_window_start = None;
         return template_config_changed;
     }
 
-    if events.is_empty() && app.watcher_window_start.is_none() {
+    if app.watcher_pending_events.is_empty() && app.watcher_window_start.is_none() {
         return template_config_changed;
     }
 
     if app.watcher_window_start.is_none() {
-        if let Some(first) = events.first() {
+        if let Some(first) = app.watcher_pending_events.first() {
             app.watcher_window_start = Some(first.observed_at);
         } else {
             app.watcher_window_start = Some(Instant::now());
@@ -903,6 +937,7 @@ fn process_watcher_events(app: &mut App) -> bool {
     }
 
     app.watcher_window_start = None;
+    let events = std::mem::take(&mut app.watcher_pending_events);
 
     let mut changes_map: HashMap<String, crate::app::catalog::PathChange> = HashMap::new();
     let mut needs_full_reconcile = false;
@@ -1263,6 +1298,9 @@ fn drain_queued_mouse_events<V: OverlayView>(
 fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::OverlayResult) {
     use crate::overlay::OverlayResult;
     match res {
+        OverlayResult::OpenCommandPalette => {
+            app.open_command_palette(None);
+        }
         OverlayResult::OpenHelp(tab) => {
             app.reload_theme();
             app.open_help_page_with_tab(tab);
@@ -1305,13 +1343,30 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
                     app.close_canvas_view();
                 }
             }
-            ViewKind::Backup => {
+            ViewKind::Bases => {
                 if matches!(other, OverlayResult::Exit) {
-                    app.reload_config();
-                    app.backup_state = None;
-                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-
-                    app.reload_theme();
+                    if let Some(worker) = app.bases_worker.as_mut() {
+                        worker.cancel();
+                    }
+                    if let Some(state) = app.bases_state.take() {
+                        app.mode = state.previous_mode;
+                        if state.embedded_request.is_some() {
+                            let (return_mode, suspended) = app.base_embeds.restore(state);
+                            app.return_mode = return_mode;
+                            app.bases_state = suspended;
+                            if app.mode == ViewMode::Edit
+                                && let Some(editor) = app.embedded_host_editor.take()
+                            {
+                                app.editor = *editor;
+                            }
+                        } else {
+                            app.return_mode = None;
+                        }
+                    } else {
+                        app.mode = ViewMode::List;
+                        app.return_mode = None;
+                    }
+                    app.set_default_status();
                 }
             }
             ViewKind::Outline => match other {
@@ -1355,6 +1410,14 @@ where
             prev_mode = app.mode;
             continue;
         }
+        if app.poll_bases() {
+            list_dirty = true;
+            graph_dirty = true;
+        }
+        // Background source handoffs must enter Edit before polling another input event.
+        if app.mode == ViewMode::Edit {
+            continue;
+        }
         let msgs_before = app.messages.messages.len();
         while let Ok(msg) = app.message_rx.try_recv() {
             app.messages.push(msg.text, msg.severity);
@@ -1395,13 +1458,6 @@ where
                 list_dirty = true;
             } else if app.mode == ViewMode::Graph {
                 graph_dirty = true;
-            }
-        }
-        let failed = app.backup_status.lock().take();
-        if let Some(msg) = failed {
-            app.set_temporary_status(&format!("Backup failed: {msg}"));
-            if app.mode == ViewMode::List {
-                list_dirty = true;
             }
         }
 
@@ -1495,7 +1551,7 @@ where
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
-        } else if active_catalog || active_search {
+        } else if active_catalog || active_search || app.base_embeds.is_loading() {
             Duration::from_millis(32)
         } else if matches!(
             app.list.preview_content,
@@ -1532,19 +1588,6 @@ where
                 }
             }
             need_redraw = true;
-        }
-
-        // Auto-backup check
-        if let Some(interval_mins) = app.config.backup.auto_backup_interval {
-            let now = std::time::Instant::now();
-            let should_backup = match app.last_auto_backup {
-                Some(last) => now.duration_since(last).as_secs() >= interval_mins * 60,
-                None => true,
-            };
-            if should_backup {
-                app.enqueue_backup("auto: scheduled backup");
-                app.last_auto_backup = Some(now);
-            }
         }
 
         if app.mode != ViewMode::List && need_redraw {
@@ -1608,6 +1651,11 @@ fn dispatch_event<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
+    let size = terminal.size().context("failed to get terminal size")?;
+    if crate::events::handle_open_palette_event(app, &ev, Rect::new(0, 0, size.width, size.height))
+    {
+        return Ok(());
+    }
     match ev {
         // All-keys keyboard mode reports bare modifier presses and text-less
         // IME events (key code 0); drop them before any handler sees them.
@@ -1666,6 +1714,9 @@ where
             }
             let size = terminal.size().context("failed to get terminal size")?;
             let area = Rect::new(0, 0, size.width, size.height);
+            if app.mode != ViewMode::Bases && app.base_embed_event(&ev, area) {
+                return Ok(());
+            }
             if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
                 return Ok(());
             }
@@ -1691,8 +1742,8 @@ where
                         }
                         ViewMode::Graph
                         | ViewMode::Canvas
+                        | ViewMode::Bases
                         | ViewMode::Draw
-                        | ViewMode::Backup
                         | ViewMode::Outline => match OverlayState::take(app) {
                             Some(mut view) => {
                                 let kind = view.kind();
@@ -1737,8 +1788,8 @@ where
                         }
                         ViewMode::Graph
                         | ViewMode::Canvas
+                        | ViewMode::Bases
                         | ViewMode::Draw
-                        | ViewMode::Backup
                         | ViewMode::Outline => {
                             let kind = ViewKind::from_mode(app.mode);
                             let scrolls = matches!(kind, Some(ViewKind::Draw | ViewKind::Canvas));
@@ -1814,9 +1865,8 @@ mod tests {
             config_dir: PathBuf::from("/tmp"),
             notes_dir: PathBuf::from("/tmp"),
             templates_dir: PathBuf::from("/tmp"),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).unwrap();
         app.mode = ViewMode::List;

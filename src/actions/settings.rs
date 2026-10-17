@@ -121,7 +121,8 @@ toggle_action!(
     "\u{1f6aa}",
     toggle_confirm_on_quit,
     app,
-    if app.confirm_on_quit { "On" } else { "Off" }
+    if app.confirm_on_quit { "On" } else { "Off" },
+    fallible
 );
 
 toggle_action!(
@@ -135,19 +136,6 @@ toggle_action!(
     toggle_inline_info,
     app,
     if app.list.inline_info { "On" } else { "Off" }
-);
-
-toggle_action!(
-    TogglePreviewEncryptionAction,
-    "settings.preview_encryption",
-    "Toggle Encrypted Note Preview",
-    "Show or hide previews of encrypted (.clin) notes",
-    ActionCategory::Settings,
-    "\u{f06e}",
-    "\u{1f441}",
-    toggle_preview_encryption,
-    app,
-    if app.preview_encryption { "On" } else { "Off" }
 );
 
 toggle_action!(
@@ -215,7 +203,8 @@ toggle_action!(
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -382,7 +371,8 @@ toggle_action!(
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -399,7 +389,8 @@ toggle_action!(
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -664,23 +655,6 @@ toggle_action!(
     toggle_import,
     app,
     if app.config.features.import.is_enabled() {
-        "On"
-    } else {
-        "Off"
-    }
-);
-
-toggle_action!(
-    ToggleEncryptionAction,
-    "settings.toggle_encryption",
-    "Toggle Encryption",
-    "Enable or disable encrypt/decrypt actions",
-    ActionCategory::Settings,
-    "\u{f023}",
-    "\u{1f512}",
-    toggle_encryption,
-    app,
-    if app.config.features.encryption.is_enabled() {
         "On"
     } else {
         "Off"

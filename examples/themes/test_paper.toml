@@ -1,0 +1,27 @@
+# Test theme: turn Background On (Alt+B in the palette) to see its full palette.
+[chrome]
+accent = "#245a88"
+heading = "#814c27"
+success = "#3d683d"
+warning = "#8a6315"
+destructive = "#a13642"
+muted = "#736b60"
+text = "#302d29"
+fg = "#171614"
+border = "#c9beac"
+tag = "#79558c"
+folder = "#326a63"
+pinned = "#8a6315"
+smart = "#3d683d"
+subnote = "#a35169"
+selection_indicator = "#171614"
+highlight_fg = "#fffaf0"
+highlight_bg = "#245a88"
+background = "#f5efdf"
+
+[graph]
+nodes = ["#245a88", "#79558c", "#326a63", "#814c27", "#8a6315", "#a13642", "#3d683d", "#a35169"]
+chrome = "#c9beac"
+text = "#302d29"
+fg = "#171614"
+bg = "#f5efdf"

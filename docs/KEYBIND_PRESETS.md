@@ -1,8 +1,10 @@
 # Keybind Presets
 
-This document details the editor-style keybind presets available in clin-rs: Helix, Vim, and Emacs.
+This document details the navigation keybind presets available in clin-rs: Helix, Vim, and Emacs.
 
 These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, search boxes, templates, tag managers, and popups).
+
+**Command palette:** unmodified `F6` works in all ten views under every shipped preset. Custom F6 bindings, including sequence strokes, take priority in the focused scope. Notes/Bases aliases remain available; `Ctrl+p` keeps its existing editor and Emacs behavior. Palette body insertion requires editor Body focus. Modal dialogs and active gestures block opening.
 
 ---
 
@@ -26,7 +28,7 @@ enable_key_sequences = true
 
 ### Helix Preset
 
-Helix style mappings rely on the `Space` key as a leader key for application-level commands, and selection-first navigation.
+Helix style mappings rely on the `Space` key as a leader key for application-level commands, and application navigation.
 
 | View | Action | Key Sequence |
 |---|---|---|
@@ -55,7 +57,7 @@ Helix style mappings rely on the `Space` key as a leader key for application-lev
 
 ### Vim Preset
 
-Vim style mappings support standard hjkl navigation, double-key operators, and Ex-style colon commands.
+Vim style mappings support standard hjkl navigation, multi-key application commands and colon shortcuts.
 
 | View | Action | Key Sequence |
 |---|---|---|
@@ -121,3 +123,21 @@ quit = ["Ctrl+x Ctrl+c", "q"]
 
 Every token follows modifier parsing conventions (for example `Ctrl+Shift+Z`,
 `Alt+Key`).
+
+## Shared Bases Sidebar Shortcut
+
+All presets inherit **Ctrl+g Ctrl+b** (`toggle_bases`) in Edit. Place the cursor
+on a public `.base` wikilink to open its active-file sidebar; repeat to close it.
+Click a live region to use the configured `bases` bindings. Its command-palette
+binding expands the region into the full Bases view and opens the palette.
+Ctrl+Enter is an additional region expansion shortcut. Esc dismisses a popup,
+then returns focus to the containing surface.
+
+```toml
+[edit]
+toggle_bases = ["Ctrl+g Ctrl+b"]
+```
+
+## Shared frontmatter shortcut
+
+**F7** maps to `edit.toggle_frontmatter` in every preset. It opens and focuses the configured properties/raw-YAML region above Body; repeat to hide while retaining input. Remap it in the active keybind file with `toggle_frontmatter = ["Alt+f"]` under `[edit]`. `Ctrl+t` includes the region in focus cycling when visible. Body insertion/image actions remain scoped to Body. Unbound F6 continues to open the contextual command palette.

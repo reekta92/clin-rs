@@ -29,11 +29,11 @@ pub struct KeybindsToml {
     #[serde(default)]
     pub canvas: BTreeMap<CanvasAction, Vec<String>>,
     #[serde(default)]
-    pub backup: BTreeMap<BackupAction, Vec<String>>,
-    #[serde(default)]
     pub outline: BTreeMap<OutlineAction, Vec<String>>,
     #[serde(default)]
     pub setup: BTreeMap<SetupAction, Vec<String>>,
+    #[serde(default)]
+    pub bases: BTreeMap<BasesAction, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ pub struct Keybinds {
     pub graph: HashMap<GraphAction, Vec<KeyCombo>>,
     pub draw: HashMap<DrawAction, Vec<KeyCombo>>,
     pub canvas: HashMap<CanvasAction, Vec<KeyCombo>>,
-    pub backup: HashMap<BackupAction, Vec<KeyCombo>>,
     pub outline: HashMap<OutlineAction, Vec<KeyCombo>>,
     pub setup: HashMap<SetupAction, Vec<KeyCombo>>,
+    pub bases: HashMap<BasesAction, Vec<KeyCombo>>,
 }

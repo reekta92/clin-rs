@@ -4,7 +4,7 @@
 
 Native pixel image rendering via the `ratatui_image` crate. The protocol is auto-detected at startup from sixel, kitty, iTerm, or halfblocks (picker initialized during application startup).
 
-**Source:** `src/image_render/` (`mod.rs`, `cache.rs`, `worker.rs`)
+**Source:** `src/image_render/{cache.rs,worker.rs}`; module declared in `src/lib.rs`.
 
 ## Architecture
 
@@ -23,8 +23,43 @@ The image rendering pipeline consists of three layers:
 | upstream `pinstar` crate (`images` feature), `src/pinstar_adapter.rs` | Canvas image file nodes |
 | `src/app/loading.rs` | Install decoded images into active view caches |
 | `src/app/notes.rs`, `src/app/views.rs` | Per-view cache initialization |
+| `src/bases/{write.rs,authoring.rs}` | Guarded public image activation and native image popup |
 
 Draw v2 stores strokes, shapes, and text only. Legacy Draw image records are dropped during migration; Draw is not an image-rendering integration.
+
+## Bases public-image activation
+
+Bases can activate public PNG/JPEG/GIF/WebP rows and typed `image()` values.
+Resolution stays within the public metadata snapshot; a background operation
+then validates the vault path, reads at most 8 MiB, and decodes with a 16 MiB
+allocation limit and maximum dimensions of 8192×8192. The result is downscaled
+to at most 512 pixels per side and rendered through the existing terminal
+picker/protocol. No notes are decrypted. Cards/Kanban also render configured
+covers and solid hex colors; cover thumbnails are bounded to 256 pixels and
+cached separately (64 entries, two concurrent background jobs).
+
+Configured Bases Back binding closes the image popup without leaving Bases;
+a full redraw clears terminal image artifacts. `[features] images = false` or
+an unavailable picker produces an explicit diagnostic. Other attachment types
+without a native preview also diagnose explicitly rather than entering the
+ordinary note-loading path. These activation limits do not change the
+normal List/Edit image worker policy.
+
+### Remote Bases images
+
+Configured covers and typed `image()` values may fetch credential-free public
+HTTP(S) URLs when images and the terminal picker are enabled. Shared transport:
+`src/image_render/remote.rs`, using reqwest/rustls with native trust roots and a
+small Tokio runtime inside existing background jobs. No browser or plugin runtime.
+No cookies, proxy environment, credentials, or Referer header are forwarded.
+Every destination and DNS answer must be publicly routable; redirects are checked
+again. Limits: 64 KiB URL, three redirects, eight-second total deadline, 8 MiB body,
+10 ms cancellation polling, then the same bounded image decoder.
+
+Requests reveal the authored URL and your public network address to its server.
+Disable `[features] images` to prevent image requests. Prefer HTTPS; HTTP provides
+no transport integrity. Errors remain explicit native placeholders. Ordinary
+List/Edit/Canvas image policy is unchanged.
 
 ## Configuration
 

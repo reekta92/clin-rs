@@ -41,7 +41,7 @@ fn view_name(mode: ViewMode) -> &'static str {
         ViewMode::Graph => "Graph",
         ViewMode::Draw => "Draw",
         ViewMode::Canvas => "Canvas",
-        ViewMode::Backup => "Backup",
+        ViewMode::Bases => "Bases",
         ViewMode::Outline => "Outline",
         ViewMode::Setup => "Setup",
     }
@@ -52,18 +52,23 @@ fn view_name(mode: ViewMode) -> &'static str {
 /// when a popup, command palette, or another header-anchored overlay
 /// (find/help-search) is open so they never visually collide.
 pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
-    if !app.quick_keybinds_open
+    if app.base_embeds.has_popup()
+        || !app.quick_keybinds_open
         || app.popups.active.is_some()
         || app.command_palette.is_some()
         || app.editor.find_popup.is_some()
         || app.help_search.popup.is_some()
         || app.vault_switcher.is_some()
+        || app
+            .bases_state
+            .as_ref()
+            .is_some_and(|state| state.has_popup())
     {
         return;
     }
 
     let theme: &AppThemeColors = &app.app_theme;
-    let lines: Vec<(String, String)> = match app.mode {
+    let mut lines: Vec<(String, String)> = match app.mode {
         ViewMode::List => scope_keybind_lines::<crate::keybinds::ListAction>(
             &app.keybinds,
             Keybinds::list_keys_display,
@@ -88,9 +93,9 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
             &app.keybinds,
             Keybinds::canvas_keys_display,
         ),
-        ViewMode::Backup => scope_keybind_lines::<crate::keybinds::BackupAction>(
+        ViewMode::Bases => scope_keybind_lines::<crate::keybinds::BasesAction>(
             &app.keybinds,
-            Keybinds::backup_keys_display,
+            Keybinds::bases_keys_display,
         ),
         ViewMode::Outline => scope_keybind_lines::<crate::keybinds::OutlineAction>(
             &app.keybinds,
@@ -101,6 +106,15 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
             Keybinds::setup_keys_display,
         ),
     };
+
+    let scope = if app.base_embeds.focused() {
+        ViewMode::Bases
+    } else {
+        app.mode
+    };
+    if app.palette_fallback_available(scope) {
+        lines.insert(0, ("F6".into(), "Command palette".into()));
+    }
 
     let frame_area = frame.area();
 

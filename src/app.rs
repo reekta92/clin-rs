@@ -1,6 +1,8 @@
 pub mod messages;
 
 pub(crate) mod catalog;
+mod command_palette;
+mod drafts;
 mod edit_panes;
 mod folders;
 mod import_ops;
@@ -31,7 +33,6 @@ use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::Template;
 use anyhow::Result;
-use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -282,7 +283,7 @@ pub enum ViewMode {
     Graph,
     Draw,
     Canvas,
-    Backup,
+    Bases,
     Outline,
     Setup,
 }
@@ -299,7 +300,7 @@ impl ViewMode {
             ViewMode::Graph => Some(HelpTab::Graph),
             ViewMode::Draw => Some(HelpTab::Draw),
             ViewMode::Canvas => Some(HelpTab::Canvas),
-            ViewMode::Backup => Some(HelpTab::Backup),
+            ViewMode::Bases => Some(HelpTab::Bases),
             ViewMode::Outline => Some(HelpTab::Notes), // no Outline tab; matches existing OutlineAction::Help target
             ViewMode::Help => None,
             ViewMode::Setup => None,
@@ -314,22 +315,22 @@ pub enum HelpTab {
     Graph,
     Draw,
     Canvas,
-    Backup,
     Templates,
     About,
+    Bases,
 }
 
 impl HelpTab {
     #[must_use]
     pub fn prev(self) -> Self {
         match self {
-            HelpTab::Notes => HelpTab::About,
+            HelpTab::Notes => HelpTab::Bases,
+            HelpTab::Bases => HelpTab::About,
             HelpTab::Editor => HelpTab::Notes,
             HelpTab::Graph => HelpTab::Editor,
             HelpTab::Draw => HelpTab::Graph,
             HelpTab::Canvas => HelpTab::Draw,
-            HelpTab::Backup => HelpTab::Canvas,
-            HelpTab::Templates => HelpTab::Backup,
+            HelpTab::Templates => HelpTab::Canvas,
             HelpTab::About => HelpTab::Templates,
         }
     }
@@ -341,10 +342,10 @@ impl HelpTab {
             HelpTab::Editor => HelpTab::Graph,
             HelpTab::Graph => HelpTab::Draw,
             HelpTab::Draw => HelpTab::Canvas,
-            HelpTab::Canvas => HelpTab::Backup,
-            HelpTab::Backup => HelpTab::Templates,
+            HelpTab::Canvas => HelpTab::Templates,
             HelpTab::Templates => HelpTab::About,
-            HelpTab::About => HelpTab::Notes,
+            HelpTab::About => HelpTab::Bases,
+            HelpTab::Bases => HelpTab::Notes,
         }
     }
 
@@ -355,8 +356,8 @@ impl HelpTab {
             2 => HelpTab::Graph,
             3 => HelpTab::Draw,
             4 => HelpTab::Canvas,
-            5 => HelpTab::Backup,
-            6 => HelpTab::Templates,
+            5 => HelpTab::Templates,
+            7 => HelpTab::Bases,
             _ => HelpTab::About,
         }
     }
@@ -368,9 +369,9 @@ impl HelpTab {
             HelpTab::Graph => 2,
             HelpTab::Draw => 3,
             HelpTab::Canvas => 4,
-            HelpTab::Backup => 5,
-            HelpTab::Templates => 6,
-            HelpTab::About => 7,
+            HelpTab::Templates => 5,
+            HelpTab::About => 6,
+            HelpTab::Bases => 7,
         }
     }
 }
@@ -390,6 +391,7 @@ pub struct WatchedFsEvent {
 pub struct App {
     pub popups: crate::popups::PopupManager,
     pub storage: Storage,
+    pub(crate) drafts: Option<crate::storage::drafts::DraftWorker>,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub notes: Vec<NoteSummary>,
@@ -412,25 +414,29 @@ pub struct App {
     pub confirm_on_delete: bool,
     pub confirm_on_quit: bool,
     pub should_quit: bool,
-    pub preview_encryption: bool,
     pub mouse_pos: Option<(u16, u16)>,
     pub preview_position: crate::config::PreviewPosition,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
     pub mouse_enabled: bool,
     pub date_format: String,
-    pub last_auto_backup: Option<std::time::Instant>,
     pub return_mode: Option<ViewMode>,
+    pub(crate) visit_return_mode: Option<ViewMode>,
+    #[cfg(test)]
+    pub(crate) palette_destination_failure: bool,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_plugin: Option<crate::graf_adapter::GrafPlugin>,
     pub draw_state: Option<crate::draw::app::DrawAppState>,
     pub draw_clipboard: Option<crate::draw::state::DrawItem>,
-    pub backup_state: Option<crate::backup::state::BackupState>,
     pub outline_state: Option<crate::outline::state::OutlineState>,
     pub setup_state: Option<crate::setup::SetupState>,
     pub(crate) setup_rebootstrap: Option<crate::setup::SetupRebootstrapRequest>,
     pub config_errors: Vec<String>,
     pub canvas_state: Option<crate::pinstar_adapter::PinstarPlugin>,
+    pub bases_state: Option<crate::bases::state::BasesState>,
+    pub(crate) embedded_host_editor: Option<Box<crate::editor::NoteEditor>>,
+    pub(crate) base_embeds: crate::bases::embedding::Embeds,
+    pub bases_worker: Option<crate::bases::worker::BasesWorker>,
     pub config: crate::config::ClinConfig,
     pub catalog_cmd_tx: std::sync::mpsc::SyncSender<crate::app::catalog::CatalogCommand>,
     pub catalog_event_rx: std::sync::mpsc::Receiver<crate::app::catalog::CatalogEvent>,
@@ -451,11 +457,10 @@ pub struct App {
     pub fs_event_rx: Option<std::sync::mpsc::Receiver<WatchedFsEvent>>,
     pub fs_overflow: Arc<AtomicBool>,
     pub watcher_window_start: Option<Instant>,
+    pub(crate) watcher_pending_events: Vec<WatchedFsEvent>,
+    pub(crate) bases_refresh_requested: bool,
     pub initial_load_done: bool,
     pub load_spinner_tick: usize,
-    pub backup_tx: Option<std::sync::mpsc::Sender<crate::backup::worker::BackupJob>>,
-    pub git_lock: Arc<Mutex<()>>,
-    pub backup_status: Arc<Mutex<Option<String>>>,
     pub config_mtime: Option<std::time::SystemTime>,
     pub goals_progress: crate::goals::DailyProgress,
     pub todo_state: crate::todo::TodoState,
@@ -545,8 +550,9 @@ impl App {
         Ok(Arc::new(pool))
     }
 
-    pub fn new(storage: Storage) -> Result<Self> {
+    pub fn new(mut storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
+        storage.frontmatter_policy = bootstrap_config.notes.frontmatter.clone();
         let notes_worker_pool = Self::build_notes_worker_pool()?;
         let config_errors = bootstrap_config.validate();
         let (keybinds, keybind_warnings) =
@@ -615,7 +621,6 @@ impl App {
             crate::config::ClinConfig::config_path().unwrap_or_default(),
         )?;
         let scoped_cache_path = app_paths.scoped_summary_cache_path(digest);
-        let legacy_cache_path = app_paths.summary_cache_path();
 
         let notes = load.summaries;
         let initial_complete = load.complete;
@@ -627,7 +632,6 @@ impl App {
             storage.clone(),
             notes_worker_pool.clone(),
             scoped_cache_path,
-            legacy_cache_path,
             digest,
             bootstrap_config.list.show_hidden_files,
             bootstrap_config.list.show_all_files,
@@ -653,6 +657,7 @@ impl App {
 
         let mut app = Self {
             storage: storage.clone(),
+            drafts: None,
             notes_worker_pool: notes_worker_pool.clone(),
             keybinds,
             seq_matcher: crate::keybinds::KeyMatcher::new(),
@@ -677,25 +682,29 @@ impl App {
             confirm_on_delete: bootstrap_config.core.confirm_on_delete,
             confirm_on_quit: bootstrap_config.core.confirm_on_quit,
             should_quit: false,
-            preview_encryption: bootstrap_config.list.preview_encryption,
             mouse_pos: None,
             mouse_enabled: bootstrap_config.core.mouse_enabled,
             date_format: bootstrap_config.list.date_format.clone(),
-            last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             config_errors,
             graph_plugin: None,
             draw_state: None,
             draw_clipboard: None,
-            backup_state: None,
             outline_state: None,
             setup_state: None,
             setup_rebootstrap: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
+            visit_return_mode: None,
+            #[cfg(test)]
+            palette_destination_failure: false,
             app_theme,
             canvas_state: None,
+            bases_state: None,
+            bases_worker: None,
+            base_embeds: crate::bases::embedding::Embeds::default(),
+            embedded_host_editor: None,
             config: bootstrap_config,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
@@ -719,9 +728,6 @@ impl App {
             subnotes_view_cache_sig: 0,
             initial_load_done: initial_complete,
             load_spinner_tick: 0,
-            backup_tx: None,
-            git_lock: Arc::new(Mutex::new(())),
-            backup_status: Arc::new(Mutex::new(None)),
             fs_event_rx: None,
             fs_overflow: Arc::new(AtomicBool::new(false)),
             watcher_window_start: None,
@@ -730,6 +736,8 @@ impl App {
             todo_state: crate::todo::TodoState::default(),
             draw_preview: None,
             graph_preview: None,
+            watcher_pending_events: Vec::new(),
+            bases_refresh_requested: false,
             graph_preview_sig: 0,
             graph_preview_steps: 0,
             preview_wrap,
@@ -799,11 +807,13 @@ impl App {
         {
             app.ensure_graph_preview();
         }
+        app.restore_editor_draft();
         Ok(app)
     }
 
-    pub fn new_deferred(storage: Storage) -> Result<Self> {
+    pub fn new_deferred(mut storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
+        storage.frontmatter_policy = bootstrap_config.notes.frontmatter.clone();
         let config_errors = bootstrap_config.validate();
         let notes_worker_pool = Self::build_notes_worker_pool().unwrap_or_else(|_| {
             Arc::new(
@@ -878,10 +888,6 @@ impl App {
             .as_ref()
             .map(|p| p.scoped_summary_cache_path(digest))
             .unwrap_or_default();
-        let legacy_cache_path = app_paths
-            .as_ref()
-            .map(|p| p.summary_cache_path())
-            .unwrap_or_default();
 
         let (cached_summaries, cached_map, cached_folders) =
             crate::app::catalog::load_persisted_note_cache(
@@ -904,7 +910,6 @@ impl App {
             storage.clone(),
             notes_worker_pool.clone(),
             scoped_cache_path,
-            legacy_cache_path,
             digest,
             bootstrap_config.list.show_hidden_files,
             bootstrap_config.list.show_all_files,
@@ -927,6 +932,7 @@ impl App {
         let (message_tx, message_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             storage: storage.clone(),
+            drafts: None,
             keybinds,
             seq_matcher: crate::keybinds::KeyMatcher::new(),
             notes,
@@ -951,25 +957,29 @@ impl App {
             confirm_on_delete: bootstrap_config.core.confirm_on_delete,
             confirm_on_quit: bootstrap_config.core.confirm_on_quit,
             should_quit: false,
-            preview_encryption: bootstrap_config.list.preview_encryption,
             mouse_pos: None,
             mouse_enabled: bootstrap_config.core.mouse_enabled,
             date_format: bootstrap_config.list.date_format.clone(),
-            last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             config_errors,
             graph_plugin: None,
             draw_state: None,
             draw_clipboard: None,
-            backup_state: None,
             outline_state: None,
             setup_state: None,
             setup_rebootstrap: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
+            visit_return_mode: None,
+            #[cfg(test)]
+            palette_destination_failure: false,
             app_theme,
             canvas_state: None,
+            bases_state: None,
+            bases_worker: None,
+            base_embeds: crate::bases::embedding::Embeds::default(),
+            embedded_host_editor: None,
             config: bootstrap_config,
             catalog_cmd_tx: cmd_tx,
             catalog_event_rx: evt_rx,
@@ -993,9 +1003,6 @@ impl App {
             subnotes_view_cache_sig: 0,
             initial_load_done: false,
             load_spinner_tick: 0,
-            backup_tx: None,
-            git_lock: Arc::new(Mutex::new(())),
-            backup_status: Arc::new(Mutex::new(None)),
             fs_event_rx: None,
             fs_overflow: Arc::new(AtomicBool::new(false)),
             watcher_window_start: None,
@@ -1004,6 +1011,8 @@ impl App {
             todo_state: crate::todo::TodoState::default(),
             draw_preview: None,
             graph_preview: None,
+            watcher_pending_events: Vec::new(),
+            bases_refresh_requested: false,
             graph_preview_steps: 0,
             graph_preview_sig: 0,
             preview_wrap,
@@ -1076,6 +1085,7 @@ impl App {
         app.rebuild_note_index();
         app.sort_notes();
         app.refresh_visual_list();
+        app.restore_editor_draft();
         Ok(app)
     }
     pub fn reload_config(&mut self) {
@@ -1098,6 +1108,7 @@ impl App {
             self.messages
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
+        self.storage.frontmatter_policy = self.config.notes.frontmatter.clone();
         self.preview_wrap = self.config.core.preview_wrap;
         let mut theme_warnings = Vec::new();
         self.app_theme =
@@ -1698,10 +1709,13 @@ impl App {
                 if let Some(timer) = self.editor.autosave_timer
                     && now >= timer
                 {
-                    let _ = self.autosave();
-                    self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
-                    self.editor.last_saved_time = Some(std::time::Instant::now());
-                    self.editor.autosave_timer = None;
+                    if self.autosave().is_ok() {
+                        self.editor.autosave_status = crate::editor::AutosaveStatus::RecentlySaved;
+                        self.editor.last_saved_time = Some(std::time::Instant::now());
+                        self.editor.autosave_timer = None;
+                    } else {
+                        self.editor.autosave_timer = Some(now + std::time::Duration::from_secs(5));
+                    }
                     dirty = true;
                 }
             }
@@ -1718,69 +1732,188 @@ impl App {
         dirty
     }
 
-    pub fn write_draft(&mut self) {
-        if let Some(id) = &self.editor.editing_id
-            && !id.ends_with(".clin")
+    /// Save before an operation replaces the active editor document.
+    pub(crate) fn prepare_editor_transition(&mut self) -> bool {
+        if self.mode == ViewMode::Edit
+            && let Err(error) = self.autosave()
         {
-            let content = self.editor.body.lines().join("\n");
-            let title = crate::events::get_title_text(&self.editor.title_editor)
+            self.set_temporary_status(&error);
+            return false;
+        }
+        true
+    }
+
+    pub fn write_draft(&mut self) {
+        if self.editor.frontmatter_supported() {
+            if let Err(error) = self.queue_editor_draft() {
+                self.set_temporary_status(&format!("Editor recovery unavailable: {error:#}"));
+            }
+            return;
+        }
+        if let Some(baseline) = self.editor.public_document.clone() {
+            if let Some(source) = self.editor.public_document_source() {
+                self.queue_draft(baseline, source);
+            }
+            return;
+        }
+        let Some(id) = self.editor.editing_id.clone() else {
+            return;
+        };
+        if self.editor.template_edit_path.is_some() {
+            return;
+        }
+        let baseline = self
+            .editor
+            .note_baseline
+            .get_or_insert_with(|| crate::storage::documents::DocumentSnapshot::new(id.clone()))
+            .clone();
+        let note = Note {
+            baseline: Some(baseline.clone()),
+            title: crate::events::get_title_text(&self.editor.title_editor)
                 .trim()
-                .to_string();
-            let _ = self.storage.write_editor_draft(id, &title, &content);
+                .to_owned(),
+            content: self.editor.body.lines().join("\n"),
+            updated_at: now_unix_secs(),
+            tags: crate::frontmatter::parse(baseline.source()).0.tags,
+        };
+        let prepared = self.storage.note_target_id(&id, &note).and_then(|target| {
+            self.storage
+                .note_source(&target, &note)
+                .map(|source| (baseline.for_destination(target), source))
+        });
+        match prepared {
+            Ok((baseline, source)) => self.queue_draft(baseline, source),
+            Err(error) => {
+                self.set_temporary_status(&format!("Recovery draft unavailable: {error:#}"))
+            }
         }
     }
 
     pub fn autosave(&mut self) -> Result<(), String> {
+        let has_editor = self.editor.editing_id.is_some()
+            || self.editor.public_document.is_some()
+            || self.editor.template_edit_path.is_some();
+        let result = self.autosave_inner();
+        if let Err(error) = &result {
+            self.set_temporary_status(error);
+        }
+        if has_editor {
+            if result.is_ok() {
+                self.editor.autosave_status = AutosaveStatus::RecentlySaved;
+                self.editor.last_saved_time = Some(Instant::now());
+                self.editor.autosave_timer = None;
+            } else {
+                self.editor.autosave_status = AutosaveStatus::Unsaved;
+                self.editor.autosave_timer = Some(Instant::now() + Duration::from_secs(5));
+            }
+        }
+        result
+    }
+
+    fn autosave_inner(&mut self) -> Result<(), String> {
+        self.editor
+            .ensure_frontmatter()
+            .map_err(|error| format!("Frontmatter: {error:#}"))?;
+        if let Err(error) = self.flush_drafts() {
+            self.set_temporary_status(&format!("Recovery draft failed: {error:#}"));
+        }
+        if let Some(baseline) = self.editor.public_document.clone() {
+            let source = if self.editor.public_document_body_only {
+                self.prepare_editor_note_source()
+                    .map_err(|error| format!("Frontmatter: {error:#}"))?
+            } else {
+                self.editor.public_document_source().ok_or_else(|| {
+                    "Public document source cannot be serialized; original retained".to_owned()
+                })?
+            };
+            match self.storage.save_document(&baseline, &source) {
+                Ok(snapshot) => {
+                    let cleanup = self.clear_saved_draft(&snapshot);
+                    self.editor
+                        .adopt_frontmatter(snapshot.source())
+                        .map_err(|error| {
+                            format!("Saved; editor synchronization failed: {error:#}")
+                        })?;
+                    self.editor.public_document = Some(snapshot.clone());
+                    self.synchronize_public_change(&baseline, &snapshot);
+                    if self.editor.public_document_body_only {
+                        self.editor.public_document_title = Some(
+                            crate::events::get_title_text(&self.editor.title_editor).into_owned(),
+                        );
+                    }
+                    cleanup.map_err(|error| {
+                        format!("Document saved; draft cleanup failed: {error:#}")
+                    })?;
+                    self.request_notes_reconcile();
+                    return Ok(());
+                }
+                Err(error) => {
+                    let message = format!("Public document save failed: {error:#}");
+                    self.set_temporary_status(&message);
+                    return Err(message);
+                }
+            }
+        }
         let content = self.editor.body.lines().join("\n");
 
         if let Some(path) = &self.editor.template_edit_path
             && self.editor.editing_id.is_none()
         {
-            let mut path_to_write = path.clone();
-            let folder_config = crate::templates::is_folder_template_config(path);
-            if folder_config {
-                let validation = self
-                    .storage
-                    .check_folder_template_config_path(path)
-                    .and_then(|_| {
-                        crate::templates::FolderTemplateConfig::parse(&content).map(|_| ())
-                    });
-                if let Err(e) = validation {
-                    let err = format!("Folder template config save failed: {e:#}");
-                    self.set_temporary_status(&err);
-                    self.messages
-                        .push(err.clone(), crate::app::messages::MessageSeverity::Warning);
-                    return Err(err);
+            let path = path.clone();
+            let result = (|| -> anyhow::Result<()> {
+                let _guard = self.storage.write_guard()?;
+                let baseline = self.editor.template_source.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("template baseline missing; reopen before saving")
+                })?;
+                let current = std::fs::read_to_string(&path)?;
+                if &current != baseline {
+                    anyhow::bail!("template changed on disk; original retained");
                 }
-            } else if let Ok(template) = toml::from_str::<Template>(&content) {
-                let new_path = self.storage.template_path(&template.name);
-                if new_path != *path && !new_path.exists() {
-                    if let Err(e) = std::fs::rename(path, &new_path) {
-                        let err = format!("Failed to rename template: {e}");
-                        self.set_temporary_status(&err);
-                        self.messages
-                            .push(err.clone(), crate::app::messages::MessageSeverity::Warning);
-                        return Err(err);
-                    } else {
-                        path_to_write = new_path;
-                        self.editor.template_edit_path = Some(path_to_write.clone());
+                if current.replace("\r\n", "\n") == content {
+                    return Ok(());
+                }
+                let folder_config = crate::templates::is_folder_template_config(&path);
+                if folder_config {
+                    self.storage.check_folder_template_config_path(&path)?;
+                    crate::templates::FolderTemplateConfig::parse(&content)?;
+                }
+                let destination = if folder_config {
+                    path.clone()
+                } else {
+                    toml::from_str::<Template>(&content).map_or_else(
+                        |_| path.clone(),
+                        |template| self.storage.template_path(&template.name),
+                    )
+                };
+                if destination == path {
+                    crate::fsutil::atomic_write_preserving_permissions(&path, content.as_bytes())?;
+                } else {
+                    if std::fs::metadata(&path)?.permissions().readonly() {
+                        anyhow::bail!("template is read-only");
+                    }
+                    crate::fsutil::atomic_create_preserving_permissions(
+                        &destination,
+                        &path,
+                        content.as_bytes(),
+                    )?;
+                    if let Err(error) = std::fs::remove_file(&path) {
+                        let _ = std::fs::remove_file(&destination);
+                        return Err(error.into());
                     }
                 }
-            }
-
-            if let Err(e) = crate::fsutil::atomic_write_str(&path_to_write, &content) {
-                let kind = if folder_config {
-                    "Folder template config"
-                } else {
-                    "Template"
-                };
-                let err = format!("{kind} save failed: {e}");
-                self.set_temporary_status(&err);
-                self.messages
-                    .push(err.clone(), crate::app::messages::MessageSeverity::Warning);
-                return Err(err);
-            }
-            return Ok(());
+                self.editor.template_edit_path = Some(destination);
+                self.editor.template_source = Some(content);
+                Ok(())
+            })();
+            return result.map_err(|error| {
+                let message = format!("Template save failed: {error:#}");
+                self.set_temporary_status(&message);
+                self.messages.push(
+                    message.clone(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+                message
+            });
         }
 
         let mut title = crate::events::get_title_text(&self.editor.title_editor)
@@ -1794,8 +1927,12 @@ impl App {
             None => return Ok(()),
         };
 
-        if id.ends_with(".clin") {
-            return Ok(());
+        if std::path::Path::new(&id)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("clin"))
+        {
+            return Err("Legacy encrypted notes are read-only; use the previous release".into());
         }
 
         let (updated_at, tags) = self
@@ -1805,15 +1942,35 @@ impl App {
             .unwrap_or_else(|_| (now_unix_secs(), Vec::new()));
 
         let note = Note {
+            baseline: self.editor.note_baseline.clone(),
             title,
             content,
             updated_at,
             tags,
         };
-        match self.storage.save_note(&id, &note) {
-            Ok(saved_id) => {
+        let prepared = (|| -> anyhow::Result<_> {
+            let target = self.storage.note_target_id(&id, &note)?;
+            let source = self.prepare_editor_note_source()?;
+            let baseline = self
+                .editor
+                .note_baseline
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("missing note baseline"))?;
+            let saved = if baseline.exists() {
+                self.storage.save_document(baseline, &source)?
+            } else {
+                self.storage.create_document(&target, &source)?
+            };
+            Ok(saved.retain_recovery_id(baseline))
+        })();
+        match prepared {
+            Ok(snapshot) => {
+                let saved_id = snapshot.id().to_owned();
                 self.editor.editing_id = Some(saved_id.clone());
-                self.enqueue_backup(format!("auto: {}", note.title));
+                self.editor
+                    .adopt_frontmatter(snapshot.source())
+                    .map_err(|error| format!("Saved; editor synchronization failed: {error:#}"))?;
+                self.editor.note_baseline = Some(snapshot.clone());
 
                 let current_words = crate::goals::count_words(&note.content);
                 let mut diff = 0;
@@ -1838,7 +1995,9 @@ impl App {
                 if let Err(error) = self.save_goals_progress(&progress) {
                     self.set_temporary_status(&format!("Failed to save local state: {error}"));
                 }
-                self.storage.delete_editor_draft();
+                self.request_notes_reconcile();
+                self.clear_saved_draft(&snapshot)
+                    .map_err(|error| format!("Note saved; draft cleanup failed: {error:#}"))?;
                 Ok(())
             }
             Err(e) => {
@@ -1936,10 +2095,16 @@ impl App {
             self.list.help_text_cache = None;
         }
         // Force SourceHighlighter to reinitialize with new theme.
-        // md_highlight_lines = 0 so stale → true, triggering cache rebuild.
         self.editor.source_highlighter = None;
         self.editor.md_highlight_memo.clear();
-        self.editor.md_highlight_lines = 0;
+        if let Some(editor) = &mut self.embedded_host_editor {
+            editor.source_highlighter = None;
+            editor.md_highlight_memo.clear();
+        }
+        if let Some(graph) = &mut self.graph_plugin {
+            graph.refresh_palette_theme(&self.app_theme);
+        }
+        self.sync_retained_view_settings();
     }
 
     pub fn default_status_text(&self) -> Cow<'static, str> {
@@ -2007,6 +2172,9 @@ pub(crate) fn strip_deleted_feature_keybinds(
     if features.canvas_view.is_deleted() {
         keybinds.canvas.clear();
     }
+    if features.bases_view.is_deleted() {
+        keybinds.bases.clear();
+    }
     if features.outline_view.is_deleted() {
         keybinds
             .edit
@@ -2026,9 +2194,6 @@ pub(crate) fn strip_deleted_feature_keybinds(
         keybinds
             .canvas
             .retain(|a, _| *a != crate::keybinds::CanvasAction::Help);
-        keybinds
-            .backup
-            .retain(|a, _| *a != crate::keybinds::BackupAction::Help);
         keybinds
             .outline
             .retain(|a, _| *a != crate::keybinds::OutlineAction::Help);
@@ -2063,9 +2228,6 @@ pub(crate) fn strip_deleted_feature_keybinds(
             *a != crate::keybinds::EditAction::PasteImage
                 && *a != crate::keybinds::EditAction::InsertImageFromFile
         });
-    }
-    if features.backup.is_deleted() {
-        keybinds.backup.clear();
     }
 }
 #[cfg(test)]
@@ -2104,9 +2266,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
@@ -2144,9 +2305,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2205,9 +2365,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2242,9 +2401,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.external_editor_enabled = false;
@@ -2315,9 +2473,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2369,7 +2526,7 @@ mod tests {
             b_summary.size_bytes
         );
 
-        // Rename case: change title, autosave renames the file
+        // Title edits preserve filename identity and incoming links.
         let old_id = b_id.clone();
         app.load_and_open_note(&old_id, None);
         app.editor.title_editor = TextArea::from(vec!["Note B Renamed".to_string()].into_iter());
@@ -2382,11 +2539,11 @@ mod tests {
             .expect("autosave should produce an id after rename");
         app.back_to_list(prev_id.as_deref(), new_id.as_deref());
 
-        // Old id should be gone, new id present, still 3 notes
-        assert!(
-            !app.notes.iter().any(|n| n.id == old_id),
-            "old note id should be removed after rename"
+        assert_eq!(
+            renamed_id, old_id,
+            "ordinary saves must keep filenames stable"
         );
+        assert!(app.notes.iter().any(|n| n.id == old_id));
         assert!(
             app.notes.iter().any(|n| n.id == renamed_id),
             "new note id should appear after rename"
@@ -2418,9 +2575,8 @@ mod tests {
             config_dir: config_dir.clone(),
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2457,9 +2613,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2544,9 +2699,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2586,9 +2740,8 @@ word_goal = 1200
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2625,9 +2778,8 @@ word_goal = 1200
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2656,28 +2808,14 @@ word_goal = 1200
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
         // 1. Initially mode is List, return_mode is None
         assert_eq!(app.mode, ViewMode::List);
         assert_eq!(app.return_mode, None);
-
-        // Backup view requires the backup feature flag.
-        app.config.features.backup = crate::config::FeatureState::Enabled;
-
-        // 2. Open Backup view first time
-        app.open_backup_view();
-        assert_eq!(app.mode, ViewMode::Backup);
-        assert_eq!(app.return_mode, Some(ViewMode::List));
-
-        // 3. Open Backup view a second time (e.g. from command palette while in Backup)
-        app.open_backup_view();
-        assert_eq!(app.mode, ViewMode::Backup);
-        assert_eq!(app.return_mode, Some(ViewMode::List)); // Should STILL be List, NOT Backup!
 
         // 4. Simulate exit back
         let prev_mode = app.return_mode.take().unwrap_or(ViewMode::List);
@@ -2703,9 +2841,8 @@ word_goal = 1200
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2770,9 +2907,8 @@ word_goal = 1200
             config_dir: config_dir.clone(),
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         // Write default config
         std::fs::write(&config_path, crate::config::merge::default_config_content())

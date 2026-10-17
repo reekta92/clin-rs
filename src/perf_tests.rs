@@ -26,9 +26,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         let lines = vec![
@@ -67,12 +66,7 @@ mod tests {
                 crate::ui::overlay_markdown_highlight(f, &mut app_a, f.area());
             })
             .unwrap();
-        let cache_a: Vec<Vec<ratatui::style::Style>> = app_a
-            .editor
-            .md_highlight_cache
-            .iter()
-            .map(|rc| rc.to_vec())
-            .collect();
+        let cache_a = terminal.backend().buffer().clone();
 
         // App B: same doc, fresh — should match A (memo path == full rebuild)
         let storage_b = Storage {
@@ -80,9 +74,8 @@ mod tests {
             config_dir: temp_dir.path().join("config_b"),
             notes_dir: temp_dir.path().join("notes_b"),
             templates_dir: temp_dir.path().join("templates_b"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(storage_b.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_b.config_dir.clone()).unwrap();
@@ -109,12 +102,7 @@ mod tests {
                 crate::ui::overlay_markdown_highlight(f, &mut app_b, f.area());
             })
             .unwrap();
-        let cache_b: Vec<Vec<ratatui::style::Style>> = app_b
-            .editor
-            .md_highlight_cache
-            .iter()
-            .map(|rc| rc.to_vec())
-            .collect();
+        let cache_b = terminal.backend().buffer().clone();
 
         assert_eq!(
             cache_a, cache_b,
@@ -146,6 +134,7 @@ mod tests {
             })
             .unwrap();
 
+        let cache_a2 = terminal.backend().buffer().clone();
         let mut edited_lines = lines;
         edited_lines[1].insert(10, 'x');
         let storage_c = Storage {
@@ -153,9 +142,8 @@ mod tests {
             config_dir: temp_dir.path().join("config_c"),
             notes_dir: temp_dir.path().join("notes_c"),
             templates_dir: temp_dir.path().join("templates_c"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(storage_c.data_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_c.config_dir.clone()).unwrap();
@@ -163,6 +151,10 @@ mod tests {
         std::fs::create_dir_all(storage_c.templates_dir.clone()).unwrap();
         let mut app_c = App::new(storage_c).expect("app c");
         app_c.editor.body = EditorDocument::from_lines(edited_lines);
+        app_c
+            .editor
+            .body
+            .move_cursor(ratatui_textarea::CursorMove::Jump(1, 11));
         app_c.editor.show_line_numbers = true;
         app_c.request_editor_preview_update();
         let backend = ratatui::backend::TestBackend::new(120, 20);
@@ -182,18 +174,7 @@ mod tests {
                 crate::ui::overlay_markdown_highlight(f, &mut app_c, f.area());
             })
             .unwrap();
-        let cache_c: Vec<Vec<ratatui::style::Style>> = app_c
-            .editor
-            .md_highlight_cache
-            .iter()
-            .map(|rc| rc.to_vec())
-            .collect();
-        let cache_a2: Vec<Vec<ratatui::style::Style>> = app_a
-            .editor
-            .md_highlight_cache
-            .iter()
-            .map(|rc| rc.to_vec())
-            .collect();
+        let cache_c = terminal.backend().buffer().clone();
         assert_eq!(
             cache_a2, cache_c,
             "memo path must match full rebuild after edit"
@@ -224,9 +205,8 @@ mod tests {
             config_dir: dirs[1].clone(),
             notes_dir: dirs[2].clone(),
             templates_dir: dirs[3].clone(),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
         // Generate 5000-line synthetic markdown

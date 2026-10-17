@@ -303,6 +303,29 @@ impl Drop for GrafPlugin {
 }
 
 impl GrafPlugin {
+    pub(crate) fn refresh_palette_theme(&mut self, theme: &crate::app_theme::AppThemeColors) {
+        self.app_theme = theme.clone();
+        self.preview_request_key = None;
+    }
+    pub(crate) fn palette_input_available(&self) -> bool {
+        let mouse = &self.graph_mouse_state;
+        self.search_popup.is_none()
+            && self.preview_drag_last_pos.is_none()
+            && !mouse.is_panning
+            && !mouse.is_middle_panning
+            && !mouse.is_minimap_dragging
+            && mouse.drag_origin.is_none()
+            && mouse.middle_drag_origin.is_none()
+            && self.graph_state.as_ref().is_some_and(|state| {
+                let state = state.read();
+                state.context_menu.is_none()
+                    && state.dragging_node.is_none()
+                    && state.connection_source.is_none()
+                    && state.deleting_connection_source.is_none()
+                    && state.right_down_pos.is_none()
+                    && state.marquee.start.is_none()
+            })
+    }
     pub fn new(
         config: &ClinConfig,
         storage: Storage,
@@ -546,12 +569,6 @@ impl GrafPlugin {
 
         let is_draw = key.note_id.ends_with(".draw");
         let is_canvas = key.note_id.ends_with(".canvas");
-        let is_clin = key.note_id.ends_with(".clin");
-
-        if config.list.preview_encryption && is_clin {
-            self.preview_content = None;
-            return;
-        }
 
         if is_draw {
             let path = self.storage.note_path(&key.note_id);
@@ -1782,20 +1799,14 @@ fn draw_reload_notification(
 }
 
 fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafPlugin, config: &ClinConfig) {
-    let hide_encrypted = config.list.preview_encryption
-        && state
-            .preview_note_id
-            .as_ref()
-            .is_some_and(|id| id.ends_with(".clin"));
-
     crate::preview::draw_preview_pane(
         frame,
         preview_rect,
         &state.app_theme,
         state.preview_content.as_ref(),
-        hide_encrypted,
         0,
         config,
+        None,
     );
 }
 

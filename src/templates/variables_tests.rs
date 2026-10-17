@@ -11,9 +11,8 @@ fn storage(root: &Path) -> Storage {
         config_dir: root.join(".clin"),
         notes_dir: root.to_path_buf(),
         templates_dir: root.join(".clin/templates"),
-        key: rand::random(),
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
+        frontmatter_policy: crate::frontmatter::WritePolicy::default(),
     }
 }
 
@@ -252,7 +251,6 @@ pub(super) fn app(root: &Path) -> App {
     let mut app = App::new(storage(root)).unwrap();
     app.editor.external_editor_enabled = false;
     app.config.features.templates = FeatureState::Enabled;
-    app.config.features.backup = FeatureState::Disabled;
     app.mode = ViewMode::List;
     app.list.notes_layout = NotesLayout::Grid;
     app

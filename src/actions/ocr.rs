@@ -173,6 +173,7 @@ impl Action for PasteImageAction {
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        ensure_image_owner(app)?;
         // Get image from clipboard
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
@@ -196,7 +197,7 @@ impl Action for PasteImageAction {
         let rel_path = app
             .storage
             .import_attachment(&temp_path, &app.config.image.attachments_subdir)?;
-        insert_image_reference(app, &rel_path);
+        insert_image_reference(app, &rel_path)?;
         Ok(())
     }
 }
@@ -226,30 +227,49 @@ impl Action for InsertImageFromFileAction {
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        ensure_image_owner(app)?;
         let picked = crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp")?;
         if let Some(path_str) = picked {
             let src = std::path::Path::new(&path_str);
             let rel_path = app
                 .storage
                 .import_attachment(src, &app.config.image.attachments_subdir)?;
-            insert_image_reference(app, &rel_path);
+            insert_image_reference(app, &rel_path)?;
         }
         Ok(())
     }
 }
 
 /// Shared helper: insert an attachment reference into the currently active view.
-fn insert_image_reference(app: &mut App, rel_path: &str) {
+fn ensure_image_owner(app: &App) -> Result<()> {
+    let context = super::ActionContext::capture(app, None, None);
+    anyhow::ensure!(
+        context.markdown_editor(app)
+            || (app.mode == crate::app::ViewMode::Canvas
+                && app.canvas_state.as_ref().is_some_and(|s| !s.state.locked
+                    && s.state.path.is_file()
+                    && s.palette_input_available())),
+        "Image insertion requires an active Markdown editor or editable Canvas"
+    );
+    Ok(())
+}
+
+pub(crate) fn insert_image_reference(app: &mut App, rel_path: &str) -> Result<()> {
+    ensure_image_owner(app)?;
     match app.mode {
         crate::app::ViewMode::Edit => {
             // Insert `![](path)` at cursor in the editor body
             let ref_text = format!("![]({rel_path})");
             app.editor.body.insert_str(&ref_text);
+            app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+            app.editor.autosave_timer =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
             app.request_editor_preview_update();
         }
         crate::app::ViewMode::Canvas => {
             if let Some(plugin) = &mut app.canvas_state {
                 let state = &mut plugin.state;
+                state.record_undo_state();
                 let (cx, cy) = (state.viewport_x, state.viewport_y);
                 let id = format!(
                     "img_{}",
@@ -273,7 +293,10 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
                         title: None,
                         color: None,
                     }));
-                let _ = state.save();
+                state.sync_to_raw_editor();
+                state
+                    .save()
+                    .context("Image inserted in Canvas; save failed, live node retained")?;
             }
         }
         crate::app::ViewMode::Draw => {
@@ -283,4 +306,5 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
             app.set_temporary_status("Image pasting not supported in this view");
         }
     }
+    Ok(())
 }

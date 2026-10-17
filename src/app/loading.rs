@@ -897,6 +897,48 @@ impl App {
     /// the editor's input-to-draw path.
     pub(crate) fn poll_editor_renderers(&mut self) -> bool {
         let mut updated = false;
+        let host_revision = self.editor.live_note_revision();
+        let needs_source = [
+            &self.editor.md_preview_renderer,
+            &self.editor.bases_sidebar_renderer,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|renderer| {
+            renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(revision, _)| *revision != host_revision)
+        });
+        let host_source = needs_source
+            .then(|| self.editor.live_note_source())
+            .flatten()
+            .map(std::sync::Arc::<str>::from);
+        if self.editor.sidebar == crate::editor::EditSidebar::Bases
+            && let Some(renderer) = &mut self.editor.bases_sidebar_renderer
+        {
+            let revision = host_revision;
+            if renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(old, _)| *old != revision)
+            {
+                renderer.base_host_source = host_source.clone().map(|source| (revision, source));
+                renderer.base_body_only = false;
+                updated = true;
+            }
+            updated |= renderer.poll();
+        }
+        if let Some(renderer) = &mut self.editor.md_preview_renderer
+            && renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(old, _)| *old != host_revision)
+        {
+            renderer.base_host_source = host_source.map(|source| (host_revision, source));
+            renderer.base_body_only = false;
+            updated = true;
+        }
         if let Some((_, instant)) = self.editor.pending_markdown_resize
             && instant.elapsed() >= Duration::from_millis(50)
         {
@@ -1282,7 +1324,6 @@ impl App {
                 let is_draw = *is_draw;
                 let is_canvas = *is_canvas;
                 let id = &self.notes[summary_idx].id;
-                let is_clin = id.ends_with(".clin");
                 if !self.config.features.file_view_enabled(id) {
                     self.list.preview_content = None;
                     self.list.preview_content_width = None;
@@ -1292,11 +1333,6 @@ impl App {
                     self.list.preview_content_offset_y = None;
                     self.list.preview_content_index = Some(self.list.visual_index);
                     self.list.pending_markdown_resize = None;
-                    return;
-                }
-                if self.preview_encryption && is_clin {
-                    self.list.preview_content = None;
-                    self.list.preview_content_index = Some(self.list.visual_index);
                     return;
                 }
 
@@ -1453,6 +1489,7 @@ impl App {
                         Some(PreviewContent::Markdown(r)) => *r,
                         _ => MarkdownRenderer::new(),
                     };
+                    renderer.base_host = Some(id.clone());
                     let opts = crate::markdown::MdRenderOpts::from_config(&self.config, Some(id));
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
@@ -1461,8 +1498,12 @@ impl App {
                         height: height as usize,
                     };
 
-                    let content_changed =
-                        renderer.is_changed(&note.content, &self.app_theme, &opts);
+                    let content = if id.ends_with(".base") {
+                        format!("![[{id}]]")
+                    } else {
+                        note.content
+                    };
+                    let content_changed = renderer.is_changed(&content, &self.app_theme, &opts);
                     let mut should_render = false;
                     if content_changed || renderer.document().is_none() {
                         should_render = true;
@@ -1484,13 +1525,7 @@ impl App {
                     }
 
                     if should_render {
-                        renderer.render_with(
-                            &note.content,
-                            width,
-                            &self.app_theme,
-                            &opts,
-                            viewport,
-                        );
+                        renderer.render_with(&content, width, &self.app_theme, &opts, viewport);
                         self.list.preview_content_width = Some(width);
                         self.list.pending_markdown_resize = None;
                     }
@@ -1645,6 +1680,7 @@ impl App {
                     Some(PreviewContent::Markdown(r)) => *r,
                     _ => MarkdownRenderer::new(),
                 };
+                renderer.base_host = None;
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
@@ -1706,6 +1742,7 @@ impl App {
                     Some(PreviewContent::Markdown(r)) => *r,
                     _ => MarkdownRenderer::new(),
                 };
+                renderer.base_host = None;
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
@@ -1769,8 +1806,10 @@ impl App {
                         Some(PreviewContent::Markdown(r)) => *r,
                         _ => MarkdownRenderer::new(),
                     };
-                    let opts =
+                    renderer.base_host = Some(".virtual/subnote.clin".into());
+                    let mut opts =
                         crate::markdown::MdRenderOpts::from_config(&self.config, Some(parent_id));
+                    opts.render_bases = false;
                     let md = format!("# {}\n\n{}", sub.title, sub.content);
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
@@ -1886,6 +1925,15 @@ impl App {
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
+        if self
+            .editor
+            .public_document
+            .as_ref()
+            .is_some_and(|document| !document.id().ends_with(".md"))
+        {
+            self.editor.md_preview_renderer = None;
+            return;
+        }
         if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }
@@ -1893,6 +1941,12 @@ impl App {
         let content = self.editor.body.snapshot();
         let width = self.desired_editor_preview_width();
         let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
+        renderer.base_host.clone_from(&self.editor.editing_id);
+        renderer.base_host_source = self
+            .editor
+            .live_note_source()
+            .map(|source| (self.editor.live_note_revision(), source.into()));
+        renderer.base_body_only = false;
         let mut opts = crate::markdown::MdRenderOpts::from_config(
             &self.config,
             self.editor.editing_id.as_deref(),
@@ -1966,9 +2020,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (temp_dir, App::new(storage).unwrap())
     }

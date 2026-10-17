@@ -86,6 +86,8 @@ pub struct PreviewHeaderInfo {
 }
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
+    app.refresh_command_palette();
+    app.base_embeds.begin_frame();
     // Suppress background element hover when a popup is active
     let popup_hover_pos = app.mouse_pos;
     if app.popups.active.is_some() || app.command_palette.is_some() || app.popups.confirm.is_some()
@@ -276,29 +278,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 app.canvas_state = Some(canvas);
             }
         }
-        ViewMode::Backup => {
-            if let Some(mut backup) = app.backup_state.take() {
-                let outer = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(frame.area());
-                // Backup uses a custom header render instead of the standard title bar
-                crate::backup::render::draw_header(
-                    frame,
-                    outer[0],
-                    &app.config,
-                    Some(app.status.as_ref()),
-                    &app.storage.data_dir,
-                    &app.date_format,
-                    &backup,
-                    app.config.ui.icon_mode,
-                    app.mouse_pos,
-                );
-                backup.mouse_pos = app.mouse_pos;
-                backup.overlay_render(frame, outer[1], app);
-                app.backup_state = Some(backup);
+        ViewMode::Bases => {
+            if let Some(mut bases) = app.bases_state.take() {
+                bases.overlay_render(frame, frame.area(), app);
+                app.bases_state = Some(bases);
             }
         }
+
         ViewMode::Outline => {
             if let Some(mut tree) = app.outline_state.take() {
                 let outer = Layout::default()
@@ -338,6 +324,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Restore mouse_pos for popup hover detection
     app.mouse_pos = popup_hover_pos;
 
+    app.base_embeds.draw_popup(frame, app);
     crate::ui::quick_keybinds::draw_quick_keybinds(frame, app);
     if app.messages.is_active() {
         crate::ui::message_overlay::draw_message_overlay(frame, app, &app.app_theme, frame.area());
@@ -761,81 +748,160 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     } else {
         None
     };
-    // Command palette
-    if let Some(palette) = &mut app.command_palette {
+    let workflow_bar = app
+        .command_palette
+        .as_ref()
+        .map(|p| p.workflow_bar(app))
+        .unwrap_or_default();
+    // Command palette; separate Bases confirmations render in their original view.
+    if !app.palette_bases_dialog_open()
+        && let Some(palette) = &mut app.command_palette
+    {
         let area = frame.area();
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "COMMANDS",
-            PopupSize::Large,
-            PopupHints::Keybinds(&[
+        let mut hints = if palette.workflow.is_none() {
+            vec![
                 ("Tab".to_string(), "category"),
                 ("Enter".to_string(), "run"),
                 ("↑/↓".to_string(), "select"),
                 ("Esc".to_string(), "close"),
-            ]),
+            ]
+        } else {
+            vec![
+                ("Enter".to_string(), "select/apply"),
+                ("↑/↓".to_string(), "move"),
+                ("Esc".to_string(), "back"),
+            ]
+        };
+        if let Some(crate::palette::workflows::Workflow::Theme(popup, _)) = &palette.workflow {
+            hints[0].1 = "apply";
+            hints.push(("Alt+B".to_string(), "bg"));
+            if !popup.setup_owned {
+                hints.push(("Alt+G".to_string(), "graph"));
+            }
+        }
+        let content = draw_popup_frame(
+            frame,
+            area,
+            palette.workflow_title(),
+            PopupSize::Large,
+            PopupHints::Keybinds(&hints),
             &app.app_theme,
         );
 
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3), // search input
-                Constraint::Length(1), // tab bar
-                Constraint::Min(0),    // results list
-            ])
-            .split(content);
+        let chunks = palette.content_areas(content, !workflow_bar.is_empty());
 
         palette.input.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.muted))
-                .title(""),
+                .title(if palette.is_value_input() {
+                    "Value"
+                } else if palette.workflow.is_some() {
+                    "Filter choices"
+                } else {
+                    ""
+                }),
         );
         frame.render_widget(&palette.input, chunks[0]);
 
-        let tabs: Vec<(&str, Option<&str>)> = p_tabs
-            .clone()
-            .expect("palette is some so p_tabs is some")
-            .iter()
-            .map(|(l, g, _)| (*l, Some(*g)))
-            .collect();
-        let hovered = app.mouse_pos.and_then(|(col, row)| {
-            if row == chunks[1].y {
-                crate::ui::hit_test_tabs(
-                    &tabs,
-                    chunks[1].x,
-                    chunks[1].width,
-                    chunks[1].x,
-                    col,
-                    app.config.ui.tab_icons_only,
-                    app.config.ui.icon_mode,
-                )
-            } else {
-                None
+        if palette.workflow.is_none() {
+            let tabs: Vec<(&str, Option<&str>)> = p_tabs
+                .clone()
+                .expect("palette is some so p_tabs is some")
+                .iter()
+                .map(|(l, g, _)| (*l, Some(*g)))
+                .collect();
+            let hovered = app.mouse_pos.and_then(|(col, row)| {
+                if row == chunks[1].y {
+                    crate::ui::hit_test_tabs(
+                        &tabs,
+                        chunks[1].x,
+                        chunks[1].width,
+                        chunks[1].x,
+                        col,
+                        app.config.ui.tab_icons_only,
+                        app.config.ui.icon_mode,
+                    )
+                } else {
+                    None
+                }
+            });
+            let tab_spans = build_tab_spans(
+                &tabs,
+                palette.active_tab,
+                hovered,
+                &app.app_theme,
+                app.config.ui.tab_icons_only,
+                app.config.ui.icon_mode,
+            );
+            let tabs_w = Paragraph::new(Line::from(tab_spans))
+                .alignment(Alignment::Center)
+                .style(app.app_theme.hint_line_bg_style());
+            frame.render_widget(tabs_w, chunks[1]);
+        } else if !workflow_bar.is_empty() {
+            let labels: Vec<_> = workflow_bar
+                .iter()
+                .map(|(line, _)| line.to_string())
+                .collect();
+            let tabs: Vec<_> = labels.iter().map(|label| (label.as_str(), None)).collect();
+            let hovered = app.mouse_pos.and_then(|(col, row)| {
+                (row == chunks[1].y)
+                    .then(|| {
+                        hit_test_tabs(
+                            &tabs,
+                            chunks[1].x,
+                            chunks[1].width,
+                            chunks[1].x,
+                            col,
+                            false,
+                            crate::config::IconMode::None,
+                        )
+                        .filter(|&i| workflow_bar[i].1.is_some())
+                    })
+                    .flatten()
+            });
+            let mut spans = Vec::new();
+            for (i, (line, _)) in workflow_bar.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::raw(" "));
+                }
+                let mut style = Style::default()
+                    .fg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD);
+                if hovered == Some(i) {
+                    style = style.patch(app.app_theme.hover_style());
+                }
+                spans.push(Span::styled(" ", style));
+                spans.extend(line.spans.iter().cloned().map(|mut span| {
+                    span.style = style.patch(span.style);
+                    span
+                }));
+                spans.push(Span::styled(" ", style));
             }
-        });
-        let tab_spans = build_tab_spans(
-            &tabs,
-            palette.active_tab,
-            hovered,
-            &app.app_theme,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
+            frame.render_widget(
+                Paragraph::new(Line::from(spans))
+                    .alignment(Alignment::Center)
+                    .style(app.app_theme.hint_line_bg_style()),
+                chunks[1],
+            );
+        }
+        frame.render_widget(
+            Paragraph::new(palette.workflow_hint()).style(Style::default().fg(
+                if palette.error.is_some() {
+                    app.app_theme.destructive
+                } else {
+                    app.app_theme.muted
+                },
+            )),
+            chunks[2],
         );
-        let tabs_w = Paragraph::new(Line::from(tab_spans))
-            .alignment(Alignment::Center)
-            .style(app.app_theme.hint_line_bg_style());
-        frame.render_widget(tabs_w, chunks[1]);
-
         let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
-            let inner_y = chunks[2].y + 1;
+            let inner_y = chunks[3].y + 1;
             if !palette.items.is_empty()
                 && row >= inner_y
-                && col > chunks[2].x
-                && col < chunks[2].x + chunks[2].width - 1
+                && col > chunks[3].x
+                && col < chunks[3].x + chunks[3].width - 1
             {
                 crate::ui::list_index_at(
                     row,
@@ -862,12 +928,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
                 let mut list_item = ListItem::new(vec![
                     Line::from(spans),
-                    Line::from(Span::styled(
-                        &item.description,
-                        Style::default().fg(app.app_theme.muted),
-                    )),
+                    palette.item_preview(item, &app.app_theme),
                 ]);
-                if Some(i) == hovered_cmd_idx {
+                if palette.state.selected() == Some(i) {
+                    list_item =
+                        list_item.style(app.app_theme.hover_style().add_modifier(Modifier::BOLD));
+                } else if Some(i) == hovered_cmd_idx {
                     list_item = list_item.style(app.app_theme.hover_style());
                 }
                 list_item
@@ -882,30 +948,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .border_style(Style::default().fg(app.app_theme.muted))
                     .title(""),
             )
-            .highlight_style(
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(Style::default())
             .highlight_symbol("  ");
 
-        frame.render_stateful_widget(list, chunks[2], &mut palette.state);
+        frame.render_stateful_widget(list, chunks[3], &mut palette.state);
         let content_len = palette.items.len();
         if content_len > 0 {
-            let viewport_len = ((chunks[2].height.saturating_sub(2)) / 2) as usize;
+            let viewport_len = ((chunks[3].height.saturating_sub(2)) / 2) as usize;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(chunks[2]),
+                track: crate::ui::scrollbar::track_rect(chunks[3]),
                 content_len,
                 viewport_len,
             };
             palette.last_scroll = Some(meta);
-            palette.last_results_area = Some(chunks[2]);
+            palette.last_results_area = Some(chunks[3]);
             if app.config.ui.scrollbars {
                 let pos = palette.state.selected().unwrap_or(0);
                 crate::ui::scrollbar::draw_scrollbar(
                     frame,
-                    chunks[2],
+                    chunks[3],
                     content_len,
                     viewport_len,
                     pos,
@@ -978,6 +1039,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::Draw => "NEW DRAWING",
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
+            crate::popups::NoteFormat::Base => "NEW BASES FILE",
         };
         draw_text_prompt_popup(
             frame,
@@ -1852,6 +1914,72 @@ pub(crate) fn render_editor_document_with_theme(
     );
 }
 
+/// Rewrap changed source lines rather than scanning the whole document per key.
+pub(crate) fn apply_editor_visual_change(
+    editor: &mut crate::editor::NoteEditor,
+    change: &crate::editor_document::DocumentChange,
+) {
+    use crate::editor_document::DocumentChange;
+    let DocumentChange::Lines { old, new } = change else {
+        editor.visual_row_cache.key = None;
+        return;
+    };
+    let Some((revision, width, numbers, mode, tabs)) = editor.visual_row_cache.key else {
+        return;
+    };
+    if revision == editor.body.revision() {
+        return;
+    }
+    let source = editor.body.lines();
+    let old_count = editor
+        .visual_row_cache
+        .rows
+        .last()
+        .map_or(0, |row| row.source_line + 1);
+    if old.start != new.start
+        || old.end > old_count
+        || new.end > source.len()
+        || old_count - old.len() + new.len() != source.len()
+        || mode != editor.body.textarea().wrap_mode()
+        || tabs != editor.body.textarea().tab_length()
+        || editor_wrap_width(width, old_count, numbers)
+            != editor_wrap_width(width, source.len(), numbers)
+    {
+        editor.visual_row_cache.key = None;
+        return;
+    }
+    let first = editor
+        .visual_row_cache
+        .rows
+        .partition_point(|row| row.source_line < old.start);
+    let last = editor
+        .visual_row_cache
+        .rows
+        .partition_point(|row| row.source_line < old.end);
+    let wrap_width = editor_wrap_width(width, source.len(), numbers);
+    let mut replacement = Vec::new();
+    for (offset, line) in source[new.clone()].iter().enumerate() {
+        for (start, end) in editor_line_ranges(line, mode, wrap_width, tabs) {
+            replacement.push(crate::editor::EditorVisualRow {
+                source_line: new.start + offset,
+                start_char: line[..start].chars().count(),
+                end_char: line[..end].chars().count(),
+            });
+        }
+    }
+    let suffix = first + replacement.len();
+    editor
+        .visual_row_cache
+        .rows
+        .splice(first..last, replacement);
+    if old.len() != new.len() {
+        for row in &mut editor.visual_row_cache.rows[suffix..] {
+            row.source_line = row.source_line - old.len() + new.len();
+        }
+    }
+    editor.visual_row_cache.key = Some((editor.body.revision(), width, numbers, mode, tabs));
+}
+
 pub(crate) fn ensure_editor_visual_rows(
     editor: &mut crate::editor::NoteEditor,
     inner_width: u16,
@@ -2400,16 +2528,7 @@ pub(crate) fn editor_visual_rows(
     line_numbers: bool,
     tab_len: u8,
 ) -> Vec<crate::editor::EditorVisualRow> {
-    let reserved = if line_numbers {
-        lines.len().max(1).to_string().len() + 2
-    } else {
-        0
-    };
-    let width = if usize::from(total_width) > reserved {
-        usize::from(total_width) - reserved
-    } else {
-        1
-    };
+    let width = editor_wrap_width(total_width, lines.len(), line_numbers);
     let mut rows = Vec::new();
     for (source_line, line) in lines.iter().enumerate() {
         for (start_byte, end_byte) in editor_line_ranges(line, mode, width, tab_len) {
@@ -2422,6 +2541,18 @@ pub(crate) fn editor_visual_rows(
     }
     rows
 }
+
+fn editor_wrap_width(total_width: u16, line_count: usize, line_numbers: bool) -> usize {
+    let reserved = if line_numbers {
+        line_count.max(1).to_string().len() + 2
+    } else {
+        0
+    };
+    usize::from(total_width).saturating_sub(reserved).max(1)
+}
+
+#[cfg(test)]
+mod visual_row_cache_tests;
 
 fn editor_line_ranges(
     line: &str,
@@ -2575,171 +2706,95 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
     let wrap_mode = app.editor.body.textarea().wrap_mode();
     let tab_len = app.editor.body.textarea().tab_length();
 
-    {
-        let e = &mut app.editor;
-        let full_doc: &[String] = e.body.lines();
-        let capacity = usize::from(inner.height).saturating_mul(8).clamp(256, 2048);
-        if e.md_highlight_memo.cap().get() != capacity {
-            e.md_highlight_memo
-                .resize(std::num::NonZeroUsize::new(capacity).expect("clamped capacity"));
-        }
-        let stale =
-            e.md_highlight_lines != full_doc.len() || e.md_highlight_change != e.last_editor_change;
-        if stale {
-            e.md_highlight_memo.clear();
-            let highlighter_missing = e.source_highlighter.is_none();
-            let hl = e.source_highlighter.get_or_insert_with(|| {
-                crate::markdown::SourceHighlighter::new(
-                    &app.app_theme,
-                    app.config.editor.ghost_syntax,
-                    app.config.editor.extended_markdown_features,
-                )
-            });
-            if highlighter_missing {
-                hl.rescan(full_doc);
-            }
-            let mut cache = Vec::with_capacity(full_doc.len());
-            for (index, line) in full_doc.iter().enumerate() {
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                line.hash(&mut hasher);
-                let key = (hasher.finish(), hl.is_code_line(index));
-                let styles = match e.md_highlight_memo.get(&key) {
-                    Some(rc) => rc.clone(),
-                    None => {
-                        let rc: std::rc::Rc<[ratatui::style::Style]> =
-                            hl.highlight_line(line, index, is_todo_txt).into();
-                        e.md_highlight_memo.put(key, rc.clone());
-                        rc
-                    }
-                };
-                cache.push(styles);
-            }
-            e.md_highlight_cache = cache;
-            e.md_highlight_lines = full_doc.len();
-            e.md_highlight_change = e.last_editor_change;
-        }
-
-        if wrap_mode != ratatui_textarea::WrapMode::None {
-            ensure_editor_visual_rows(e, inner.width, show_ln);
+    let e = &mut app.editor;
+    if let Some(change) = e.body.take_change() {
+        apply_editor_visual_change(e, &change);
+        if let Some(hl) = &mut e.source_highlighter {
+            hl.apply_change(&e.body, change);
         }
     }
-
+    if e.source_highlighter.as_ref().is_none_or(|hl| {
+        !hl.matches_settings(
+            &app.app_theme,
+            app.config.editor.ghost_syntax,
+            app.config.editor.extended_markdown_features,
+        )
+    }) {
+        let mut hl = crate::markdown::SourceHighlighter::new(
+            &app.app_theme,
+            app.config.editor.ghost_syntax,
+            app.config.editor.extended_markdown_features,
+        );
+        hl.rescan(e.body.lines());
+        e.source_highlighter = Some(hl);
+        e.md_highlight_memo.clear();
+    }
+    let capacity = usize::from(inner.height).saturating_mul(8).clamp(256, 2048);
+    if e.md_highlight_memo.cap().get() != capacity {
+        e.md_highlight_memo
+            .resize(std::num::NonZeroUsize::new(capacity).expect("clamped capacity"));
+    }
+    if wrap_mode != WrapMode::None {
+        ensure_editor_visual_rows(e, inner.width, show_ln);
+    }
     if inner.width == 0 || inner.height == 0 {
         return;
     }
-    let content_left = inner.left().saturating_add(gutter);
+    let horizontal_scroll = if wrap_mode == WrapMode::None {
+        usize::from(e.body_viewport_col)
+    } else {
+        0
+    };
+    let content_left = inner
+        .left()
+        .saturating_add(gutter.saturating_sub(horizontal_scroll as u16));
     if content_left >= inner.right() {
         return;
     }
     let base_bg = app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset);
-
-    if wrap_mode != WrapMode::None {
-        let visible_start = usize::from(app.editor.body_viewport_row);
-        let rows = &app.editor.visual_row_cache.rows;
-        if visible_start >= rows.len() {
-            return;
-        }
-        let lines = app.editor.body.lines();
-        let cache = &app.editor.md_highlight_cache;
-        let buf = frame.buffer_mut();
-        for (offset, row) in rows[visible_start..]
-            .iter()
-            .take(usize::from(inner.height))
-            .enumerate()
-        {
-            let Some(line) = lines.get(row.source_line) else {
-                continue;
-            };
-            let styles = cache
-                .get(row.source_line)
-                .map_or(&[][..], std::rc::Rc::as_ref);
-            apply_visual_row_highlight(
-                buf,
-                inner.top().saturating_add(offset as u16),
-                content_left,
-                inner.right(),
-                line,
-                row.start_char,
-                row.end_char,
-                styles,
-                tab_len,
-                base_bg,
-            );
-        }
-        return;
-    }
-
+    let visible_start = usize::from(e.body_viewport_row);
+    let hl = e
+        .source_highlighter
+        .as_mut()
+        .expect("initialized highlighter");
     let buf = frame.buffer_mut();
-    if show_ln {
-        let cache = &app.editor.md_highlight_cache;
-        let mut source_idx: Option<usize> = None;
-        let mut rows_for_line: Vec<(u16, u16, u16)> = Vec::new();
-        for y in inner.top()..inner.bottom() {
-            let gutter_text: String = (inner.x..content_left)
-                .filter_map(|x| buf.cell((x, y)).map(|cell| cell.symbol()))
-                .collect();
-            let trimmed_gutter = gutter_text.trim();
-            if trimmed_gutter.is_empty() {
-                if source_idx.is_some() {
-                    if let Some(last) = rows_for_line.last_mut() {
-                        last.2 = inner.right();
-                    } else {
-                        rows_for_line.push((y, content_left, inner.right()));
-                    }
-                }
-            } else if let Ok(number) = trimmed_gutter.parse::<usize>() {
-                if let Some(source_line) = source_idx {
-                    let styles = cache.get(source_line).map_or(&[][..], std::rc::Rc::as_ref);
-                    apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
-                }
-                source_idx = Some(number.saturating_sub(1));
-                rows_for_line = vec![(y, content_left, inner.right())];
+    for offset in 0..usize::from(inner.height) {
+        let row = if wrap_mode == WrapMode::None {
+            let source_line = visible_start + offset;
+            let Some(line) = e.body.lines().get(source_line) else {
+                break;
+            };
+            crate::editor::EditorVisualRow {
+                source_line,
+                start_char: 0,
+                end_char: line.chars().count(),
             }
-        }
-        if let Some(source_line) = source_idx {
-            let styles = cache.get(source_line).map_or(&[][..], std::rc::Rc::as_ref);
-            apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
-        }
-    } else {
-        let e = &mut app.editor;
-        let full_doc: &[String] = e.body.lines();
-        let hl = e.source_highlighter.get_or_insert_with(|| {
-            crate::markdown::SourceHighlighter::new(
-                &app.app_theme,
-                app.config.editor.ghost_syntax,
-                app.config.editor.extended_markdown_features,
-            )
+        } else {
+            let Some(row) = e.visual_row_cache.rows.get(visible_start + offset) else {
+                break;
+            };
+            *row
+        };
+        let Some(line) = e.body.lines().get(row.source_line) else {
+            continue;
+        };
+        let key = (line.clone(), hl.is_code_line(row.source_line), is_todo_txt);
+        let styles = e.md_highlight_memo.get_or_insert(key, || {
+            hl.highlight_line(line, row.source_line, is_todo_txt).into()
         });
-        hl.rescan(full_doc);
-        for y in inner.top()..inner.bottom() {
-            let displayed: String = (content_left..inner.right())
-                .filter_map(|x| buf.cell((x, y)).map(|cell| cell.symbol()))
-                .collect();
-            if displayed.is_empty() {
-                continue;
-            }
-            let styles = hl.highlight_line(&displayed, 0, is_todo_txt);
-            let mut char_index = 0;
-            for x in content_left..inner.right() {
-                if char_index >= styles.len() {
-                    break;
-                }
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    if cell.symbol().is_empty() {
-                        continue;
-                    }
-                    if cell.modifier.contains(ratatui::style::Modifier::REVERSED)
-                        || cell.bg != base_bg
-                    {
-                        char_index += 1;
-                        continue;
-                    }
-                    cell.set_style(styles[char_index]);
-                    char_index += 1;
-                }
-            }
-        }
+        apply_visual_row_highlight(
+            buf,
+            inner.top().saturating_add(offset as u16),
+            content_left,
+            inner.right(),
+            line,
+            row.start_char,
+            row.end_char,
+            styles,
+            tab_len,
+            horizontal_scroll.saturating_sub(usize::from(gutter)),
+            base_bg,
+        );
     }
 }
 
@@ -2754,6 +2809,7 @@ fn apply_visual_row_highlight(
     end_char: usize,
     styles: &[ratatui::style::Style],
     tab_len: u8,
+    horizontal_scroll: usize,
     base_bg: ratatui::style::Color,
 ) {
     if start_char >= end_char || styles.is_empty() {
@@ -2781,7 +2837,10 @@ fn apply_visual_row_highlight(
         } else {
             ch.width().unwrap_or(0)
         };
-        for _ in 0..width {
+        for column in display_width..display_width + width {
+            if column < horizontal_scroll {
+                continue;
+            }
             if x >= x_end {
                 return;
             }
@@ -2794,38 +2853,6 @@ fn apply_visual_row_highlight(
             x = x.saturating_add(1);
         }
         display_width += width;
-    }
-}
-
-/// Apply precomputed highlight styles for a group of rows corresponding to one source line.
-fn apply_highlight_styles(
-    buf: &mut ratatui::prelude::Buffer,
-    rows: &[(u16, u16, u16)],
-    styles: &[ratatui::style::Style],
-    base_bg: ratatui::style::Color,
-) {
-    if styles.is_empty() {
-        return;
-    }
-    let mut src_cursor = 0usize;
-    for &(y, x_start, x_end) in rows {
-        for x in x_start..x_end {
-            let Some(cell) = buf.cell_mut((x, y)) else {
-                continue;
-            };
-            if cell.symbol().is_empty() {
-                continue;
-            }
-            if cell.modifier.contains(ratatui::style::Modifier::REVERSED) || cell.bg != base_bg {
-                src_cursor += 1;
-                continue;
-            }
-            if src_cursor >= styles.len() {
-                break;
-            }
-            cell.set_style(styles[src_cursor]);
-            src_cursor += 1;
-        }
     }
 }
 
@@ -2874,9 +2901,8 @@ mod markdown_highlight_tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 
@@ -3235,7 +3261,13 @@ mod markdown_highlight_tests {
                     break;
                 }
                 let source = &lines[row.source_line];
-                let styles = &app.editor.md_highlight_cache[row.source_line];
+                let mut highlighter = crate::markdown::SourceHighlighter::new(
+                    &app.app_theme,
+                    app.config.editor.ghost_syntax,
+                    app.config.editor.extended_markdown_features,
+                );
+                highlighter.rescan(&lines);
+                let styles = highlighter.highlight_line(source, row.source_line, false);
                 let mut x = gutter;
                 let mut display_width = 0;
                 for (offset, ch) in source
@@ -3272,6 +3304,87 @@ mod markdown_highlight_tests {
                     }
                     x = x.saturating_add(width as u16);
                     display_width += width;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn visible_highlight_cache_handles_fences_modes_settings_and_scroll() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let root = tempfile::tempdir().expect("tempdir");
+        let mut app = App::new(storage(root.path())).expect("app");
+        let mut lines: Vec<_> = (0..2_000)
+            .map(|row| format!("**界 e\u{301}**\tline {row}"))
+            .collect();
+        lines[0] = "```rust".into();
+        lines[100] = "```".into();
+        app.editor.body = EditorDocument::from_lines(lines);
+        let mut terminal = Terminal::new(TestBackend::new(22, 8)).expect("terminal");
+        fn draw(app: &mut App, terminal: &mut Terminal<TestBackend>) -> ratatui::buffer::Buffer {
+            terminal
+                .draw(|frame| {
+                    edit_view::render_editor_widget(
+                        frame,
+                        app,
+                        EditFocus::Body,
+                        frame.area(),
+                        Some(Block::default()),
+                        None,
+                    );
+                    overlay_markdown_highlight(frame, app, frame.area());
+                })
+                .expect("draw");
+            terminal.backend().buffer().clone()
+        }
+        for wrap in [WrapMode::None, WrapMode::WordOrGlyph] {
+            app.editor.body.set_wrap_mode(wrap);
+            for numbers in [false, true] {
+                app.editor.show_line_numbers = numbers;
+                app.editor
+                    .body
+                    .move_cursor(ratatui_textarea::CursorMove::Jump(40, 0));
+                draw(&mut app, &mut terminal);
+                assert!(
+                    app.editor.md_highlight_memo.len() <= 24,
+                    "only visible lines get styles"
+                );
+                for step in 0..6 {
+                    match step {
+                        0 => {
+                            app.editor
+                                .body
+                                .move_cursor(ratatui_textarea::CursorMove::Top);
+                            app.editor.body.insert_str(" ");
+                        }
+                        1 => {
+                            app.config.editor.ghost_syntax = !app.config.editor.ghost_syntax;
+                        }
+                        2 => {
+                            app.config.editor.extended_markdown_features =
+                                !app.config.editor.extended_markdown_features;
+                        }
+                        3 => {
+                            app.app_theme.muted = Color::Red;
+                        }
+                        4 => {
+                            app.editor.editing_id = Some("todo.txt".into());
+                        }
+                        _ => {
+                            app.editor.editing_id = Some("note.md".into());
+                            app.editor.body.undo();
+                        }
+                    }
+                    app.editor
+                        .body
+                        .move_cursor(ratatui_textarea::CursorMove::Jump(45, 12));
+                    let cached = draw(&mut app, &mut terminal);
+                    app.editor.source_highlighter = None;
+                    let fresh = draw(&mut app, &mut terminal);
+                    assert_eq!(
+                        cached, fresh,
+                        "wrap={wrap:?}, numbers={numbers}, step={step}"
+                    );
                 }
             }
         }

@@ -5,7 +5,7 @@ impl App {
     /// Length of the active sidebar list (for bounds clamping).
     pub fn sidebar_len(&self) -> usize {
         match self.editor.sidebar {
-            EditSidebar::None => 0,
+            EditSidebar::None | EditSidebar::Bases => 0,
             EditSidebar::Outline => self.editor.outline_nodes.len(),
             EditSidebar::Links => self.editor.links.len(),
         }
@@ -19,7 +19,7 @@ impl App {
             match target {
                 EditSidebar::Outline => self.set_temporary_status_static("Outline pane disabled"),
                 EditSidebar::Links => self.set_temporary_status_static("Links pane disabled"),
-                EditSidebar::None => {}
+                EditSidebar::None | EditSidebar::Bases => {}
             }
         } else {
             self.editor.sidebar = target;
@@ -34,7 +34,7 @@ impl App {
                     self.editor.links = self.compute_links();
                     self.set_temporary_status_static("Links pane enabled");
                 }
-                EditSidebar::None => {}
+                EditSidebar::None | EditSidebar::Bases => {}
             }
             self.editor.sidebar_selected = 0;
             self.editor.sidebar_scroll_offset = 0;
@@ -47,6 +47,64 @@ impl App {
 
     pub fn toggle_links_pane(&mut self) {
         self.set_sidebar(EditSidebar::Links);
+    }
+
+    pub fn toggle_bases_pane(&mut self) {
+        if self.editor.sidebar == EditSidebar::Bases {
+            self.editor.sidebar = EditSidebar::None;
+            return;
+        }
+        if !self.config.features.bases_view.is_enabled() {
+            self.set_temporary_status_static("Bases disabled");
+            return;
+        }
+        if self.editor.editing_id.as_deref().is_none_or(|id| {
+            id.to_ascii_lowercase().ends_with(".clin") || Self::is_virtual_path(id)
+        }) {
+            self.editor.bases_sidebar_renderer = None;
+            self.set_temporary_status_static("Bases sidebar requires a public containing file");
+            return;
+        }
+        let cursor = self.editor.body.cursor();
+        let target = self
+            .editor
+            .body
+            .lines()
+            .get(cursor.row)
+            .and_then(|line| wikilink_at_cursor(line, cursor.col));
+        let Some(target) = target.filter(|target| {
+            crate::bases::embedding::Definition::reference(&format!("![[{target}]]")).is_some()
+        }) else {
+            self.set_temporary_status_static(
+                "Place the cursor on a public .base link to open its sidebar",
+            );
+            return;
+        };
+        let mut renderer = crate::markdown::MarkdownRenderer::new();
+        renderer.base_host.clone_from(&self.editor.editing_id);
+        renderer.base_body_only =
+            self.editor.public_document.is_none() || self.editor.public_document_body_only;
+        renderer.base_body_only = false;
+        renderer.base_host_source = self
+            .editor
+            .live_note_source()
+            .map(|source| (self.editor.live_note_revision(), source.into()));
+        let opts = crate::markdown::MdRenderOpts::from_config(
+            &self.config,
+            self.editor.editing_id.as_deref(),
+        );
+        renderer.render_with(
+            &format!("![[{target}]]"),
+            40,
+            &self.app_theme,
+            &opts,
+            crate::markdown::RenderViewport {
+                start: 0,
+                height: 28,
+            },
+        );
+        self.editor.bases_sidebar_renderer = Some(renderer);
+        self.set_sidebar(EditSidebar::Bases);
     }
 
     /// Reparse the current note into header-only outline_nodes.
@@ -67,6 +125,10 @@ impl App {
 
     /// Outgoing/Forward links AND Incoming/Backlinks.
     pub fn compute_links(&self) -> Vec<LinkItem> {
+        // Source handoff must not reuse catalog resolution that can include encrypted notes.
+        if self.editor.public_document.is_some() {
+            return Vec::new();
+        }
         let mut items = Vec::new();
 
         // 1. Outgoing/Forward links
@@ -150,14 +212,16 @@ impl App {
             }
             EditSidebar::Links => {
                 if let Some(item) = self.editor.links.get(self.editor.sidebar_selected).cloned() {
-                    let _ = self.autosave();
+                    if self.autosave().is_err() {
+                        return false;
+                    }
                     self.open_note_at_line(&item.id, None);
                     true
                 } else {
                     false
                 }
             }
-            EditSidebar::None => false,
+            EditSidebar::None | EditSidebar::Bases => false,
         }
     }
 }
@@ -249,6 +313,7 @@ impl App {
                 start: 0,
                 height: 20,
             };
+            renderer.base_host.clone_from(&id);
             renderer.render_with(&content, width, &self.app_theme, &opts, viewport);
             self.editor.link_preview_renderer = Some(renderer);
             self.editor.link_preview_error = None;

@@ -26,6 +26,7 @@ pub(crate) struct MdRenderOpts {
     pub syntax_hl: bool,
     pub wrap: bool,
     pub render_mermaid: bool,
+    pub render_bases: bool,
     pub icon_mode: crate::config::IconMode,
     pub code_theme: String,
     pub code_line_numbers: bool,
@@ -40,6 +41,7 @@ impl Default for MdRenderOpts {
             syntax_hl: true,
             wrap: true,
             render_mermaid: true,
+            render_bases: true,
             icon_mode: crate::config::IconMode::default(),
             code_theme: crate::markdown::default_code_theme().to_string(),
             code_line_numbers: true,
@@ -57,6 +59,11 @@ impl MdRenderOpts {
             syntax_hl: config.core.syntax_highlighting,
             wrap: config.core.preview_wrap,
             render_mermaid: true,
+            render_bases: config.features.bases_view.is_enabled()
+                && id.is_some_and(|id| {
+                    !id.to_ascii_lowercase().ends_with(".clin")
+                        && !crate::app::App::is_virtual_path(id)
+                }),
             icon_mode: config.ui.icon_mode,
             code_theme: config.core.code_theme.clone(),
             code_line_numbers: config.core.code_line_numbers,
@@ -73,6 +80,11 @@ enum DocumentState {
 }
 
 pub struct MarkdownRenderer {
+    pub(crate) base_canvas_node: Option<String>,
+    pub(crate) base_host_source: Option<(u64, Arc<str>)>,
+    pub(crate) base_body_only: bool,
+    pub(crate) base_session: u64,
+    pub(crate) base_host: Option<String>,
     document: Option<DocumentState>,
     events: Option<mpsc::Receiver<RenderEvent>>,
     current_key: Option<RenderKey>,
@@ -116,6 +128,11 @@ impl Default for MarkdownRenderer {
 impl MarkdownRenderer {
     pub fn new() -> Self {
         Self {
+            base_canvas_node: None,
+            base_host_source: None,
+            base_body_only: true,
+            base_host: None,
+            base_session: rand::random(),
             document: None,
             events: None,
             current_key: None,
@@ -128,6 +145,12 @@ impl MarkdownRenderer {
             pending_source_anchor: None,
             pending: false,
         }
+    }
+
+    pub(crate) fn base_content(&self) -> Option<(u64, Arc<str>)> {
+        self.current_key
+            .as_ref()
+            .map(|key| (key.fingerprint, key.content.clone()))
     }
 
     pub(crate) fn render_with(
@@ -568,6 +591,11 @@ mod tests {
         };
 
         let mut renderer = MarkdownRenderer {
+            base_canvas_node: None,
+            base_host_source: None,
+            base_body_only: true,
+            base_host: None,
+            base_session: 1,
             document: Some(DocumentState::Working(RenderedDocument::new(vec![
                 base_line,
             ]))),
@@ -629,6 +657,11 @@ mod tests {
         };
 
         let mut renderer = MarkdownRenderer {
+            base_canvas_node: None,
+            base_host_source: None,
+            base_body_only: true,
+            base_host: None,
+            base_session: 1,
             document: Some(DocumentState::Working(RenderedDocument::new(vec![
                 base_line,
             ]))),
