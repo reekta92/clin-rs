@@ -865,6 +865,7 @@ template = """
                 } else {
                     crate::config::Background::Transparent
                 };
+                self.refresh_theme_from_config();
             }
         }
     }

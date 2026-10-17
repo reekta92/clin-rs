@@ -213,14 +213,13 @@ impl App {
             match &mut workflow {
                 Workflow::Vault(switcher) => {
                     if id == "add" {
-                        if let Some(row) = self.pick_and_add_vault()? {
-                            if !switcher
+                        if let Some(row) = self.pick_and_add_vault()?
+                            && !switcher
                                 .vaults
                                 .iter()
                                 .any(|old| same_vault(&old.path, &row.path))
-                            {
-                                switcher.vaults.push(row);
-                            }
+                        {
+                            switcher.vaults.push(row);
                         }
                     } else {
                         let (action, key) = id

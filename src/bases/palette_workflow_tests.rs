@@ -280,11 +280,43 @@ fn palette_bases_delete_confirmation_stays_separate_and_restores_menu() {
     } else {
         panic!("missing separate confirmation");
     }
-    assert!(app.command_palette.as_ref().unwrap().input.lines()[0].is_empty());
+    assert_eq!(app.command_palette.as_ref().unwrap().input.lines()[0], "");
     crate::palette_tests::drive(
         &mut app,
         Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
     );
     assert!(!app.palette_bases_dialog_open());
     assert_eq!(app.command_palette.as_ref().unwrap().items.len(), 34);
+}
+
+#[test]
+fn palette_bases_cancel_pending_source_read_keeps_original_owner() {
+    let (_root, mut app) = fixture();
+    let pool = std::sync::Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap(),
+    );
+    let (started, ready) = std::sync::mpsc::channel();
+    let (release, blocked) = std::sync::mpsc::channel();
+    pool.spawn(move || {
+        started.send(()).unwrap();
+        blocked.recv().unwrap();
+    });
+    ready.recv().unwrap();
+    app.notes_worker_pool = pool;
+    palette(&mut app, "Configure view");
+    workflow_choice(&mut app, "33");
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_some());
+    crate::palette_tests::drive(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+    );
+    assert!(app.command_palette.as_ref().unwrap().workflow.is_none());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    release.send(()).unwrap();
+    app.poll_bases();
+    assert_eq!(app.mode, ViewMode::Bases);
+    assert!(app.editor.editing_id.is_none());
 }

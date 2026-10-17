@@ -1365,3 +1365,90 @@ fn palette_workflow_base_creation_collision_retains_input_and_origin() {
             .contains("views:")
     );
 }
+
+#[test]
+fn palette_workflow_mouse_apply_resize_and_failed_theme_exit() {
+    let mut f = Fixture::new();
+    activate(&mut f.app, "settings.word_goal");
+    replace_step_input(&mut f.app, "456");
+    for (width, height) in [(8, 4), (1, 1), (100, 40)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+    }
+    let area = f
+        .app
+        .command_palette
+        .as_ref()
+        .unwrap()
+        .last_results_area
+        .unwrap();
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: area.x + 2,
+            row: area.y + 1,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert!(f.app.command_palette.is_none());
+    assert_eq!(f.app.config.goals.word_goal, 456);
+    activate(&mut f.app, "switch_theme");
+    select_step(&mut f.app, "background");
+    let config = crate::config::ClinConfig::config_path().unwrap();
+    let backup = config.with_extension("saved");
+    fs::rename(&config, &backup).unwrap();
+    fs::create_dir(&config).unwrap();
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("Failed to save theme")
+    );
+    fs::remove_dir(&config).unwrap();
+    fs::rename(&backup, &config).unwrap();
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.as_ref().unwrap().workflow.is_none());
+    assert_eq!(
+        crate::config::ClinConfig::load().0.unwrap().ui.background,
+        f.app.config.ui.background
+    );
+}
+
+#[test]
+fn palette_workflow_subnote_save_failure_preserves_manager() {
+    let mut f = Fixture::new();
+    activate(&mut f.app, "manage_subnotes_list");
+    select_step(&mut f.app, "add");
+    select_step(&mut f.app, "title");
+    replace_step_input(&mut f.app, "Retained draft");
+    drive(&mut f.app, key(KeyCode::Enter));
+    drive(&mut f.app, key(KeyCode::Esc));
+    let database = f.app.storage.data_dir.join(".clin/subnotes.bin");
+    fs::write(&database, b"corrupt").unwrap();
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.as_ref().unwrap().error.is_some());
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.name == "Retained draft")
+    );
+    assert_eq!(fs::read(&database).unwrap(), b"corrupt");
+    fs::remove_file(&database).unwrap();
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert_eq!(
+        f.app.storage.get_subnotes("selected.md").unwrap()[0].title,
+        "Retained draft"
+    );
+}

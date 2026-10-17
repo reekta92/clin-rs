@@ -280,10 +280,8 @@ impl App {
                 !state.is_writing(),
                 "Write in progress; wait before leaving Bases"
             );
-            if matches!(palette.bases_page(), Some(Page::Preparing { .. })) {
-                state.write_task = None;
-                state.edit_intent = None;
-            }
+            state.write_task = None;
+            state.edit_intent = None;
         }
         Ok(())
     }
@@ -362,10 +360,10 @@ impl App {
     }
 
     pub(crate) fn finish_palette_bases_write(&mut self, error: Option<String>) {
-        if !self
+        if self
             .command_palette
             .as_ref()
-            .is_some_and(|p| p.bases_page().is_some())
+            .is_none_or(|p| p.bases_page().is_none())
         {
             return;
         }

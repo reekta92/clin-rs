@@ -174,13 +174,16 @@ impl App {
     pub fn remove_vault_from_list(&mut self, path: &str) {
         let target = crate::config::path::expand_path(path);
         if !crate::config::has_storage_path_override() {
-            let before = self.config.core.vaults.len();
-            self.config.core.vaults.retain(|v| !same_vault(v, &target));
-            if self.config.core.vaults.len() != before
-                && let Err(error) = self.config.save()
+            let mut config = self.config.clone();
+            let before = config.core.vaults.len();
+            config.core.vaults.retain(|v| !same_vault(v, &target));
+            if config.core.vaults.len() != before
+                && let Err(error) = config.save()
             {
                 self.set_temporary_status(&format!("Failed to save config: {error}"));
+                return;
             }
+            self.config = config;
         }
         if let Some(switcher) = self.vault_switcher.as_mut() {
             switcher.vaults.retain(|r| !same_vault(&r.path, &target));

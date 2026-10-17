@@ -94,7 +94,7 @@ impl CommandPalette {
         });
         self.last_scroll = None;
         self.scroll_drag = None;
-        self.mouse_selection = Default::default();
+        self.mouse_selection = crate::text_edit::MouseTextSelection::default();
         self.error = None;
         self.refresh_items(app);
     }
@@ -108,7 +108,7 @@ impl CommandPalette {
             self.last_filter = parent.last_filter;
             self.last_scroll = None;
             self.scroll_drag = None;
-            self.mouse_selection = Default::default();
+            self.mouse_selection = crate::text_edit::MouseTextSelection::default();
             self.error = None;
             if self.workflow.is_none() {
                 self.workflow_action = None;

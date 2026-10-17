@@ -1184,12 +1184,10 @@ impl App {
     pub fn confirm_create_note(&mut self) {
         if let Some(crate::popups::ActivePopup::CreateNote(popup, format)) =
             self.popups.active.take()
-        {
-            if let Err(error) =
+            && let Err(error) =
                 self.apply_note_creation(popup.folder, format, &popup.input.lines().join(""))
-            {
-                self.set_temporary_status(&format!("Could not create document: {error:#}"));
-            }
+        {
+            self.set_temporary_status(&format!("Could not create document: {error:#}"));
         }
     }
 
@@ -1463,7 +1461,13 @@ impl App {
         }
     }
     pub fn open_subnotes_popup_for(&mut self, parent_id: &str, preselect: Option<usize>) {
-        let subnotes = self.storage.get_subnotes(parent_id).unwrap_or_default();
+        let subnotes = match self.storage.get_subnotes(parent_id) {
+            Ok(subnotes) => subnotes,
+            Err(error) => {
+                self.set_temporary_status(&format!("Could not load subnotes: {error:#}"));
+                return;
+            }
+        };
 
         let mut title_input = crate::ui::make_popup_textarea(&self.app_theme, "");
         let mut content_input = crate::ui::make_popup_textarea(&self.app_theme, "");
@@ -1508,13 +1512,13 @@ impl App {
     }
 
     pub fn close_subnotes_popup(&mut self) -> Result<(), String> {
-        if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take() {
-            if let Err(error) = self.save_subnotes_state(&popup) {
-                self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
-                let message = format!("Failed to save sub-notes: {error:#}");
-                self.set_temporary_status(&message);
-                return Err(message);
-            }
+        if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take()
+            && let Err(error) = self.save_subnotes_state(&popup)
+        {
+            self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+            let message = format!("Failed to save sub-notes: {error:#}");
+            self.set_temporary_status(&message);
+            return Err(message);
         }
         self.popups.active = None;
         Ok(())

@@ -753,17 +753,35 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         && let Some(palette) = &mut app.command_palette
     {
         let area = frame.area();
+        let hints = if palette.workflow.is_none() {
+            vec![
+                ("Tab".to_string(), "category"),
+                ("Enter".to_string(), "run"),
+                ("↑/↓".to_string(), "select"),
+                ("Esc".to_string(), "close"),
+            ]
+        } else if matches!(
+            palette.workflow,
+            Some(crate::palette::workflows::Workflow::SubnoteField { content: true, .. })
+        ) {
+            vec![
+                ("Enter".to_string(), "newline"),
+                ("Ctrl+Enter".to_string(), "apply"),
+                ("Esc".to_string(), "back"),
+            ]
+        } else {
+            vec![
+                ("Enter".to_string(), "select/apply"),
+                ("↑/↓".to_string(), "move"),
+                ("Esc".to_string(), "back"),
+            ]
+        };
         let content = draw_popup_frame(
             frame,
             area,
             palette.workflow_title(),
             PopupSize::Large,
-            PopupHints::Keybinds(&[
-                ("Tab".to_string(), "category"),
-                ("Enter".to_string(), "run"),
-                ("↑/↓".to_string(), "select"),
-                ("Esc".to_string(), "close"),
-            ]),
+            PopupHints::Keybinds(&hints),
             &app.app_theme,
         );
 
@@ -781,8 +799,10 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.muted))
-                .title(if palette.workflow.is_some() {
-                    "Enter value / filter choices"
+                .title(if palette.is_value_input() {
+                    "Value"
+                } else if palette.workflow.is_some() {
+                    "Filter choices"
                 } else {
                     ""
                 }),
