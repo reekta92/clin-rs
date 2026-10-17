@@ -211,7 +211,7 @@ pub(crate) fn handle_command_palette_mouse(
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             if !contains_cell(popup_area, mouse.column, mouse.row) {
-                app.dismiss_command_palette();
+                app.leave_palette_step(palette, true);
                 return true;
             }
             if contains_cell(chunks[0], mouse.column, mouse.row) {
@@ -229,7 +229,7 @@ pub(crate) fn handle_command_palette_mouse(
                     sc,
                 );
                 palette.mouse_selection.begin(&mut palette.input);
-            } else if mouse.row == chunks[1].y {
+            } else if palette.workflow.is_none() && mouse.row == chunks[1].y {
                 let tabs: Vec<(&str, Option<&str>)> = palette
                     .tabs
                     .iter()

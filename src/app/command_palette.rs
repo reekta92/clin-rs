@@ -125,13 +125,31 @@ impl App {
         palette: crate::palette::CommandPalette,
         selected: usize,
     ) {
-        self.dismiss_command_palette();
+        if palette.workflow.is_some() {
+            self.activate_palette_workflow(palette, selected);
+            return;
+        }
         let Some(item) = palette.items.get(selected) else {
             return;
         };
-        if let Err(error) =
-            crate::actions::execute_action_in_context(&item.id, self, &palette.context)
-        {
+        let id = item.id.clone();
+        let context = palette.context.clone();
+        let mut palette = palette;
+        palette.launching_action = Some(id.clone());
+        self.command_palette = Some(palette);
+        let result = crate::actions::execute_action_in_context(&id, self, &context);
+        if let Some(mut palette) = self.command_palette.take() {
+            palette.launching_action = None;
+            if palette.workflow.is_some() {
+                if let Err(error) = &result {
+                    palette.error = Some(format!("{error:#}"));
+                }
+                self.command_palette = Some(palette);
+            } else {
+                self.clear_palette_matchers();
+            }
+        }
+        if let Err(error) = result {
             let message = format!("Action failed: {error:#}");
             self.set_temporary_status(&message);
             self.messages

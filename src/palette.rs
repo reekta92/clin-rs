@@ -3,6 +3,9 @@ use ratatui::widgets::ListState;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
+pub(crate) mod workflows;
+use workflows::{PaletteParent, Workflow};
+
 /// (label, glyph, category-to-filter). Tab 0 = All (no filter).
 pub type PaletteTab = (
     &'static str,
@@ -89,6 +92,11 @@ pub struct CommandPalette {
     pub scroll_drag: Option<i32>,
     pub last_results_area: Option<ratatui::layout::Rect>,
     pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
+    pub(crate) workflow: Option<Workflow>,
+    parents: Vec<PaletteParent>,
+    pub(crate) launching_action: Option<String>,
+    pub(crate) workflow_action: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 impl CommandPalette {
@@ -129,12 +137,21 @@ impl CommandPalette {
             scroll_drag: None,
             last_results_area: None,
             mouse_selection: crate::text_edit::MouseTextSelection::default(),
+            workflow: None,
+            parents: Vec::new(),
+            launching_action: None,
+            workflow_action: None,
+            error: None,
         };
         p.refresh_items(app);
         p
     }
 
     pub fn refresh_items(&mut self, app: &crate::app::App) {
+        if self.workflow.is_some() {
+            self.refresh_workflow(app);
+            return;
+        }
         let query = self.input.lines()[0].as_str();
         let filter_changed = self
             .last_filter
@@ -209,12 +226,12 @@ impl CommandPalette {
             return true;
         }
         match key.code {
-            KeyCode::Tab => {
+            KeyCode::Tab if self.workflow.is_none() => {
                 let len = self.tabs.len();
                 self.active_tab = (self.active_tab + 1) % len;
                 self.refresh_items(app);
             }
-            KeyCode::BackTab => {
+            KeyCode::BackTab if self.workflow.is_none() => {
                 let len = self.tabs.len();
                 if self.active_tab == 0 {
                     self.active_tab = len.saturating_sub(1);
@@ -223,7 +240,7 @@ impl CommandPalette {
                 }
                 self.refresh_items(app);
             }
-            KeyCode::Down => {
+            KeyCode::Down if !self.is_value_input() => {
                 let i = match self.state.selected() {
                     Some(i) => {
                         if i >= self.items.len().saturating_sub(1) {
@@ -238,7 +255,7 @@ impl CommandPalette {
                     self.state.select(Some(i));
                 }
             }
-            KeyCode::Up => {
+            KeyCode::Up if !self.is_value_input() => {
                 let i = match self.state.selected() {
                     Some(i) => {
                         if i == 0 {

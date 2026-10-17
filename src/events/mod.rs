@@ -799,7 +799,7 @@ pub(crate) fn handle_open_palette_event(
     event: &crossterm::event::Event,
     area: Rect,
 ) -> bool {
-    if app.command_palette.is_none() {
+    if app.command_palette.is_none() || app.popups.confirm.is_some() {
         return false;
     }
     if !matches!(event, crossterm::event::Event::Key(key) if key.code == KeyCode::Enter) {
@@ -813,13 +813,19 @@ pub(crate) fn handle_open_palette_event(
             let mut palette = app.command_palette.take().expect("open palette");
             if palette.handle_input(*key, app) {
                 if key.code == KeyCode::Enter {
-                    if let Some(selected) = palette.state.selected() {
+                    if let Some(selected) = palette
+                        .state
+                        .selected()
+                        .or_else(|| palette.is_value_input().then_some(0))
+                    {
                         app.activate_palette(palette, selected);
+                    } else if palette.workflow.is_some() {
+                        app.command_palette = Some(palette);
                     } else {
                         app.dismiss_command_palette();
                     }
                 } else {
-                    app.dismiss_command_palette();
+                    app.leave_palette_step(palette, false);
                 }
             } else {
                 app.command_palette = Some(palette);

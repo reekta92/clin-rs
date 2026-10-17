@@ -465,13 +465,23 @@ pub(crate) fn execute_action_in_context(
         .iter()
         .find(|action| action.id() == action_id)
         .ok_or_else(|| anyhow::anyhow!("Action not found: {action_id}"))?;
-    if !app.palette_input_available()
-        || !action_feature_enabled(action_id, app)
-        || !context::eligible(action_id, app, context)
-    {
-        anyhow::bail!("Action unavailable in the current context: {action_id}");
+    if !app.palette_input_available() {
+        anyhow::bail!("Action unavailable while another input owns the view");
     }
+    validate_action_context(action_id, app, context)?;
     action.execute(app, context.note_id.as_deref())
+}
+
+pub(crate) fn validate_action_context(
+    action_id: &str,
+    app: &App,
+    context: &ActionContext,
+) -> Result<()> {
+    anyhow::ensure!(
+        action_feature_enabled(action_id, app) && context::eligible(action_id, app, context),
+        "Action unavailable in the current context: {action_id}"
+    );
+    Ok(())
 }
 
 struct NavigationAction(&'static str, &'static str, &'static str);

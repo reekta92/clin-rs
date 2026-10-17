@@ -618,7 +618,7 @@ template = """
             crate::config::Background::Solid
         );
 
-        self.popups.active = Some(crate::popups::ActivePopup::Theme(ThemePopup {
+        self.present_action_popup(crate::popups::ActivePopup::Theme(ThemePopup {
             setup_owned: self.mode == ViewMode::Setup,
             themes,
             selected,
@@ -797,55 +797,55 @@ template = """
 
     pub fn select_theme(&mut self) {
         if let Some(crate::popups::ActivePopup::Theme(mut popup)) = self.popups.active.take() {
-            match popup.focus {
-                ThemePopupFocus::ThemeList => {
-                    let next_theme = popup.themes[popup.selected].clone();
-                    if self.mode == ViewMode::Setup {
-                        if let Some(state) = &mut self.setup_state
-                            && let Some(index) =
-                                state.themes.iter().position(|theme| *theme == next_theme)
-                        {
-                            state.theme = index;
-                        }
-                        self.apply_setup_live();
-                    } else {
-                        self.config.ui.theme = next_theme.clone();
-                        self.refresh_theme_from_config();
+            self.apply_theme_selection(&mut popup);
+            self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
+        }
+    }
+
+    pub(crate) fn apply_theme_selection(&mut self, popup: &mut ThemePopup) {
+        match popup.focus {
+            ThemePopupFocus::ThemeList => {
+                let next_theme = popup.themes[popup.selected].clone();
+                if self.mode == ViewMode::Setup {
+                    if let Some(state) = &mut self.setup_state
+                        && let Some(index) =
+                            state.themes.iter().position(|theme| *theme == next_theme)
+                    {
+                        state.theme = index;
                     }
-                    self.set_temporary_status(&format!("Theme set to: {next_theme}"));
-                    self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-                }
-                ThemePopupFocus::GeneralBg => {
-                    popup.general_is_solid = !popup.general_is_solid;
-                    if self.mode == ViewMode::Setup {
-                        if let Some(state) = &mut self.setup_state {
-                            state.background_solid = popup.general_is_solid;
-                        }
-                        self.apply_setup_live();
-                        self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-                        return;
-                    }
-                    self.config.ui.background = if popup.general_is_solid {
-                        crate::config::Background::Solid
-                    } else {
-                        crate::config::Background::Transparent
-                    };
+                    self.apply_setup_live();
+                } else {
+                    self.config.ui.theme = next_theme.clone();
                     self.refresh_theme_from_config();
-                    self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
-                ThemePopupFocus::GraphBg => {
-                    if self.mode == ViewMode::Setup {
-                        self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-                        return;
+                self.set_temporary_status(&format!("Theme set to: {next_theme}"));
+            }
+            ThemePopupFocus::GeneralBg => {
+                popup.general_is_solid = !popup.general_is_solid;
+                if self.mode == ViewMode::Setup {
+                    if let Some(state) = &mut self.setup_state {
+                        state.background_solid = popup.general_is_solid;
                     }
-                    popup.graph_is_solid = !popup.graph_is_solid;
-                    self.config.graf.visual.graph_background = if popup.graph_is_solid {
-                        crate::config::Background::Solid
-                    } else {
-                        crate::config::Background::Transparent
-                    };
-                    self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
+                    self.apply_setup_live();
+                    return;
                 }
+                self.config.ui.background = if popup.general_is_solid {
+                    crate::config::Background::Solid
+                } else {
+                    crate::config::Background::Transparent
+                };
+                self.refresh_theme_from_config();
+            }
+            ThemePopupFocus::GraphBg => {
+                if self.mode == ViewMode::Setup {
+                    return;
+                }
+                popup.graph_is_solid = !popup.graph_is_solid;
+                self.config.graf.visual.graph_background = if popup.graph_is_solid {
+                    crate::config::Background::Solid
+                } else {
+                    crate::config::Background::Transparent
+                };
             }
         }
     }
@@ -865,7 +865,7 @@ template = """
         if self.config.goals.word_goal > 0 {
             input.insert_str(self.config.goals.word_goal.to_string());
         }
-        self.popups.active = Some(crate::popups::ActivePopup::Goals(
+        self.present_action_popup(crate::popups::ActivePopup::Goals(
             crate::popups::GoalsPopup {
                 mode: crate::popups::GoalsPopupMode::WordGoal,
                 input,
@@ -879,7 +879,7 @@ template = """
         if self.config.goals.note_goal > 0 {
             input.insert_str(self.config.goals.note_goal.to_string());
         }
-        self.popups.active = Some(crate::popups::ActivePopup::Goals(
+        self.present_action_popup(crate::popups::ActivePopup::Goals(
             crate::popups::GoalsPopup {
                 mode: crate::popups::GoalsPopupMode::NoteGoal,
                 input,
@@ -888,35 +888,34 @@ template = """
     }
 
     pub fn confirm_goals_popup(&mut self) {
-        if let Some(crate::popups::ActivePopup::Goals(popup)) = self.popups.active.take() {
-            let val_str = popup.input.lines().join("");
-            match val_str.trim().parse::<usize>() {
-                Ok(val) => {
-                    let mut config = crate::config::ClinConfig::load().0.unwrap_or_default();
-                    match popup.mode {
-                        crate::popups::GoalsPopupMode::WordGoal => {
-                            config.goals.word_goal = val;
-                            self.config.goals.word_goal = val;
-                            self.set_temporary_status(&format!("Daily word goal set to {val}"));
-                        }
-                        crate::popups::GoalsPopupMode::NoteGoal => {
-                            config.goals.note_goal = val;
-                            self.config.goals.note_goal = val;
-                            self.set_temporary_status(&format!("Daily note goal set to {val}"));
-                        }
-                    }
-                    if let Err(e) = config.save() {
-                        self.messages.push(
-                            format!("Failed to save config: {e}"),
-                            crate::app::messages::MessageSeverity::Warning,
-                        );
-                    }
-                }
-                Err(_) => {
-                    self.set_temporary_status_static("Please enter a valid positive number.");
-                }
-            }
+        if let Some(crate::popups::ActivePopup::Goals(popup)) = self.popups.active.take()
+            && let Err(error) = self.apply_goal(popup.mode, &popup.input.lines().join(""))
+        {
+            self.set_temporary_status(&format!("{error:#}"));
         }
+    }
+
+    pub(crate) fn apply_goal(&mut self, mode: GoalsPopupMode, source: &str) -> anyhow::Result<()> {
+        let value = source
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| anyhow::anyhow!("Please enter a valid non-negative number."))?;
+        let mut config = crate::config::ClinConfig::load().0?;
+        match mode {
+            GoalsPopupMode::WordGoal => config.goals.word_goal = value,
+            GoalsPopupMode::NoteGoal => config.goals.note_goal = value,
+        }
+        config.save()?;
+        self.config.goals = config.goals;
+        self.set_temporary_status(&format!(
+            "Daily {} goal set to {value}",
+            if matches!(mode, GoalsPopupMode::WordGoal) {
+                "word"
+            } else {
+                "note"
+            }
+        ));
+        Ok(())
     }
 
     pub fn begin_setup_vault_selection(&mut self) {

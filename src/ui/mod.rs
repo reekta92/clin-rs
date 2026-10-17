@@ -754,7 +754,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let content = draw_popup_frame(
             frame,
             area,
-            "COMMANDS",
+            palette.workflow_title(),
             PopupSize::Large,
             PopupHints::Keybinds(&[
                 ("Tab".to_string(), "category"),
@@ -769,7 +769,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3), // search input
-                Constraint::Length(1), // tab bar
+                Constraint::Length(1), // root categories / workflow status
                 Constraint::Min(0),    // results list
             ])
             .split(content);
@@ -779,44 +779,60 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.muted))
-                .title(""),
+                .title(if palette.workflow.is_some() {
+                    "Enter value / filter choices"
+                } else {
+                    ""
+                }),
         );
         frame.render_widget(&palette.input, chunks[0]);
 
-        let tabs: Vec<(&str, Option<&str>)> = p_tabs
-            .clone()
-            .expect("palette is some so p_tabs is some")
-            .iter()
-            .map(|(l, g, _)| (*l, Some(*g)))
-            .collect();
-        let hovered = app.mouse_pos.and_then(|(col, row)| {
-            if row == chunks[1].y {
-                crate::ui::hit_test_tabs(
-                    &tabs,
-                    chunks[1].x,
-                    chunks[1].width,
-                    chunks[1].x,
-                    col,
-                    app.config.ui.tab_icons_only,
-                    app.config.ui.icon_mode,
+        if palette.workflow.is_none() {
+            let tabs: Vec<(&str, Option<&str>)> = p_tabs
+                .clone()
+                .expect("palette is some so p_tabs is some")
+                .iter()
+                .map(|(l, g, _)| (*l, Some(*g)))
+                .collect();
+            let hovered = app.mouse_pos.and_then(|(col, row)| {
+                if row == chunks[1].y {
+                    crate::ui::hit_test_tabs(
+                        &tabs,
+                        chunks[1].x,
+                        chunks[1].width,
+                        chunks[1].x,
+                        col,
+                        app.config.ui.tab_icons_only,
+                        app.config.ui.icon_mode,
+                    )
+                } else {
+                    None
+                }
+            });
+            let tab_spans = build_tab_spans(
+                &tabs,
+                palette.active_tab,
+                hovered,
+                &app.app_theme,
+                app.config.ui.tab_icons_only,
+                app.config.ui.icon_mode,
+            );
+            let tabs_w = Paragraph::new(Line::from(tab_spans))
+                .alignment(Alignment::Center)
+                .style(app.app_theme.hint_line_bg_style());
+            frame.render_widget(tabs_w, chunks[1]);
+        } else {
+            frame.render_widget(
+                Paragraph::new(
+                    palette
+                        .error
+                        .as_deref()
+                        .unwrap_or("Enter select / apply · Esc back"),
                 )
-            } else {
-                None
-            }
-        });
-        let tab_spans = build_tab_spans(
-            &tabs,
-            palette.active_tab,
-            hovered,
-            &app.app_theme,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
-        );
-        let tabs_w = Paragraph::new(Line::from(tab_spans))
-            .alignment(Alignment::Center)
-            .style(app.app_theme.hint_line_bg_style());
-        frame.render_widget(tabs_w, chunks[1]);
-
+                .style(Style::default().fg(app.app_theme.muted)),
+                chunks[1],
+            );
+        }
         let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
             let inner_y = chunks[2].y + 1;
             if !palette.items.is_empty()

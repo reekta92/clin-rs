@@ -416,11 +416,13 @@ fn palette_paste_refresh_input_isolation_resize_and_empty_clicks() {
     );
     assert!(f.app.command_palette.is_some());
     drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.popups.active.is_none());
     assert!(matches!(
-        f.app.popups.active,
-        Some(crate::popups::ActivePopup::Theme(_))
+        f.app.command_palette.as_ref().unwrap().workflow,
+        Some(crate::palette::workflows::Workflow::Theme(_))
     ));
-    f.app.close_theme_popup();
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
     drive(&mut f.app, key(KeyCode::F(6)));
     drive(
         &mut f.app,
@@ -590,11 +592,15 @@ fn palette_setup_theme_and_preset_remain_pending_until_finish_or_cancel() {
         activate(&mut f.app, "switch_theme");
         let themes = f.app.setup_state.as_ref().unwrap().themes.clone();
         let theme = (f.app.setup_state.as_ref().unwrap().theme + 1) % themes.len();
-        if let Some(crate::popups::ActivePopup::Theme(popup)) = &mut f.app.popups.active {
-            popup.selected = theme;
-        }
-        f.app.select_theme();
-        f.app.close_theme_popup();
+        let palette = f.app.command_palette.as_mut().unwrap();
+        let index = palette
+            .items
+            .iter()
+            .position(|item| item.id == format!("theme:{theme}"))
+            .unwrap();
+        palette.state.select(Some(index));
+        drive(&mut f.app, key(KeyCode::Enter));
+        drive(&mut f.app, key(KeyCode::Esc));
         activate(&mut f.app, "keybind.preset");
         if let Some(crate::popups::ActivePopup::KeybindPreset(popup)) = &mut f.app.popups.active {
             popup.selected = 2;
@@ -1042,5 +1048,69 @@ fn palette_strokes_connections_and_setup_rebootstrap_preserve_pending_owners() {
     assert_eq!(
         fs::read(crate::config::ClinConfig::config_path().unwrap()).unwrap(),
         config
+    );
+}
+
+#[test]
+fn palette_workflow_theme_goal_back_and_legacy_launches() {
+    let mut f = Fixture::new();
+    drive(&mut f.app, key(KeyCode::F(6)));
+    drive(&mut f.app, Event::Paste("Switch Theme".into()));
+    let root_ids: Vec<_> = f
+        .app
+        .command_palette
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect();
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.popups.active.is_none());
+    let themes = f.app.command_palette.as_ref().unwrap().items.len();
+    drive(&mut f.app, Event::Paste("no matching theme here".into()));
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.command_palette.is_some());
+    assert!(f.app.command_palette.as_ref().unwrap().items.is_empty());
+    drive(&mut f.app, key(KeyCode::Esc));
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.input.lines()[0], "Switch Theme");
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>(),
+        root_ids
+    );
+    assert!(themes > 2);
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.app.begin_theme_selection();
+    assert!(matches!(
+        f.app.popups.active,
+        Some(crate::popups::ActivePopup::Theme(_))
+    ));
+    f.app.close_theme_popup();
+    activate(&mut f.app, "settings.word_goal");
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+    );
+    drive(&mut f.app, Event::Paste("invalid".into()));
+    drive(&mut f.app, key(KeyCode::Enter));
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.input.lines()[0], "invalid");
+    assert!(palette.error.is_some());
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+    );
+    drive(&mut f.app, Event::Paste("321".into()));
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.command_palette.is_none());
+    assert_eq!(f.app.config.goals.word_goal, 321);
+    assert_eq!(
+        crate::config::ClinConfig::load().0.unwrap().goals.word_goal,
+        321
     );
 }
