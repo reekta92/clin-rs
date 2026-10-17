@@ -254,16 +254,6 @@ impl CommandPalette {
             {
                 self.input.insert_newline();
             }
-            KeyCode::Enter
-                if matches!(
-                    self.workflow,
-                    Some(Workflow::SubnoteField { content: true, .. })
-                ) && !key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
-            {
-                self.input.insert_newline();
-            }
             KeyCode::Tab if self.workflow.is_none() => {
                 let len = self.tabs.len();
                 self.active_tab = (self.active_tab + 1) % len;

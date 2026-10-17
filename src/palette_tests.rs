@@ -1261,47 +1261,31 @@ fn palette_workflow_vault_alias_and_separate_confirmation() {
 }
 
 #[test]
-fn palette_workflow_subnotes_preserve_multiline_and_nested_back() {
+fn palette_subnotes_action_opens_original_manager_and_saves_multiline() {
     let mut f = Fixture::new();
     activate(&mut f.app, "manage_subnotes_list");
-    select_step(&mut f.app, "add");
-    select_step(&mut f.app, "title");
-    replace_step_input(&mut f.app, "Child title");
-    drive(&mut f.app, key(KeyCode::Enter));
-    select_step(&mut f.app, "content");
-    replace_step_input(&mut f.app, "first\nsecond");
-    drive(&mut f.app, key(KeyCode::Enter));
-    drive(&mut f.app, Event::Paste("third".into()));
-    assert_eq!(
-        f.app.command_palette.as_ref().unwrap().input.lines(),
-        &["first", "second", "third"]
-    );
-    drive(
-        &mut f.app,
-        Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL)),
-    );
-    drive(&mut f.app, key(KeyCode::Esc));
-    assert!(
-        f.app
-            .command_palette
-            .as_ref()
-            .unwrap()
-            .items
-            .iter()
-            .any(|item| item.name == "Child title")
-    );
-    drive(&mut f.app, key(KeyCode::Esc));
-    let saved = f.app.storage.get_subnotes("selected.md").unwrap();
-    assert_eq!(saved.len(), 1);
-    assert_eq!(saved[0].title, "Child title");
-    assert_eq!(saved[0].content, "first\nsecond\nthird");
-    drive(&mut f.app, key(KeyCode::Esc));
     assert!(f.app.command_palette.is_none());
-    f.app.open_subnotes_popup();
     assert!(matches!(
         f.app.popups.active,
         Some(crate::popups::ActivePopup::Subnotes(_))
     ));
+    drive(&mut f.app, key(KeyCode::Char('n')));
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+    );
+    drive(&mut f.app, Event::Paste("Child title".into()));
+    drive(&mut f.app, key(KeyCode::Tab));
+    drive(&mut f.app, Event::Paste("first\nsecond".into()));
+    drive(&mut f.app, key(KeyCode::Enter));
+    drive(&mut f.app, Event::Paste("third".into()));
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.popups.active.is_none());
+    let saved = f.app.storage.get_subnotes("selected.md").unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].title, "Child title");
+    assert_eq!(saved[0].content, "first\nsecond\nthird");
 }
 
 #[test]
@@ -1423,27 +1407,23 @@ fn palette_workflow_mouse_apply_resize_and_failed_theme_exit() {
 }
 
 #[test]
-fn palette_workflow_subnote_save_failure_preserves_manager() {
+fn palette_subnotes_save_failure_preserves_original_manager() {
     let mut f = Fixture::new();
     activate(&mut f.app, "manage_subnotes_list");
-    select_step(&mut f.app, "add");
-    select_step(&mut f.app, "title");
-    replace_step_input(&mut f.app, "Retained draft");
-    drive(&mut f.app, key(KeyCode::Enter));
+    drive(&mut f.app, key(KeyCode::Char('n')));
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+    );
+    drive(&mut f.app, Event::Paste("Retained draft".into()));
     drive(&mut f.app, key(KeyCode::Esc));
     let database = f.app.storage.data_dir.join(".clin/subnotes.bin");
     fs::write(&database, b"corrupt").unwrap();
     drive(&mut f.app, key(KeyCode::Esc));
-    assert!(f.app.command_palette.as_ref().unwrap().error.is_some());
-    assert!(
-        f.app
-            .command_palette
-            .as_ref()
-            .unwrap()
-            .items
-            .iter()
-            .any(|item| item.name == "Retained draft")
-    );
+    assert!(matches!(
+        f.app.popups.active,
+        Some(crate::popups::ActivePopup::Subnotes(_))
+    ));
     assert_eq!(fs::read(&database).unwrap(), b"corrupt");
     fs::remove_file(&database).unwrap();
     drive(&mut f.app, key(KeyCode::Esc));

@@ -28,14 +28,6 @@ pub(crate) enum Workflow {
     VaultName {
         key: String,
     },
-    Subnotes(Box<crate::popups::SubnotesPopup>),
-    SubnoteMenu {
-        id: String,
-    },
-    SubnoteField {
-        id: String,
-        content: bool,
-    },
 }
 
 #[derive(Clone, Copy)]
@@ -137,10 +129,6 @@ impl CommandPalette {
             Some(Workflow::Import { .. }) => "COMMANDS › URL",
             Some(Workflow::Vault(_)) => "COMMANDS › Switch Vault",
             Some(Workflow::VaultName { .. }) => "COMMANDS › Switch Vault › Rename",
-            Some(Workflow::Subnotes(_)) => "COMMANDS › Subnotes",
-            Some(Workflow::SubnoteMenu { .. }) => "COMMANDS › Subnotes › Selected subnote",
-            Some(Workflow::SubnoteField { content: false, .. }) => "COMMANDS › Subnotes › Title",
-            Some(Workflow::SubnoteField { content: true, .. }) => "COMMANDS › Subnotes › Content",
             Some(Workflow::Bases(page)) => page.title(),
             None => "COMMANDS",
         }
@@ -166,12 +154,6 @@ impl CommandPalette {
         if let Some(Workflow::Bases(page)) = &self.workflow {
             return page.hint();
         }
-        if matches!(
-            self.workflow,
-            Some(Workflow::SubnoteField { content: true, .. })
-        ) {
-            return "Enter newline · Ctrl+Enter apply · Esc back";
-        }
         if matches!(self.workflow, Some(Workflow::Create { task: Some(_), .. })) {
             return "Creating document…";
         }
@@ -189,7 +171,6 @@ impl CommandPalette {
                     | Workflow::Create { .. }
                     | Workflow::Import { .. }
                     | Workflow::VaultName { .. }
-                    | Workflow::SubnoteField { .. }
             )
         )
     }
@@ -366,10 +347,6 @@ impl App {
                 },
                 popup.input,
             ),
-            ActivePopup::Subnotes(popup) => (
-                Workflow::Subnotes(popup),
-                crate::ui::make_popup_textarea(&self.app_theme, "Search subnotes..."),
-            ),
             popup => {
                 self.command_palette = Some(palette);
                 self.popups.active = Some(popup);
@@ -395,10 +372,7 @@ impl App {
             self.command_palette = Some(palette);
             return;
         }
-        if let Err(error) = self
-            .leave_palette_bases(&palette)
-            .and_then(|()| palette.finish_subnote_step(self, close))
-        {
+        if let Err(error) = self.leave_palette_bases(&palette) {
             palette.error = Some(format!("{error:#}"));
             self.command_palette = Some(palette);
             return;
@@ -433,13 +407,7 @@ impl App {
         }
         if matches!(
             palette.workflow,
-            Some(
-                Workflow::Vault(_)
-                    | Workflow::VaultName { .. }
-                    | Workflow::Subnotes(_)
-                    | Workflow::SubnoteMenu { .. }
-                    | Workflow::SubnoteField { .. }
-            )
+            Some(Workflow::Vault(_) | Workflow::VaultName { .. })
         ) {
             let id = palette
                 .items
@@ -539,11 +507,7 @@ impl App {
                     )?;
                     Ok(true)
                 }
-                Workflow::Vault(_)
-                | Workflow::VaultName { .. }
-                | Workflow::Subnotes(_)
-                | Workflow::SubnoteMenu { .. }
-                | Workflow::SubnoteField { .. } => unreachable!("manager dispatch"),
+                Workflow::Vault(_) | Workflow::VaultName { .. } => unreachable!("manager dispatch"),
                 Workflow::Bases(_) => unreachable!("Bases dispatch"),
             }
         })();

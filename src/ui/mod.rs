@@ -760,15 +760,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ("↑/↓".to_string(), "select"),
                 ("Esc".to_string(), "close"),
             ]
-        } else if matches!(
-            palette.workflow,
-            Some(crate::palette::workflows::Workflow::SubnoteField { content: true, .. })
-        ) {
-            vec![
-                ("Enter".to_string(), "newline"),
-                ("Ctrl+Enter".to_string(), "apply"),
-                ("Esc".to_string(), "back"),
-            ]
         } else {
             vec![
                 ("Enter".to_string(), "select/apply"),

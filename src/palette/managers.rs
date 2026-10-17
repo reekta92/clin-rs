@@ -4,21 +4,13 @@ use crate::{
         App,
         vaults::{VaultSwitcher, same_vault},
     },
-    popups::{ConfirmAction, SubnotesPopup},
+    popups::ConfirmAction,
 };
 
 impl CommandPalette {
     pub(crate) fn multiline_input(&self) -> bool {
-        if self
-            .bases_page()
+        self.bases_page()
             .is_some_and(crate::bases::palette::Page::is_prompt)
-        {
-            return true;
-        }
-        matches!(
-            self.workflow,
-            Some(Workflow::SubnoteField { content: true, .. })
-        )
     }
 
     pub(crate) fn input_height(&self, height: u16) -> u16 {
@@ -61,87 +53,8 @@ impl CommandPalette {
                 ));
                 rows
             }
-            Some(Workflow::Subnotes(popup)) => {
-                let mut rows: Vec<_> = popup
-                    .subnotes
-                    .iter()
-                    .map(|note| {
-                        (
-                            note.id.clone(),
-                            clean(&note.title).into_owned(),
-                            clean(note.content.lines().next().unwrap_or("")).into_owned(),
-                        )
-                    })
-                    .collect();
-                rows.push((
-                    "add".into(),
-                    "+ Add subnote".into(),
-                    "Create and edit a subnote".into(),
-                ));
-                rows
-            }
-            Some(Workflow::SubnoteMenu { .. }) => [
-                ("title", "Edit title"),
-                ("content", "Edit content"),
-                ("external", "Edit in external editor"),
-                ("delete", "Delete subnote"),
-            ]
-            .into_iter()
-            .map(|(id, name)| (id.into(), name.into(), String::new()))
-            .collect(),
             _ => Vec::new(),
         }
-    }
-
-    fn subnotes_mut(&mut self) -> Option<&mut SubnotesPopup> {
-        if let Some(Workflow::Subnotes(popup)) = &mut self.workflow {
-            return Some(popup);
-        }
-        self.parents
-            .iter_mut()
-            .rev()
-            .find_map(|parent| match &mut parent.workflow {
-                Some(Workflow::Subnotes(popup)) => Some(&mut **popup),
-                _ => None,
-            })
-    }
-
-    pub(crate) fn finish_subnote_step(&mut self, app: &mut App, close: bool) -> anyhow::Result<()> {
-        if let Some(Workflow::SubnoteField { id, content }) = &self.workflow {
-            let id = id.clone();
-            let content = *content;
-            let value = self.input.lines().join(if content { "\n" } else { "" });
-            let popup = self
-                .subnotes_mut()
-                .ok_or_else(|| anyhow::anyhow!("Subnote manager unavailable"))?;
-            let note = popup
-                .subnotes
-                .iter_mut()
-                .find(|note| note.id == id)
-                .ok_or_else(|| anyhow::anyhow!("Subnote no longer exists"))?;
-            if content {
-                note.content = value;
-            } else {
-                note.title = value;
-            }
-            note.updated_at = crate::ui::now_unix_secs();
-            popup.is_dirty = true;
-        }
-        if close || matches!(self.workflow, Some(Workflow::Subnotes(_))) {
-            let dirty = self.subnotes_mut().is_some_and(|popup| popup.is_dirty);
-            if dirty {
-                crate::actions::validate_action_context(
-                    "manage_subnotes_list",
-                    app,
-                    &self.context,
-                )?;
-            }
-            if let Some(popup) = self.subnotes_mut() {
-                app.save_subnotes_state(popup)?;
-                popup.is_dirty = false;
-            }
-        }
-        Ok(())
     }
 }
 
@@ -266,87 +179,6 @@ impl App {
                 }
                 Workflow::VaultName { key } => {
                     self.apply_vault_alias(key, &palette.input.lines().join(" "))?;
-                    back = true;
-                }
-                Workflow::Subnotes(popup) => {
-                    let id = if id == "add" {
-                        let id = uuid::Uuid::new_v4().to_string();
-                        popup.subnotes.push(crate::storage::SubNote {
-                            id: id.clone(),
-                            title: "New Note".into(),
-                            content: String::new(),
-                            updated_at: crate::ui::now_unix_secs(),
-                        });
-                        popup.is_dirty = true;
-                        id
-                    } else {
-                        anyhow::ensure!(
-                            popup.subnotes.iter().any(|note| note.id == id),
-                            "Subnote no longer exists"
-                        );
-                        id.to_owned()
-                    };
-                    next = Some((
-                        Workflow::SubnoteMenu { id },
-                        crate::ui::make_popup_textarea(
-                            &self.app_theme,
-                            "Search subnote actions...",
-                        ),
-                    ));
-                }
-                Workflow::SubnoteMenu { id: note_id } => {
-                    let popup = palette
-                        .subnotes_mut()
-                        .ok_or_else(|| anyhow::anyhow!("Subnote manager unavailable"))?;
-                    let index = popup
-                        .subnotes
-                        .iter()
-                        .position(|note| &note.id == note_id)
-                        .ok_or_else(|| anyhow::anyhow!("Subnote no longer exists"))?;
-                    match id {
-                        "title" | "content" => {
-                            let content = id == "content";
-                            let mut input = crate::ui::make_popup_textarea(
-                                &self.app_theme,
-                                if content {
-                                    "Subnote content · Ctrl+Enter apply"
-                                } else {
-                                    "Subnote title"
-                                },
-                            );
-                            input.insert_str(if content {
-                                &popup.subnotes[index].content
-                            } else {
-                                &popup.subnotes[index].title
-                            });
-                            next = Some((
-                                Workflow::SubnoteField {
-                                    id: note_id.clone(),
-                                    content,
-                                },
-                                input,
-                            ));
-                        }
-                        "delete" => {
-                            popup.subnotes.remove(index);
-                            popup.is_dirty = true;
-                            back = true;
-                        }
-                        "external" => {
-                            popup.selected = index;
-                            popup.title_input = crate::ui::make_popup_textarea(&self.app_theme, "");
-                            popup.title_input.insert_str(&popup.subnotes[index].title);
-                            popup.content_input =
-                                crate::ui::make_popup_textarea(&self.app_theme, "");
-                            popup
-                                .content_input
-                                .insert_str(&popup.subnotes[index].content);
-                            self.edit_subnote_external(popup);
-                        }
-                        _ => anyhow::bail!("Select a subnote action"),
-                    }
-                }
-                Workflow::SubnoteField { .. } => {
                     back = true;
                 }
                 _ => unreachable!("manager dispatch"),
