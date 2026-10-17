@@ -29,7 +29,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title(prompt),
         );
-        self.popups.active = Some(crate::popups::ActivePopup::Import(ImportPopup {
+        self.present_action_popup(crate::popups::ActivePopup::Import(ImportPopup {
             source,
             target,
             note_id,
@@ -41,32 +41,33 @@ impl App {
         let Some(crate::popups::ActivePopup::Import(popup)) = self.popups.active.take() else {
             return;
         };
-        let input = popup.input.lines().join("").trim().to_string();
-        if input.is_empty() {
-            self.set_temporary_status_static("No path/URL entered");
-            return;
+        if let Err(error) = self.apply_import(
+            popup.source,
+            popup.target,
+            popup.note_id.as_deref(),
+            &popup.input.lines().join(""),
+        ) {
+            self.set_temporary_status(&format!("Import failed: {error:#}"));
         }
+    }
 
+    pub(crate) fn apply_import(
+        &mut self,
+        source: ImportSource,
+        target: ImportTarget,
+        note_id: Option<&str>,
+        input: &str,
+    ) -> anyhow::Result<()> {
         use crate::actions::import::*;
-        let result = match popup.source {
-            ImportSource::File => convert_file(&input),
-            ImportSource::Csv => convert_csv(&input),
-            ImportSource::Json => convert_json(&input),
-            ImportSource::Url => convert_url(&input),
-            ImportSource::Clipboard => unreachable!(),
-        };
-
-        match result {
-            Ok((title, md)) => {
-                if let Err(e) =
-                    self.insert_content(popup.target, popup.note_id.as_deref(), title, md)
-                {
-                    self.set_temporary_status(&format!("Import failed: {e:#}"));
-                }
-            }
-            Err(e) => {
-                self.set_temporary_status(&format!("Import failed: {e:#}"));
-            }
-        }
+        let input = input.trim();
+        anyhow::ensure!(!input.is_empty(), "No path/URL entered");
+        let (title, md) = match source {
+            ImportSource::File => convert_file(input),
+            ImportSource::Csv => convert_csv(input),
+            ImportSource::Json => convert_json(input),
+            ImportSource::Url => convert_url(input),
+            ImportSource::Clipboard => anyhow::bail!("Clipboard imports do not use a prompt"),
+        }?;
+        self.insert_content(target, note_id, title, md)
     }
 }

@@ -330,7 +330,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Bases File Name - Esc to cancel, Enter to create"),
         );
-        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+        self.present_action_popup(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Base,
         ));
@@ -657,7 +657,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Drawing Name - Esc to cancel, Enter to create"),
         );
-        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+        self.present_action_popup(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Draw,
         ));
@@ -692,7 +692,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Canvas Name - Esc to cancel, Enter to create"),
         );
-        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+        self.present_action_popup(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Canvas,
         ));

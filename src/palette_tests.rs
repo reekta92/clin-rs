@@ -602,11 +602,9 @@ fn palette_setup_theme_and_preset_remain_pending_until_finish_or_cancel() {
         drive(&mut f.app, key(KeyCode::Enter));
         drive(&mut f.app, key(KeyCode::Esc));
         activate(&mut f.app, "keybind.preset");
-        if let Some(crate::popups::ActivePopup::KeybindPreset(popup)) = &mut f.app.popups.active {
-            popup.selected = 2;
-        }
-        f.app.select_keybind_preset();
-        f.app.close_keybind_preset_popup();
+        select_step(&mut f.app, "2");
+        drive(&mut f.app, key(KeyCode::Esc));
+        drive(&mut f.app, key(KeyCode::Esc));
         f.app.setup_state.as_mut().unwrap().background_solid = true;
         f.app.apply_setup_live();
         assert_eq!(fs::read(&path).unwrap(), original);
@@ -1113,4 +1111,92 @@ fn palette_workflow_theme_goal_back_and_legacy_launches() {
         crate::config::ClinConfig::load().0.unwrap().goals.word_goal,
         321
     );
+}
+
+fn select_step(app: &mut App, id: &str) {
+    let palette = app.command_palette.as_mut().unwrap();
+    let index = palette
+        .items
+        .iter()
+        .position(|item| item.id == id)
+        .unwrap_or_else(|| panic!("missing step {id}"));
+    palette.state.select(Some(index));
+    drive(app, key(KeyCode::Enter));
+}
+
+fn replace_step_input(app: &mut App, text: &str) {
+    drive(
+        app,
+        Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL)),
+    );
+    drive(app, Event::Paste(text.into()));
+}
+
+#[test]
+fn palette_workflow_options_creation_and_import_validation() {
+    let mut f = Fixture::new();
+    for (action, row, stays) in [
+        ("settings.icon_mode", "1", false),
+        ("settings.hint_bar_style", "4", true),
+        ("keybind.preset", "2", true),
+        ("settings.cycle_sort", "1", false),
+    ] {
+        activate(&mut f.app, action);
+        assert!(f.app.popups.active.is_none());
+        select_step(&mut f.app, row);
+        assert_eq!(f.app.command_palette.is_some(), stays);
+        if stays {
+            drive(&mut f.app, key(KeyCode::Esc));
+            drive(&mut f.app, key(KeyCode::Esc));
+        }
+    }
+    assert_eq!(f.app.config.ui.icon_mode, crate::config::IconMode::Unicode);
+    assert_eq!(
+        f.app.config.ui.hint_bar_style,
+        crate::config::HintBarStyle::Bubbles
+    );
+    assert_eq!(f.app.config.core.keybind_preset, KeybindPreset::Vim);
+    activate(&mut f.app, "insert.url_append");
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.command_palette.as_ref().unwrap().error.is_some());
+    replace_step_input(&mut f.app, "https://example.invalid/");
+    fs::write(
+        f.app.storage.note_path("selected.md"),
+        "external replacement",
+    )
+    .unwrap();
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("unavailable")
+    );
+    assert_eq!(
+        fs::read_to_string(f.app.storage.note_path("selected.md")).unwrap(),
+        "external replacement"
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    activate(&mut f.app, "draw.create");
+    replace_step_input(&mut f.app, "../escape");
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.command_palette.as_ref().unwrap().error.is_some());
+    replace_step_input(&mut f.app, "art");
+    let original = fs::read(f.app.storage.note_path("art.draw")).unwrap();
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.command_palette.as_ref().unwrap().error.is_some());
+    assert_eq!(
+        fs::read(f.app.storage.note_path("art.draw")).unwrap(),
+        original
+    );
+    replace_step_input(&mut f.app, "new-art");
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    assert!(f.app.command_palette.is_none());
+    assert!(f.app.storage.note_path("new-art.draw").is_file());
 }

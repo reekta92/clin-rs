@@ -1,7 +1,10 @@
 use super::{CommandPalette, PaletteItem};
 use crate::{
     app::{App, ViewMode},
-    popups::{ActivePopup, GoalsPopupMode, ThemePopup, ThemePopupFocus},
+    popups::{
+        ActivePopup, GoalsPopupMode, ImportSource, ImportTarget, NoteFormat, ThemePopup,
+        ThemePopupFocus,
+    },
 };
 use ratatui::widgets::ListState;
 use ratatui_textarea::TextArea;
@@ -9,6 +12,48 @@ use ratatui_textarea::TextArea;
 pub(crate) enum Workflow {
     Theme(Box<ThemePopup>),
     Goal(GoalsPopupMode),
+    Options(OptionKind),
+    Create {
+        folder: String,
+        format: NoteFormat,
+    },
+    Import {
+        source: ImportSource,
+        target: ImportTarget,
+        note_id: Option<String>,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum OptionKind {
+    Sort,
+    Icon,
+    Hint,
+    Preset,
+}
+
+impl OptionKind {
+    fn labels(self) -> Vec<&'static str> {
+        match self {
+            Self::Sort => vec![
+                "Title (A-Z)",
+                "Title (Z-A)",
+                "Modified (newest)",
+                "Modified (oldest)",
+            ],
+            Self::Icon => vec!["Nerd Font", "Unicode", "None"],
+            Self::Hint => crate::config::HintBarStyle::ALL
+                .iter()
+                .map(|style| style.name())
+                .collect(),
+            Self::Preset => vec![
+                "default — Default CUA",
+                "helix — Space leader",
+                "vim — : commands",
+                "emacs — Ctrl-x prefix",
+            ],
+        }
+    }
 }
 
 pub(super) struct PaletteParent {
@@ -62,16 +107,41 @@ impl CommandPalette {
             Some(Workflow::Theme(_)) => "COMMANDS › Switch Theme",
             Some(Workflow::Goal(GoalsPopupMode::WordGoal)) => "COMMANDS › Daily Word Goal",
             Some(Workflow::Goal(GoalsPopupMode::NoteGoal)) => "COMMANDS › Daily Note Goal",
+            Some(Workflow::Options(OptionKind::Sort)) => "COMMANDS › Sort Order",
+            Some(Workflow::Options(OptionKind::Icon)) => "COMMANDS › Icon Mode",
+            Some(Workflow::Options(OptionKind::Hint)) => "COMMANDS › Hint Bar Style",
+            Some(Workflow::Options(OptionKind::Preset)) => "COMMANDS › Navigation Preset",
+            Some(Workflow::Create {
+                format: NoteFormat::Draw,
+                ..
+            }) => "COMMANDS › New Drawing Name",
+            Some(Workflow::Create {
+                format: NoteFormat::Canvas,
+                ..
+            }) => "COMMANDS › New Canvas Name",
+            Some(Workflow::Create { .. }) => "COMMANDS › New Bases File Name",
+            Some(Workflow::Import { .. }) => "COMMANDS › URL",
             None => "COMMANDS",
         }
     }
 
     pub(crate) fn is_value_input(&self) -> bool {
-        matches!(self.workflow, Some(Workflow::Goal(_)))
+        matches!(
+            self.workflow,
+            Some(Workflow::Goal(_) | Workflow::Create { .. } | Workflow::Import { .. })
+        )
     }
 
     pub(crate) fn refresh_workflow(&mut self, app: &App) {
         let mut rows = Vec::new();
+        if let Some(Workflow::Options(kind)) = &self.workflow {
+            rows = kind
+                .labels()
+                .into_iter()
+                .enumerate()
+                .map(|(i, label)| (i.to_string(), label.to_owned(), "Apply this option".into()))
+                .collect();
+        }
         if let Some(Workflow::Theme(popup)) = &self.workflow {
             let current = app
                 .setup_state
@@ -191,6 +261,37 @@ impl App {
                 crate::ui::make_popup_textarea(&self.app_theme, "Search themes..."),
             ),
             ActivePopup::Goals(popup) => (Workflow::Goal(popup.mode), popup.input),
+            ActivePopup::Sort(_) => (
+                Workflow::Options(OptionKind::Sort),
+                crate::ui::make_popup_textarea(&self.app_theme, "Search sort orders..."),
+            ),
+            ActivePopup::IconMode(_) => (
+                Workflow::Options(OptionKind::Icon),
+                crate::ui::make_popup_textarea(&self.app_theme, "Search icon modes..."),
+            ),
+            ActivePopup::HintBarStyle(_) => (
+                Workflow::Options(OptionKind::Hint),
+                crate::ui::make_popup_textarea(&self.app_theme, "Search hint styles..."),
+            ),
+            ActivePopup::KeybindPreset(_) => (
+                Workflow::Options(OptionKind::Preset),
+                crate::ui::make_popup_textarea(&self.app_theme, "Search navigation presets..."),
+            ),
+            ActivePopup::CreateNote(popup, format) => (
+                Workflow::Create {
+                    folder: popup.folder,
+                    format,
+                },
+                popup.input,
+            ),
+            ActivePopup::Import(popup) => (
+                Workflow::Import {
+                    source: popup.source,
+                    target: popup.target,
+                    note_id: popup.note_id,
+                },
+                popup.input,
+            ),
             popup => {
                 self.command_palette = Some(palette);
                 self.popups.active = Some(popup);
@@ -254,6 +355,45 @@ impl App {
                 }
                 Workflow::Goal(mode) => {
                     self.apply_goal(*mode, &palette.input.lines().join(""))?;
+                    Ok(true)
+                }
+                Workflow::Options(kind) => {
+                    let Some(item) = palette.items.get(selected) else {
+                        return Ok(false);
+                    };
+                    let index = item.id.parse::<usize>()?;
+                    match kind {
+                        OptionKind::Sort => self.apply_sort_selection(index),
+                        OptionKind::Icon => self.apply_icon_selection(index)?,
+                        OptionKind::Hint => self.apply_hint_selection(index)?,
+                        OptionKind::Preset => self.apply_preset_selection(index)?,
+                    }
+                    Ok(matches!(kind, OptionKind::Sort | OptionKind::Icon))
+                }
+                Workflow::Create { folder, format } => {
+                    self.validate_document_creation(
+                        folder,
+                        *format,
+                        &palette.input.lines().join(""),
+                    )?;
+                    self.apply_note_creation(
+                        folder.clone(),
+                        *format,
+                        &palette.input.lines().join(""),
+                    )?;
+                    Ok(self.mode != palette.context.mode)
+                }
+                Workflow::Import {
+                    source,
+                    target,
+                    note_id,
+                } => {
+                    self.apply_import(
+                        *source,
+                        *target,
+                        note_id.as_deref(),
+                        &palette.input.lines().join(""),
+                    )?;
                     Ok(true)
                 }
             }

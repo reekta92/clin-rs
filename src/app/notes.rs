@@ -1185,102 +1185,143 @@ impl App {
         if let Some(crate::popups::ActivePopup::CreateNote(popup, format)) =
             self.popups.active.take()
         {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            match format {
-                crate::popups::NoteFormat::Base => self.create_base(popup.folder, title),
-                crate::popups::NoteFormat::Markdown => {
-                    if title.is_empty() {
-                        title = String::from("Untitled note");
-                    }
-                    self.start_new_note_with_title(popup.folder, title);
-                }
-                crate::popups::NoteFormat::PlainText => {
-                    if title.is_empty() {
-                        title = String::from("Untitled text");
-                    }
-                    let mut id = self.storage.new_note_id();
-                    id.push_str(".txt");
-                    let full_id = if popup.folder.is_empty() {
-                        id
-                    } else {
-                        format!("{}/{}", popup.folder, id)
-                    };
-
-                    self.enter_edit_mode(full_id, title, String::new());
-                }
-                crate::popups::NoteFormat::Draw => {
-                    if title.is_empty() {
-                        title = String::from("Untitled drawing");
-                    }
-                    let canvas_id = if popup.folder.is_empty() {
-                        format!("{title}.draw")
-                    } else {
-                        format!("{}/{}.draw", popup.folder, title)
-                    };
-                    self.return_mode = Some(self.mode);
-                    self.mode = ViewMode::Draw;
-                    self.editor.note_baseline =
-                        Some(self.storage.load_document(&canvas_id).unwrap_or_else(|_| {
-                            crate::storage::documents::DocumentSnapshot::new(canvas_id.clone())
-                        }));
-                    self.editor.editing_id = Some(canvas_id.clone());
-                    let state = crate::draw::app::DrawAppState::new(
-                        self.storage.clone(),
-                        Some(canvas_id),
-                        self.app_theme.clone(),
-                        self.keybinds.clone(),
-                        self.seq_matcher.clone(),
-                    );
-                    self.draw_state = Some(state);
-                }
-                crate::popups::NoteFormat::Canvas => {
-                    if title.is_empty() {
-                        title = String::from("Untitled canvas");
-                    }
-                    let canvas_id = if popup.folder.is_empty() {
-                        format!("{title}.canvas")
-                    } else {
-                        format!("{}/{}.canvas", popup.folder, title)
-                    };
-                    let path = self.storage.note_path(&canvas_id);
-                    if !path.exists() {
-                        if let Some(parent) = path.parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        let data = pinstar::data::CanvasData {
-                            nodes: vec![],
-                            edges: vec![],
-                            orientation: pinstar::data::DiagramOrientation::default(),
-                        };
-                        if let Ok(content) = serde_json::to_string_pretty(&data)
-                            && let Err(e) = crate::fsutil::atomic_write_str(&path, &content)
-                        {
-                            self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
-                            return;
-                        }
-                    }
-                    self.return_mode = Some(self.mode);
-                    self.mode = ViewMode::Canvas;
-                    self.editor.note_baseline =
-                        Some(self.storage.load_document(&canvas_id).unwrap_or_else(|_| {
-                            crate::storage::documents::DocumentSnapshot::new(canvas_id.clone())
-                        }));
-                    self.editor.editing_id = Some(canvas_id);
-                    if let Ok(plugin) = crate::pinstar_adapter::PinstarPlugin::new(
-                        &path,
-                        &self.config,
-                        self.keybinds.clone(),
-                        self.seq_matcher.clone(),
-                        self.image_picker.clone(),
-                        &self.storage.data_dir,
-                    ) {
-                        self.canvas_state = Some(plugin);
-                    }
-                    self.set_default_status();
-                }
+            if let Err(error) =
+                self.apply_note_creation(popup.folder, format, &popup.input.lines().join(""))
+            {
+                self.set_temporary_status(&format!("Could not create document: {error:#}"));
             }
         }
+    }
+
+    pub(crate) fn apply_note_creation(
+        &mut self,
+        folder: String,
+        format: crate::popups::NoteFormat,
+        input: &str,
+    ) -> Result<()> {
+        let mut title = input.to_owned();
+        title = title.trim().to_string();
+        match format {
+            crate::popups::NoteFormat::Base => self.create_base(folder, title),
+            crate::popups::NoteFormat::Markdown => {
+                if title.is_empty() {
+                    title = String::from("Untitled note");
+                }
+                self.start_new_note_with_title(folder, title);
+            }
+            crate::popups::NoteFormat::PlainText => {
+                if title.is_empty() {
+                    title = String::from("Untitled text");
+                }
+                let mut id = self.storage.new_note_id();
+                id.push_str(".txt");
+                let full_id = if folder.is_empty() {
+                    id
+                } else {
+                    format!("{}/{}", folder, id)
+                };
+
+                self.enter_edit_mode(full_id, title, String::new());
+            }
+            format @ (crate::popups::NoteFormat::Draw | crate::popups::NoteFormat::Canvas) => {
+                self.create_graphic_document(&folder, format, &title)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn action_document_id(
+        &self,
+        folder: &str,
+        format: crate::popups::NoteFormat,
+        title: &str,
+    ) -> Result<String> {
+        let (extension, default) = match format {
+            crate::popups::NoteFormat::Draw => ("draw", "Untitled drawing"),
+            crate::popups::NoteFormat::Canvas => ("canvas", "Untitled canvas"),
+            crate::popups::NoteFormat::Base => ("base", "Untitled"),
+            _ => anyhow::bail!("Unsupported creation format"),
+        };
+        let title = if title.trim().is_empty() {
+            default
+        } else {
+            title.trim()
+        };
+        anyhow::ensure!(!title.contains(['\n', '\r', '\0']), "Invalid document name");
+        let name = if title.ends_with(&format!(".{extension}")) {
+            title.to_owned()
+        } else {
+            format!("{title}.{extension}")
+        };
+        let id = if folder.is_empty() {
+            name
+        } else {
+            format!("{folder}/{name}")
+        };
+        self.storage.document_path(&id)?;
+        Ok(id)
+    }
+
+    pub(crate) fn validate_document_creation(
+        &self,
+        folder: &str,
+        format: crate::popups::NoteFormat,
+        title: &str,
+    ) -> Result<()> {
+        let id = self.action_document_id(folder, format, title)?;
+        anyhow::ensure!(
+            !self.storage.document_path(&id)?.exists(),
+            "Document already exists: {id}"
+        );
+        Ok(())
+    }
+
+    fn create_graphic_document(
+        &mut self,
+        folder: &str,
+        format: crate::popups::NoteFormat,
+        title: &str,
+    ) -> Result<()> {
+        let id = self.action_document_id(folder, format, title)?;
+        self.save_before_session_replace()?;
+        let source = if format == crate::popups::NoteFormat::Draw {
+            serde_json::to_string(&crate::draw::state::DrawData::default())?
+        } else {
+            serde_json::to_string_pretty(&pinstar::data::CanvasData {
+                nodes: vec![],
+                edges: vec![],
+                orientation: pinstar::data::DiagramOrientation::default(),
+            })?
+        };
+        let snapshot = self.storage.create_document(&id, &source)?;
+        if format == crate::popups::NoteFormat::Draw {
+            self.draw_state = Some(crate::draw::app::DrawAppState::new(
+                self.storage.clone(),
+                Some(id.clone()),
+                self.app_theme.clone(),
+                self.keybinds.clone(),
+                self.seq_matcher.clone(),
+            ));
+        } else {
+            self.canvas_state = Some(crate::pinstar_adapter::PinstarPlugin::new(
+                &self.storage.document_path(&id)?,
+                &self.config,
+                self.keybinds.clone(),
+                self.seq_matcher.clone(),
+                self.image_picker.clone(),
+                &self.storage.data_dir,
+            )?);
+        }
+        self.return_mode = Some(self.mode);
+        self.mode = if format == crate::popups::NoteFormat::Draw {
+            ViewMode::Draw
+        } else {
+            ViewMode::Canvas
+        };
+        self.editor.note_baseline = Some(snapshot);
+        self.editor.editing_id = Some(id);
+        self.set_default_status();
+        Ok(())
     }
 
     pub fn insert_content(

@@ -639,7 +639,7 @@ template = """
             (SortField::Modified, SortOrder::Descending) => 2,
             (SortField::Modified, SortOrder::Ascending) => 3,
         };
-        self.popups.active = Some(crate::popups::ActivePopup::Sort(
+        self.present_action_popup(crate::popups::ActivePopup::Sort(
             crate::popups::SelectionPopup {
                 selected: current_idx,
             },
@@ -648,29 +648,33 @@ template = """
 
     pub fn select_sort(&mut self) {
         if let Some(crate::popups::ActivePopup::Sort(popup)) = self.popups.active.take() {
-            use crate::list_view::{SortField, SortOrder};
-            match popup.selected {
-                0 => {
-                    self.list.sort_field = SortField::Title;
-                    self.list.sort_order = SortOrder::Ascending;
-                }
-                1 => {
-                    self.list.sort_field = SortField::Title;
-                    self.list.sort_order = SortOrder::Descending;
-                }
-                2 => {
-                    self.list.sort_field = SortField::Modified;
-                    self.list.sort_order = SortOrder::Descending;
-                }
-                3 => {
-                    self.list.sort_field = SortField::Modified;
-                    self.list.sort_order = SortOrder::Ascending;
-                }
-                _ => {}
-            }
-            self.sort_notes();
-            self.refresh_visual_list();
+            self.apply_sort_selection(popup.selected);
         }
+    }
+
+    pub(crate) fn apply_sort_selection(&mut self, selected: usize) {
+        use crate::list_view::{SortField, SortOrder};
+        match selected {
+            0 => {
+                self.list.sort_field = SortField::Title;
+                self.list.sort_order = SortOrder::Ascending;
+            }
+            1 => {
+                self.list.sort_field = SortField::Title;
+                self.list.sort_order = SortOrder::Descending;
+            }
+            2 => {
+                self.list.sort_field = SortField::Modified;
+                self.list.sort_order = SortOrder::Descending;
+            }
+            3 => {
+                self.list.sort_field = SortField::Modified;
+                self.list.sort_order = SortOrder::Ascending;
+            }
+            _ => {}
+        }
+        self.sort_notes();
+        self.refresh_visual_list();
     }
 
     pub fn close_sort_popup(&mut self) {
@@ -683,7 +687,7 @@ template = """
             crate::config::IconMode::Unicode => 1,
             crate::config::IconMode::None => 2,
         };
-        self.popups.active = Some(crate::popups::ActivePopup::IconMode(
+        self.present_action_popup(crate::popups::ActivePopup::IconMode(
             crate::popups::SelectionPopup {
                 selected: current_idx,
             },
@@ -692,20 +696,25 @@ template = """
 
     pub fn select_icon_mode(&mut self) {
         if let Some(crate::popups::ActivePopup::IconMode(popup)) = self.popups.active.take() {
-            let mode = match popup.selected {
-                0 => crate::config::IconMode::Nerd,
-                1 => crate::config::IconMode::Unicode,
-                _ => crate::config::IconMode::None,
-            };
-            self.config.ui.icon_mode = mode;
-            let status = match mode {
-                crate::config::IconMode::Nerd => "Icon mode: Nerd Font",
-                crate::config::IconMode::Unicode => "Icon mode: Unicode",
-                crate::config::IconMode::None => "Icon mode: None",
-            };
-            self.set_temporary_status_static(status);
-            let _ = self.persist_config(|config| config.ui.icon_mode = mode);
+            let _ = self.apply_icon_selection(popup.selected);
         }
+    }
+
+    pub(crate) fn apply_icon_selection(&mut self, selected: usize) -> anyhow::Result<()> {
+        let mode = match selected {
+            0 => crate::config::IconMode::Nerd,
+            1 => crate::config::IconMode::Unicode,
+            _ => crate::config::IconMode::None,
+        };
+        self.config.ui.icon_mode = mode;
+        let status = match mode {
+            crate::config::IconMode::Nerd => "Icon mode: Nerd Font",
+            crate::config::IconMode::Unicode => "Icon mode: Unicode",
+            crate::config::IconMode::None => "Icon mode: None",
+        };
+        self.set_temporary_status_static(status);
+        self.persist_config(|config| config.ui.icon_mode = mode)?;
+        Ok(())
     }
 
     pub fn close_icon_mode_popup(&mut self) {
@@ -714,7 +723,7 @@ template = """
 
     pub fn begin_hint_bar_style_selection(&mut self) {
         let current_idx = self.config.ui.hint_bar_style.index();
-        self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(
+        self.present_action_popup(crate::popups::ActivePopup::HintBarStyle(
             crate::popups::SelectionPopup {
                 selected: current_idx,
             },
@@ -723,13 +732,18 @@ template = """
 
     pub fn select_hint_bar_style(&mut self) {
         if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = self.popups.active.take() {
-            let style = crate::config::HintBarStyle::from_index(popup.selected);
-            self.config.ui.hint_bar_style = style;
-            self.app_theme.hint_bar_style = style;
-            self.set_temporary_status(&format!("Hint bar style: {}", style.name()));
-            let _ = self.persist_config(|config| config.ui.hint_bar_style = style);
+            let _ = self.apply_hint_selection(popup.selected);
             self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(popup));
         }
+    }
+
+    pub(crate) fn apply_hint_selection(&mut self, selected: usize) -> anyhow::Result<()> {
+        let style = crate::config::HintBarStyle::from_index(selected);
+        self.config.ui.hint_bar_style = style;
+        self.app_theme.hint_bar_style = style;
+        self.set_temporary_status(&format!("Hint bar style: {}", style.name()));
+        self.persist_config(|config| config.ui.hint_bar_style = style)?;
+        Ok(())
     }
 
     pub fn close_hint_bar_style_popup(&mut self) {
@@ -749,34 +763,39 @@ template = """
                 crate::config::KeybindPreset::Emacs => 3,
             }
         };
-        self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(
+        self.present_action_popup(crate::popups::ActivePopup::KeybindPreset(
             crate::popups::SelectionPopup { selected },
         ));
     }
 
     pub fn select_keybind_preset(&mut self) {
         if let Some(crate::popups::ActivePopup::KeybindPreset(popup)) = self.popups.active.take() {
-            let new = match popup.selected {
-                0 => crate::config::KeybindPreset::Default,
-                1 => crate::config::KeybindPreset::Helix,
-                2 => crate::config::KeybindPreset::Vim,
-                _ => crate::config::KeybindPreset::Emacs,
-            };
-            if self.mode == ViewMode::Setup {
-                if let Some(state) = &mut self.setup_state {
-                    state.keybind_preset = popup.selected;
-                }
-                self.apply_setup_live();
-            } else {
-                self.config.core.keybind_preset = new;
-                self.apply_keybind_preset(new);
-                self.set_temporary_status(&format!(
-                    "Navigation preset: {new} (text editing unchanged)"
-                ));
-                let _ = self.persist_config(|config| config.core.keybind_preset = new);
-            }
+            let _ = self.apply_preset_selection(popup.selected);
             self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(popup));
         }
+    }
+
+    pub(crate) fn apply_preset_selection(&mut self, selected: usize) -> anyhow::Result<()> {
+        let new = match selected {
+            0 => crate::config::KeybindPreset::Default,
+            1 => crate::config::KeybindPreset::Helix,
+            2 => crate::config::KeybindPreset::Vim,
+            _ => crate::config::KeybindPreset::Emacs,
+        };
+        if self.mode == ViewMode::Setup {
+            if let Some(state) = &mut self.setup_state {
+                state.keybind_preset = selected;
+            }
+            self.apply_setup_live();
+        } else {
+            self.config.core.keybind_preset = new;
+            self.apply_keybind_preset(new);
+            self.set_temporary_status(&format!(
+                "Navigation preset: {new} (text editing unchanged)"
+            ));
+            self.persist_config(|config| config.core.keybind_preset = new)?;
+        }
+        Ok(())
     }
 
     pub fn close_keybind_preset_popup(&mut self) {
