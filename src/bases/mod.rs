@@ -12,6 +12,7 @@ mod groups;
 mod input;
 mod layout_options;
 mod media;
+pub(crate) mod palette;
 pub mod query;
 mod regexp;
 mod render;

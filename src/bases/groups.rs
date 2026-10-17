@@ -176,7 +176,7 @@ impl BasesState {
         };
         Ok(Target::NewNote { group })
     }
-    pub(super) fn prompt_new_note(&mut self) -> Result<()> {
+    pub(super) fn prompt_new_note(&mut self, app: &mut App) -> Result<()> {
         let target = self.new_note_target()?;
         let initial = if let Target::NewNote {
             group: Some((property, Some(Value::String(folder)))),
@@ -190,12 +190,15 @@ impl BasesState {
         } else {
             "New note.md".into()
         };
-        self.dialog = Some(Dialog::prompt(
-            target,
-            "New note in current view",
-            "Vault-relative .md path; Kanban uses focused column's property or folder",
-            &initial,
-        ));
+        self.present_dialog(
+            app,
+            Dialog::prompt(
+                target,
+                "New note in current view",
+                "Vault-relative .md path; Kanban uses focused column's property or folder",
+                &initial,
+            ),
+        );
         Ok(())
     }
     pub(super) fn start_folder_move(

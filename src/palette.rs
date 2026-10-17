@@ -102,6 +102,9 @@ pub struct CommandPalette {
 
 impl CommandPalette {
     pub(crate) fn paste_text(&mut self, data: &str, app: &crate::app::App) {
+        if self.is_submitting() {
+            return;
+        }
         if self.multiline_input() {
             self.input.insert_str(data.replace("\r\n", "\n"));
         } else {
@@ -230,7 +233,27 @@ impl CommandPalette {
         if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
             return true;
         }
+        if self.is_submitting() {
+            if key
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL)
+                && matches!(key.code, KeyCode::Char('c' | 'a'))
+            {
+                crate::text_edit::feed_key(&app.keybinds, &mut self.input, key);
+            }
+            return false;
+        }
         match key.code {
+            KeyCode::Enter
+                if self
+                    .bases_page()
+                    .is_some_and(crate::bases::palette::Page::is_prompt)
+                    && key
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::SHIFT) =>
+            {
+                self.input.insert_newline();
+            }
             KeyCode::Enter
                 if matches!(
                     self.workflow,

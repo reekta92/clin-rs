@@ -1320,6 +1320,10 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
         return true;
     }
 
+    // Separate Bases confirmations retain their own geometry and event routing.
+    if app.palette_bases_dialog_open() {
+        return false;
+    }
     // 2. Command palette
     if app.command_palette.is_some() {
         return handle_command_palette_mouse(app, mouse, terminal_area);

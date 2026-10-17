@@ -9,6 +9,12 @@ use crate::{
 
 impl CommandPalette {
     pub(crate) fn multiline_input(&self) -> bool {
+        if self
+            .bases_page()
+            .is_some_and(crate::bases::palette::Page::is_prompt)
+        {
+            return true;
+        }
         matches!(
             self.workflow,
             Some(Workflow::SubnoteField { content: true, .. })

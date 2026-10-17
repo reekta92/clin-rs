@@ -11,11 +11,13 @@ use ratatui_textarea::TextArea;
 
 pub(crate) enum Workflow {
     Theme(Box<ThemePopup>),
+    Bases(Box<crate::bases::palette::Page>),
     Goal(GoalsPopupMode),
     Options(OptionKind),
     Create {
         folder: String,
         format: NoteFormat,
+        task: Option<Box<crate::bases::palette::Creation>>,
     },
     Import {
         source: ImportSource,
@@ -139,11 +141,47 @@ impl CommandPalette {
             Some(Workflow::SubnoteMenu { .. }) => "COMMANDS › Subnotes › Selected subnote",
             Some(Workflow::SubnoteField { content: false, .. }) => "COMMANDS › Subnotes › Title",
             Some(Workflow::SubnoteField { content: true, .. }) => "COMMANDS › Subnotes › Content",
+            Some(Workflow::Bases(page)) => page.title(),
             None => "COMMANDS",
         }
     }
 
+    pub(crate) fn is_submitting(&self) -> bool {
+        matches!(self.workflow, Some(Workflow::Create { task: Some(_), .. }))
+            || self.bases_page().is_some_and(|page| {
+                matches!(
+                    page,
+                    crate::bases::palette::Page::Prompt {
+                        submitting: true,
+                        ..
+                    }
+                )
+            })
+    }
+
+    pub(crate) fn workflow_hint(&self) -> &str {
+        if let Some(error) = &self.error {
+            return error;
+        }
+        if let Some(Workflow::Bases(page)) = &self.workflow {
+            return page.hint();
+        }
+        if matches!(
+            self.workflow,
+            Some(Workflow::SubnoteField { content: true, .. })
+        ) {
+            return "Enter newline · Ctrl+Enter apply · Esc back";
+        }
+        if matches!(self.workflow, Some(Workflow::Create { task: Some(_), .. })) {
+            return "Creating document…";
+        }
+        "Enter select / apply · Esc back"
+    }
+
     pub(crate) fn is_value_input(&self) -> bool {
+        if let Some(Workflow::Bases(page)) = &self.workflow {
+            return page.is_prompt();
+        }
         matches!(
             self.workflow,
             Some(
@@ -158,6 +196,9 @@ impl CommandPalette {
 
     pub(crate) fn refresh_workflow(&mut self, app: &App) {
         let mut rows = self.manager_rows(app);
+        if let Some(Workflow::Bases(page)) = &self.workflow {
+            rows = page.rows();
+        }
         if let Some(Workflow::Options(kind)) = &self.workflow {
             rows = kind
                 .labels()
@@ -279,6 +320,14 @@ impl App {
             self.popups.active = Some(popup);
             return;
         }
+        let initial_selection = match &popup {
+            ActivePopup::Theme(popup) => Some(format!("theme:{}", popup.selected)),
+            ActivePopup::Sort(popup)
+            | ActivePopup::IconMode(popup)
+            | ActivePopup::HintBarStyle(popup)
+            | ActivePopup::KeybindPreset(popup) => Some(popup.selected.to_string()),
+            _ => None,
+        };
         let (workflow, input) = match popup {
             ActivePopup::Theme(popup) => (
                 Workflow::Theme(Box::new(popup)),
@@ -305,6 +354,7 @@ impl App {
                 Workflow::Create {
                     folder: popup.folder,
                     format,
+                    task: None,
                 },
                 popup.input,
             ),
@@ -328,11 +378,27 @@ impl App {
         };
         palette.workflow_action = palette.launching_action.clone();
         palette.push_workflow(workflow, input, self);
+        if let Some(id) = initial_selection {
+            palette
+                .state
+                .select(palette.items.iter().position(|item| item.id == id));
+        }
         self.command_palette = Some(palette);
     }
 
     pub(crate) fn leave_palette_step(&mut self, mut palette: CommandPalette, close: bool) {
-        if let Err(error) = palette.finish_subnote_step(self, close) {
+        if matches!(
+            palette.workflow,
+            Some(Workflow::Create { task: Some(_), .. })
+        ) {
+            palette.error = Some("Creation in progress; wait for completion".into());
+            self.command_palette = Some(palette);
+            return;
+        }
+        if let Err(error) = self
+            .leave_palette_bases(&palette)
+            .and_then(|()| palette.finish_subnote_step(self, close))
+        {
             palette.error = Some(format!("{error:#}"));
             self.command_palette = Some(palette);
             return;
@@ -361,6 +427,10 @@ impl App {
         mut palette: CommandPalette,
         selected: usize,
     ) {
+        if matches!(palette.workflow, Some(Workflow::Bases(_))) {
+            self.activate_palette_bases(palette, selected);
+            return;
+        }
         if matches!(
             palette.workflow,
             Some(
@@ -424,12 +494,31 @@ impl App {
                     }
                     Ok(matches!(kind, OptionKind::Sort | OptionKind::Icon))
                 }
-                Workflow::Create { folder, format } => {
+                Workflow::Create {
+                    folder,
+                    format,
+                    task,
+                } => {
                     self.validate_document_creation(
                         folder,
                         *format,
                         &palette.input.lines().join(""),
                     )?;
+                    if *format == NoteFormat::Base {
+                        anyhow::ensure!(
+                            task.is_none(),
+                            "Creation in progress; wait for completion"
+                        );
+                        self.save_before_session_replace()?;
+                        anyhow::ensure!(self.ensure_bases_worker(), "{}", self.status);
+                        let id = self.action_document_id(
+                            folder,
+                            *format,
+                            &palette.input.lines().join(""),
+                        )?;
+                        *task = Some(Box::new(crate::bases::palette::Creation::start(self, id)));
+                        return Ok(false);
+                    }
                     self.apply_note_creation(
                         folder.clone(),
                         *format,
@@ -455,6 +544,7 @@ impl App {
                 | Workflow::Subnotes(_)
                 | Workflow::SubnoteMenu { .. }
                 | Workflow::SubnoteField { .. } => unreachable!("manager dispatch"),
+                Workflow::Bases(_) => unreachable!("Bases dispatch"),
             }
         })();
         match result {

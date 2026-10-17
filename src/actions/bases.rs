@@ -37,6 +37,9 @@ impl Action for BasesCommand {
         } else {
             state.apply_action(app, self.2, 1).map(|_| ())
         };
+        if result.is_ok() {
+            state.palette_preparing(app);
+        }
         app.bases_state = Some(state);
         result
     }

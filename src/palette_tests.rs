@@ -1303,3 +1303,65 @@ fn palette_workflow_subnotes_preserve_multiline_and_nested_back() {
         Some(crate::popups::ActivePopup::Subnotes(_))
     ));
 }
+
+#[test]
+fn palette_workflow_base_creation_collision_retains_input_and_origin() {
+    let mut f = Fixture::new();
+    let pool = std::sync::Arc::new(
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap(),
+    );
+    let (started, ready) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    pool.spawn(move || {
+        started.send(()).unwrap();
+        blocked.recv().unwrap();
+    });
+    ready.recv().unwrap();
+    f.app.notes_worker_pool = pool;
+    activate(&mut f.app, "bases.create");
+    replace_step_input(&mut f.app, "new-board");
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert_eq!(f.app.mode, ViewMode::List);
+    assert!(f.app.command_palette.as_ref().unwrap().is_submitting());
+    fs::write(
+        f.app.storage.note_path("new-board.base"),
+        "external collision",
+    )
+    .unwrap();
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.is_some());
+    release.send(()).unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while f.app.command_palette.as_ref().unwrap().is_submitting() {
+        f.app.poll_bases();
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    assert_eq!(f.app.mode, ViewMode::List);
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.input.lines()[0], "new-board");
+    assert!(palette.error.is_some());
+    assert_eq!(
+        fs::read_to_string(f.app.storage.note_path("new-board.base")).unwrap(),
+        "external collision"
+    );
+    replace_step_input(&mut f.app, "other-board");
+    drive(&mut f.app, key(KeyCode::Enter));
+    while f.app.command_palette.is_some() {
+        f.app.poll_bases();
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    assert_eq!(f.app.mode, ViewMode::Bases);
+    assert!(
+        f.app
+            .storage
+            .load_document("other-board.base")
+            .unwrap()
+            .source()
+            .contains("views:")
+    );
+}

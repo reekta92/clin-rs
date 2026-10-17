@@ -748,8 +748,10 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     } else {
         None
     };
-    // Command palette
-    if let Some(palette) = &mut app.command_palette {
+    // Command palette; separate Bases confirmations render in their original view.
+    if !app.palette_bases_dialog_open()
+        && let Some(palette) = &mut app.command_palette
+    {
         let area = frame.area();
         let content = draw_popup_frame(
             frame,
@@ -823,13 +825,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.render_widget(tabs_w, chunks[1]);
         } else {
             frame.render_widget(
-                Paragraph::new(
-                    palette
-                        .error
-                        .as_deref()
-                        .unwrap_or("Enter select / apply · Esc back"),
-                )
-                .style(Style::default().fg(app.app_theme.muted)),
+                Paragraph::new(palette.workflow_hint())
+                    .style(Style::default().fg(app.app_theme.muted)),
                 chunks[1],
             );
         }

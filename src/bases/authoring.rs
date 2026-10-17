@@ -682,6 +682,8 @@ impl BasesState {
             return false;
         };
         self.write_task = None;
+        let complete = !matches!(&result, Ok(Outcome::Prepared { .. }));
+        let palette_error = result.as_ref().err().map(|error| format!("{error:#}"));
         match result {
             Err(error) => {
                 self.edit_intent = None;
@@ -741,11 +743,13 @@ impl BasesState {
                             clear: false,
                         };
                         if let Err(error) = self.submit(app, &target, &source) {
+                            app.finish_palette_bases_write(Some(format!("{error:#}")));
                             app.set_temporary_status(&format!("Bases: {error:#}"));
                         }
                     }
-                    EditIntent::Clear => {
-                        self.dialog = Some(Dialog::prompt(
+                    EditIntent::Clear => self.present_dialog(
+                        app,
+                        Dialog::prompt(
                             Target::Cell {
                                 snapshots,
                                 key: key.clone(),
@@ -754,10 +758,11 @@ impl BasesState {
                             &format!("Clear {key}"),
                             "Type CLEAR; removes property from selected notes",
                             "",
-                        ))
-                    }
-                    EditIntent::Edit => {
-                        self.dialog = Some(Dialog::prompt(
+                        ),
+                    ),
+                    EditIntent::Edit => self.present_dialog(
+                        app,
+                        Dialog::prompt(
                             Target::Cell {
                                 snapshots,
                                 key: key.clone(),
@@ -766,8 +771,8 @@ impl BasesState {
                             &format!("Edit {key}"),
                             "Declared text/date: literal text; other types: YAML value",
                             &initial,
-                        ))
-                    }
+                        ),
+                    ),
                 }
             }
             Ok(Outcome::Changed(transaction)) => {
@@ -877,6 +882,9 @@ impl BasesState {
                     app.set_temporary_status("Native image preview unavailable");
                 }
             }
+        }
+        if complete {
+            app.finish_palette_bases_write(palette_error);
         }
         true
     }
@@ -1092,66 +1100,11 @@ impl BasesState {
                     *selected = (*selected + 1).min(COMMANDS.len() - 1)
                 }
                 (Dialog::Menu { selected, .. }, KeyCode::Enter) => {
-                    let (command, title, hint) = COMMANDS[*selected];
-                    let target = match command {
-                        Command::Source => {
-                            match self.ensure_idle() {
-                                Ok(()) => {
-                                    self.write_task = Some(WriteTask::for_app(
-                                        app,
-                                        Operation::OpenSource {
-                                            id: self.id.clone(),
-                                        },
-                                    ))
-                                }
-                                Err(error) => {
-                                    app.set_temporary_status(&format!("Bases: {error:#}"))
-                                }
-                            }
-                            return true;
-                        }
-                        Command::NewNote => {
-                            if let Err(error) = self.prompt_new_note() {
-                                app.set_temporary_status(&format!("Bases: {error:#}"));
-                                self.dialog = Some(dialog);
-                            }
-                            return true;
-                        }
-                        Command::Export => Target::Export,
-                        Command::Group(action) => {
-                            if !matches!(action, super::groups::GroupAction::Add) {
-                                match self.change_group_order(app, action, "") {
-                                    Ok(()) => {}
-                                    Err(error) => {
-                                        app.set_temporary_status(&format!("Bases: {error:#}"));
-                                        self.dialog = Some(dialog);
-                                    }
-                                }
-                                return true;
-                            }
-                            let Some(loaded) = &self.loaded else {
-                                self.dialog = Some(dialog);
-                                return true;
-                            };
-                            Target::GroupOrder {
-                                action,
-                                baseline: loaded.snapshot.clone(),
-                            }
-                        }
-                        _ => {
-                            let Some(loaded) = &self.loaded else {
-                                self.dialog = Some(dialog);
-                                return true;
-                            };
-                            Target::Config {
-                                command,
-                                baseline: loaded.snapshot.clone(),
-                                view: loaded.view,
-                            }
-                        }
-                    };
-                    self.dialog = Some(Dialog::prompt(target, title, hint, ""));
-                    keep = false;
+                    if let Err(error) = self.run_configuration_command(app, *selected) {
+                        app.set_temporary_status(&format!("Bases: {error:#}"));
+                        self.dialog = Some(dialog);
+                    }
+                    return true;
                 }
                 (Dialog::Prompt { input, .. }, KeyCode::Enter)
                     if key.modifiers.contains(KeyModifiers::SHIFT) =>

@@ -83,7 +83,7 @@ impl OverlayView for BasesState {
                                         && rect.right().saturating_sub(2) == mouse.column
                                 }) {
                                     self.drag = None;
-                                    if let Err(error) = self.prompt_new_note() {
+                                    if let Err(error) = self.prompt_new_note(app) {
                                         app.set_temporary_status(&format!("Bases: {error:#}"));
                                     }
                                 }
@@ -271,12 +271,15 @@ impl BasesState {
                         crate::text_edit::read_system_clipboard().map(EditIntent::Paste)
                     }
                     BasesAction::MoveToGroup => {
-                        self.dialog = Some(super::authoring::Dialog::prompt(
-                            super::authoring::Target::MoveGroup,
-                            "Move selected notes to group",
-                            "Editable group property value; blank clears group",
-                            "",
-                        ));
+                        self.present_dialog(
+                            app,
+                            super::authoring::Dialog::prompt(
+                                super::authoring::Target::MoveGroup,
+                                "Move selected notes to group",
+                                "Editable group property value; blank clears group",
+                                "",
+                            ),
+                        );
                         None
                     }
                     _ => Some(EditIntent::Edit),
@@ -292,27 +295,29 @@ impl BasesState {
                     app.set_temporary_status(&format!("Bases: {error:#}"));
                 }
             }
-            BasesAction::Configure => {
-                self.dialog = Some(super::authoring::Dialog::Menu {
+            BasesAction::Configure => self.present_dialog(
+                app,
+                super::authoring::Dialog::Menu {
                     selected: 0,
                     offset: 0,
                     area: Rect::default(),
                     bounds: Rect::default(),
-                })
-            }
+                },
+            ),
             BasesAction::NewNote => {
-                if let Err(error) = self.prompt_new_note() {
+                if let Err(error) = self.prompt_new_note(app) {
                     app.set_temporary_status(&format!("Bases: {error:#}"));
                 }
             }
-            BasesAction::Export => {
-                self.dialog = Some(super::authoring::Dialog::prompt(
+            BasesAction::Export => self.present_dialog(
+                app,
+                super::authoring::Dialog::prompt(
                     super::authoring::Target::Export,
                     "Export visible results",
                     "Vault-relative .csv or .md; spreadsheet formulas escaped in CSV",
                     "Results.csv",
-                ))
-            }
+                ),
+            ),
             BasesAction::Copy => {
                 if let Some(value) = self.row().and_then(|row| {
                     self.loaded

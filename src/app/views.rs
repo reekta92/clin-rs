@@ -389,6 +389,7 @@ impl App {
     }
 
     pub fn poll_bases(&mut self) -> bool {
+        let creation_dirty = self.poll_palette_base_creation();
         let mut dirty = false;
         if let Some(canvas) = &mut self.canvas_state {
             match canvas.poll_base_renderers() {
@@ -432,7 +433,7 @@ impl App {
             dirty |= state.poll_write(self);
             self.bases_state = Some(state);
         }
-        dirty | self.poll_base_embeds()
+        creation_dirty | dirty | self.poll_base_embeds()
     }
 
     pub fn open_graph_view(&mut self) {

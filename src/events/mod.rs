@@ -802,8 +802,36 @@ pub(crate) fn handle_open_palette_event(
     event: &crossterm::event::Event,
     area: Rect,
 ) -> bool {
-    if app.command_palette.is_none() || app.popups.confirm.is_some() {
+    if app.command_palette.is_none() {
         return false;
+    }
+    if app.popups.confirm.is_some() {
+        match event {
+            crossterm::event::Event::Key(key)
+                if key.kind == crossterm::event::KeyEventKind::Press =>
+            {
+                match route_confirm_key(key, &app.keybinds, false) {
+                    ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
+                    ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
+                    ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
+                    ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
+                    ConfirmKeyAction::Confirm => app.confirm_action(),
+                    ConfirmKeyAction::Cancel => app.cancel_confirm(),
+                    ConfirmKeyAction::Unhandled => {}
+                }
+            }
+            crossterm::event::Event::Mouse(mouse) => {
+                popup_mouse::handle_global_popup_mouse(app, mouse, area);
+            }
+            _ => {}
+        }
+        return true;
+    }
+    if app.palette_bases_dialog_open() {
+        let mut state = app.bases_state.take().expect("Bases dialog");
+        let consumed = state.dialog_event(event, app);
+        app.bases_state = Some(state);
+        return consumed;
     }
     if !matches!(event, crossterm::event::Event::Key(key) if key.code == KeyCode::Enter) {
         app.refresh_command_palette();
