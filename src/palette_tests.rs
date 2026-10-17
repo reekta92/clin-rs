@@ -1200,3 +1200,106 @@ fn palette_workflow_options_creation_and_import_validation() {
     assert!(f.app.command_palette.is_none());
     assert!(f.app.storage.note_path("new-art.draw").is_file());
 }
+
+#[test]
+fn palette_workflow_vault_alias_and_separate_confirmation() {
+    let mut f = Fixture::new();
+    let other = f.root.path().join("other-vault");
+    fs::create_dir_all(&other).unwrap();
+    f.app.config.core.vaults.push(other.clone());
+    f.app.config.save().unwrap();
+    activate(&mut f.app, "vault.switch");
+    assert!(f.app.vault_switcher.is_none());
+    drive(&mut f.app, key(KeyCode::F(2)));
+    replace_step_input(&mut f.app, "My vault");
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.name == "My vault")
+    );
+    let raw = other.to_string_lossy();
+    let palette = f.app.command_palette.as_mut().unwrap();
+    let row = palette
+        .items
+        .iter()
+        .position(|item| item.id == format!("vault:{raw}"))
+        .unwrap();
+    palette.state.select(Some(row));
+    drive(&mut f.app, key(KeyCode::Delete));
+    assert!(f.app.popups.confirm.is_some());
+    let query = f.app.command_palette.as_ref().unwrap().input.lines()[0].clone();
+    drive(&mut f.app, Event::Paste("must not reach palette".into()));
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().input.lines()[0],
+        query
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.popups.confirm.is_none());
+    assert!(f.app.command_palette.is_some());
+    drive(&mut f.app, key(KeyCode::Delete));
+    f.app.confirm_action();
+    f.app.refresh_command_palette();
+    assert!(
+        !f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.id == format!("vault:{raw}"))
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::F(4)));
+    assert!(f.app.vault_switcher.is_some());
+    assert!(f.app.command_palette.is_none());
+}
+
+#[test]
+fn palette_workflow_subnotes_preserve_multiline_and_nested_back() {
+    let mut f = Fixture::new();
+    activate(&mut f.app, "manage_subnotes_list");
+    select_step(&mut f.app, "add");
+    select_step(&mut f.app, "title");
+    replace_step_input(&mut f.app, "Child title");
+    drive(&mut f.app, key(KeyCode::Enter));
+    select_step(&mut f.app, "content");
+    replace_step_input(&mut f.app, "first\nsecond");
+    drive(&mut f.app, key(KeyCode::Enter));
+    drive(&mut f.app, Event::Paste("third".into()));
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().input.lines(),
+        &["first", "second", "third"]
+    );
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL)),
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(
+        f.app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .any(|item| item.name == "Child title")
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    let saved = f.app.storage.get_subnotes("selected.md").unwrap();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].title, "Child title");
+    assert_eq!(saved[0].content, "first\nsecond\nthird");
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.is_none());
+    f.app.open_subnotes_popup();
+    assert!(matches!(
+        f.app.popups.active,
+        Some(crate::popups::ActivePopup::Subnotes(_))
+    ));
+}

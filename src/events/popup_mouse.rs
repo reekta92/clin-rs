@@ -183,7 +183,7 @@ pub(crate) fn handle_command_palette_mouse(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(palette.input_height(content.height)),
             Constraint::Length(1),
             Constraint::Min(0),
         ])

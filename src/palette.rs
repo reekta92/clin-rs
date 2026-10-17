@@ -3,6 +3,7 @@ use ratatui::widgets::ListState;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
+mod managers;
 pub(crate) mod workflows;
 use workflows::{PaletteParent, Workflow};
 
@@ -101,8 +102,12 @@ pub struct CommandPalette {
 
 impl CommandPalette {
     pub(crate) fn paste_text(&mut self, data: &str, app: &crate::app::App) {
-        self.input
-            .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
+        if self.multiline_input() {
+            self.input.insert_str(data.replace("\r\n", "\n"));
+        } else {
+            self.input
+                .insert_str(data.replace("\r\n", " ").replace(['\r', '\n'], " "));
+        }
         self.refresh_items(app);
     }
     pub fn new(context_note_id: Option<String>, app: &crate::app::App) -> Self {
@@ -226,6 +231,16 @@ impl CommandPalette {
             return true;
         }
         match key.code {
+            KeyCode::Enter
+                if matches!(
+                    self.workflow,
+                    Some(Workflow::SubnoteField { content: true, .. })
+                ) && !key
+                    .modifiers
+                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+            {
+                self.input.insert_newline();
+            }
             KeyCode::Tab if self.workflow.is_none() => {
                 let len = self.tabs.len();
                 self.active_tab = (self.active_tab + 1) % len;

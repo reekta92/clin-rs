@@ -22,6 +22,18 @@ pub(crate) enum Workflow {
         target: ImportTarget,
         note_id: Option<String>,
     },
+    Vault(Box<crate::app::vaults::VaultSwitcher>),
+    VaultName {
+        key: String,
+    },
+    Subnotes(Box<crate::popups::SubnotesPopup>),
+    SubnoteMenu {
+        id: String,
+    },
+    SubnoteField {
+        id: String,
+        content: bool,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -60,7 +72,7 @@ pub(super) struct PaletteParent {
     input: TextArea<'static>,
     items: Vec<PaletteItem>,
     state: ListState,
-    workflow: Option<Workflow>,
+    pub(super) workflow: Option<Workflow>,
     last_filter: Option<(String, usize)>,
 }
 
@@ -121,6 +133,12 @@ impl CommandPalette {
             }) => "COMMANDS › New Canvas Name",
             Some(Workflow::Create { .. }) => "COMMANDS › New Bases File Name",
             Some(Workflow::Import { .. }) => "COMMANDS › URL",
+            Some(Workflow::Vault(_)) => "COMMANDS › Switch Vault",
+            Some(Workflow::VaultName { .. }) => "COMMANDS › Switch Vault › Rename",
+            Some(Workflow::Subnotes(_)) => "COMMANDS › Subnotes",
+            Some(Workflow::SubnoteMenu { .. }) => "COMMANDS › Subnotes › Selected subnote",
+            Some(Workflow::SubnoteField { content: false, .. }) => "COMMANDS › Subnotes › Title",
+            Some(Workflow::SubnoteField { content: true, .. }) => "COMMANDS › Subnotes › Content",
             None => "COMMANDS",
         }
     }
@@ -128,12 +146,18 @@ impl CommandPalette {
     pub(crate) fn is_value_input(&self) -> bool {
         matches!(
             self.workflow,
-            Some(Workflow::Goal(_) | Workflow::Create { .. } | Workflow::Import { .. })
+            Some(
+                Workflow::Goal(_)
+                    | Workflow::Create { .. }
+                    | Workflow::Import { .. }
+                    | Workflow::VaultName { .. }
+                    | Workflow::SubnoteField { .. }
+            )
         )
     }
 
     pub(crate) fn refresh_workflow(&mut self, app: &App) {
-        let mut rows = Vec::new();
+        let mut rows = self.manager_rows(app);
         if let Some(Workflow::Options(kind)) = &self.workflow {
             rows = kind
                 .labels()
@@ -292,6 +316,10 @@ impl App {
                 },
                 popup.input,
             ),
+            ActivePopup::Subnotes(popup) => (
+                Workflow::Subnotes(popup),
+                crate::ui::make_popup_textarea(&self.app_theme, "Search subnotes..."),
+            ),
             popup => {
                 self.command_palette = Some(palette);
                 self.popups.active = Some(popup);
@@ -304,6 +332,11 @@ impl App {
     }
 
     pub(crate) fn leave_palette_step(&mut self, mut palette: CommandPalette, close: bool) {
+        if let Err(error) = palette.finish_subnote_step(self, close) {
+            palette.error = Some(format!("{error:#}"));
+            self.command_palette = Some(palette);
+            return;
+        }
         if matches!(palette.workflow, Some(Workflow::Theme(_)))
             && self.mode != ViewMode::Setup
             && let Err(error) = self.config.save()
@@ -316,6 +349,9 @@ impl App {
             self.dismiss_command_palette();
         } else {
             palette.pop_workflow();
+            if palette.workflow.is_some() {
+                palette.refresh_items(self);
+            }
             self.command_palette = Some(palette);
         }
     }
@@ -325,6 +361,24 @@ impl App {
         mut palette: CommandPalette,
         selected: usize,
     ) {
+        if matches!(
+            palette.workflow,
+            Some(
+                Workflow::Vault(_)
+                    | Workflow::VaultName { .. }
+                    | Workflow::Subnotes(_)
+                    | Workflow::SubnoteMenu { .. }
+                    | Workflow::SubnoteField { .. }
+            )
+        ) {
+            let id = palette
+                .items
+                .get(selected)
+                .map(|item| item.id.clone())
+                .unwrap_or_default();
+            self.activate_palette_manager(palette, &id);
+            return;
+        }
         let result = (|| -> anyhow::Result<bool> {
             crate::actions::validate_action_context(
                 palette
@@ -396,6 +450,11 @@ impl App {
                     )?;
                     Ok(true)
                 }
+                Workflow::Vault(_)
+                | Workflow::VaultName { .. }
+                | Workflow::Subnotes(_)
+                | Workflow::SubnoteMenu { .. }
+                | Workflow::SubnoteField { .. } => unreachable!("manager dispatch"),
             }
         })();
         match result {

@@ -1486,7 +1486,7 @@ impl App {
             last_scroll: None,
         };
 
-        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(Box::new(popup)));
+        self.present_action_popup(crate::popups::ActivePopup::Subnotes(Box::new(popup)));
     }
 
     pub fn open_subnotes_popup(&mut self) {
@@ -1509,20 +1509,29 @@ impl App {
 
     pub fn close_subnotes_popup(&mut self) -> Result<(), String> {
         if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take() {
-            if popup.is_dirty
-                && let Err(e) = self.storage.set_subnotes(&popup.parent_id, &popup.subnotes)
-            {
+            if let Err(error) = self.save_subnotes_state(&popup) {
                 self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
-                let err = format!("Failed to save sub-notes: {e}");
-                self.set_temporary_status(&err);
-                return Err(err);
+                let message = format!("Failed to save sub-notes: {error:#}");
+                self.set_temporary_status(&message);
+                return Err(message);
             }
-            self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
-            self.refresh_subnotes_view_cache();
         }
         self.popups.active = None;
         Ok(())
     }
+    pub(crate) fn save_subnotes_state(
+        &mut self,
+        popup: &crate::popups::SubnotesPopup,
+    ) -> Result<()> {
+        if popup.is_dirty {
+            self.storage
+                .set_subnotes(&popup.parent_id, &popup.subnotes)?;
+        }
+        self.notes_with_subnotes = self.storage.get_notes_with_subnotes()?;
+        self.refresh_subnotes_view_cache();
+        Ok(())
+    }
+
     pub fn open_subnote_in_external_editor(&mut self) {
         let mut popup = match self.popups.active.take() {
             Some(crate::popups::ActivePopup::Subnotes(popup)) => popup,
@@ -1532,8 +1541,12 @@ impl App {
             }
         };
 
+        self.edit_subnote_external(&mut popup);
+        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+    }
+
+    pub(crate) fn edit_subnote_external(&mut self, popup: &mut crate::popups::SubnotesPopup) {
         if popup.subnotes.is_empty() || popup.selected >= popup.subnotes.len() {
-            self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
             return;
         }
 
@@ -1570,13 +1583,11 @@ impl App {
                     use std::io::Write;
                     if let Err(e) = f.write_all(subnote.content.as_bytes()) {
                         self.set_temporary_status(&format!("Failed to write temp file: {e}"));
-                        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
                         return;
                     }
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to create temp file: {e}"));
-                    self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
                     return;
                 }
             }
@@ -1593,13 +1604,11 @@ impl App {
                 Ok(mut f) => {
                     if let Err(e) = f.write_all(subnote.content.as_bytes()) {
                         self.set_temporary_status(&format!("Failed to write temp file: {e}"));
-                        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
                         return;
                     }
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to create temp file: {e}"));
-                    self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
                     return;
                 }
             }
@@ -1642,7 +1651,5 @@ impl App {
                 self.set_temporary_status(&format!("Failed to launch editor '{editor_prog}': {e}"));
             }
         }
-
-        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
     }
 }

@@ -207,6 +207,9 @@ pub fn handle_bracketed_paste(
     use crate::popups::ActivePopup;
     use crate::popups::SubnotesFocus;
 
+    if app.popups.confirm.is_some() {
+        return true;
+    }
     // 1. Active popup
     if let Some(ref mut popup) = app.popups.active {
         match popup {
@@ -810,6 +813,9 @@ pub(crate) fn handle_open_palette_event(
     }
     match event {
         crossterm::event::Event::Key(key) => {
+            if app.palette_manager_shortcut(*key) {
+                return true;
+            }
             let mut palette = app.command_palette.take().expect("open palette");
             if palette.handle_input(*key, app) {
                 if key.code == KeyCode::Enter {

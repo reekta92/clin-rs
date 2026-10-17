@@ -768,7 +768,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // search input
+                Constraint::Length(palette.input_height(content.height)), // workflow input
                 Constraint::Length(1), // root categories / workflow status
                 Constraint::Min(0),    // results list
             ])
