@@ -95,7 +95,7 @@ assets = [
 ]
 
 [dependencies]
-draw = { package = "draw-rs", version = "0.1.0", git = "https://github.com/reekta92/draw-rs", rev = "6befa0461d609f4686edb5794bc2662165bed256" }
+draw = { package = "draw-rs", version = "0.1.0", git = "https://github.com/reekta92/draw-rs", rev = "e39385ffd2d8238a408d4be4b3ddd38b554c74e8" }
 anyhow = "1.0"
 base64 = "0.22"
 arboard = "3.6.1"
