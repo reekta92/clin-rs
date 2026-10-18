@@ -1,5 +1,5 @@
 <div align="center">
-<img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
+<img width="512" height="512" alt="clin logo" src="assets/icon.svg" />
  
 # clin
 
@@ -297,6 +297,7 @@ mv clin ~/.local/bin/
 ```
 
 Apple Silicon only (no Intel build ships).
+The included `clin.app` opens clin in Terminal and uses the application icon in Finder.
 
 </details>
 

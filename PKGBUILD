@@ -14,4 +14,10 @@ sha256sums=("a46e19633bf7d5b868c32d7f9e7d8981a3216993ecf6eaf497c117bbbe1bb321")
 
 package() {
     install -Dm755 "clin" -t "$pkgdir/usr/bin"
+    # Older release archives contain only the executable.
+    if [[ -f assets/clin.desktop ]]; then
+        install -Dm644 "assets/clin.desktop" "$pkgdir/usr/share/applications/clin.desktop"
+        install -Dm644 "assets/icon.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/clin.svg"
+        install -Dm644 "assets/clin.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/clin.png"
+    fi
 }

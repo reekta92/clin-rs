@@ -22,6 +22,19 @@ This produces:
 - **Other package managers:** crates.io; Nix consumes the repository flake (no separate release publish step)
 - **Artifacts:** changelog, .tar.xz, .tar.gz, .zip, .dmg
 
+### Application icons
+
+`assets/icon.svg` is the source for the application icon, including the README logo.
+After editing it, run `python3 .github/scripts/generate_icons.py` (requires
+`rsvg-convert` from librsvg and Python Pillow) and commit the generated
+`assets/clin.png`, `clin.ico`, and `assets/clin.icns` together.
+
+Linux packages install the SVG and PNG into the `hicolor` icon theme, and Windows
+builds embed the ICO in `clin.exe`. macOS archives and DMGs include `clin.app`,
+which uses the ICNS and launches the bundled terminal executable in Terminal.
+The shared release workflow in `reekta92/.github` includes these assets in release
+archives so the AUR package can install the same desktop launcher and icons.
+
 ### Required repository secrets
 
 | Secret | Source | Used by |

@@ -11,7 +11,7 @@ license = "GPL-3.0-only"
 readme = "README.md"
 keywords = ["tui", "notes", "obsidian", "markdown", "terminal"]
 categories = ["command-line-utilities", "text-editors"]
-exclude = ["assets/*", "docs/*", "examples/*", "dev_scripts/*", "PKGBUILD", "clin.ico", ".github/*"]
+exclude = ["assets/*", "docs/*", "examples/*", "dev_scripts/*", "PKGBUILD", ".github/*"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -79,7 +79,9 @@ section = "utils"
 priority = "optional"
 assets = [
 	["target/release/clin", "usr/bin/clin", "755"],
-	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
+	["assets/clin.desktop", "usr/share/applications/clin.desktop", "644"],
+	["assets/icon.svg", "usr/share/icons/hicolor/scalable/apps/clin.svg", "644"],
+	["assets/clin.png", "usr/share/icons/hicolor/256x256/apps/clin.png", "644"],
 ]
 extended-description = "clin-rs is a terminal-first Markdown note app with in-app editing and mouse support."
 
@@ -87,7 +89,9 @@ extended-description = "clin-rs is a terminal-first Markdown note app with in-ap
 name = "clin-rs"
 assets = [
 	{ source = "target/release/clin", dest = "/usr/bin/clin", mode = "0755" },
-	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
+	{ source = "assets/clin.desktop", dest = "/usr/share/applications/clin.desktop", mode = "0644" },
+	{ source = "assets/icon.svg", dest = "/usr/share/icons/hicolor/scalable/apps/clin.svg", mode = "0644" },
+	{ source = "assets/clin.png", dest = "/usr/share/icons/hicolor/256x256/apps/clin.png", mode = "0644" },
 ]
 
 [dependencies]
@@ -138,6 +142,9 @@ yaml-edit = { version = "0.3.2", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[build-dependencies]
+winresource = "0.1.34"
 
 [patch.crates-io]
 # Preserve Mermaid 0.6 APIs/MSRV while replacing its archived YAML dependency.
