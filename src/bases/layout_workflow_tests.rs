@@ -26,6 +26,54 @@ fn source(app: &mut App, text: &str) {
 }
 
 #[test]
+fn footer_uses_shared_hint_styles_and_statusline_templates() {
+    let (_root, mut app) = fixture();
+    app.keybinds.bases.insert(
+        crate::keybinds::BasesAction::Back,
+        vec![crate::keybinds::KeyCombo::parse("F8").unwrap()],
+    );
+    app.config.statusline.footer_left = Some("{hints}".into());
+    app.config.statusline.footer_right = Some("{bases_view}:{bases_rows}".into());
+    for style in crate::config::HintBarStyle::ALL {
+        app.app_theme.hint_bar_style = style;
+        let mut terminal = Terminal::new(TestBackend::new(240, 28)).unwrap();
+        let mut state = app.bases_state.take().unwrap();
+        terminal
+            .draw(|frame| state.render_native(frame, frame.area(), &app))
+            .unwrap();
+        app.bases_state = Some(state);
+        let buffer = terminal.backend().buffer();
+        let footer: String = (0..240).map(|x| buffer[(x, 27)].symbol()).collect();
+        assert!(footer.contains("Public:1"), "{style:?}: {footer}");
+        let expected = crate::ui::format_keybind_hints(
+            &app.app_theme,
+            &[(
+                app.keybinds
+                    .display_bases(crate::keybinds::BasesAction::Back),
+                "back",
+            )],
+        );
+        let prefix_width = expected.spans[0].width() as u16;
+        let mut expected_terminal = Terminal::new(TestBackend::new(240, 1)).unwrap();
+        expected_terminal
+            .draw(|frame| {
+                crate::ui::draw_status_bar(frame, frame.area(), &app.app_theme, expected, None);
+            })
+            .unwrap();
+        for x in 0..prefix_width {
+            assert_eq!(
+                buffer[(x, 27)],
+                expected_terminal.backend().buffer()[(x, 0)],
+                "{style:?}"
+            );
+        }
+    }
+    app.config.statusline.footer_left = Some("{pending}".into());
+    app.bases_state.as_mut().unwrap().matcher.count = Some(777);
+    assert!(render(&mut app).contains("777 "));
+}
+
+#[test]
 fn invalid_view_retains_valid_view_authoring_and_source_repair() {
     let (_root, mut app) = fixture();
     source(
