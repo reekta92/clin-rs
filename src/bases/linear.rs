@@ -47,13 +47,108 @@ fn viewport(
     (offset, visible)
 }
 
-pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
+fn content_viewport(
+    items: &[Item],
+    offset: usize,
+    height: u16,
+    item_height: impl Fn(usize, Item) -> u16,
+) -> Vec<(usize, u16, u16)> {
+    let mut top = 0;
+    let mut visible = Vec::new();
+    for (position, item) in items.iter().enumerate() {
+        let full_height = item_height(position, *item).max(1);
+        let end = top + usize::from(full_height);
+        if end > offset && top < offset + usize::from(height) {
+            visible.push((position, full_height, offset.saturating_sub(top) as u16));
+        }
+        top = end;
+        if top >= offset + usize::from(height) {
+            break;
+        }
+    }
+    visible
+}
+
+fn table_item_height(state: &BasesState, item: Item, widths: &[u16]) -> u16 {
+    let Item::Row(index) = item else {
+        return 1;
+    };
+    let loaded = state.loaded.as_ref().expect("loaded table");
+    let values = &loaded.result.as_ref().expect("valid table").rows[index].values;
+    loaded
+        .columns
+        .iter()
+        .zip(widths)
+        .map(|(property, &width)| {
+            let text = values.get(property).map_or_else(String::new, display);
+            wrap_cell(&text, width.saturating_sub(u16::from(width > 1)), u16::MAX)
+                .lines()
+                .count()
+                .max(1) as u16
+        })
+        .max()
+        .unwrap_or(1)
+}
+
+pub(super) fn content_height(state: &BasesState, width: u16, cell_width: u16) -> usize {
+    let Some(loaded) = &state.loaded else {
+        return 1;
+    };
+    let Some(options) = &loaded.layout_options else {
+        return 1;
+    };
+    match options {
+        LayoutOptions::Table(options) => {
+            let widths = options.fitted_widths(&loaded.columns, width, cell_width);
+            1 + usize::from(
+                state
+                    .result()
+                    .is_some_and(|result| !result.summaries.is_empty()),
+            ) + state
+                .items
+                .iter()
+                .map(|item| {
+                    if matches!(item, Item::Row(_)) {
+                        usize::from(options.height.max(table_item_height(state, *item, &widths)))
+                    } else {
+                        1
+                    }
+                })
+                .sum::<usize>()
+        }
+        LayoutOptions::List(options) => state
+            .items
+            .iter()
+            .map(|item| match item {
+                Item::Group(_) => 1,
+                Item::Row(index) => list_row(state, *index, options, width, u16::MAX, 0, true)
+                    .lines
+                    .len(),
+            })
+            .sum::<usize>()
+            .max(1),
+        LayoutOptions::Other => 1,
+    }
+}
+
+pub(super) fn render(
+    frame: &mut Frame,
+    area: Rect,
+    state: &mut BasesState,
+    app: &crate::app::App,
+    content_offset: Option<usize>,
+) {
     if area.is_empty() {
         return;
     }
+    state.body_area = area;
+    state.hit_rows.clear();
+    state.hit_groups.clear();
     let gutter = area;
     let area = Rect {
-        width: area.width.saturating_sub(u16::from(area.width > 1)),
+        width: area
+            .width
+            .saturating_sub(u16::from(content_offset.is_none() && area.width > 1)),
         ..area
     };
     let loaded = state.loaded.as_ref().expect("loaded view");
@@ -67,27 +162,66 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
         .add_modifier(Modifier::BOLD);
     match loaded.layout_options.as_ref() {
         Some(LayoutOptions::Table(options)) => {
-            let header = u16::from(area.height > 1 || state.items.is_empty());
-            let footer = u16::from(!result.summaries.is_empty() && area.height > header + 1);
+            let widths = options.fitted_widths(&loaded.columns, area.width, super::font(app).0);
+            let header = if let Some(offset) = content_offset {
+                u16::from(offset == 0)
+            } else {
+                u16::from(area.height > 1 || state.items.is_empty())
+            };
+            let footer = if let Some(offset) = content_offset {
+                u16::from(
+                    !result.summaries.is_empty()
+                        && content_height(state, area.width, super::font(app).0).saturating_sub(1)
+                            >= offset
+                        && content_height(state, area.width, super::font(app).0)
+                            <= offset + usize::from(area.height),
+                )
+            } else {
+                u16::from(!result.summaries.is_empty() && area.height > header + 1)
+            };
             let body = Rect::new(
                 area.x,
                 area.y + header,
                 area.width,
                 area.height - header - footer,
             );
-            let (offset, visible) = viewport(
-                &state.items,
-                state.selected,
-                state.offset,
-                body.height,
-                |_, item| {
-                    if matches!(item, Item::Row(_)) {
-                        options.height
+            let item_height = |_: usize, item| {
+                if matches!(item, Item::Row(_)) {
+                    if content_offset.is_some() {
+                        options.height.max(table_item_height(state, item, &widths))
                     } else {
-                        1
+                        options.height
                     }
-                },
-            );
+                } else {
+                    1
+                }
+            };
+            let (offset, visible) = if let Some(offset) = content_offset {
+                (
+                    0,
+                    content_viewport(
+                        &state.items,
+                        offset.saturating_sub(1),
+                        body.height,
+                        item_height,
+                    ),
+                )
+            } else {
+                let (offset, visible) = viewport(
+                    &state.items,
+                    state.selected,
+                    state.offset,
+                    body.height,
+                    item_height,
+                );
+                (
+                    offset,
+                    visible
+                        .into_iter()
+                        .map(|(position, height)| (position, height, 0))
+                        .collect(),
+                )
+            };
             state.offset = offset;
             state.scrollbar = crate::ui::scrollbar::ScrollbarMeta {
                 track: crate::ui::scrollbar::track_rect(Rect {
@@ -100,13 +234,24 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
             };
             let selected = state.column.min(loaded.columns.len().saturating_sub(1));
             let width = |index: usize| {
-                options
-                    .width(&loaded.columns[index], super::font(app).0)
-                    .min(area.width)
+                if content_offset.is_some() {
+                    widths[index]
+                } else {
+                    options
+                        .width(&loaded.columns[index], super::font(app).0)
+                        .min(area.width)
+                }
             };
-            let mut start = selected;
+            let mut start = if content_offset.is_some() {
+                0
+            } else {
+                selected
+            };
             let mut used = width(selected);
-            while start > 0 && used.saturating_add(width(start - 1)) <= area.width {
+            while content_offset.is_none()
+                && start > 0
+                && used.saturating_add(width(start - 1)) <= area.width
+            {
                 start -= 1;
                 used += width(start);
             }
@@ -139,7 +284,8 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                     );
                 }
                 let mut y = body.y;
-                for &(position, height) in &visible {
+                for &(position, full_height, skipped) in &visible {
+                    let height = (full_height - skipped).min(body.bottom().saturating_sub(y));
                     let rect = Rect::new(x, y, width, height);
                     state.hit_rows.push((rect, position, column));
                     let (text, style) = match state.items[position] {
@@ -175,7 +321,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                             } else {
                                 Style::default().fg(theme.text)
                             };
-                            (wrap_cell(&text, text_width, height), style)
+                            (wrap_cell(&text, text_width, full_height), style)
                         }
                     };
                     let hovered = app
@@ -189,7 +335,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                         style
                     };
                     frame.render_widget(
-                        Paragraph::new(text).style(style),
+                        Paragraph::new(text).style(style).scroll((skipped, 0)),
                         Rect::new(x, y, text_width, height),
                     );
                     y += height;
@@ -204,29 +350,49 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                     index,
                     options,
                     area.width,
-                    area.height,
+                    if content_offset.is_some() {
+                        u16::MAX
+                    } else {
+                        area.height
+                    },
                     if position == state.selected {
                         state.column
                     } else {
                         0
                     },
+                    content_offset.is_some(),
                 )
             };
-            let (offset, visible) = viewport(
-                &state.items,
-                state.selected,
-                state.offset,
-                area.height,
-                |position, item| match item {
-                    Item::Group(_) => 1,
-                    Item::Row(index) => row(position, index).lines.len() as u16,
-                },
-            );
+            let item_height = |position, item| match item {
+                Item::Group(_) => 1,
+                Item::Row(index) => row(position, index).lines.len() as u16,
+            };
+            let (offset, visible) = if let Some(offset) = content_offset {
+                (
+                    0,
+                    content_viewport(&state.items, offset, area.height, item_height),
+                )
+            } else {
+                let (offset, visible) = viewport(
+                    &state.items,
+                    state.selected,
+                    state.offset,
+                    area.height,
+                    item_height,
+                );
+                (
+                    offset,
+                    visible
+                        .into_iter()
+                        .map(|(position, height)| (position, height, 0))
+                        .collect(),
+                )
+            };
             let mut y = area.y;
             // Build before mutating hit regions: list text and its hits always share geometry.
             let rows: Vec<_> = visible
                 .iter()
-                .map(|&(position, height)| {
+                .map(|&(position, height, skipped)| {
                     let content = match state.items[position] {
                         Item::Group(index) => ListRow {
                             lines: vec![Line::from(group_line(state, index))],
@@ -234,7 +400,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                         },
                         Item::Row(index) => row(position, index),
                     };
-                    (position, height, content)
+                    (position, height, skipped, content)
                 })
                 .collect();
             state.offset = offset;
@@ -243,7 +409,8 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                 content_len: state.items.len(),
                 viewport_len: visible.len(),
             };
-            for (position, height, content) in rows {
+            for (position, full_height, skipped, content) in rows {
+                let height = (full_height - skipped).min(area.bottom().saturating_sub(y));
                 let style = if position == state.selected {
                     selected_style
                 } else if matches!(state.items[position], Item::Group(_)) {
@@ -255,9 +422,9 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                     Style::default().fg(theme.text)
                 };
                 for (rect, column) in content.hits {
-                    if rect.y < height {
+                    if rect.y >= skipped && rect.y - skipped < height {
                         state.hit_rows.push((
-                            Rect::new(area.x + rect.x, y + rect.y, rect.width, 1),
+                            Rect::new(area.x + rect.x, y + rect.y - skipped, rect.width, 1),
                             position,
                             column,
                         ));
@@ -272,7 +439,9 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
                     style
                 };
                 frame.render_widget(
-                    Paragraph::new(content.lines).style(style),
+                    Paragraph::new(content.lines)
+                        .style(style)
+                        .scroll((skipped, 0)),
                     Rect::new(area.x, y, area.width, height),
                 );
                 y += height;
@@ -280,7 +449,7 @@ pub(super) fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app:
         }
         _ => {}
     }
-    if gutter.width <= 1 {
+    if content_offset.is_some() || gutter.width <= 1 {
         state.scrollbar = crate::ui::scrollbar::ScrollbarMeta::default();
         return;
     }
@@ -306,6 +475,7 @@ fn list_row(
     width: u16,
     height: u16,
     focus: usize,
+    fit_content: bool,
 ) -> ListRow {
     let loaded = state.loaded.as_ref().expect("loaded list");
     let result = loaded.result.as_ref().expect("valid list");
@@ -323,11 +493,11 @@ fn list_row(
     let mut x = 0;
     let mut y = 0;
     // Keep title and focused property visible even when earlier properties exceed the viewport.
-    let start = if focus > 0 { focus } else { 1 };
+    let start = if focus > 0 && !fit_content { focus } else { 1 };
     let columns = std::iter::once(if height == 1 && focus > 0 { focus } else { 0 })
         .chain((start..loaded.columns.len()).filter(|column| *column != focus || height != 1));
     for column in columns {
-        let prefix = if column == focus && focus > 0 {
+        let prefix = if column == focus && focus > 0 && !fit_content {
             String::new()
         } else if column == 0 {
             marker.clone()
@@ -336,7 +506,8 @@ fn list_row(
         } else {
             crate::fsutil::sanitize_for_terminal(&options.separator).into_owned()
         };
-        if column > 0 && (options.indent || (column == focus && focus > 0)) && x > 0 {
+        if column > 0 && (options.indent || (column == focus && focus > 0 && !fit_content)) && x > 0
+        {
             x = 0;
             y += 1;
         }
@@ -354,7 +525,7 @@ fn list_row(
             if size > width {
                 continue;
             }
-            if column == 0 && focus > 0 && x + size > width {
+            if column == 0 && focus > 0 && !fit_content && x + size > width {
                 break;
             }
             if x + size > width {

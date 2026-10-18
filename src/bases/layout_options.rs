@@ -190,6 +190,29 @@ impl TableOptions {
                 .clamp(4.0, 65535.0) as u16
         })
     }
+
+    pub fn fitted_widths(&self, properties: &[String], width: u16, cell_width: u16) -> Vec<u16> {
+        let mut widths: Vec<_> = properties
+            .iter()
+            .map(|property| self.width(property, cell_width))
+            .collect();
+        let mut total: u64 = widths.iter().map(|width| u64::from(*width)).sum();
+        if total <= u64::from(width) {
+            return widths;
+        }
+        let mut remaining = width;
+        let count = widths.len();
+        for (index, column) in widths.iter_mut().enumerate() {
+            let reserved = (count - index - 1).min(usize::from(remaining)) as u16;
+            let fitted = (u64::from(remaining) * u64::from(*column) / total)
+                .max(1)
+                .min(u64::from(remaining - reserved)) as u16;
+            total -= u64::from(*column);
+            *column = fitted;
+            remaining -= fitted;
+        }
+        widths
+    }
 }
 
 #[cfg(test)]

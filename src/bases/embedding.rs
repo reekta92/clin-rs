@@ -20,7 +20,7 @@ use std::{
 pub(crate) struct Embeds {
     entries: RefCell<HashMap<u64, super::state::BasesState>>,
     visible: RefCell<HashSet<u64>>,
-    regions: RefCell<Vec<(Rect, u64)>>,
+    regions: RefCell<Vec<(Rect, u64, bool)>>,
     active: Cell<Option<u64>>,
     running: Option<u64>,
     return_mode: Option<crate::app::ViewMode>,
@@ -39,6 +39,47 @@ impl Embeds {
     ) {
         self.return_mode = return_mode;
         self.suspended_base = suspended;
+    }
+
+    fn key(renderer: &crate::markdown::MarkdownRenderer, slot: &Slot) -> Option<u64> {
+        let (revision, _) = renderer.base_content()?;
+        let host_revision = renderer
+            .base_host_source
+            .as_ref()
+            .map_or(revision, |(revision, _)| *revision);
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        (
+            renderer.base_session,
+            revision,
+            host_revision,
+            &renderer.base_host,
+            slot.source_line,
+        )
+            .hash(&mut hash);
+        Some(hash.finish())
+    }
+
+    pub(crate) fn fit(
+        &self,
+        renderer: &mut crate::markdown::MarkdownRenderer,
+        cell: (u16, u16),
+    ) -> bool {
+        let Some(document) = renderer.document() else {
+            return false;
+        };
+        let entries = self.entries.borrow();
+        let heights: Vec<_> = document
+            .base_slots
+            .iter()
+            .map(|slot| {
+                Self::key(renderer, slot)
+                    .and_then(|key| entries.get(&key))
+                    .map_or(SLOT_HEIGHT, |state| {
+                        super::render::content_height(state, state.body_area.width, cell)
+                    })
+            })
+            .collect();
+        renderer.resize_base_slots(&heights)
     }
     pub(crate) fn clear_palette_matchers(&mut self) {
         for state in self.entries.get_mut().values_mut() {
@@ -159,13 +200,17 @@ impl Embeds {
         let Some((revision, source)) = renderer.base_content() else {
             return;
         };
-        let (host_revision, host_source) = renderer
+        let (_, host_source) = renderer
             .base_host_source
             .clone()
             .unwrap_or((revision, source));
         for (slot_index, slot) in document.base_slots.iter().enumerate() {
             let start = slot.rows.start.max(range.start);
-            let end = slot.rows.end.min(range.end);
+            let end = slot
+                .rows
+                .end
+                .min(range.end)
+                .min(range.start.saturating_add(usize::from(area.height)));
             if start >= end {
                 continue;
             }
@@ -194,16 +239,7 @@ impl Embeds {
                 );
                 continue;
             }
-            let mut hash = std::collections::hash_map::DefaultHasher::new();
-            (
-                renderer.base_session,
-                revision,
-                host_revision,
-                &renderer.base_host,
-                slot.source_line,
-            )
-                .hash(&mut hash);
-            let key = hash.finish();
+            let key = Self::key(renderer, slot).expect("renderer has source content");
             let mut entries = self.entries.borrow_mut();
             if !entries.contains_key(&key) && entries.len() >= 32 {
                 let unused = entries.iter().find_map(|(key, state)| {
@@ -274,13 +310,19 @@ impl Embeds {
                 state
             });
             self.visible.borrow_mut().insert(key);
-            self.regions.borrow_mut().push((rect, key));
+            self.regions
+                .borrow_mut()
+                .push((rect, key, renderer.base_fit_content));
             frame.render_widget(ratatui::widgets::Clear, rect);
             frame.render_widget(
                 ratatui::widgets::Block::default().style(app.app_theme.bg_style()),
                 rect,
             );
-            super::render::render(frame, rect, state, app);
+            if renderer.base_fit_content {
+                super::render::render_content(frame, rect, start - slot.rows.start, state, app);
+            } else {
+                super::render::render(frame, rect, state, app);
+            }
         }
     }
     fn poll(&mut self, app: &mut App) -> bool {
@@ -403,6 +445,20 @@ impl Embeds {
             return false;
         }
         if let Event::Mouse(mouse) = event
+            && matches!(
+                mouse.kind,
+                MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+            )
+            && !self.has_popup()
+            && self
+                .regions
+                .borrow()
+                .iter()
+                .any(|(rect, _, fitted)| *fitted && rect.contains((mouse.column, mouse.row).into()))
+        {
+            return false;
+        }
+        if let Event::Mouse(mouse) = event
             && mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && !self.has_popup()
             && !self.is_writing()
@@ -411,8 +467,8 @@ impl Embeds {
                 self.regions
                     .borrow()
                     .iter()
-                    .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
-                    .map(|(_, key)| *key),
+                    .find(|(rect, _, _)| rect.contains((mouse.column, mouse.row).into()))
+                    .map(|(_, key, _)| *key),
             );
         }
         let Some(key) = self.active.get() else {
@@ -635,7 +691,22 @@ impl App {
     }
     pub(crate) fn poll_base_embeds(&mut self) -> bool {
         let mut embeds = std::mem::take(&mut self.base_embeds);
-        let dirty = embeds.poll(self);
+        let mut dirty = embeds.poll(self);
+        let cell = super::render::font(self);
+        if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
+            &mut self.list.preview_content
+        {
+            dirty |= embeds.fit(renderer, cell);
+        }
+        for renderer in [
+            &mut self.editor.md_preview_renderer,
+            &mut self.editor.link_preview_renderer,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            dirty |= embeds.fit(renderer, cell);
+        }
         self.base_embeds = embeds;
         dirty
     }

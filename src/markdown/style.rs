@@ -85,6 +85,31 @@ impl RenderedDocument {
         &self.lines
     }
 
+    pub(crate) fn resize_base_slots(&mut self, heights: &[usize]) {
+        let mut lines = Vec::new();
+        let mut slots = self.base_slots.clone();
+        let mut end = 0;
+        for (slot, &height) in slots.iter_mut().zip(heights) {
+            lines.extend_from_slice(&self.lines[end..slot.rows.start]);
+            let start = lines.len();
+            lines.push(self.lines[slot.rows.start].clone());
+            lines.extend(std::iter::repeat_n(
+                RenderLine {
+                    spans: Vec::new(),
+                    visual_width: 0,
+                    is_blank: true,
+                    image_url: None,
+                    source_line: slot.source_line,
+                },
+                height.max(1) - 1,
+            ));
+            end = slot.rows.end;
+            slot.rows = start..lines.len();
+        }
+        lines.extend_from_slice(&self.lines[end..]);
+        *self = Self::new(lines).with_base_slots(slots);
+    }
+
     pub(crate) fn lines_mut(&mut self) -> &mut Vec<RenderLine> {
         &mut self.lines
     }

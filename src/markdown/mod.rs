@@ -80,6 +80,7 @@ enum DocumentState {
 }
 
 pub struct MarkdownRenderer {
+    pub(crate) base_fit_content: bool,
     pub(crate) base_canvas_node: Option<String>,
     pub(crate) base_host_source: Option<(u64, Arc<str>)>,
     pub(crate) base_body_only: bool,
@@ -128,6 +129,7 @@ impl Default for MarkdownRenderer {
 impl MarkdownRenderer {
     pub fn new() -> Self {
         Self {
+            base_fit_content: false,
             base_canvas_node: None,
             base_host_source: None,
             base_body_only: true,
@@ -151,6 +153,42 @@ impl MarkdownRenderer {
         self.current_key
             .as_ref()
             .map(|key| (key.fingerprint, key.content.clone()))
+    }
+
+    pub(crate) fn resize_base_slots(&mut self, heights: &[usize]) -> bool {
+        // Highlight patches and the shared cache retain the worker's original row coordinates.
+        if self.pending {
+            return false;
+        }
+        let Some(document) = self.document() else {
+            return false;
+        };
+        if document.base_slots.is_empty() {
+            return false;
+        }
+        let changed = !self.base_fit_content;
+        self.base_fit_content = true;
+        let document = self.document().expect("document checked above");
+        if document
+            .base_slots
+            .iter()
+            .map(|slot| slot.rows.len())
+            .eq(heights.iter().copied())
+        {
+            return changed;
+        }
+        match &mut self.document {
+            Some(DocumentState::Final(document)) => {
+                Arc::make_mut(document).resize_base_slots(heights)
+            }
+            Some(DocumentState::Working(_)) | None => return false,
+        }
+        self.clamp_current_page();
+        self.scroll_offset = self.scroll_offset.min(
+            self.document()
+                .map_or(0, |doc| doc.line_count().saturating_sub(1)),
+        );
+        true
     }
 
     pub(crate) fn render_with(
@@ -215,6 +253,7 @@ impl MarkdownRenderer {
         }
 
         self.current_key = Some(next_key.clone());
+        self.base_fit_content = false;
         self.set_viewport(viewport.start, viewport.height);
 
         if let Some(cached) = cache::get_document(&next_key) {
@@ -591,6 +630,7 @@ mod tests {
         };
 
         let mut renderer = MarkdownRenderer {
+            base_fit_content: false,
             base_canvas_node: None,
             base_host_source: None,
             base_body_only: true,
@@ -657,6 +697,7 @@ mod tests {
         };
 
         let mut renderer = MarkdownRenderer {
+            base_fit_content: false,
             base_canvas_node: None,
             base_host_source: None,
             base_body_only: true,

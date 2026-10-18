@@ -82,7 +82,10 @@ impl OverlayView for BasesState {
                                 && self.write_task.is_none()
                             {
                                 self.drag = self.items.get(self.selected).copied();
-                                if self.hit_groups.iter().any(|(rect, _)| {
+                                if matches!(
+                                    self.items.get(self.selected),
+                                    Some(super::state::Item::Group(_))
+                                ) && self.hit_groups.iter().any(|(rect, _)| {
                                     rect.y == mouse.row
                                         && rect.width >= 3
                                         && rect.right().saturating_sub(2) == mouse.column

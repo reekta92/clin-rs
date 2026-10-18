@@ -13,6 +13,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
+mod content;
+pub(super) use content::{content_height, render_content};
+
 pub fn display(value: &Value) -> String {
     if matches!(value, Value::Null) {
         return String::new();
@@ -115,7 +118,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate
         draw_scrollbar(frame, area, state, app);
         return;
     }
-    linear::render(frame, area, state, app);
+    linear::render(frame, area, state, app, None);
 }
 fn draw_scrollbar(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app::App) {
     if area.width <= 1 {
@@ -282,6 +285,10 @@ fn cards(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::app
                         property: state.column,
                         focused: selected,
                         checked: state.selected_ids.contains(&result.rows[index].id),
+                        fit_content: false,
+                        hovered: app
+                            .mouse_pos
+                            .is_some_and(|(x, y)| rect.contains((x, y).into())),
                     },
                     &mut state.media,
                     app,
@@ -404,6 +411,10 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::ap
                     property: state.column,
                     focused: item_position == state.selected,
                     checked: state.selected_ids.contains(&result.rows[row].id),
+                    fit_content: false,
+                    hovered: app
+                        .mouse_pos
+                        .is_some_and(|(x, y)| rect.contains((x, y).into())),
                 },
                 &mut state.media,
                 app,
@@ -412,7 +423,7 @@ fn kanban(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &crate::ap
         }
     }
 }
-fn font(app: &crate::app::App) -> (u16, u16) {
+pub(super) fn font(app: &crate::app::App) -> (u16, u16) {
     app.image_picker.as_ref().map_or((8, 16), |picker| {
         let font = picker.font_size();
         if font.width == 1 && font.height == 2 {
@@ -427,6 +438,8 @@ struct CardSelection {
     property: usize,
     focused: bool,
     checked: bool,
+    fit_content: bool,
+    hovered: bool,
 }
 fn card(
     frame: &mut Frame,
@@ -447,10 +460,7 @@ fn card(
         Style::default()
             .fg(theme.highlight_fg)
             .bg(theme.highlight_bg)
-    } else if app
-        .mouse_pos
-        .is_some_and(|(x, y)| rect.contains((x, y).into()))
-    {
+    } else if selection.hovered {
         theme.hover_style().fg(theme.text)
     } else {
         theme.bg_style().fg(theme.text)
@@ -474,8 +484,16 @@ fn card(
         );
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
+    let available = inner
+        .height
+        .saturating_sub(2)
+        .min(if selection.fit_content {
+            i16::MAX as u16
+        } else {
+            u16::MAX
+        });
     let height = options
-        .cover_height(inner.width, font(app), inner.height.saturating_sub(2))
+        .cover_height(inner.width, font(app), available)
         .min(inner.height.saturating_sub(1));
     let cover = Rect::new(inner.x, inner.y, inner.width, height);
     let body = Rect::new(
@@ -484,7 +502,8 @@ fn card(
         inner.width,
         inner.height.saturating_sub(height),
     );
-    if let Some(property) = &options.image
+    if !selection.fit_content
+        && let Some(property) = &options.image
         && let Some(value) = row.values.get(property)
     {
         media.render(
@@ -494,15 +513,20 @@ fn card(
                 value,
                 host: &row.id,
                 fit: options.fit,
+                clip: None,
             },
             &loaded.metadata,
             app,
         );
     }
-    let start = selection
-        .property
-        .saturating_sub(usize::from(body.height).saturating_sub(1))
-        .max(1);
+    let start = if selection.fit_content {
+        1
+    } else {
+        selection
+            .property
+            .saturating_sub(usize::from(body.height).saturating_sub(1))
+            .max(1)
+    };
     let lines: Vec<ratatui::text::Line> = loaded
         .columns
         .iter()
@@ -520,13 +544,20 @@ fn card(
                 "{}{}: {}",
                 if selection.focused && index == selection.property {
                     "› "
+                } else if selection.fit_content {
+                    "  "
                 } else {
                     ""
                 },
                 sanitize_for_terminal(label),
                 row.values.get(property).map_or_else(String::new, display)
             );
-            ratatui::text::Line::styled(
+            let text = if selection.fit_content {
+                wrap_cell(&text, body.width, u16::MAX)
+            } else {
+                text
+            };
+            ratatui::text::Text::styled(
                 text,
                 if selection.focused && index == selection.property {
                     style.add_modifier(Modifier::BOLD)
@@ -535,6 +566,7 @@ fn card(
                 },
             )
         })
+        .flat_map(|text| text.lines)
         .collect();
     frame.render_widget(Paragraph::new(lines).style(style), body);
 }

@@ -1214,3 +1214,288 @@ fn frontmatter_metadata_only_edits_refresh_real_preview_and_sidebar_before_save(
         host.source()
     );
 }
+
+fn content_screen(
+    app: &mut App,
+    renderer: &mut MarkdownRenderer,
+    start: usize,
+    width: u16,
+    height: u16,
+) -> Vec<String> {
+    app.base_embeds.fit(renderer, (8, 16));
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    app.base_embeds.begin_frame();
+    terminal
+        .draw(|frame| {
+            let range = start..start + usize::from(height);
+            frame.render_widget(
+                crate::markdown::MarkdownWidget::new(renderer.document().unwrap(), range.clone()),
+                frame.area(),
+            );
+            app.base_embeds
+                .draw(frame, frame.area(), renderer, range, app);
+        })
+        .unwrap();
+    terminal
+        .backend()
+        .buffer()
+        .content()
+        .chunks(usize::from(width))
+        .map(|row| row.iter().map(ratatui::buffer::Cell::symbol).collect())
+        .collect()
+}
+
+#[test]
+fn content_sized_embeds_show_every_record_and_property_through_document_scrolling() {
+    for layout in ["table", "list", "cards", "kanban"] {
+        for inline in [false, true] {
+            let (_root, mut app) = fixture();
+            for row in 0..30 {
+                app.storage.create_document(&format!("row{row:02}.md"), &format!("---\nstatus: group{}\na: one\nb: two\nc: three\nd: four\nlast: final-value\n---\n", row % 6)).unwrap();
+            }
+            let options = match layout {
+                "kanban" => ", groupBy: {property: status}",
+                "cards" => {
+                    ", groupBy: {property: status}, groupOrder: [group0, group1, group2, group3, group4, group5, Empty]"
+                }
+                "table" => ", rowHeight: extra",
+                "list" => ", indentProperties: true",
+                _ => "",
+            };
+            let definition = format!(
+                "filters: file.name.startsWith('row')\nviews: [{{type: {layout}, name: Test, order: [file.name, a, b, c, d, last]{options}}}]\n"
+            );
+            let base = app.storage.load_document("board.base").unwrap();
+            app.storage.save_document(&base, &definition).unwrap();
+            let source = if inline {
+                format!("Before\n\n```base\n{definition}```\n\nAfter\n")
+            } else {
+                "Before\n\n![[board.base#Test]]\n\nAfter\n".into()
+            };
+            let host = app.storage.load_document("public.md").unwrap();
+            app.storage.save_document(&host, &source).unwrap();
+            app.bases_state = None;
+            app.mode = ViewMode::List;
+            app.invalidate_bases();
+            let mut renderer = markdown(&source, Some("public.md"));
+            rendered(&mut app, &renderer, "row00.md");
+            let original_length = renderer.document().unwrap().line_count();
+            assert!(app.base_embeds.fit(&mut renderer, (8, 16)));
+            let document = renderer.document().unwrap();
+            assert!(document.line_count() > original_length, "{layout}/{inline}");
+            assert!(document.base_slots[0].rows.len() > 8);
+            let length = document.line_count();
+            let complete = content_screen(&mut app, &mut renderer, 0, 100, length as u16);
+            let output = complete.join("\n");
+            for row in 0..30 {
+                assert!(
+                    output.contains(&format!("row{row:02}.md")),
+                    "{layout}/{inline}: missing {row}: {output}"
+                );
+            }
+            assert!(output.contains("final-value"), "{layout}: {output}");
+            if layout == "cards" {
+                assert!(output.contains("Empty"), "{output}");
+            }
+            assert!(output.find("After").unwrap() > output.rfind("row").unwrap());
+            for start in (0..length).step_by(7) {
+                let visible = (length - start).min(11) as u16;
+                let cropped = content_screen(&mut app, &mut renderer, start, 100, visible);
+                assert_eq!(
+                    cropped,
+                    complete[start..start + usize::from(visible)],
+                    "{layout}/{inline}: offset {start}"
+                );
+            }
+            renderer.set_page_height(11);
+            assert!(renderer.total_pages() > 1);
+            while renderer.current_page() + 1 < renderer.total_pages() {
+                renderer.next_page();
+            }
+            let page = renderer.current_page_range();
+            assert!(page.end >= length - 1);
+        }
+    }
+}
+
+#[test]
+fn fitted_embeds_reflow_multiple_slots_refresh_and_leave_cached_markdown_unchanged() {
+    let (_root, mut app) = fixture();
+    for row in 0..12 {
+        app.storage
+            .create_document(&format!("row{row:02}.md"), "Body")
+            .unwrap();
+    }
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base, "filters: file.name.startsWith('row')\nviews: [{type: list, name: Test, order: [file.name]}]\n").unwrap();
+    let source = "Before\n\n![[board.base#Test]]\n\nBetween\n\n![[board.base#Test]]\n\nAfter\n";
+    let host = app.storage.load_document("public.md").unwrap();
+    app.storage.save_document(&host, source).unwrap();
+    app.bases_state = None;
+    app.mode = ViewMode::List;
+    app.invalidate_bases();
+    let mut renderer = markdown(source, Some("public.md"));
+    let original = renderer.document().unwrap().clone();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        content_screen(&mut app, &mut renderer, 0, 100, 60);
+        app.poll_bases();
+        app.base_embeds.fit(&mut renderer, (8, 16));
+        if renderer
+            .document()
+            .unwrap()
+            .base_slots
+            .iter()
+            .all(|slot| slot.rows.len() == 12)
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let before = renderer.document().unwrap().clone();
+    assert!(before.base_slots[1].rows.start > original.base_slots[1].rows.start);
+    let cached = markdown(source, Some("public.md"));
+    assert_eq!(cached.document().unwrap(), &original);
+    app.storage.create_document("row12.md", "Body").unwrap();
+    app.invalidate_bases();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        content_screen(&mut app, &mut renderer, 0, 100, 60);
+        app.poll_bases();
+        app.base_embeds.fit(&mut renderer, (8, 16));
+        if renderer
+            .document()
+            .unwrap()
+            .base_slots
+            .iter()
+            .all(|slot| slot.rows.len() == 13)
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(
+        renderer.document().unwrap().line_count(),
+        before.line_count() + 2
+    );
+    let after_source = source.lines().position(|line| line == "After").unwrap();
+    assert_eq!(
+        renderer.source_to_rendered_line(after_source),
+        before.source_to_rendered_position(after_source, 0) + 2
+    );
+    app.list.preview_content = Some(crate::list_view::PreviewContent::Markdown(Box::new(cached)));
+    app.poll_bases();
+    let Some(crate::list_view::PreviewContent::Markdown(renderer)) = &app.list.preview_content
+    else {
+        panic!("markdown preview")
+    };
+    assert!(renderer.base_fit_content);
+}
+
+#[test]
+fn fitted_kanban_wraps_columns_and_mouse_wheel_remains_with_preview() {
+    let (_root, mut app) = fixture();
+    for row in 0..8 {
+        app.storage
+            .create_document(
+                &format!("row{row}.md"),
+                &format!("---\nstatus: group{row}\n---\n"),
+            )
+            .unwrap();
+    }
+    let base = app.storage.load_document("board.base").unwrap();
+    app.storage.save_document(&base, "filters: file.name.startsWith('row')\nviews: [{type: kanban, name: Test, order: [file.name], groupBy: {property: status}}]\n").unwrap();
+    app.bases_state = None;
+    app.mode = ViewMode::List;
+    app.invalidate_bases();
+    let mut renderer = markdown("![[board.base#Test]]\n\nAfter", Some("public.md"));
+    rendered(&mut app, &renderer, "row0.md");
+    app.base_embeds.fit(&mut renderer, (8, 16));
+    let wide_height = renderer.document().unwrap().base_slots[0].rows.len();
+    content_screen(&mut app, &mut renderer, 0, 30, 28);
+    app.base_embeds.fit(&mut renderer, (8, 16));
+    let narrow_height = renderer.document().unwrap().base_slots[0].rows.len();
+    assert!(narrow_height > wide_height);
+    let output = content_screen(&mut app, &mut renderer, 0, 30, narrow_height as u16).join("\n");
+    for row in 0..8 {
+        assert!(output.contains(&format!("row{row}.md")), "{output}");
+    }
+    embedded_event(
+        &mut app,
+        Event::Mouse(crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 2,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert!(app.base_embeds.focused());
+    assert!(!app.base_embed_event(
+        &Event::Mouse(crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::ScrollDown,
+            column: 2,
+            row: 2,
+            modifiers: KeyModifiers::NONE
+        }),
+        AREA
+    ));
+}
+
+#[test]
+fn fitted_covers_slice_native_protocols_without_reloading_while_scrolling() {
+    use ratatui_image::picker::{Picker, ProtocolType};
+    for protocol in [
+        ProtocolType::Halfblocks,
+        ProtocolType::Kitty,
+        ProtocolType::Sixel,
+        ProtocolType::Iterm2,
+    ] {
+        for layout in ["cards", "kanban"] {
+            let (_root, mut app) = fixture();
+            let mut picker = Picker::halfblocks();
+            picker.set_protocol_type(protocol);
+            app.image_picker = Some(picker);
+            app.config.features.images = FeatureState::Enabled;
+            image::RgbaImage::from_fn(64, 64, |_, y| {
+                image::Rgba([if y % 16 < 8 { 40 } else { 180 }, 90, 120, 255])
+            })
+            .save(app.storage.notes_dir.join("cover.png"))
+            .unwrap();
+            let base = app.storage.load_document("board.base").unwrap();
+            app.storage.save_document(&base, &format!("filters: file.ext == 'md'\nformulas: {{cover: 'image(\"cover.png\")'}}\nviews: [{{type: {layout}, name: Test, order: [file.name, score], groupBy: {{property: score}}, image: formula.cover, imageFit: {}}}]\n", if layout == "cards" { "cover" } else { "contain" })).unwrap();
+            app.bases_state = None;
+            app.mode = ViewMode::List;
+            app.invalidate_bases();
+            let mut renderer = markdown("![[board.base#Test]]\n\nAfter", Some("public.md"));
+            rendered(&mut app, &renderer, "public.md");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let complete = loop {
+                let output = content_screen(&mut app, &mut renderer, 0, 100, 40);
+                app.poll_bases();
+                let text = output.join("\n");
+                assert!(!text.contains("Cover:"), "{protocol:?}/{layout}: {text}");
+                if !text.contains("Loading cover") {
+                    break output;
+                }
+                assert!(Instant::now() < deadline, "{protocol:?}/{layout}: {text}");
+                std::thread::sleep(Duration::from_millis(2));
+            };
+            let length = renderer.document().unwrap().line_count();
+            for start in (0..length).step_by(3) {
+                let height = (length - start).min(5) as u16;
+                let output = content_screen(&mut app, &mut renderer, start, 100, height);
+                let text = output.join("\n");
+                assert!(
+                    !text.contains("Loading") && !text.contains("Cover:"),
+                    "{protocol:?}/{layout}: {text}"
+                );
+                if protocol == ProtocolType::Halfblocks {
+                    assert_eq!(output, complete[start..start + usize::from(height)]);
+                }
+            }
+            assert!(!app.poll_bases(), "scrolling must reuse the encoded cover");
+        }
+    }
+}

@@ -4,11 +4,16 @@ use crate::{app::App, storage::metadata::VaultMetadata};
 use anyhow::{Result, bail};
 use ratatui::{
     Frame,
-    layout::Rect,
+    layout::{Rect, Size},
     style::{Color, Style},
     widgets::{Paragraph, Wrap},
 };
-use ratatui_image::{Resize, StatefulImage, picker::Picker, protocol::StatefulProtocol};
+use ratatui_image::{
+    Resize, StatefulImage,
+    picker::Picker,
+    protocol::StatefulProtocol,
+    sliced::{SignedPosition, SlicedImage, SlicedProtocol},
+};
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -27,10 +32,12 @@ struct Key {
     size: u64,
     modified: Option<SystemTime>,
     shape: Option<(u32, u32)>,
+    slice: Option<(u16, u16)>,
 }
 enum Entry {
     Pending(Arc<AtomicBool>),
     Ready(Box<StatefulProtocol>),
+    Sliced(Box<SlicedProtocol>),
     Error(String),
 }
 impl Drop for Entry {
@@ -48,6 +55,8 @@ pub(super) struct Cover<'a> {
     pub value: &'a Value,
     pub host: &'a str,
     pub fit: ImageFit,
+    /// Full cover height and rows hidden above the viewport.
+    pub clip: Option<(u16, u16)>,
 }
 pub(super) struct PublicImages {
     cache: lru::LruCache<Key, Entry>,
@@ -80,7 +89,7 @@ impl PublicImages {
             self.active.load(Ordering::Relaxed),
             self.cache
                 .iter()
-                .filter(|(_, entry)| matches!(entry, Entry::Ready(_)))
+                .filter(|(_, entry)| matches!(entry, Entry::Ready(_) | Entry::Sliced(_)))
                 .count(),
         )
     }
@@ -89,7 +98,17 @@ impl PublicImages {
         while let Ok(response) = self.rx.try_recv() {
             if self.cache.contains(&response.key) {
                 let entry = match response.image {
-                    Ok(image) => Entry::Ready(Box::new(picker.new_resize_protocol(image))),
+                    Ok(image) => {
+                        if let Some((width, height)) = response.key.slice {
+                            match SlicedProtocol::new(picker, image, Some(Size::new(width, height)))
+                            {
+                                Ok(protocol) => Entry::Sliced(Box::new(protocol)),
+                                Err(error) => Entry::Error(format!("{error:#}")),
+                            }
+                        } else {
+                            Entry::Ready(Box::new(picker.new_resize_protocol(image)))
+                        }
+                    }
                     Err(error) => Entry::Error(format!("{error:#}")),
                 };
                 self.cache.put(response.key, entry);
@@ -106,7 +125,12 @@ impl PublicImages {
         metadata: &VaultMetadata,
         app: &App,
     ) {
-        let Cover { value, host, fit } = cover;
+        let Cover {
+            value,
+            host,
+            fit,
+            clip,
+        } = cover;
         if area.is_empty() || matches!(value, Value::Null) {
             return;
         }
@@ -141,17 +165,22 @@ impl PublicImages {
             CoverSource::Remote(url) => (url, true, 0, None),
         };
         let font = picker.font_size();
-        let shape = if fit == ImageFit::Cover {
+        let dimensions = || {
             let width = u32::from(area.width) * u32::from(font.width.max(1));
-            let height = u32::from(area.height) * u32::from(font.height.max(1));
+            let height = u32::from(clip.map_or(area.height, |(height, _)| height))
+                * u32::from(font.height.max(1));
             let scale = 256.0 / f64::from(width.max(height).max(1));
-            Some((
+            (
                 (f64::from(width) * scale).round().max(1.0) as u32,
                 (f64::from(height) * scale).round().max(1.0) as u32,
-            ))
+            )
+        };
+        let shape = if fit == ImageFit::Cover {
+            Some(dimensions())
         } else {
             None
         };
+        let slice = clip.map(|(height, _)| (area.width, height));
         let key = Key {
             id,
             remote,
@@ -159,6 +188,7 @@ impl PublicImages {
             size,
             modified,
             shape,
+            slice,
         };
         if !self.cache.contains(&key) && self.active.load(Ordering::Relaxed) < 2 {
             // Only this UI-owned cache admits work; background tasks only decrement.
@@ -208,6 +238,13 @@ impl PublicImages {
                 StatefulImage::default().resize(Resize::Fit(None)),
                 area,
                 &mut **protocol,
+            ),
+            Some(Entry::Sliced(protocol)) => frame.render_widget(
+                SlicedImage::new(
+                    protocol,
+                    SignedPosition::from((0, -(clip.expect("sliced cover has viewport").1 as i16))),
+                ),
+                area,
             ),
             Some(Entry::Error(error)) => diagnostic(frame, area, &format!("Cover: {error}"), app),
             _ => diagnostic(frame, area, "Loading cover…", app),
@@ -315,6 +352,7 @@ mod tests {
             size: 1,
             modified: None,
             shape: None,
+            slice: None,
         };
         let cancelled = Arc::new(AtomicBool::new(false));
         images
