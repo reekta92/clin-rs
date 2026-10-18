@@ -5,7 +5,6 @@ impl App {
     pub(crate) fn sync_retained_view_settings(&mut self) {
         let theme = &self.app_theme;
         if let Some(s) = &mut self.draw_state {
-            s.theme = theme.clone();
             s.keybinds = self.keybinds.clone();
             s.seq_matcher.clear();
         }
@@ -742,11 +741,17 @@ impl App {
         {
             return;
         }
-        let data = std::fs::read_to_string(self.storage.note_path(&target))
-            .ok()
-            .and_then(|s| serde_json::from_str::<crate::draw::state::DrawData>(&s).ok())
-            .unwrap_or_default();
-        self.draw_preview = Some((target, data));
+        match self
+            .storage
+            .document_path(&target)
+            .and_then(|path| ::draw::DrawState::load(&path))
+        {
+            Ok(state) => self.draw_preview = Some((target, state.data)),
+            Err(error) => {
+                self.draw_preview = None;
+                self.set_temporary_status(&format!("Drawing preview unavailable: {error:#}"));
+            }
+        }
     }
 
     pub fn ensure_graph_preview(&mut self) {

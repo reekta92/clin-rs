@@ -563,6 +563,7 @@ dependencies = [
  "crossterm",
  "csv",
  "directories 5.0.1",
+ "draw-rs",
  "fdg-sim",
  "fuzzy-matcher",
  "graf-rs",
@@ -1013,6 +1014,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
+]
+
+[[package]]
+name = "draw-rs"
+version = "0.1.0"
+source = "git+https://github.com/reekta92/draw-rs?rev=e39385ffd2d8238a408d4be4b3ddd38b554c74e8#e39385ffd2d8238a408d4be4b3ddd38b554c74e8"
+dependencies = [
+ "anyhow",
+ "crossterm",
+ "ratatui",
+ "ratatui-textarea",
+ "serde",
+ "serde_json",
+ "unicode-width",
+ "uuid",
 ]
 
 [[package]]

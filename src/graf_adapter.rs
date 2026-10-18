@@ -571,30 +571,27 @@ impl GrafPlugin {
         let is_canvas = key.note_id.ends_with(".canvas");
 
         if is_draw {
-            let path = self.storage.note_path(&key.note_id);
-            match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
-                        Ok(data) => {
-                            let grid = crate::snapshot::render_draw_snapshot_with_size(
-                                &data,
-                                &self.app_theme,
-                                config.ui.icon_mode,
-                                key.width,
-                                key.height,
-                                key.scale,
-                                key.offset_x,
-                                key.offset_y,
-                            );
-                            self.preview_content = Some(PreviewContent::DrawGrid {
-                                data: Box::new(data),
-                                grid,
-                            });
-                        }
-                        Err(_) => {
-                            self.preview_content = None;
-                        }
-                    }
+            match self
+                .storage
+                .document_path(&key.note_id)
+                .and_then(|path| ::draw::DrawState::load(&path))
+            {
+                Ok(state) => {
+                    let data = state.data;
+                    let grid = crate::snapshot::render_draw_snapshot_with_size(
+                        &data,
+                        &self.app_theme,
+                        config.ui.icon_mode,
+                        key.width,
+                        key.height,
+                        key.scale,
+                        key.offset_x,
+                        key.offset_y,
+                    );
+                    self.preview_content = Some(PreviewContent::DrawGrid {
+                        data: Box::new(data),
+                        grid,
+                    });
                 }
                 Err(_) => {
                     self.preview_content = None;

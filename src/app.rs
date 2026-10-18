@@ -431,7 +431,7 @@ pub struct App {
     pub(crate) palette_destination_failure: bool,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_plugin: Option<crate::graf_adapter::GrafPlugin>,
-    pub draw_state: Option<crate::draw::app::DrawAppState>,
+    pub draw_state: Option<crate::draw_adapter::DrawPlugin>,
     pub draw_clipboard: Option<crate::draw::state::DrawItem>,
     pub outline_state: Option<crate::outline::state::OutlineState>,
     pub setup_state: Option<crate::setup::SetupState>,

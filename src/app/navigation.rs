@@ -109,7 +109,7 @@ impl Location {
                 app.graph_plugin.as_ref()?;
                 Place::Graph
             }
-            ViewMode::Draw => Place::Draw(app.draw_state.as_ref()?.current_file.clone()),
+            ViewMode::Draw => Place::Draw(Some(app.draw_state.as_ref()?.current_file.clone())),
             ViewMode::Canvas => Place::Canvas(app.canvas_state.as_ref()?.state.path.clone()),
             ViewMode::Bases => {
                 let state = app.bases_state.as_ref()?;
@@ -172,21 +172,18 @@ impl Location {
             }
             Place::Draw(id) => {
                 ensure!(app.config.features.draw_view.is_enabled(), "Draw disabled");
-                let mut state = crate::draw::app::DrawAppState::new(
-                    app.storage.clone(),
-                    None,
-                    app.app_theme.clone(),
+                let id = id
+                    .as_deref()
+                    .context("Drawing has no save target; create a drawing first")?;
+                let state = crate::draw_adapter::DrawPlugin::load(
+                    &app.storage,
+                    id,
                     app.keybinds.clone(),
                     KeyMatcher::default(),
-                );
-                if let Some(id) = id {
-                    let snapshot = app.storage.load_document(id)?;
-                    state.data = serde_json::from_str(snapshot.source())
-                        .context("failed to reopen drawing")?;
-                }
-                state.current_file = id.clone();
+                )?;
                 Prepared::overlay(OverlayState::Draw(state))
             }
+
             Place::Canvas(path) => {
                 ensure!(
                     app.config.features.canvas_view.is_enabled(),

@@ -106,14 +106,17 @@ impl Fixture {
             ViewMode::Help => app.open_help_page(),
             ViewMode::Graph => app.open_graph_view(),
             ViewMode::Draw => {
-                app.draw_state = Some(crate::draw::app::DrawAppState::new(
-                    app.storage.clone(),
-                    Some("art.draw".into()),
-                    app.app_theme.clone(),
-                    app.keybinds.clone(),
-                    crate::keybinds::KeyMatcher::default(),
-                ));
+                app.draw_state = Some(
+                    crate::draw_adapter::DrawPlugin::load(
+                        &app.storage,
+                        "art.draw",
+                        app.keybinds.clone(),
+                        crate::keybinds::KeyMatcher::default(),
+                    )
+                    .unwrap(),
+                );
             }
+
             ViewMode::Canvas => {
                 app.canvas_state = Some(
                     crate::pinstar_adapter::PinstarPlugin::new(
@@ -724,7 +727,7 @@ fn palette_modal_gates_preserve_each_owners_pending_input() {
                     .is_panning = true;
             }
             ViewMode::Draw => {
-                f.app.draw_state.as_mut().unwrap().creation_origin = Some((1.0, 2.0));
+                f.app.draw_state.as_mut().unwrap().state.creation_origin = Some((1.0, 2.0));
             }
             ViewMode::Canvas => {
                 f.app.canvas_state.as_mut().unwrap().state.floating_editor =
@@ -956,7 +959,7 @@ fn palette_canvas_image_history_and_failed_save_keep_live_data() {
 fn palette_draw_save_failure_and_fileless_changes_block_departure() {
     let mut f = Fixture::new();
     f.enter(ViewMode::Draw);
-    f.app.draw_state.as_mut().unwrap().data.background = Some("#ffffff".into());
+    f.app.draw_state.as_mut().unwrap().state.data.background = Some("#ffffff".into());
     activate(&mut f.app, "notes.open");
     assert_eq!(f.app.mode, ViewMode::List);
     assert!(
@@ -965,15 +968,23 @@ fn palette_draw_save_failure_and_fileless_changes_block_departure() {
             .contains("#ffffff")
     );
     f.enter(ViewMode::Draw);
-    f.app.draw_state.as_mut().unwrap().current_file = None;
-    f.app.draw_state.as_mut().unwrap().data.background = Some("#000000".into());
+    f.app.draw_state.as_mut().unwrap().state = ::draw::DrawState::new();
+    f.app.draw_state.as_mut().unwrap().state.data.background = Some("#000000".into());
     activate(&mut f.app, "graph.open");
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.status.contains("no save target"));
-    let blocker = f.root.path().join("blocked");
-    fs::write(&blocker, "block").unwrap();
-    f.app.draw_state.as_mut().unwrap().storage.notes_dir = blocker;
-    f.app.draw_state.as_mut().unwrap().current_file = Some("art.draw".into());
+    f.enter(ViewMode::Draw);
+    let destination = f
+        .app
+        .draw_state
+        .as_ref()
+        .unwrap()
+        .state
+        .path()
+        .unwrap()
+        .to_path_buf();
+    fs::remove_file(&destination).unwrap();
+    fs::create_dir(&destination).unwrap();
     activate(&mut f.app, "notes.open");
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.draw_state.is_some());
@@ -1211,7 +1222,10 @@ fn palette_retained_draw_canvas_outline_settings_survive_help_and_setup() {
         match mode {
             ViewMode::Draw => {
                 let state = f.app.draw_state.as_ref().unwrap();
-                assert_eq!(state.theme.fg, f.app.app_theme.fg);
+                assert_eq!(
+                    crate::draw_adapter::theme_colors(&f.app.app_theme).accent,
+                    f.app.app_theme.accent
+                );
                 assert_eq!(state.keybinds.draw, f.app.keybinds.draw);
             }
             ViewMode::Canvas => assert_eq!(
@@ -1236,7 +1250,7 @@ fn palette_retained_draw_canvas_outline_settings_survive_help_and_setup() {
 fn palette_strokes_connections_and_setup_rebootstrap_preserve_pending_owners() {
     let mut f = Fixture::new();
     f.enter(ViewMode::Draw);
-    f.app.draw_state.as_mut().unwrap().current_stroke = Some(crate::draw::state::Stroke {
+    f.app.draw_state.as_mut().unwrap().state.current_stroke = Some(crate::draw::state::Stroke {
         points: vec![(1.0, 2.0)],
         color: (255, 255, 255),
     });
@@ -1247,6 +1261,7 @@ fn palette_strokes_connections_and_setup_rebootstrap_preserve_pending_owners() {
             .draw_state
             .as_ref()
             .unwrap()
+            .state
             .current_stroke
             .as_ref()
             .unwrap()
@@ -2057,4 +2072,472 @@ fn palette_custom_theme_sources_survive_filter_apply_and_setup() {
     activate(&mut f.app, "switch_theme");
     let buffer = render_palette(&mut f.app);
     assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Custom theme · Current")));
+}
+
+#[test]
+fn draw_explicit_open_retains_active_state_and_rejects_invalid_targets() {
+    let mut f = Fixture::new();
+    let selected = fs::read(f.app.storage.note_path("selected.md")).unwrap();
+    f.app.open_note_at_line("art.draw", None);
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    assert_eq!(f.app.draw_state.as_ref().unwrap().current_file, "art.draw");
+    let plugin = f.app.draw_state.as_mut().unwrap();
+    plugin.state.viewport.x = 42.0;
+    let previous = plugin.state.data.clone();
+    plugin.state.data.width = 123.0;
+    plugin.state.commit_data_change(previous).unwrap();
+    f.app.open_note_at_line("art.draw", None);
+    assert_eq!(f.app.draw_state.as_ref().unwrap().state.viewport.x, 42.0);
+    assert_eq!(f.app.draw_state.as_ref().unwrap().state.undo_stack.len(), 1);
+    fs::write(f.app.storage.note_path("broken.draw"), "malformed").unwrap();
+    let route = f.app.return_mode;
+    for id in [
+        "broken.draw",
+        "missing.draw",
+        "../outside.draw",
+        "selected.md",
+    ] {
+        assert!(f.app.open_draw_document(id).is_err());
+        assert_eq!(f.app.mode, ViewMode::Draw);
+        assert_eq!(f.app.return_mode, route);
+        assert_eq!(f.app.draw_state.as_ref().unwrap().current_file, "art.draw");
+    }
+    assert_eq!(
+        fs::read(f.app.storage.note_path("selected.md")).unwrap(),
+        selected
+    );
+    assert_eq!(
+        fs::read_to_string(f.app.storage.note_path("broken.draw")).unwrap(),
+        "malformed"
+    );
+}
+
+#[test]
+fn draw_opens_after_public_source_autosave_and_non_draw_selection_requests_name() {
+    let mut f = Fixture::new();
+    let snapshot = f.app.storage.load_document("art.draw").unwrap();
+    f.app.open_public_document(snapshot);
+    let data = ::draw::DrawData {
+        width: 444.0,
+        ..::draw::DrawData::default()
+    };
+    f.app.editor.body.select_all();
+    f.app
+        .editor
+        .body
+        .insert_str(serde_json::to_string(&data).unwrap());
+    f.app.open_note_at_line("art.draw", None);
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    assert_eq!(f.app.draw_state.as_ref().unwrap().state.data.width, 444.0);
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    f.app.mode = ViewMode::List;
+    f.app.list.visual_index = f.app.list.visual_list.iter().position(|item| matches!(item, crate::list_view::VisualItem::Note { summary_idx, .. } if f.app.notes[*summary_idx].id == "selected.md")).unwrap();
+    f.app.open_draw_view();
+    assert!(matches!(
+        f.app.popups.active,
+        Some(crate::popups::ActivePopup::CreateNote(
+            _,
+            crate::popups::NoteFormat::Draw
+        ))
+    ));
+    assert!(f.app.draw_state.is_none());
+}
+
+#[test]
+fn draw_strip_opens_displayed_document_and_corrupt_preview_stays_unavailable() {
+    let mut f = Fixture::new();
+    let data = ::draw::DrawData::default();
+    f.app
+        .storage
+        .create_document("displayed.draw", &serde_json::to_string(&data).unwrap())
+        .unwrap();
+    f.app.draw_preview = Some(("displayed.draw".into(), data));
+    f.app.list.calendar_enabled = true;
+    f.app.list.sections = vec![crate::config::NotesSection::Draw];
+    let (_, _, strip) = crate::ui::list_view_layout(
+        AREA,
+        f.app.list.preview_enabled,
+        f.app.preview_position,
+        true,
+        f.app.preview_fullscreen,
+        f.app.list.preview_width_ratio,
+        f.app.list.calendar_height,
+        f.app.config.list.calendar_position,
+    );
+    let strip = crate::ui::section_rects(strip.unwrap(), &[crate::config::NotesSection::Draw])[0];
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: strip.x,
+            row: strip.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    assert_eq!(
+        f.app.draw_state.as_ref().unwrap().current_file,
+        "displayed.draw"
+    );
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    fs::write(f.app.storage.note_path("art.draw"), "malformed").unwrap();
+    f.app
+        .notes
+        .push(f.app.storage.load_note_summary("art.draw").unwrap());
+    f.app.draw_preview = None;
+    f.app.ensure_draw_preview();
+    assert!(f.app.draw_preview.is_none());
+    assert!(f.app.status.contains("preview unavailable"));
+}
+
+#[test]
+fn draw_dispatch_recovers_direct_and_queued_save_failures_without_reapplying_edits() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Draw);
+    let path = f
+        .app
+        .draw_state
+        .as_ref()
+        .unwrap()
+        .state
+        .path()
+        .unwrap()
+        .to_path_buf();
+    let original = fs::read(&path).unwrap();
+    fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
+    let mouse = |kind, column, row| {
+        Event::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        })
+    };
+    drive(&mut f.app, key(KeyCode::Char('d')));
+    drive(
+        &mut f.app,
+        mouse(MouseEventKind::Down(MouseButton::Left), 20, 10),
+    );
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    assert!(f.app.status.contains("Finish the drawing interaction"));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .current_stroke
+            .is_some()
+    );
+    let (sender, receiver) = mpsc::channel();
+    sender
+        .send(mouse(MouseEventKind::Up(MouseButton::Left), 25, 15))
+        .unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+    crate::dispatch_event(
+        &mut EventSource::channel(receiver),
+        &mut f.app,
+        mouse(MouseEventKind::Drag(MouseButton::Left), 25, 15),
+        &mut EditFocus::Body,
+        &mut terminal,
+    )
+    .unwrap();
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    let state = &f.app.draw_state.as_ref().unwrap().state;
+    assert_eq!(state.data.elements.len(), 1);
+    assert_eq!(state.undo_stack.len(), 1);
+    assert!(state.current_stroke.is_none());
+    assert!(f.app.status.contains("failed to publish"));
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    assert!(f.app.draw_state.is_some());
+    let grid = f.app.draw_state.as_ref().unwrap().state.grid;
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT)),
+    );
+    assert_ne!(f.app.draw_state.as_ref().unwrap().state.grid, grid);
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::CONTROL)),
+    );
+    assert_eq!(
+        f.app.draw_state.as_ref().unwrap().state.data.elements.len(),
+        0
+    );
+    assert_eq!(f.app.draw_state.as_ref().unwrap().state.redo_stack.len(), 1);
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL)),
+    );
+    assert_eq!(f.app.draw_state.as_ref().unwrap().state.undo_stack.len(), 1);
+    fs::remove_dir(&path).unwrap();
+    fs::write(&path, original).unwrap();
+    f.app.draw_state.as_ref().unwrap().state.save().unwrap();
+    assert_eq!(f.app.draw_state.as_ref().unwrap().state.undo_stack.len(), 1);
+    assert_eq!(
+        ::draw::DrawState::load(&path).unwrap().data.elements.len(),
+        1
+    );
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    assert_eq!(f.app.mode, ViewMode::List);
+}
+
+#[test]
+fn draw_modal_shortcuts_sequences_counts_and_clipboards_keep_precedence() {
+    use crate::keybinds::DrawAction;
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Draw);
+    let item = ::draw::DrawItem::new(::draw::DrawElement::Text(::draw::Text {
+        content: "original".into(),
+        x: 0.0,
+        y: 0.0,
+        color: (1, 2, 3),
+    }));
+    let id = item.id.clone();
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .data
+        .elements
+        .push(item.clone());
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .selection
+        .select_only(id.clone());
+    drive(&mut f.app, key(KeyCode::Char('t')));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .text_editor
+            .is_some()
+    );
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    drive(&mut f.app, Event::Paste(" pasted".into()));
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .text_editor
+            .as_ref()
+            .unwrap()
+            .1
+            .lines()[0]
+            .contains('q')
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert_eq!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .data
+            .item(&id)
+            .unwrap()
+            .element,
+        item.element
+    );
+    f.app.draw_clipboard = Some(item.clone());
+    f.app.draw_state.as_mut().unwrap().state.open_context_menu(
+        5,
+        5,
+        ::draw::DrawMenuTarget::Text(id.clone()),
+        true,
+    );
+    drive(&mut f.app, key(KeyCode::Char('q')));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .context_menu
+            .is_some()
+    );
+    drive(&mut f.app, key(KeyCode::Char('v')));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .context_menu
+            .is_none()
+    );
+    assert!(matches!(
+        f.app.draw_state.as_ref().unwrap().state.interaction,
+        Some(::draw::DrawInteraction::Paste { .. })
+    ));
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .interaction
+            .is_none()
+    );
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .selection
+        .select_only(id);
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .selection
+            .is_empty()
+    );
+    assert_eq!(f.app.mode, ViewMode::Draw);
+    drive(&mut f.app, key(KeyCode::Char('s')));
+    assert!(f.app.draw_state.as_ref().unwrap().state.show_shape_selector);
+    drive(&mut f.app, key(KeyCode::Char('d')));
+    assert_eq!(
+        f.app.draw_state.as_ref().unwrap().state.active_tool,
+        ::draw::DrawTool::Draw
+    );
+    f.app.config.core.enable_key_sequences = true;
+    f.app.config.core.keybind_preset = KeybindPreset::Vim;
+    f.app.draw_state.as_mut().unwrap().keybinds.draw.insert(
+        DrawAction::ToggleGrid,
+        vec![KeyCombo::parse("g x").unwrap()],
+    );
+    let grid = f.app.draw_state.as_ref().unwrap().state.grid;
+    for code in [KeyCode::Char('2'), KeyCode::Char('g'), KeyCode::Char('x')] {
+        drive(&mut f.app, key(code));
+    }
+    assert_ne!(f.app.draw_state.as_ref().unwrap().state.grid, grid);
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert_eq!(f.app.mode, ViewMode::List);
+    f.app.open_note_at_line("art.draw", None);
+    assert_eq!(f.app.draw_clipboard.as_ref().unwrap(), &item);
+}
+
+#[test]
+fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Draw);
+    let vector = ::draw::DrawItem::new(::draw::DrawElement::Shape(::draw::Shape::Rect {
+        x: -10.0,
+        y: -10.0,
+        width: 20.0,
+        height: 20.0,
+        color: (255, 255, 255),
+    }));
+    let vector_id = vector.id.clone();
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .data
+        .elements
+        .push(vector);
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .selection
+        .select_only(vector_id.clone());
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::ALT)),
+    );
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .data
+            .item(&vector_id)
+            .is_some()
+    );
+    drive(&mut f.app, key(KeyCode::Char('s')));
+    assert!(matches!(
+        f.app.draw_state.as_ref().unwrap().state.interaction,
+        Some(::draw::DrawInteraction::Scale { .. })
+    ));
+    assert!(!f.app.draw_state.as_ref().unwrap().state.show_shape_selector);
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Char('e')));
+    assert!(
+        f.app
+            .draw_state
+            .as_ref()
+            .unwrap()
+            .state
+            .data
+            .item(&vector_id)
+            .is_none()
+    );
+    assert_eq!(
+        f.app.draw_state.as_ref().unwrap().state.active_tool,
+        ::draw::DrawTool::Cursor
+    );
+    let text = ::draw::DrawItem::new(::draw::DrawElement::Text(::draw::Text {
+        content: "copy this text".into(),
+        x: 0.0,
+        y: 0.0,
+        color: (255, 255, 255),
+    }));
+    let id = text.id.clone();
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .data
+        .elements
+        .push(text);
+    f.app
+        .draw_state
+        .as_mut()
+        .unwrap()
+        .state
+        .begin_text_editor(id);
+    let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let rect = Rect::new(21, 18, 58, 3);
+    for (kind, col) in [
+        (MouseEventKind::Down(MouseButton::Left), rect.x),
+        (MouseEventKind::Drag(MouseButton::Left), rect.x + 4),
+        (MouseEventKind::Up(MouseButton::Left), rect.x + 4),
+    ] {
+        drive(
+            &mut f.app,
+            Event::Mouse(MouseEvent {
+                kind,
+                column: col,
+                row: rect.y,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+    }
+    crate::text_edit::TEST_CLIPBOARD
+        .with(|clipboard| assert_eq!(clipboard.borrow().as_deref(), Some("copy")));
 }

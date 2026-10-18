@@ -1362,40 +1362,37 @@ impl App {
                         self.list.preview_content_index = Some(self.list.visual_index);
                         return;
                     }
-                    let path = self.storage.note_path(id);
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) => {
-                            match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
-                                Ok(data) => {
-                                    let width = self.desired_list_preview_width();
-                                    let height = self.desired_list_preview_height();
-                                    let scale = self.list.preview_scale;
-                                    let offset_x = self.list.preview_offset_x;
-                                    let offset_y = self.list.preview_offset_y;
-                                    let grid = crate::snapshot::render_draw_snapshot_with_size(
-                                        &data,
-                                        &self.app_theme,
-                                        self.config.ui.icon_mode,
-                                        width,
-                                        height,
-                                        scale,
-                                        offset_x,
-                                        offset_y,
-                                    );
-                                    self.list.preview_content = Some(PreviewContent::DrawGrid {
-                                        data: Box::new(data),
-                                        grid,
-                                    });
-                                    self.set_list_preview_geometry(width, height);
-                                }
-                                Err(e) => {
-                                    self.list.preview_content = None;
-                                    self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
-                                }
-                            }
+                    match self
+                        .storage
+                        .document_path(id)
+                        .and_then(|path| ::draw::DrawState::load(&path))
+                    {
+                        Ok(state) => {
+                            let data = state.data;
+                            let width = self.desired_list_preview_width();
+                            let height = self.desired_list_preview_height();
+                            let scale = self.list.preview_scale;
+                            let offset_x = self.list.preview_offset_x;
+                            let offset_y = self.list.preview_offset_y;
+                            let grid = crate::snapshot::render_draw_snapshot_with_size(
+                                &data,
+                                &self.app_theme,
+                                self.config.ui.icon_mode,
+                                width,
+                                height,
+                                scale,
+                                offset_x,
+                                offset_y,
+                            );
+                            self.list.preview_content = Some(PreviewContent::DrawGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
+                            self.set_list_preview_geometry(width, height);
                         }
-                        Err(_) => {
+                        Err(error) => {
                             self.list.preview_content = None;
+                            self.status = Cow::Owned(format!("Failed to load draw: {error:#}"));
                         }
                     }
                     self.list.preview_content_index = Some(self.list.visual_index);

@@ -322,15 +322,17 @@ impl App {
     }
 
     pub fn open_note_at_line(&mut self, note_id: &str, line_number: Option<usize>) {
+        if note_id.ends_with(".draw") {
+            if let Err(error) = self.open_draw_document(note_id) {
+                self.set_temporary_status(&format!("{error:#}"));
+            }
+            return;
+        }
         if !self.prepare_editor_transition() {
             return;
         }
         if note_id.ends_with(".base") {
             self.open_bases_view(note_id, None);
-            return;
-        }
-        if note_id.ends_with(".draw") {
-            self.open_draw_view();
             return;
         }
         if note_id.ends_with(".canvas") {
@@ -1308,13 +1310,12 @@ impl App {
         };
         let snapshot = self.storage.create_document(&id, &source)?;
         if format == crate::popups::NoteFormat::Draw {
-            self.draw_state = Some(crate::draw::app::DrawAppState::new(
-                self.storage.clone(),
-                Some(id.clone()),
-                self.app_theme.clone(),
+            self.draw_state = Some(crate::draw_adapter::DrawPlugin::load(
+                &self.storage,
+                &id,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
-            ));
+            )?);
         } else {
             self.canvas_state = Some(crate::pinstar_adapter::PinstarPlugin::new(
                 &self.storage.document_path(&id)?,

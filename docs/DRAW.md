@@ -8,7 +8,7 @@ Technical docs for the draw canvas module — a simple paint-style canvas for fr
 
 The draw view provides an infinite 2D canvas for freehand drawing, inserting predefined shapes, and adding text. Files use the `.draw` extension and are stored alongside notes in the vault.
 
-**Source:** `src/draw/` — modules: `app`, `input`, `render`, `state`
+**Engine:** [draw-rs](https://github.com/reekta92/draw-rs), consumed through the revision-pinned `draw` dependency. **Clin host:** `src/draw_adapter.rs` (`DrawPlugin`).
 
 ---
 
@@ -112,20 +112,20 @@ pub enum DrawTool {
 
 ## Key Types
 
-### `DrawAppState`
+### `draw::DrawState`
 
 Main state struct for the draw view:
 
 ```rust
-pub struct DrawAppState {
+pub struct DrawState {
     pub data: DrawData,
     pub viewport: Viewport,
     pub active_tool: DrawTool,
     pub selection: CanvasSelection<DrawItemId>,
     pub hovered: Option<DrawItemId>,
     pub interaction: Option<DrawInteraction>,
-    pub grid: CanvasGridState,
-    // storage, editor, history, menu, and input state
+    pub grid: bool,
+    // editor, history, menu, and interaction state; the save path is private
 }
 ```
 
@@ -155,10 +155,10 @@ pub enum DrawTool {
 
 ## Rendering
 
-Rendering in `src/draw/render.rs`:
+Rendering lives in upstream `draw::draw_view()` and `draw::draw_snapshot()`. Clin keeps its toolbar, icons, statusline and keybinding hints in the adapter:
 
 - Uses ratatui's `Canvas` widget with Braille markers
-- Shared adaptive dot grid renders before content and does not appear in snapshots
+- Adaptive dot grid remains private to the engine and does not appear in snapshots
 - Vectors render in persisted order; text renders above vectors
 - Item transforms apply translation, rotation, and scale around stored pivots
 - Hover and selection redraw with blended color plus bounds and transform handles
@@ -166,36 +166,64 @@ Rendering in `src/draw/render.rs`:
 
 ---
 
-## Data Flow
+## Loading, saving, and lifecycle
 
-```
-Storage::list_note_ids()
-  └─ discovers *.draw files
-      └─ DrawAppState::new(storage, file_id)
-          └─ reads JSON from note_path(id)
-              └─ serde_json::from_str() → DrawData
-                  │
-User interacts  →  DrawAppState mutated
-  │
-DrawAppState::save_draw()
-  └─ serde_json::to_string() → writes to note_path(id)
-```
+`App` retains `Option<DrawPlugin>`. The adapter owns the document ID, clin keymap
+and sequence matcher; `plugin.state` holds upstream data, history and gestures.
+Opening an explicit ID validates its `.draw` extension and vault path, saves the
+current owner, then loads the requested drawing before installing it. Reopening
+the active drawing retains its history and viewport. A strip click opens the
+previewed ID. A non-drawing selection opens the existing naming dialog.
 
-### View Lifecycle
+`DrawState::load(path)` requires an existing regular UTF-8 file, resolves its
+path, and enforces a 16 MiB limit. Invalid documents fail without replacement.
+Creation in clin still uses `Storage::create_document()` for collision protection.
+Loading legacy data never rewrites bytes; saving applies the supported migration.
+Output is also bounded to 16 MiB, so successful saves can be reopened.
 
-Draw is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)):
+Completed edits, undo and redo save eagerly. Atomic replacement preserves
+permissions, writes and syncs an exclusive temporary file, renames it, and syncs
+the containing directory on Unix. Failed saves keep the live document and its
+single recorded history entry; retry saving without repeating the edit. A failure
+after rename may mean the new bytes were already published.
 
-```
-User enters Draw view
-  ├─ State created: DrawAppState::new(storage, note_id, theme)
-  ├─ Owned by App as Option<DrawAppState>
-  ├─ overlay_render() called from draw_ui() each frame
-  ├─ Events dispatched to overlay_handle_event()
-  │     └─ returns OverlayResult::{Continue, Exit}
-  └─ On Exit:
-       ├─ DrawAppState::save_draw() writes changes to disk
-       └─ state = None; mode = return_mode
-```
+Ordinary quit, palette departure and navigation use the same interaction/save
+guard. Unfinished gestures, changed fileless states and failed saves block
+departure. Direct and queued overlay errors become temporary statuses and keep
+Draw active. Concurrent external edits are not detected and may be overwritten.
+Forced Ctrl+C/process termination remains outside these ordinary departure guards.
+
+Clin resolves keys before mapping them exhaustively to semantic `DrawAction`s.
+Text editors consume printable `q`; selectors, direct paste and context menus
+retain their existing priority. Selected-item shortcuts precede tool bindings.
+Clin transports system text clipboard data; the element clipboard remains owned
+by `App` across drawing sessions. Theme and popup hints are mapped from the current
+host settings at render time, preserving history and viewport across settings changes.
+The host supplies the same canvas rectangle for rendering and input after resize.
+List, strip and graph previews call the upstream committed-content painter.
+
+## Standalone use and local development
+
+The upstream repository also builds `draw <path.draw>`. Its parent directory must
+exist. It uses default Draw bindings, local help and a textarea-local text
+clipboard, without vault discovery or clin configuration. See the upstream README
+for library embedding and terminal restoration behavior.
+
+For paired development, temporarily replace the Git dependency with
+`draw = { package = "draw-rs", path = "../draw-rs" }`. Restore the immutable Git
+revision and regenerate `Cargo.lock` before committing the final integration.
+The package is GPL-3.0-only and preserves clin source attribution.
+
+## API migration
+
+`clin::draw::state::*`, `clin::draw::geometry::*` and
+`clin::draw::render::smooth_points` remain compatibility reexports.
+The host-coupled `clin::draw::{app,input,render}` constructors and event/render
+APIs are replaced by `clin::draw_adapter::DrawPlugin` and upstream `draw` APIs.
+Use fallible `DrawPlugin::load(&storage, id, keybinds, matcher)`; there is no
+infallible constructor that substitutes an empty drawing after a read error.
+Access engine fields through `plugin.state`. Use `draw::DrawState::new()` only
+for deliberate fileless embedding; changed fileless states cannot be saved.
 
 ---
 

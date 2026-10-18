@@ -178,7 +178,7 @@ pub struct StatuslineContext<'a> {
 
     // active overlay states:
     pub graph: Option<&'a graf::GraphState>,
-    pub draw: Option<&'a crate::draw::app::DrawAppState>,
+    pub draw: Option<&'a ::draw::DrawState>,
     pub outline: Option<&'a crate::outline::state::OutlineState>,
     pub canvas: Option<&'a pinstar::PinstarState>,
     pub bases: Option<&'a crate::bases::state::BasesState>,

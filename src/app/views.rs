@@ -49,16 +49,7 @@ impl App {
                     .draw_state
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("Draw view unavailable"))?;
-                anyhow::ensure!(
-                    state.palette_input_available(),
-                    "Finish the drawing interaction before leaving"
-                );
-                anyhow::ensure!(
-                    state.current_file.is_some()
-                        || state.data == crate::draw::state::DrawData::default(),
-                    "Drawing has changes but no save target"
-                );
-                state.save_draw()?;
+                state.save_for_navigation()?;
             }
             ViewMode::Canvas => self
                 .canvas_state
@@ -525,19 +516,46 @@ impl App {
         ) {
             return;
         }
-        let note_id = self.get_selected_note_id();
-        let state = crate::draw::app::DrawAppState::new(
-            self.storage.clone(),
-            note_id,
-            self.app_theme.clone(),
+        if let Some(id) = self
+            .get_selected_note_id()
+            .filter(|id| id.ends_with(".draw"))
+        {
+            if let Err(error) = self.open_draw_document(&id) {
+                self.set_temporary_status(&format!("{error:#}"));
+            }
+        } else {
+            self.begin_create_draw();
+        }
+    }
+
+    pub(crate) fn open_draw_document(&mut self, id: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(self.config.features.draw_view.is_enabled(), "Draw disabled");
+        if self.palette_source() == ViewMode::Draw
+            && self
+                .draw_state
+                .as_ref()
+                .is_some_and(|draw| draw.current_file == id)
+        {
+            if self.mode != ViewMode::Draw {
+                self.save_before_session_replace()?;
+                self.return_mode = Some(self.mode);
+                self.mode = ViewMode::Draw;
+            }
+            return Ok(());
+        }
+        self.save_before_session_replace()?;
+        let plugin = crate::draw_adapter::DrawPlugin::load(
+            &self.storage,
+            id,
             self.keybinds.clone(),
             self.seq_matcher.clone(),
-        );
-        self.draw_state = Some(state);
+        )?;
+        self.draw_state = Some(plugin);
         if self.mode != ViewMode::Draw {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Draw;
         }
+        Ok(())
     }
 
     pub fn close_draw_view(&mut self) {

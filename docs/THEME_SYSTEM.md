@@ -95,7 +95,7 @@ Used everywhere in rendering (app_theme field on App)
     ├── draw_list_view() — selection, tags, folder colors
     ├── draw_edit_view() — title bar, editor, status bar
     ├── draw_help_view() — tab bar, content
-    ├── draw_canvas() / draw_graph_view() — panel colors
+    ├── draw_adapter::theme_colors() / draw_graph_view() — panel colors
     └── popups — all popup rendering
 ```
 
@@ -290,3 +290,7 @@ Custom statusline text (configured via `[statusline]` in `config.toml`) uses the
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how `AppThemeColors` flows through the rendering pipeline
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — graf theme palettes
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `SwitchThemeAction`
+
+Draw maps the current `AppThemeColors` into upstream `draw::ThemeColors` at each render.
+The engine keeps no cached clin theme. Popup hints come from the retained host keymap;
+changing themes/keybindings does not reset drawing history, selection or viewport.

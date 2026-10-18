@@ -62,7 +62,7 @@ impl ActionContext {
             ViewMode::Draw => app
                 .draw_state
                 .as_ref()
-                .and_then(|s| s.current_file.as_ref())
+                .map(|s| &s.current_file)
                 .map(|id| app.storage.note_path(id)),
             ViewMode::Bases => app
                 .bases_state
