@@ -74,17 +74,22 @@ impl Storage {
     /// Resolve a public vault path without permitting symlink or hidden-data escapes.
     /// Missing suffixes are allowed for creation; existing ancestors are checked first.
     pub(crate) fn document_path(&self, id: &str) -> Result<PathBuf> {
+        let path = self.public_path(id)?;
+        if [Path::new(id), path.as_path()].iter().any(|path| {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("clin"))
+        }) {
+            bail!("encrypted notes are not available to Bases document storage");
+        }
+        Ok(path)
+    }
+
+    pub(crate) fn public_path(&self, id: &str) -> Result<PathBuf> {
         let path = self
             .validate_path_within_notes_dir(id)
             .filter(|p| p != &self.notes_dir)
             .context("document path must be a non-empty public vault-relative path")?;
-        if Path::new(id)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("clin"))
-        {
-            bail!("encrypted notes are not available to Bases document storage");
-        }
         let root = self
             .notes_dir
             .canonicalize()
@@ -109,12 +114,7 @@ impl Storage {
             .context("document path resolves outside vault")?;
         if relative.components().any(
             |c| matches!(c, Component::Normal(name) if name.to_string_lossy().starts_with('.')),
-        ) || (resolved.is_file()
-            && resolved
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("clin")))
-        {
+        ) {
             bail!("document path resolves to private vault data");
         }
         for part in suffix.into_iter().rev() {

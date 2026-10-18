@@ -56,6 +56,60 @@ fn extension_migration_requires_drawing_structure() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn folder_moves_preserve_subnotes_and_reject_record_collisions() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut storage = fixture(root.path());
+    fs::create_dir_all(root.path().join("old/nested"))?;
+    fs::write(root.path().join("old/nested/note.md"), "body")?;
+    let notes = vec![SubNote {
+        id: "child".into(),
+        title: "Child".into(),
+        content: "keep".into(),
+        updated_at: 1,
+    }];
+    storage.set_subnotes("old/nested/note.md", &notes)?;
+    storage.set_subnotes("new/nested/note.md", &notes)?;
+    assert!(storage.rename_folder("old", "new").is_err());
+    assert!(root.path().join("old/nested/note.md").exists());
+    storage.set_subnotes("new/nested/note.md", &[])?;
+    storage.rename_folder("old", "new")?;
+    assert_eq!(storage.get_subnotes("new/nested/note.md")?, notes);
+    assert!(storage.get_subnotes("old/nested/note.md")?.is_empty());
+    assert_eq!(
+        fs::read_to_string(root.path().join("new/nested/note.md"))?,
+        "body"
+    );
+    assert!(storage.rename_folder("new", "new/child").is_err());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn folder_operations_never_follow_outside_or_recursive_symlinks() -> Result<()> {
+    use std::os::unix::fs::symlink;
+    let root = tempfile::tempdir()?;
+    let outside = tempfile::tempdir()?;
+    let storage = fixture(root.path());
+    fs::create_dir_all(outside.path().join("nested"))?;
+    fs::write(outside.path().join("secret.md"), "private")?;
+    fs::create_dir(root.path().join("source"))?;
+    symlink(outside.path(), root.path().join("source/outside"))?;
+    symlink(root.path().join("source"), root.path().join("source/cycle"))?;
+    assert_eq!(storage.list_folders(false)?, ["source"]);
+    assert!(storage.duplicate_folder("source", "copies").is_err());
+    assert!(!root.path().join("copies/source/outside/secret.md").exists());
+    assert!(storage.create_folder("source/outside/new").is_err());
+    assert!(
+        storage
+            .rename_folder("source/outside/nested", "renamed")
+            .is_err()
+    );
+    assert!(storage.trash_folder("source/outside/nested").is_err());
+    assert!(outside.path().join("nested").is_dir());
+    Ok(())
+}
+
 fn recovery_count(root: &Path) -> usize {
     fs::read_dir(root.join(".clin/document-recovery-v2"))
         .unwrap()

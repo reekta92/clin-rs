@@ -6,7 +6,12 @@ use std::path::{Path, PathBuf};
 /// Core atomic write: write data to a temp file in the same directory,
 /// sync it (unix only), optionally set permissions (unix only), then
 /// atomically rename over `path`.
-fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool) -> Result<()> {
+fn atomic_publish(
+    path: &Path,
+    mode: Option<u32>,
+    replace: bool,
+    write: impl FnOnce(&mut fs::File) -> Result<()>,
+) -> Result<()> {
     #[cfg(unix)]
     let mut mode = mode;
     if replace {
@@ -50,8 +55,7 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool)
         file.set_permissions(fs::Permissions::from_mode(mode))
             .context("failed to set permissions on temp file")?;
     }
-    std::io::Write::write_all(&mut file, data)
-        .with_context(|| format!("failed to write {}", tmp.display()))?;
+    write(&mut file).with_context(|| format!("failed to write {}", tmp.display()))?;
     file.sync_all().context("failed to sync temp file")?;
     drop(file);
 
@@ -67,6 +71,33 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool)
         .sync_all()
         .context("failed to sync publication directory")?;
     Ok(())
+}
+
+fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>, replace: bool) -> Result<()> {
+    atomic_publish(path, mode, replace, |file| {
+        std::io::Write::write_all(file, data)?;
+        Ok(())
+    })
+}
+
+/// Stream a regular file into an atomic publication, retaining source permissions.
+pub fn atomic_copy(source: &Path, destination: &Path, replace: bool) -> Result<()> {
+    anyhow::ensure!(
+        fs::symlink_metadata(source)?.is_file(),
+        "copy source must be a regular non-symlink file"
+    );
+    let mut source = fs::File::open(source)?;
+    #[cfg(unix)]
+    let mode = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(source.metadata()?.permissions().mode())
+    };
+    #[cfg(not(unix))]
+    let mode = None;
+    atomic_publish(destination, mode, replace, |file| {
+        std::io::copy(&mut source, file)?;
+        Ok(())
+    })
 }
 
 /// Write `data` to `path` atomically using a temp file + rename.
@@ -287,6 +318,35 @@ fn is_executable(_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn atomic_copies_preserve_bytes_permissions_and_existing_destinations() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let source = root.path().join("source");
+        let destination = root.path().join("destination");
+        fs::write(&source, b"original")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o600))?;
+        }
+        atomic_copy(&source, &destination, false)?;
+        assert_eq!(fs::read(&destination)?, b"original");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&destination)?.permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        fs::write(&source, b"new")?;
+        assert!(atomic_copy(&source, &destination, false).is_err());
+        assert_eq!(fs::read(&destination)?, b"original");
+        atomic_copy(&source, &destination, true)?;
+        assert_eq!(fs::read(&destination)?, b"new");
+        Ok(())
+    }
 
     #[test]
     fn atomic_write_with_mode_sets_perms_and_round_trips() {

@@ -1254,16 +1254,12 @@ impl Storage {
     }
 
     pub fn create_folder(&self, path: &str) -> Result<()> {
-        let full_path = self
-            .validate_path_within_notes_dir(path)
-            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
+        let full_path = self.public_path(path)?;
         fs::create_dir_all(full_path).context("failed to create folder")
     }
 
     pub fn trash_folder(&self, path: &str) -> Result<()> {
-        let full_path = self
-            .validate_path_within_notes_dir(path)
-            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
+        let full_path = self.public_path(path)?;
         if !full_path.exists() {
             anyhow::bail!("Folder does not exist");
         }
@@ -1272,14 +1268,15 @@ impl Storage {
     }
 
     pub fn rename_folder(&self, old_path: &str, new_path: &str) -> Result<()> {
-        let old_full = self
-            .validate_path_within_notes_dir(old_path)
-            .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
-        let new_full = self
-            .validate_path_within_notes_dir(new_path)
-            .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
+        let _guard = self.write_guard()?;
+        let old_full = self.public_path(old_path)?;
+        let new_full = self.public_path(new_path)?;
+        anyhow::ensure!(
+            !new_full.starts_with(&old_full),
+            "Cannot move a folder into itself"
+        );
 
-        if !old_full.exists() {
+        if !old_full.is_dir() {
             anyhow::bail!("Folder does not exist");
         }
         if new_full.exists() {
@@ -1289,7 +1286,60 @@ impl Storage {
             fs::create_dir_all(parent)?;
         }
 
-        fs::rename(old_full, new_full).context("failed to rename folder")
+        let root = self.notes_dir.canonicalize()?;
+        let old_id = old_full
+            .strip_prefix(&root)?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let new_id = new_full
+            .strip_prefix(&root)?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let prefix = format!("{old_id}/");
+        let mut db = self.load_subnotes_db()?;
+        let parents: Vec<_> = db
+            .keys()
+            .filter_map(|id| {
+                id.strip_prefix(&prefix)
+                    .map(|suffix| (id.clone(), format!("{new_id}/{suffix}")))
+            })
+            .collect();
+        for (old, new) in &parents {
+            Self::check_subnotes_writable(&db, old)?;
+            Self::check_subnotes_writable(&db, new)?;
+            anyhow::ensure!(
+                !db.contains_key(new),
+                "destination already has subnotes; both records retained"
+            );
+        }
+        for (old, new) in &parents {
+            db.insert(new.clone(), db[old].clone());
+        }
+        if !parents.is_empty() {
+            self.save_subnotes_db(&db)?;
+        }
+        let result = (|| -> Result<()> {
+            fs::rename(&old_full, &new_full).context("failed to rename folder")?;
+            #[cfg(unix)]
+            for parent in [old_full.parent(), new_full.parent()].into_iter().flatten() {
+                fs::File::open(parent)?.sync_all()?;
+            }
+            Ok(())
+        })();
+        if !parents.is_empty() {
+            if !old_full.exists() && new_full.exists() {
+                for (old, _) in &parents {
+                    db.remove(old);
+                }
+            } else if old_full.exists() && !new_full.exists() {
+                for (_, new) in &parents {
+                    db.remove(new);
+                }
+            }
+            self.save_subnotes_db(&db)
+                .context("subnotes cleanup failed; parent records retained for inspection")?;
+        }
+        result
     }
 
     /// Recursively copy folder `src_rel` (relative to notes dir) into `target_folder`
@@ -1297,6 +1347,7 @@ impl Storage {
     /// " (Copy 2)", etc. — never overwrites. Bails if `src_rel` is empty or if the
     /// resolved destination sits inside `src_rel`'s own subtree (would recurse forever).
     pub fn duplicate_folder(&self, src_rel: &str, target_folder: &str) -> Result<()> {
+        let _guard = self.write_guard()?;
         if src_rel.is_empty() {
             anyhow::bail!("Cannot copy the vault root");
         }
@@ -1332,16 +1383,17 @@ impl Storage {
             };
         }
 
-        let src_full = self
-            .validate_path_within_notes_dir(src_rel)
-            .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
-        let new_full = self
-            .validate_path_within_notes_dir(&new_rel)
-            .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
+        let src_full = self.public_path(src_rel)?;
+        let new_full = self.public_path(&new_rel)?;
+        anyhow::ensure!(
+            !new_full.starts_with(&src_full),
+            "Cannot copy a folder into itself"
+        );
         if !src_full.exists() {
             anyhow::bail!("Folder does not exist");
         }
-        fs::create_dir_all(&new_full)?;
+        fs::create_dir_all(new_full.parent().context("copy has no parent")?)?;
+        fs::create_dir(&new_full)?;
         copy_dir_recursive(&src_full, &new_full)?;
         Ok(())
     }
@@ -1435,7 +1487,7 @@ impl Storage {
             if let Ok(entries) = fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_dir()
+                    if entry.file_type()?.is_dir()
                         && path
                             .file_name()
                             .and_then(|s| s.to_str())
@@ -1770,11 +1822,18 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         let entry = entry?;
         let from = entry.path();
         let to = dst.join(entry.file_name());
-        if from.is_dir() {
+        let kind = entry.file_type()?;
+        anyhow::ensure!(
+            !kind.is_symlink(),
+            "Cannot copy symlink: {}",
+            from.display()
+        );
+        if kind.is_dir() {
             fs::create_dir_all(&to)?;
             copy_dir_recursive(&from, &to)?;
         } else {
-            fs::copy(&from, &to).with_context(|| format!("failed to copy {}", from.display()))?;
+            crate::fsutil::atomic_copy(&from, &to, false)
+                .with_context(|| format!("failed to copy {}", from.display()))?;
         }
     }
     Ok(())
