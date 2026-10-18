@@ -1668,7 +1668,7 @@ where
         Event::Key(key)
             if key.kind == KeyEventKind::Press
                 && (matches!(key.code, KeyCode::Modifier(_))
-                    || key.code == KeyCode::Char('\0')) =>
+                    || (key.code == KeyCode::Char('\0') && key.modifiers.is_empty())) =>
         {
             return Ok(());
         }

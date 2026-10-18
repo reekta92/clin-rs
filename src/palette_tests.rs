@@ -200,7 +200,7 @@ fn visible(app: &App, id: &str) -> bool {
 }
 
 #[test]
-fn palette_f6_opens_all_ten_views_under_every_shipped_preset() {
+fn palette_global_shortcuts_open_all_nine_views_under_every_shipped_preset() {
     for mode in MODES {
         let mut f = Fixture::new();
         f.enter(mode);
@@ -212,38 +212,90 @@ fn palette_f6_opens_all_ten_views_under_every_shipped_preset() {
         ] {
             f.app.keybinds = preset.base_keybinds();
             f.app.sync_retained_view_settings();
-            drive(&mut f.app, key(KeyCode::F(6)));
-            assert!(f.app.command_palette.is_some(), "{mode:?}/{preset}");
-            assert!(visible(&f.app, "switch_theme"));
-            if mode != ViewMode::List {
-                assert!(!visible(&f.app, "note.encrypt"));
-                assert!(!visible(&f.app, "create_canvas"));
+            for event in [
+                key(KeyCode::F(6)),
+                Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL)),
+                Event::Key(KeyEvent::new(KeyCode::Null, KeyModifiers::CONTROL)),
+                Event::Key(KeyEvent::new(KeyCode::Char('\0'), KeyModifiers::CONTROL)),
+            ] {
+                drive(&mut f.app, event);
+                assert!(f.app.command_palette.is_some(), "{mode:?}/{preset}");
+                assert!(visible(&f.app, "switch_theme"));
+                if mode != ViewMode::List {
+                    assert!(!visible(&f.app, "note.encrypt"));
+                    assert!(!visible(&f.app, "create_canvas"));
+                }
+                if mode == ViewMode::Setup {
+                    let mut ids: Vec<_> = f
+                        .app
+                        .command_palette
+                        .as_ref()
+                        .unwrap()
+                        .items
+                        .iter()
+                        .map(|item| item.id.as_str())
+                        .collect();
+                    ids.sort_unstable();
+                    assert_eq!(
+                        ids,
+                        [
+                            "keybind.preset",
+                            "setup.cancel",
+                            "setup.finish",
+                            "switch_theme"
+                        ]
+                    );
+                }
+                drive(&mut f.app, key(KeyCode::Esc));
+                assert_eq!(f.app.mode, mode);
             }
-            if mode == ViewMode::Setup {
-                let mut ids: Vec<_> = f
-                    .app
-                    .command_palette
-                    .as_ref()
-                    .unwrap()
-                    .items
-                    .iter()
-                    .map(|item| item.id.as_str())
-                    .collect();
-                ids.sort_unstable();
-                assert_eq!(
-                    ids,
-                    [
-                        "keybind.preset",
-                        "setup.cancel",
-                        "setup.finish",
-                        "switch_theme"
-                    ]
-                );
-            }
-            drive(&mut f.app, key(KeyCode::Esc));
-            assert_eq!(f.app.mode, mode);
         }
     }
+}
+
+#[test]
+fn palette_global_remapping_roundtrips_and_resolves_sequences() {
+    let mut f = Fixture::new();
+    let path = f.root.path().join("keys.toml");
+    fs::write(
+        &path,
+        "[global]\ncommand_palette = [\"Ctrl+Space Ctrl+k\"]\n",
+    )
+    .unwrap();
+    f.app.keybinds =
+        crate::keybinds::Keybinds::load_layered(&path, f.app.keybinds.clone(), &mut Vec::new())
+            .unwrap();
+    f.app.keybinds.save(&path).unwrap();
+    assert!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .contains("Ctrl+Space Ctrl+k")
+    );
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert!(f.app.command_palette.is_none());
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL)),
+    );
+    assert!(f.app.command_palette.is_none());
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)),
+    );
+    assert!(f.app.command_palette.is_some());
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.app.keybinds = crate::keybinds::Keybinds::default();
+    f.app.keybinds.list.insert(
+        ListAction::TogglePreview,
+        vec![KeyCombo::parse("Ctrl+Space").unwrap()],
+    );
+    let before = f.app.list.preview_enabled;
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL)),
+    );
+    assert_eq!(f.app.list.preview_enabled, !before);
+    assert!(f.app.command_palette.is_none());
 }
 
 #[test]

@@ -248,7 +248,12 @@ impl CommandPalette {
 
     pub fn handle_input(&mut self, key: crossterm::event::KeyEvent, app: &crate::app::App) -> bool {
         use crossterm::event::{KeyCode, KeyEventKind};
-        if key.kind != KeyEventKind::Press || key.code == KeyCode::F(6) {
+        if key.kind != KeyEventKind::Press
+            || app
+                .palette_shortcuts(self.context.mode)
+                .iter()
+                .any(|combo| combo.matches(&key))
+        {
             return false;
         }
         if crate::events::is_cancel_popup(&app.keybinds, &key, true) {

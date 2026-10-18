@@ -25,6 +25,7 @@ impl KeyStroke {
         let event_code = if event.modifiers.contains(KeyModifiers::CONTROL) {
             match event.code {
                 KeyCode::Char('\x08') | KeyCode::Char('\x7f') => KeyCode::Backspace,
+                KeyCode::Null | KeyCode::Char('\0') => KeyCode::Char(' '),
                 c => c,
             }
         } else {

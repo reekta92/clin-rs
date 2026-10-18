@@ -4,7 +4,7 @@ This document details the navigation keybind presets available in clin-rs: Helix
 
 These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, search boxes, templates, tag managers, and popups).
 
-**Command palette:** unmodified `F6` works in all ten views under every shipped preset. Custom F6 bindings, including sequence strokes, take priority in the focused scope. Notes/Bases aliases remain available; `Ctrl+p` keeps its existing editor and Emacs behavior. Palette body insertion requires editor Body focus. Modal dialogs and active gestures block opening.
+**Command palette:** `Ctrl+Space` and `F6` work in all nine views under every shipped preset. Remap `[global] command_palette` in the active preset file, including multi-key sequences. View bindings take priority over colliding global shortcut strokes. Notes/Bases aliases remain available; `Ctrl+p` keeps its existing editor and Emacs behavior. Palette body insertion requires editor Body focus. Modal dialogs and active gestures block opening.
 
 ---
 
@@ -140,4 +140,4 @@ toggle_bases = ["Ctrl+g Ctrl+b"]
 
 ## Shared frontmatter shortcut
 
-**F7** maps to `edit.toggle_frontmatter` in every preset. It opens and focuses the configured properties/raw-YAML region above Body; repeat to hide while retaining input. Remap it in the active keybind file with `toggle_frontmatter = ["Alt+f"]` under `[edit]`. `Ctrl+t` includes the region in focus cycling when visible. Body insertion/image actions remain scoped to Body. Unbound F6 continues to open the contextual command palette.
+**F7** maps to `edit.toggle_frontmatter` in every preset. It opens and focuses the configured properties/raw-YAML region above Body; repeat to hide while retaining input. Remap it in the active keybind file with `toggle_frontmatter = ["Alt+f"]` under `[edit]`. `Ctrl+t` includes the region in focus cycling when visible. Body insertion/image actions remain scoped to Body. Unbound Ctrl+Space/F6 continue to open the contextual command palette.

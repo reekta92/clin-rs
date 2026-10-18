@@ -408,20 +408,21 @@ impl Embeds {
             return false;
         }
         if let Event::Key(key_event) = event
-            && key_event.code == KeyCode::F(6)
-            && key_event.modifiers.is_empty()
-            && app.palette_fallback_available(crate::app::ViewMode::Bases)
+            && key_event.kind == crossterm::event::KeyEventKind::Press
+            && self
+                .entries
+                .borrow()
+                .get(&key)
+                .is_some_and(|state| state.palette_input_available())
         {
-            if key_event.kind == crossterm::event::KeyEventKind::Press
-                && self
-                    .entries
-                    .borrow()
-                    .get(&key)
-                    .is_some_and(|state| state.palette_input_available())
-            {
-                self.expand(key, app, None);
+            match app.resolve_palette_shortcut(*key_event, crate::app::ViewMode::Bases) {
+                crate::keybinds::MatchOutcome::Matched(_, _) => {
+                    self.expand(key, app, None);
+                    return true;
+                }
+                crate::keybinds::MatchOutcome::Pending => return true,
+                crate::keybinds::MatchOutcome::NoMatch => {}
             }
-            return true;
         }
         if let Event::Key(key_event) = event
             && key_event

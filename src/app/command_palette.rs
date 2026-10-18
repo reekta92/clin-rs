@@ -1,17 +1,23 @@
 use super::{App, EditFocus, ViewMode};
 use crate::actions::ActionContext;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crate::keybinds::{GlobalAction, KeyCombo, MatchOutcome};
+use crossterm::event::KeyEvent;
 
 impl App {
-    pub(crate) fn palette_fallback_available(&self, mode: ViewMode) -> bool {
+    pub(crate) fn palette_shortcuts(&self, mode: ViewMode) -> Vec<KeyCombo> {
         fn claimed<A>(
             bindings: &std::collections::HashMap<A, Vec<crate::keybinds::KeyCombo>>,
+            combo: &KeyCombo,
         ) -> bool {
-            let event = KeyEvent::new(KeyCode::F(6), KeyModifiers::NONE);
-            bindings
-                .values()
-                .flatten()
-                .any(|combo| combo.keys.iter().any(|stroke| stroke.matches_event(&event)))
+            combo.keys.iter().any(|key| {
+                let event = KeyEvent::new(key.code, key.modifiers);
+                bindings.values().flatten().any(|binding| {
+                    binding
+                        .keys
+                        .iter()
+                        .any(|stroke| stroke.matches_event(&event))
+                })
+            })
         }
         let keybinds = match mode {
             ViewMode::Graph => self.graph_plugin.as_ref().map(|s| &s.keybinds),
@@ -21,17 +27,44 @@ impl App {
             _ => None,
         }
         .unwrap_or(&self.keybinds);
-        !match mode {
-            ViewMode::List => claimed(&keybinds.list),
-            ViewMode::Edit => claimed(&keybinds.edit),
-            ViewMode::Help => claimed(&keybinds.help),
-            ViewMode::Graph => claimed(&keybinds.graph),
-            ViewMode::Draw => claimed(&keybinds.draw),
-            ViewMode::Canvas => claimed(&keybinds.canvas),
-            ViewMode::Bases => claimed(&keybinds.bases),
-            ViewMode::Outline => claimed(&keybinds.outline),
-            ViewMode::Setup => claimed(&keybinds.setup),
-        }
+        self.keybinds
+            .global
+            .get(&GlobalAction::CommandPalette)
+            .into_iter()
+            .flatten()
+            .filter(|combo| !match mode {
+                ViewMode::List => claimed(&keybinds.list, combo),
+                ViewMode::Edit => claimed(&keybinds.edit, combo),
+                ViewMode::Help => claimed(&keybinds.help, combo),
+                ViewMode::Graph => claimed(&keybinds.graph, combo),
+                ViewMode::Draw => claimed(&keybinds.draw, combo),
+                ViewMode::Canvas => claimed(&keybinds.canvas, combo),
+                ViewMode::Bases => claimed(&keybinds.bases, combo),
+                ViewMode::Outline => claimed(&keybinds.outline, combo),
+                ViewMode::Setup => claimed(&keybinds.setup, combo),
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub(crate) fn palette_keys_display(&self, mode: ViewMode) -> String {
+        self.palette_shortcuts(mode)
+            .iter()
+            .map(KeyCombo::to_display_string)
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
+    pub(crate) fn resolve_palette_shortcut(
+        &mut self,
+        key: KeyEvent,
+        mode: ViewMode,
+    ) -> MatchOutcome<GlobalAction> {
+        let bindings = std::collections::HashMap::from([(
+            GlobalAction::CommandPalette,
+            self.palette_shortcuts(mode),
+        )]);
+        self.palette_matcher.resolve(key, &bindings, true, false)
     }
 
     pub(crate) fn palette_input_available(&self) -> bool {
@@ -85,6 +118,7 @@ impl App {
     }
 
     pub(crate) fn clear_palette_matchers(&mut self) {
+        self.palette_matcher.clear();
         self.seq_matcher.clear();
         self.base_embeds.clear_palette_matchers();
         if let Some(s) = &mut self.graph_plugin {

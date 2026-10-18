@@ -131,7 +131,7 @@ const BASES_POPUPS: &[PopupHelp] = &[
 const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Command palette",
-        "Press unbound ``F6`` in any view, or {list:OpenCommandPalette} in Notes, to open the **Command Palette** and run an applicable command by typing its name.",
+        "Press {global:CommandPalette} in any view, or {list:OpenCommandPalette} in Notes, to open the **Command Palette** and run an applicable command by typing its name.",
     ),
     tip(
         "Select mode",

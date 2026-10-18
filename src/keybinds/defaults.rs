@@ -1,6 +1,6 @@
 use super::{
-    BasesAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo, Keybinds,
-    ListAction, OutlineAction, SetupAction,
+    BasesAction, CanvasAction, DrawAction, EditAction, GlobalAction, GraphAction, HelpAction,
+    KeyCombo, Keybinds, ListAction, OutlineAction, SetupAction,
 };
 use crate::config::KeybindPreset;
 
@@ -284,6 +284,7 @@ const DEFAULT_SETUP: &[(SetupAction, &[&str])] = &[
 impl Default for Keybinds {
     fn default() -> Self {
         Self {
+            global: build(&[(GlobalAction::CommandPalette, &["Ctrl+Space", "F6"])]),
             list: build(DEFAULT_LIST),
             edit: build(DEFAULT_EDIT),
             help: build(DEFAULT_HELP),

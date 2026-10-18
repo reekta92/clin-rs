@@ -372,8 +372,9 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ),
         ("F2".to_string(), "keybinds"),
     ];
-    if app.palette_fallback_available(ViewMode::Help) {
-        hints_items.push(("F6".into(), "commands"));
+    let palette_keys = app.palette_keys_display(ViewMode::Help);
+    if !palette_keys.is_empty() {
+        hints_items.push((palette_keys, "commands"));
     }
     if !crate::ui::help_content::tab_popup_descriptions(app.help_tab).is_empty() {
         hints_items.push(("n/N".to_string(), "cycle popup"));
@@ -1310,7 +1311,7 @@ fn draw_help_tips_pane(
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(render_tip_body(
-        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context. Unbound `` F6 `` opens the command palette in every view; custom bindings take priority.",
+        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context. {global:CommandPalette} opens the command palette in every view; view bindings take priority.",
         keybinds,
         theme,
     )));
@@ -1443,6 +1444,14 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
     };
 
     match scope {
+        "global" if action == "CommandPalette" => kb
+            .global
+            .get(&GlobalAction::CommandPalette)
+            .into_iter()
+            .flatten()
+            .map(KeyCombo::to_display_string)
+            .collect::<Vec<_>>()
+            .join("/"),
         "list" => match action {
             "ToggleSelectMode" => kb.list_keys_display(ListAction::ToggleSelectMode),
             "ToggleSelectItem" => kb.list_keys_display(ListAction::ToggleSelectItem),

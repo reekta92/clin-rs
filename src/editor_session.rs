@@ -195,14 +195,19 @@ where
     }
     if let Event::Key(key) = &event
         && key.kind == KeyEventKind::Press
-        && key.code == KeyCode::F(6)
-        && key.modifiers.is_empty()
-        && app.palette_fallback_available(app.mode)
+        && !mouse_selection.active
+        && app.palette_input_available()
     {
-        if !mouse_selection.active {
-            app.open_command_palette(Some(*focus));
+        match app.resolve_palette_shortcut(*key, app.mode) {
+            crate::keybinds::MatchOutcome::Matched(_, _) => {
+                app.open_command_palette(Some(*focus));
+                return Ok(true);
+            }
+            crate::keybinds::MatchOutcome::Pending => return Ok(true),
+            crate::keybinds::MatchOutcome::NoMatch => {}
         }
-        return Ok(true);
+    } else {
+        app.palette_matcher.clear();
     }
     match event {
         // All-keys keyboard mode reports bare modifier presses and text-less

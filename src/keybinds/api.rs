@@ -173,6 +173,7 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
+        merge_section(&mut keybinds.global, &toml.global, warnings);
         merge_section(&mut keybinds.list, &toml.list, warnings);
         merge_section(&mut keybinds.edit, &toml.edit, warnings);
         merge_section(&mut keybinds.help, &toml.help, warnings);
@@ -200,6 +201,7 @@ impl Keybinds {
 
     pub fn to_toml(&self) -> KeybindsToml {
         KeybindsToml {
+            global: section_to_toml(&self.global),
             list: section_to_toml(&self.list),
             edit: section_to_toml(&self.edit),
             help: section_to_toml(&self.help),

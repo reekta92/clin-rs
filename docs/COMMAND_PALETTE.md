@@ -1,6 +1,15 @@
 # Command Palette
 
-The same command palette opens with unmodified **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Outline, and Setup. Only key presses open it. Existing custom bindings containing F6 anywhere in the focused view's sequence take priority; free that binding to use the fallback. The F2 keybind overlay advertises F6 when available.
+The same command palette opens with **Ctrl+Space** or **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Outline, and Setup. Only key presses open it. View bindings containing a global shortcut stroke take priority. F2 and Help show the available configured shortcuts. Legacy terminal NUL input is accepted as Ctrl+Space.
+
+Remap the palette in the active preset file; existing files inherit these defaults:
+
+```toml
+[global]
+command_palette = ["Ctrl+Space", "F6"]
+```
+
+Global sequences use the shared 500 ms sequence resolver, without count prefixes. Dialogs and active gestures keep input ownership. Repeating the opener while the palette is open does not alter its query.
 
 Notes keeps its preset-specific palette shortcuts and right-click targeting. Bases keeps its configured palette shortcut. In Edit, `Ctrl+p` still toggles Markdown preview; Emacs navigation bindings are unchanged. A focused live Bases region expands into standalone Bases before opening its palette, preserving the host's return route. Dialogs and active gestures retain input ownership.
 

@@ -942,12 +942,17 @@ pub fn handle_global_popups_and_palette(
         };
     }
 
-    if key.code == KeyCode::F(6)
-        && key.modifiers.is_empty()
-        && app.palette_fallback_available(app.mode)
-    {
-        app.open_command_palette(None);
-        return true;
+    if app.palette_input_available() {
+        match app.resolve_palette_shortcut(key, app.mode) {
+            crate::keybinds::MatchOutcome::Matched(_, _) => {
+                app.open_command_palette(None);
+                return true;
+            }
+            crate::keybinds::MatchOutcome::Pending => return true,
+            crate::keybinds::MatchOutcome::NoMatch => {}
+        }
+    } else {
+        app.palette_matcher.clear();
     }
 
     // QuickKeybinds toggle — identical combo in every view. F2 is unbound in

@@ -17,6 +17,8 @@ pub use types::*;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
+    pub global: BTreeMap<GlobalAction, Vec<String>>,
+    #[serde(default)]
     pub list: BTreeMap<ListAction, Vec<String>>,
     #[serde(default)]
     pub edit: BTreeMap<EditAction, Vec<String>>,
@@ -38,6 +40,7 @@ pub struct KeybindsToml {
 
 #[derive(Debug, Clone)]
 pub struct Keybinds {
+    pub global: HashMap<GlobalAction, Vec<KeyCombo>>,
     pub list: HashMap<ListAction, Vec<KeyCombo>>,
     pub edit: HashMap<EditAction, Vec<KeyCombo>>,
     pub help: HashMap<HelpAction, Vec<KeyCombo>>,

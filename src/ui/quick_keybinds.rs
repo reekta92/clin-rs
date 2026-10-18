@@ -112,8 +112,9 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     } else {
         app.mode
     };
-    if app.palette_fallback_available(scope) {
-        lines.insert(0, ("F6".into(), "Command palette".into()));
+    let palette_keys = app.palette_keys_display(scope);
+    if !palette_keys.is_empty() {
+        lines.insert(0, (palette_keys, "Command palette".into()));
     }
 
     let frame_area = frame.area();
