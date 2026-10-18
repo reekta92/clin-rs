@@ -55,6 +55,8 @@ fn fixture() -> (tempfile::TempDir, App) {
     )
     .unwrap();
     let mut app = App::new(storage).unwrap();
+    app.command_usage.clear();
+    app.command_usage_path = Some(root.path().join("state.json"));
     app.config.features.bases_view = FeatureState::Enabled;
     app.keybinds = Keybinds::default();
     app.open_bases_view("board.base", None);

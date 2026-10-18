@@ -285,6 +285,21 @@ fn palette_global_remapping_roundtrips_and_resolves_sequences() {
         Event::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)),
     );
     assert!(f.app.command_palette.is_some());
+    let mut palette = f.app.command_palette.take().unwrap();
+    palette.paste_text("preserved query", &f.app);
+    f.app.command_palette = Some(palette);
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL)),
+    );
+    drive(
+        &mut f.app,
+        Event::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)),
+    );
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().input.lines(),
+        ["preserved query"]
+    );
     drive(&mut f.app, key(KeyCode::Esc));
     f.app.keybinds = crate::keybinds::Keybinds::default();
     f.app.keybinds.list.insert(
@@ -447,6 +462,33 @@ fn palette_save_and_quit_preserve_confirmation_and_suspended_editors() {
     activate(&mut f.app, "app.quit");
     f.app.confirm_action();
     assert!(f.app.should_quit);
+}
+
+#[test]
+fn palette_history_restores_public_source_templates_and_nested_help() {
+    for public in [true, false] {
+        let mut f = Fixture::new();
+        if public {
+            let snapshot = f.app.storage.load_document("board.base").unwrap();
+            f.app.open_public_document(snapshot);
+        } else {
+            let path = f.app.storage.templates_dir.join("sample.md");
+            fs::write(&path, "Template body\n").unwrap();
+            f.app.open_template_source(&path, "Template body\n".into());
+        }
+        activate(&mut f.app, "help.open");
+        activate(&mut f.app, "notes.open");
+        activate(&mut f.app, "navigation.back");
+        assert_eq!(f.app.mode, ViewMode::Help);
+        assert_eq!(f.app.return_mode, Some(ViewMode::Edit));
+        drive(&mut f.app, key(KeyCode::Esc));
+        assert_eq!(f.app.mode, ViewMode::Edit);
+        assert_eq!(f.app.editor.public_document.is_some(), public);
+        assert_eq!(f.app.editor.template_edit_path.is_some(), !public);
+        let context = ActionContext::capture(&f.app, Some(EditFocus::Body), None);
+        f.app.load_and_open_note("selected.md", None);
+        assert!(execute_action_in_context("document.save", &mut f.app, &context).is_err());
+    }
 }
 
 #[test]
