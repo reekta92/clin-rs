@@ -15,10 +15,15 @@ the current public folder context. Creation runs in the background,
 uses no-clobber public document storage, and opens the default table. Existing
 files/private paths reject without note serialization or clin/title fields.
 
-Palette-launched configuration, property edits, public note creation, export and
-group moves keep their menus/inputs inside the palette. Esc returns one step.
+The command palette's **Bases** category contains all 34 configuration commands
+and appears only in the Bases view. `:` opens that category directly; F6 or
+Ctrl+p opens the shared palette. Configuration uses palette inputs instead of a
+separate configuration menu. Property edits, public note creation, export and
+group moves launched from the palette also keep their inputs there. Esc returns one step.
 Failed writes retain the entered value. Search, cover previews, typed CLEAR/DELETE
-confirmations, and direct shortcut dialogs keep their existing presentation.
+confirmations, and other direct shortcut dialogs keep their existing presentation.
+In an embedded Bases region, `:` expands the region into Bases and opens its
+palette category; leaving Bases restores the host view.
 
 Configurable `bases` keybindings control navigation and editing;
 press the Bases Help binding (`?` by default) for the current map.
@@ -39,7 +44,7 @@ Default bindings include:
 | `m` | Set grouping property on selected notes; blank clears the property |
 | `n` | Create a Markdown note; Kanban uses the focused column |
 | `u` / `Ctrl+r` | Guarded session undo/redo of property and configuration edits |
-| `:` | Bases configuration menu |
+| `:` | Bases category in the command palette |
 | `Ctrl+p` | Shared command palette with public Bases commands and approved globals |
 | `r`, `x`, `Esc` / `q` | Refresh, export, leave Bases |
 

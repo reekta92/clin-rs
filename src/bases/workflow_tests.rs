@@ -81,10 +81,16 @@ fn wait(app: &mut App, condition: impl Fn(&App) -> bool) {
     }
 }
 fn event(app: &mut App, event: Event) -> OverlayResult {
+    if app.command_palette.is_some() {
+        assert!(crate::events::handle_global_popups_and_palette(
+            app, event, AREA
+        ));
+        return OverlayResult::Continue;
+    }
     let mut state = app.bases_state.take().unwrap();
     let result = state.overlay_handle_event(event, app, AREA).unwrap();
     app.bases_state = Some(state);
-    if matches!(result, OverlayResult::OpenCommandPalette) {
+    if matches!(result, OverlayResult::OpenCommandPalette(_)) {
         crate::finish_overlay_event(app, crate::overlay::ViewKind::Bases, result.clone());
     }
     result
@@ -278,18 +284,28 @@ fn board(app: &mut App, property: &str, order: &str) {
     idle(app);
 }
 fn menu(app: &mut App, label: &str) {
-    key(app, KeyCode::Char(':'));
-    let index = super::authoring::COMMANDS
-        .iter()
-        .position(|(_, name, _)| *name == label)
-        .unwrap();
-    for _ in 0..index {
-        key(app, KeyCode::Down);
+    if app.command_palette.is_none() {
+        key(app, KeyCode::Char(':'));
     }
+    let palette = app.command_palette.as_mut().unwrap();
+    assert!(palette.workflow.is_none());
+    let id = super::palette::COMMANDS
+        .iter()
+        .find(|(_, _, name, _)| *name == label)
+        .unwrap()
+        .0;
+    let index = palette.items.iter().position(|item| item.id == id).unwrap();
+    palette.state.select(Some(index));
     key(app, KeyCode::Enter);
 }
 fn prompt_text(app: &mut App, text: &str) {
-    if let Some(super::authoring::Dialog::Prompt { input, .. }) =
+    if let Some(palette) = app
+        .command_palette
+        .as_mut()
+        .filter(|p| p.bases_page().is_some_and(super::palette::Page::is_prompt))
+    {
+        palette.input.select_all();
+    } else if let Some(super::authoring::Dialog::Prompt { input, .. }) =
         &mut app.bases_state.as_mut().unwrap().dialog
     {
         input.select_all();
@@ -852,8 +868,16 @@ fn configuration_prompt_rejects_reloaded_source_instead_of_refreshing_baseline()
     app.invalidate_bases();
     idle(&mut app);
     prompt_text(&mut app, "My view");
-    assert!(app.status.contains("Bases document changed"));
-    assert!(app.bases_state.as_ref().unwrap().dialog.is_some());
+    assert!(
+        app.command_palette
+            .as_ref()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("Bases document changed")
+    );
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_none());
     assert_eq!(
         app.storage.load_document("board.base").unwrap().source(),
         external
@@ -1137,7 +1161,7 @@ fn multiline_formula_input_applies_once_and_invalid_input_retains_source() {
     menu(&mut app, "Formula");
     event(&mut app, Event::Paste("Total = console.log(1)".into()));
     key(&mut app, KeyCode::Enter);
-    assert!(app.bases_state.as_ref().unwrap().dialog.is_some());
+    assert!(app.command_palette.as_ref().unwrap().error.is_some());
     assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
     assert_eq!(
         app.storage.load_document("board.base").unwrap().source(),
@@ -1366,7 +1390,9 @@ fn public_image_activation_uses_native_preview_and_preserves_bytes() {
 fn configuration_paste_validates_and_preserves_unknown_data() {
     let (_root, mut app) = fixture();
     key(&mut app, KeyCode::Char(':'));
-    assert!(render(&mut app).contains("CONFIGURATION"));
+    let palette = app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.tabs[palette.active_tab].0, "Bases");
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_none());
     key(&mut app, KeyCode::Enter);
     event(&mut app, Event::Paste("Renamed".into()));
     key(&mut app, KeyCode::Enter);

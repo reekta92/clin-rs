@@ -193,13 +193,11 @@ impl BasesState {
         count: u32,
     ) -> anyhow::Result<OverlayResult> {
         match action {
-            BasesAction::CommandPalette
-                if self.embedded_request.is_some() && app.mode != crate::app::ViewMode::Bases =>
-            {
-                self.expand_requested = true;
-            }
-            BasesAction::CommandPalette => {
-                return Ok(OverlayResult::OpenCommandPalette);
+            BasesAction::CommandPalette | BasesAction::Configure => {
+                return Ok(OverlayResult::OpenCommandPalette(
+                    matches!(action, BasesAction::Configure)
+                        .then_some(crate::actions::ActionCategory::Bases),
+                ));
             }
             BasesAction::Back => {
                 if self.drag.take().is_some() {
@@ -295,15 +293,6 @@ impl BasesState {
                     app.set_temporary_status(&format!("Bases: {error:#}"));
                 }
             }
-            BasesAction::Configure => self.present_dialog(
-                app,
-                super::authoring::Dialog::Menu {
-                    selected: 0,
-                    offset: 0,
-                    area: Rect::default(),
-                    bounds: Rect::default(),
-                },
-            ),
             BasesAction::NewNote => {
                 if let Err(error) = self.prompt_new_note(app) {
                     app.set_temporary_status(&format!("Bases: {error:#}"));

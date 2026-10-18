@@ -56,6 +56,13 @@ fn tabs_for_actions(
             Some(crate::actions::ActionCategory::Append),
         ));
     }
+    if has_cat(crate::actions::ActionCategory::Bases) {
+        tabs.push((
+            "Bases",
+            crate::ui::get_icon("\u{f0ce}", "\u{25a6}", icon_mode),
+            Some(crate::actions::ActionCategory::Bases),
+        ));
+    }
     if has_cat(crate::actions::ActionCategory::Views) {
         tabs.push((
             "Views",
@@ -102,6 +109,19 @@ pub struct CommandPalette {
 }
 
 impl CommandPalette {
+    pub(crate) fn select_category(
+        &mut self,
+        category: crate::actions::ActionCategory,
+        app: &crate::app::App,
+    ) {
+        self.active_tab = self
+            .tabs
+            .iter()
+            .position(|tab| tab.2 == Some(category))
+            .unwrap_or(0);
+        self.refresh_items(app);
+    }
+
     pub(crate) fn paste_text(&mut self, data: &str, app: &crate::app::App) {
         if self.is_submitting() {
             return;

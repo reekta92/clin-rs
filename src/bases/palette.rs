@@ -1,15 +1,226 @@
 //! Palette continuations retain Bases targets; authoring and write tasks stay in Bases.
 use super::{
-    authoring::{COMMANDS, Command, Dialog, EditIntent, Target},
+    authoring::{Command, Dialog, EditIntent, Target},
     state::BasesState,
     write::{Operation, Outcome, WriteTask},
 };
 use crate::{
     app::App,
     palette::{CommandPalette, workflows::Workflow},
-    storage::documents::DocumentSnapshot,
 };
 use anyhow::{Context, Result, ensure};
+
+pub(crate) const COMMANDS: &[(&str, Command, &str, &str)] = &[
+    (
+        "bases.config.rename_view",
+        Command::View("name"),
+        "Rename view",
+        "View name",
+    ),
+    (
+        "bases.config.layout",
+        Command::View("type"),
+        "Layout",
+        "table, list, cards or kanban",
+    ),
+    (
+        "bases.config.global_filter",
+        Command::GlobalFilter,
+        "Global filter",
+        "Expression; blank removes filter",
+    ),
+    (
+        "bases.config.view_filter",
+        Command::View("filters"),
+        "View filter",
+        "Expression; blank removes filter",
+    ),
+    (
+        "bases.config.properties",
+        Command::View("order"),
+        "Displayed properties",
+        "YAML list: [file.name, status, formula.Total]",
+    ),
+    (
+        "bases.config.sort",
+        Command::View("sort"),
+        "Row sorting",
+        "YAML list: [{property: score, direction: DESC}]",
+    ),
+    (
+        "bases.config.group_by",
+        Command::View("groupBy"),
+        "Grouping",
+        "YAML mapping: {property: status, direction: ASC}",
+    ),
+    (
+        "bases.config.group_order",
+        Command::View("groupOrder"),
+        "Manual group order",
+        "YAML list: [Open, Done, null]; blank = automatic",
+    ),
+    (
+        "bases.config.limit",
+        Command::View("limit"),
+        "Row limit",
+        "Non-negative integer; blank = unlimited",
+    ),
+    (
+        "bases.config.row_height",
+        Command::View("rowHeight"),
+        "Table row height",
+        "medium, tall or extra; blank = short",
+    ),
+    (
+        "bases.config.column_widths",
+        Command::View("columnSize"),
+        "Table column widths",
+        "YAML pixel-width mapping: {file.name: 240, score: 120}; blank = default",
+    ),
+    (
+        "bases.config.markers",
+        Command::View("markers"),
+        "List markers",
+        "bullet, number or none; blank = bullet",
+    ),
+    (
+        "bases.config.indent_properties",
+        Command::View("indentProperties"),
+        "Indent list properties",
+        "true or false; blank = false",
+    ),
+    (
+        "bases.config.separator",
+        Command::View("separator"),
+        "List property separator",
+        "YAML text; blank or empty text = comma and space",
+    ),
+    (
+        "bases.config.card_width",
+        Command::View("cardSize"),
+        "Card width",
+        "Width in pixels; blank = default",
+    ),
+    (
+        "bases.config.kanban_width",
+        Command::View("columnWidth"),
+        "Kanban column width",
+        "Width in pixels; blank = default",
+    ),
+    (
+        "bases.config.cover",
+        Command::View("image"),
+        "Cover property",
+        "Property name, e.g. note.cover or formula.Cover; blank = none",
+    ),
+    (
+        "bases.config.image_fit",
+        Command::View("imageFit"),
+        "Image fit",
+        "cover or contain; blank = default",
+    ),
+    (
+        "bases.config.image_aspect_ratio",
+        Command::View("imageAspectRatio"),
+        "Image aspect ratio",
+        "Width / height; positive number; blank = 1",
+    ),
+    (
+        "bases.config.column_summaries",
+        Command::View("summaries"),
+        "Column summaries",
+        "YAML mapping: {score: Average}",
+    ),
+    (
+        "bases.config.formula",
+        Command::Formula,
+        "Formula",
+        "name = expression; blank expression removes formula",
+    ),
+    (
+        "bases.config.summary",
+        Command::Summary,
+        "Custom summary",
+        "name = expression; blank expression removes summary",
+    ),
+    (
+        "bases.config.property_label",
+        Command::Label,
+        "Property label",
+        "property = display name",
+    ),
+    (
+        "bases.config.add_view",
+        Command::AddView,
+        "Add view",
+        "layout = name; layout: table, list, cards, kanban",
+    ),
+    (
+        "bases.config.remove_view",
+        Command::RemoveView,
+        "Remove current view",
+        "Type DELETE to confirm; last view cannot be removed",
+    ),
+    (
+        "bases.config.new_note",
+        Command::NewNote,
+        "New note",
+        "Vault-relative Markdown path; existing files never overwritten",
+    ),
+    (
+        "bases.config.export",
+        Command::Export,
+        "Export visible rows",
+        "Vault-relative .csv or .md path; existing files never overwritten",
+    ),
+    (
+        "bases.config.add_group",
+        Command::Group(super::groups::GroupAction::Add),
+        "Add empty group",
+        "YAML value for new group; null = None",
+    ),
+    (
+        "bases.config.hide_group",
+        Command::Group(super::groups::GroupAction::Hide),
+        "Hide focused group",
+        "",
+    ),
+    (
+        "bases.config.group_left",
+        Command::Group(super::groups::GroupAction::Left),
+        "Move focused group left",
+        "",
+    ),
+    (
+        "bases.config.group_right",
+        Command::Group(super::groups::GroupAction::Right),
+        "Move focused group right",
+        "",
+    ),
+    (
+        "bases.config.automatic_groups",
+        Command::Group(super::groups::GroupAction::Automatic),
+        "Automatic group order / show all",
+        "",
+    ),
+    (
+        "bases.config.hide_groups",
+        Command::Group(super::groups::GroupAction::HideAll),
+        "Hide all groups",
+        "",
+    ),
+    (
+        "bases.config.source",
+        Command::Source,
+        "Edit Bases source",
+        "Open public source for repair",
+    ),
+];
+pub(crate) fn configuration_command(id: &str) -> Option<usize> {
+    COMMANDS
+        .iter()
+        .position(|(command_id, ..)| *command_id == id)
+}
 
 #[derive(Clone, PartialEq)]
 pub(crate) struct Selection {
@@ -41,9 +252,9 @@ impl Selection {
 }
 
 pub(crate) enum Page {
-    Menu {
-        baseline: DocumentSnapshot,
-        view: usize,
+    Running {
+        title: String,
+        selection: Selection,
     },
     Preparing {
         selection: Selection,
@@ -60,7 +271,7 @@ pub(crate) enum Page {
 impl Page {
     pub(crate) fn title(&self) -> &str {
         match self {
-            Self::Menu { .. } => "COMMANDS › Bases configuration",
+            Self::Running { title, .. } => title,
             Self::Preparing { .. } => "COMMANDS › Bases › Prepare property",
             Self::Prompt { title, .. } => title,
         }
@@ -69,7 +280,7 @@ impl Page {
         match self {
             Self::Prompt { hint, .. } => hint,
             Self::Preparing { .. } => "Preparing captured public property…",
-            Self::Menu { .. } => "Choose an existing configuration command",
+            Self::Running { .. } => "Operation in progress…",
         }
     }
     pub(crate) fn is_prompt(&self) -> bool {
@@ -77,17 +288,12 @@ impl Page {
     }
     pub(crate) fn rows(&self) -> Vec<(String, String, String)> {
         match self {
-            Self::Menu { .. } => COMMANDS
-                .iter()
-                .enumerate()
-                .map(|(i, (_, name, hint))| (i.to_string(), (*name).into(), (*hint).into()))
-                .collect(),
             Self::Preparing { .. } => vec![(
                 "retry".into(),
                 "Retry preparation".into(),
                 "Wait for the current read, or retry after an error".into(),
             )],
-            Self::Prompt { .. } => Vec::new(),
+            Self::Prompt { .. } | Self::Running { .. } => Vec::new(),
         }
     }
 }
@@ -111,14 +317,14 @@ impl BasesState {
                 .as_deref()
                 .or(palette.workflow_action.as_deref())
                 .is_some_and(|id| {
-                    matches!(
-                        id,
-                        "bases.configure"
-                            | "bases.edit"
-                            | "bases.new_note"
-                            | "bases.export"
-                            | "bases.move_to_group"
-                    )
+                    configuration_command(id).is_some()
+                        || matches!(
+                            id,
+                            "bases.edit"
+                                | "bases.new_note"
+                                | "bases.export"
+                                | "bases.move_to_group"
+                        )
                 })
         });
         if !integrated || confirmation || matches!(dialog, Dialog::Image { .. }) {
@@ -130,22 +336,6 @@ impl BasesState {
             .take()
             .expect("integrated Bases palette");
         let (page, input) = match dialog {
-            Dialog::Menu { .. } => {
-                let Some(loaded) = &self.loaded else {
-                    app.command_palette = Some(palette);
-                    return;
-                };
-                (
-                    Page::Menu {
-                        baseline: loaded.snapshot.clone(),
-                        view: loaded.view,
-                    },
-                    crate::ui::make_popup_textarea(
-                        &app.app_theme,
-                        "Search configuration commands...",
-                    ),
-                )
-            }
             Dialog::Prompt {
                 target,
                 title,
@@ -154,7 +344,7 @@ impl BasesState {
                 ..
             } => {
                 if let Some(Workflow::Bases(page)) = &palette.workflow
-                    && let Page::Preparing { selection } = &**page
+                    && let Page::Preparing { selection } | Page::Running { selection, .. } = &**page
                 {
                     if *selection != Selection::capture(self) {
                         palette.error =
@@ -186,12 +376,26 @@ impl BasesState {
         app.command_palette = Some(palette);
     }
 
-    /// Keyboard/mouse legacy menus and palette menus call the same authoring transition.
+    /// Keyboard/mouse palette commands call the same authoring transition.
     pub(crate) fn run_configuration_command(&mut self, app: &mut App, index: usize) -> Result<()> {
         self.ensure_idle()?;
-        let &(command, title, hint) = COMMANDS
+        let &(id, command, title, hint) = COMMANDS
             .get(index)
             .context("Configuration command unavailable")?;
+        if let Some(mut palette) = app.command_palette.take() {
+            if palette.launching_action.as_deref() == Some(id) {
+                palette.workflow_action = Some(id.into());
+                palette.push_workflow(
+                    Workflow::Bases(Box::new(Page::Running {
+                        title: format!("COMMANDS › Bases › {title}"),
+                        selection: Selection::capture(self),
+                    })),
+                    crate::ui::make_popup_textarea(&app.app_theme, ""),
+                    app,
+                );
+            }
+            app.command_palette = Some(palette);
+        }
         let target = match command {
             Command::Source => {
                 self.write_task = Some(WriteTask::for_app(
@@ -286,7 +490,19 @@ impl App {
         Ok(())
     }
 
-    pub(crate) fn activate_palette_bases(&mut self, mut palette: CommandPalette, selected: usize) {
+    pub(crate) fn finish_palette_bases_confirmation(&mut self) {
+        if self
+            .bases_state
+            .as_ref()
+            .is_some_and(|state| state.dialog.is_none() && !state.is_writing())
+            && let Some(palette) = &mut self.command_palette
+            && matches!(palette.bases_page(), Some(Page::Running { .. }))
+        {
+            palette.pop_workflow();
+        }
+    }
+
+    pub(crate) fn activate_palette_bases(&mut self, mut palette: CommandPalette) {
         let result = (|| -> Result<()> {
             crate::actions::validate_action_context(
                 palette.workflow_action.as_deref().unwrap_or(""),
@@ -298,16 +514,9 @@ impl App {
                 .as_ref()
                 .context("Bases view unavailable")?;
             match palette.bases_page().context("Bases step unavailable")? {
-                Page::Menu { baseline, view } => {
-                    let loaded = state.loaded.as_ref().context("Base has not loaded")?;
-                    ensure!(
-                        loaded.snapshot.id() == baseline.id()
-                            && loaded.snapshot.source() == baseline.source()
-                            && loaded.view == *view,
-                        "Bases document or view changed; reopen configuration"
-                    );
-                }
-                Page::Preparing { selection } | Page::Prompt { selection, .. } => {
+                Page::Preparing { selection }
+                | Page::Prompt { selection, .. }
+                | Page::Running { selection, .. } => {
                     ensure!(
                         *selection == Selection::capture(state),
                         "Bases selection changed; reopen the action"
@@ -321,18 +530,14 @@ impl App {
             self.command_palette = Some(palette);
             return;
         }
-        let index = palette
-            .items
-            .get(selected)
-            .and_then(|item| item.id.parse::<usize>().ok());
         self.command_palette = Some(palette);
         let mut state = self.bases_state.take().expect("validated Bases state");
         let mut palette = self.command_palette.take().expect("palette");
         let result = match palette.workflow.as_mut().expect("Bases workflow") {
             Workflow::Bases(page) => match &mut **page {
-                Page::Menu { .. } => {
+                Page::Running { .. } => {
                     self.command_palette = Some(palette);
-                    state.run_configuration_command(self, index.unwrap_or(usize::MAX))
+                    Ok(())
                 }
                 Page::Preparing { .. } => {
                     self.command_palette = Some(palette);

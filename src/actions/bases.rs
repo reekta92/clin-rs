@@ -46,12 +46,11 @@ impl Action for BasesCommand {
 }
 pub(super) fn commands() -> Vec<Box<dyn Action>> {
     use BasesAction::{
-        Clear, Configure, Copy, Edit, Export, MoveToGroup, NewNote, NextProperty, NextView,
-        OpenCover, Paste, PreviousProperty, PreviousView, Redo, Refresh, Search, SelectAll,
-        ToggleGroup, ToggleSelect, Undo,
+        Clear, Copy, Edit, Export, MoveToGroup, NewNote, NextProperty, NextView, OpenCover, Paste,
+        PreviousProperty, PreviousView, Redo, Refresh, Search, SelectAll, ToggleGroup,
+        ToggleSelect, Undo,
     };
     [
-        ("configure", "Configure view", Configure),
         ("refresh", "Refresh public results", Refresh),
         ("next_view", "Next saved view", NextView),
         ("previous_view", "Previous saved view", PreviousView),
@@ -82,5 +81,41 @@ pub(super) fn commands() -> Vec<Box<dyn Action>> {
     ]
     .into_iter()
     .map(|(id, label, action)| Box::new(BasesCommand(id, label, action)) as Box<dyn Action>)
+    .chain(
+        (0..crate::bases::palette::COMMANDS.len())
+            .map(|index| Box::new(BasesConfigurationCommand(index)) as Box<dyn Action>),
+    )
     .collect()
+}
+
+struct BasesConfigurationCommand(usize);
+
+impl Action for BasesConfigurationCommand {
+    fn id(&self) -> Cow<'static, str> {
+        crate::bases::palette::COMMANDS[self.0].0.into()
+    }
+    fn name(&self) -> Cow<'static, str> {
+        format!("Bases: {}", crate::bases::palette::COMMANDS[self.0].2).into()
+    }
+    fn description(&self) -> Cow<'static, str> {
+        crate::bases::palette::COMMANDS[self.0].3.into()
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Bases
+    }
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("\u{f0ce}", "\u{25a6}")
+    }
+    fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
+        if app.mode != ViewMode::Bases {
+            bail!("Bases command needs active Bases view");
+        }
+        let mut state = app
+            .bases_state
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Bases view unavailable"))?;
+        let result = state.run_configuration_command(app, self.0);
+        app.bases_state = Some(state);
+        result
+    }
 }

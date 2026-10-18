@@ -123,7 +123,7 @@ pub enum OverlayResult {
     /// Event consumed (or no action); stay in the overlay.
     Continue,
     /// Open the palette after the overlay has been restored to App.
-    OpenCommandPalette,
+    OpenCommandPalette(Option<crate::actions::ActionCategory>),
     /// Leave the overlay and return to the previous view.
     Exit,
     /// Open the help page on the given tab.

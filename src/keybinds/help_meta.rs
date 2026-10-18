@@ -49,10 +49,7 @@ pub fn bases_action_meta(action: crate::keybinds::BasesAction) -> HelpMeta {
         Undo => meta("Editing", "Undo guarded document transaction"),
         Redo => meta("Editing", "Redo guarded document transaction"),
         CommandPalette => meta("Authoring", "Open command palette for public Bases"),
-        Configure => meta(
-            "Authoring",
-            "Configure views, filters, formulas and summaries",
-        ),
+        Configure => meta("Authoring", "Open Bases command palette category"),
         NewNote => meta(
             "Authoring",
             "Create public Markdown note in focused Kanban column",

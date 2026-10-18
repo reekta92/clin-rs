@@ -323,7 +323,12 @@ impl Embeds {
             self.suspended_base.take().map(|state| *state),
         )
     }
-    fn expand(&mut self, key: u64, app: &mut App) {
+    fn expand(
+        &mut self,
+        key: u64,
+        app: &mut App,
+        category: Option<crate::actions::ActionCategory>,
+    ) {
         if !app.palette_input_available()
             || !self
                 .entries
@@ -365,6 +370,12 @@ impl Embeds {
             state.refresh(app, false);
             app.bases_state = Some(state);
             app.open_command_palette(None);
+            if let Some(category) = category
+                && let Some(mut palette) = app.command_palette.take()
+            {
+                palette.select_category(category, app);
+                app.command_palette = Some(palette);
+            }
             self.active.set(None);
             self.running = None;
         }
@@ -408,7 +419,7 @@ impl Embeds {
                     .get(&key)
                     .is_some_and(|state| state.palette_input_available())
             {
-                self.expand(key, app);
+                self.expand(key, app, None);
             }
             return true;
         }
@@ -419,7 +430,7 @@ impl Embeds {
             && key_event.code == KeyCode::Enter
             && !self.has_popup()
         {
-            self.expand(key, app);
+            self.expand(key, app, None);
             return true;
         }
         if let Event::Key(key) = event
@@ -452,18 +463,27 @@ impl Embeds {
             self.active.set(None);
             return true;
         }
-        match state.overlay_handle_event(event.clone(), app, area) {
-            Ok(OverlayResult::Exit) => self.active.set(None),
-            Ok(OverlayResult::OpenHelp(tab)) => app.open_help_page_with_tab(tab),
-            Ok(_) => {}
-            Err(error) => app.set_temporary_status(&format!("Bases: {error:#}")),
-        }
+        let expand = match state.overlay_handle_event(event.clone(), app, area) {
+            Ok(OverlayResult::OpenCommandPalette(category)) => Some(category),
+            Ok(OverlayResult::Exit) => {
+                self.active.set(None);
+                None
+            }
+            Ok(OverlayResult::OpenHelp(tab)) => {
+                app.open_help_page_with_tab(tab);
+                None
+            }
+            Ok(_) => None,
+            Err(error) => {
+                app.set_temporary_status(&format!("Bases: {error:#}"));
+                None
+            }
+        };
         if state.loading {
             self.running = Some(key);
         }
-        let expand = std::mem::take(&mut state.expand_requested);
-        if expand {
-            self.expand(key, app);
+        if let Some(category) = expand {
+            self.expand(key, app, category);
         }
         true
     }

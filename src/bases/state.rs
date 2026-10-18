@@ -13,7 +13,6 @@ pub enum Item {
 
 pub struct BasesState {
     pub id: String,
-    pub(super) expand_requested: bool,
     pub(crate) embedded_request: Option<super::embedding::Request>,
     pub previous_mode: crate::app::ViewMode,
     pub named_view: Option<String>,
@@ -55,7 +54,6 @@ impl BasesState {
         };
         Self {
             id,
-            expand_requested: false,
             embedded_request: None,
             previous_mode: crate::app::ViewMode::List,
             named_view,
@@ -123,10 +121,17 @@ impl BasesState {
         if !self.palette_input_available() {
             return false;
         }
+        if let Some(index) = super::palette::configuration_command(id) {
+            return self.write_task.is_none()
+                && (self.loaded.is_some()
+                    || matches!(
+                        super::palette::COMMANDS[index].1,
+                        super::authoring::Command::Source
+                    ));
+        }
         match id {
             "bases.refresh" => true,
-            "bases.configure"
-            | "bases.next_view"
+            "bases.next_view"
             | "bases.previous_view"
             | "bases.new_note"
             | "bases.export"

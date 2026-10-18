@@ -13,12 +13,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::Style,
-    widgets::{List, ListItem},
-};
+use ratatui::{Frame, layout::Rect, style::Style};
 use ratatui_textarea::TextArea;
 use serde_yaml_ng::Value;
 
@@ -36,170 +31,6 @@ pub enum Command {
     Export,
     Group(super::groups::GroupAction),
 }
-pub const COMMANDS: &[(Command, &str, &str)] = &[
-    (Command::View("name"), "Rename view", "View name"),
-    (
-        Command::View("type"),
-        "Layout",
-        "table, list, cards or kanban",
-    ),
-    (
-        Command::GlobalFilter,
-        "Global filter",
-        "Expression; blank removes filter",
-    ),
-    (
-        Command::View("filters"),
-        "View filter",
-        "Expression; blank removes filter",
-    ),
-    (
-        Command::View("order"),
-        "Displayed properties",
-        "YAML list: [file.name, status, formula.Total]",
-    ),
-    (
-        Command::View("sort"),
-        "Row sorting",
-        "YAML list: [{property: score, direction: DESC}]",
-    ),
-    (
-        Command::View("groupBy"),
-        "Grouping",
-        "YAML mapping: {property: status, direction: ASC}",
-    ),
-    (
-        Command::View("groupOrder"),
-        "Manual group order",
-        "YAML list: [Open, Done, null]; blank = automatic",
-    ),
-    (
-        Command::View("limit"),
-        "Row limit",
-        "Non-negative integer; blank = unlimited",
-    ),
-    (
-        Command::View("rowHeight"),
-        "Table row height",
-        "medium, tall or extra; blank = short",
-    ),
-    (
-        Command::View("columnSize"),
-        "Table column widths",
-        "YAML pixel-width mapping: {file.name: 240, score: 120}; blank = default",
-    ),
-    (
-        Command::View("markers"),
-        "List markers",
-        "bullet, number or none; blank = bullet",
-    ),
-    (
-        Command::View("indentProperties"),
-        "Indent list properties",
-        "true or false; blank = false",
-    ),
-    (
-        Command::View("separator"),
-        "List property separator",
-        "YAML text; blank or empty text = comma and space",
-    ),
-    (
-        Command::View("cardSize"),
-        "Card width",
-        "Width in pixels; blank = default",
-    ),
-    (
-        Command::View("columnWidth"),
-        "Kanban column width",
-        "Width in pixels; blank = default",
-    ),
-    (
-        Command::View("image"),
-        "Cover property",
-        "Property name, e.g. note.cover or formula.Cover; blank = none",
-    ),
-    (
-        Command::View("imageFit"),
-        "Image fit",
-        "cover or contain; blank = default",
-    ),
-    (
-        Command::View("imageAspectRatio"),
-        "Image aspect ratio",
-        "Width / height; positive number; blank = 1",
-    ),
-    (
-        Command::View("summaries"),
-        "Column summaries",
-        "YAML mapping: {score: Average}",
-    ),
-    (
-        Command::Formula,
-        "Formula",
-        "name = expression; blank expression removes formula",
-    ),
-    (
-        Command::Summary,
-        "Custom summary",
-        "name = expression; blank expression removes summary",
-    ),
-    (Command::Label, "Property label", "property = display name"),
-    (
-        Command::AddView,
-        "Add view",
-        "layout = name; layout: table, list, cards, kanban",
-    ),
-    (
-        Command::RemoveView,
-        "Remove current view",
-        "Type DELETE to confirm; last view cannot be removed",
-    ),
-    (
-        Command::NewNote,
-        "New note",
-        "Vault-relative Markdown path; existing files never overwritten",
-    ),
-    (
-        Command::Export,
-        "Export visible rows",
-        "Vault-relative .csv or .md path; existing files never overwritten",
-    ),
-    (
-        Command::Group(super::groups::GroupAction::Add),
-        "Add empty group",
-        "YAML value for new group; null = None",
-    ),
-    (
-        Command::Group(super::groups::GroupAction::Hide),
-        "Hide focused group",
-        "",
-    ),
-    (
-        Command::Group(super::groups::GroupAction::Left),
-        "Move focused group left",
-        "",
-    ),
-    (
-        Command::Group(super::groups::GroupAction::Right),
-        "Move focused group right",
-        "",
-    ),
-    (
-        Command::Group(super::groups::GroupAction::Automatic),
-        "Automatic group order / show all",
-        "",
-    ),
-    (
-        Command::Group(super::groups::GroupAction::HideAll),
-        "Hide all groups",
-        "",
-    ),
-    (
-        Command::Source,
-        "Edit Bases source",
-        "Open public source for repair",
-    ),
-];
 pub enum EditIntent {
     Edit,
     Clear,
@@ -237,12 +68,6 @@ pub enum Dialog {
     Image {
         id: String,
         protocol: Box<ratatui_image::protocol::StatefulProtocol>,
-    },
-    Menu {
-        selected: usize,
-        offset: usize,
-        area: Rect,
-        bounds: Rect,
     },
     Prompt {
         target: Target,
@@ -294,32 +119,6 @@ impl Dialog {
                     inner,
                     &mut **protocol,
                 );
-            }
-            Self::Menu {
-                selected,
-                offset,
-                area: menu_area,
-                bounds,
-            } => {
-                let inner = crate::ui::draw_popup_frame(
-                    frame,
-                    area,
-                    "Bases configuration",
-                    crate::ui::PopupSize::Large,
-                    crate::ui::PopupHints::Text("Enter select · Esc cancel"),
-                    &app.app_theme,
-                );
-                *menu_area = inner;
-                *bounds = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
-                let list = List::new(COMMANDS.iter().map(|(_, label, _)| ListItem::new(*label)))
-                    .highlight_style(
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.highlight_bg),
-                    );
-                let mut state = crate::ui::list_state_selected(Some(*selected), *offset);
-                frame.render_stateful_widget(list, inner, &mut state);
-                *offset = state.offset();
             }
             Self::Prompt {
                 title,
@@ -1005,107 +804,61 @@ impl BasesState {
             }
             return true;
         }
-        let mut activate = false;
-        if let Event::Mouse(mouse) = event {
+        if let Event::Mouse(mouse) = event
+            && let Dialog::Prompt {
+                input,
+                area,
+                bounds,
+                selection,
+                ..
+            } = &mut dialog
+        {
             use crossterm::event::{MouseButton, MouseEventKind};
-            match &mut dialog {
-                Dialog::Menu {
-                    selected,
-                    offset,
-                    area,
-                    bounds,
-                } => match mouse.kind {
-                    MouseEventKind::Down(MouseButton::Left)
-                        if !bounds.contains((mouse.column, mouse.row).into()) =>
-                    {
-                        return true;
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left)
+                    if !bounds.contains((mouse.column, mouse.row).into()) =>
+                {
+                    return true;
+                }
+                MouseEventKind::Down(MouseButton::Left)
+                    if area.contains((mouse.column, mouse.row).into()) =>
+                {
+                    let (row, column) = crate::ui::get_textarea_scroll(input);
+                    crate::events::move_textarea_cursor_to_mouse(
+                        input,
+                        *area,
+                        mouse.column,
+                        mouse.row,
+                        row,
+                        column,
+                    );
+                    selection.begin(&mut **input);
+                }
+                MouseEventKind::Drag(MouseButton::Left) if selection.active => {
+                    selection.mark_drag();
+                    let (row, column) = crate::ui::get_textarea_scroll(input);
+                    crate::events::move_textarea_cursor_to_mouse(
+                        input,
+                        *area,
+                        mouse.column,
+                        mouse.row,
+                        row,
+                        column,
+                    );
+                }
+                MouseEventKind::Up(MouseButton::Left) if selection.active => {
+                    if let Some(notice) = selection.finish(&mut **input, true) {
+                        app.set_temporary_status(notice);
                     }
-                    MouseEventKind::Down(MouseButton::Left)
-                        if area.contains((mouse.column, mouse.row).into()) =>
-                    {
-                        let index = *offset + usize::from(mouse.row - area.y);
-                        if index < COMMANDS.len() {
-                            activate = *selected == index;
-                            *selected = index;
-                        }
-                    }
-                    MouseEventKind::ScrollDown => {
-                        *selected = (*selected + 3).min(COMMANDS.len() - 1)
-                    }
-                    MouseEventKind::ScrollUp => *selected = selected.saturating_sub(3),
-                    _ => {}
-                },
-                Dialog::Prompt {
-                    input,
-                    area,
-                    bounds,
-                    selection,
-                    ..
-                } => match mouse.kind {
-                    MouseEventKind::Down(MouseButton::Left)
-                        if !bounds.contains((mouse.column, mouse.row).into()) =>
-                    {
-                        return true;
-                    }
-                    MouseEventKind::Down(MouseButton::Left)
-                        if area.contains((mouse.column, mouse.row).into()) =>
-                    {
-                        let (row, column) = crate::ui::get_textarea_scroll(input);
-                        crate::events::move_textarea_cursor_to_mouse(
-                            input,
-                            *area,
-                            mouse.column,
-                            mouse.row,
-                            row,
-                            column,
-                        );
-                        selection.begin(&mut **input);
-                    }
-                    MouseEventKind::Drag(MouseButton::Left) if selection.active => {
-                        selection.mark_drag();
-                        let (row, column) = crate::ui::get_textarea_scroll(input);
-                        crate::events::move_textarea_cursor_to_mouse(
-                            input,
-                            *area,
-                            mouse.column,
-                            mouse.row,
-                            row,
-                            column,
-                        );
-                    }
-                    MouseEventKind::Up(MouseButton::Left) if selection.active => {
-                        if let Some(notice) = selection.finish(&mut **input, true) {
-                            app.set_temporary_status(notice);
-                        }
-                    }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }
-        let activate_event = Event::Key(crossterm::event::KeyEvent::new(
-            KeyCode::Enter,
-            KeyModifiers::NONE,
-        ));
-        let event = if activate { &activate_event } else { event };
         if let Event::Key(key) = event
             && key.kind != KeyEventKind::Release
         {
             match (&mut dialog, key.code) {
                 (_, KeyCode::Esc) => keep = false,
-                (Dialog::Menu { selected, .. }, KeyCode::Up | KeyCode::Char('k')) => {
-                    *selected = selected.saturating_sub(1)
-                }
-                (Dialog::Menu { selected, .. }, KeyCode::Down | KeyCode::Char('j')) => {
-                    *selected = (*selected + 1).min(COMMANDS.len() - 1)
-                }
-                (Dialog::Menu { selected, .. }, KeyCode::Enter) => {
-                    if let Err(error) = self.run_configuration_command(app, *selected) {
-                        app.set_temporary_status(&format!("Bases: {error:#}"));
-                        self.dialog = Some(dialog);
-                    }
-                    return true;
-                }
                 (Dialog::Prompt { input, .. }, KeyCode::Enter)
                     if key.modifiers.contains(KeyModifiers::SHIFT) =>
                 {

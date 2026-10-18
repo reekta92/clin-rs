@@ -831,6 +831,7 @@ pub(crate) fn handle_open_palette_event(
         let mut state = app.bases_state.take().expect("Bases dialog");
         let consumed = state.dialog_event(event, app);
         app.bases_state = Some(state);
+        app.finish_palette_bases_confirmation();
         return consumed;
     }
     if !matches!(event, crossterm::event::Event::Key(key) if key.code == KeyCode::Enter) {

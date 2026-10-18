@@ -67,7 +67,7 @@ fn card_and_kanban_covers_use_public_native_protocol_and_guarded_configuration()
         assert!(configured.source().contains("plugin: {opaque: true}"));
         menu(&mut app, "Image aspect ratio");
         prompt_text(&mut app, "0");
-        assert!(app.bases_state.as_ref().unwrap().dialog.is_some());
+        assert!(app.command_palette.as_ref().unwrap().error.is_some());
         assert_eq!(
             app.storage.load_document("board.base").unwrap().source(),
             configured.source()

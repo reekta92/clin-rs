@@ -94,10 +94,10 @@ fn embedded_dialogs_keep_modal_focus_and_custom_palette_expands_without_private_
             modifiers: KeyModifiers::NONE,
         }),
     );
-    embedded_key(&mut app, KeyCode::Char(':'));
+    embedded_key(&mut app, KeyCode::Char('n'));
     assert!(app.base_embeds.has_popup());
     screen(&mut app, &renderer);
-    let popup = crate::ui::centered_rect(crate::ui::PopupSize::Large, AREA);
+    let popup = crate::ui::centered_rect(crate::ui::PopupSize::Medium, AREA);
     // A click inside the popup, outside the embedded region, must remain modal.
     embedded_event(
         &mut app,
@@ -182,7 +182,7 @@ fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialog
                 modifiers: KeyModifiers::NONE,
             }),
         );
-        embedded_key(&mut app, KeyCode::Char(':'));
+        embedded_key(&mut app, KeyCode::Char('n'));
         assert!(app.base_embeds.has_popup());
         crate::palette_tests::drive(
             &mut app,
@@ -216,6 +216,31 @@ fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialog
             Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
             AREA
         ));
+        crate::finish_overlay_event(
+            &mut app,
+            crate::overlay::ViewKind::Bases,
+            OverlayResult::Exit,
+        );
+        assert_eq!(app.mode, mode);
+        rendered(&mut app, &renderer, "• public.md, 2");
+        embedded_event(
+            &mut app,
+            Event::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: 4,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        embedded_key(&mut app, KeyCode::Char(':'));
+        assert_eq!(app.mode, ViewMode::Bases);
+        let palette = app.command_palette.as_ref().unwrap();
+        assert_eq!(palette.tabs[palette.active_tab].0, "Bases");
+        assert!(!app.base_embeds.has_popup());
+        crate::palette_tests::drive(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+        );
         crate::finish_overlay_event(
             &mut app,
             crate::overlay::ViewKind::Bases,

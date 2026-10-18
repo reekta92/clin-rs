@@ -134,10 +134,11 @@ impl CommandPalette {
             || self.bases_page().is_some_and(|page| {
                 matches!(
                     page,
-                    crate::bases::palette::Page::Prompt {
-                        submitting: true,
-                        ..
-                    }
+                    crate::bases::palette::Page::Running { .. }
+                        | crate::bases::palette::Page::Prompt {
+                            submitting: true,
+                            ..
+                        }
                 )
             })
     }
@@ -408,7 +409,7 @@ impl App {
         selected: usize,
     ) {
         if matches!(palette.workflow, Some(Workflow::Bases(_))) {
-            self.activate_palette_bases(palette, selected);
+            self.activate_palette_bases(palette);
             return;
         }
         if matches!(

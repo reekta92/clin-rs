@@ -178,7 +178,15 @@ fn list_settings_wrap_focus_mouse_and_lossless_reset() {
     );
     menu(&mut app, "List markers");
     prompt_text(&mut app, "bullets");
-    assert!(app.status.contains("markers must"));
+    assert!(
+        app.command_palette
+            .as_ref()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("markers must")
+    );
     key(&mut app, KeyCode::Esc);
     menu(&mut app, "List markers");
     prompt_text(&mut app, "none");
@@ -263,7 +271,15 @@ fn table_heights_widths_wrapping_focus_and_authoring_are_native_and_guarded() {
     let before = app.storage.load_document("board.base").unwrap();
     menu(&mut app, "Table row height");
     prompt_text(&mut app, "giant");
-    assert!(app.status.contains("rowHeight must"));
+    assert!(
+        app.command_palette
+            .as_ref()
+            .unwrap()
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("rowHeight must")
+    );
     assert_eq!(
         app.storage.load_document("board.base").unwrap().source(),
         before.source()

@@ -41,7 +41,7 @@ pub trait Action: Send + Sync {
 |---|---|
 | `name()` | Human-readable name for the palette |
 | `description()` | Short help text shown in palette |
-| `category()` | Grouping (General, Notes, Import, Append, Views, Settings) |
+| `category()` | Grouping (General, Notes, Import, Append, Bases, Views, Settings) |
 | `glyph()` | `(&'static str, &'static str)` — Nerd Font + Unicode pair, selected by `IconMode` |
 | `execute()` | Perform the action, mutating `App` state |
 
@@ -75,10 +75,11 @@ Actions are grouped by category:
 | **General** | Show info, paste image, insert image from file (shown under All) |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note; OCR paste |
+| **Bases** | All 34 configuration commands, visible only in the Bases view |
 | **Views** | Notes, Help, Graph, Setup, Setup Finish/Cancel, document creation, public Bases operations, vault switcher |
 | **Settings** | Setup wizard, theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
-File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Views/Settings categories; General actions appear under All, not a separate General tab.
+File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Bases/Views/Settings categories; General actions appear under All, not a separate General tab. Bases' Configure binding (`:` by default) opens the Bases category directly. Embedded regions expand into Bases before opening that category.
 
 ## Execution
 
@@ -141,7 +142,7 @@ When launched from the palette, these workflows keep the same frame:
 | Drawing, Canvas, Bases creation | Name input; collisions retain input and never overwrite a file |
 | URL import/append | URL input, retaining the original append target |
 | Vault switcher | Filterable vaults; F2 renames the selected vault, Delete requests the existing removal confirmation |
-| Bases configuration | All 34 existing configuration commands and their follow-up inputs |
+| Bases configuration | Commands appear directly under All and Bases; follow-up inputs stay in the palette |
 | Bases property edit, public note creation, export, group move | Existing typed value/path inputs with guarded asynchronous writes |
 
 The header field filters a choice list or edits the requested value, depending on the step. Category tabs appear only at the command root. Esc returns to the parent, restoring its query, selection and scroll. Outside clicks close through the workflow's save/cleanup path. Failed validation or writes retain the input and display the error. Pending writes block departure and duplicate submission.
@@ -150,7 +151,7 @@ Settings choices include visual examples: themes show four palette colors, icon 
 
 Theme changes apply immediately and the selector stays open; leaving it saves outside Setup. Hint-style and navigation-preset selectors also stay open. In Setup, theme/preset changes remain pending until Finish. Bases value inputs use Shift+Enter for a newline and Enter to submit. The body Apply row also submits inputs with the mouse.
 
-Direct shortcut launches retain their original popup presentation, including F4 vault switching. The Subnotes action opens its original manager popup with its list, title and content panes. Confirmations, search dialogs (including Bases search), system file/directory pickers, read-only Info/image previews, and destination views/editors remain separate. Removing a Bases view still requires its separate typed DELETE confirmation; clearing a property still requires CLEAR. No other standalone Notes/view dialogs are migrated.
+Direct shortcut launches retain their original popup presentation, including F4 vault switching, except Bases configuration, whose standalone menu is removed. The Subnotes action opens its original manager popup with its list, title and content panes. Confirmations, search dialogs (including Bases search), system file/directory pickers, read-only Info/image previews, and destination views/editors remain separate. Removing a Bases view still requires its separate typed DELETE confirmation; clearing a property still requires CLEAR. No other standalone Notes/view dialogs are migrated.
 
 ---
 

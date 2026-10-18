@@ -223,8 +223,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         "settings.graph_show_legend"
         | "settings.graph_show_minimap"
         | "settings.graph_show_orphan" => Graph,
-        "bases.configure"
-        | "bases.refresh"
+        "bases.refresh"
         | "bases.next_view"
         | "bases.previous_view"
         | "bases.edit"
@@ -244,6 +243,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "bases.previous_property"
         | "bases.next_property" => Bases,
         "setup.finish" | "setup.cancel" => Setup,
+        _ if crate::bases::palette::configuration_command(id).is_some() => Bases,
         _ => return None,
     })
 }

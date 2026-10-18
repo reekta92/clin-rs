@@ -20,6 +20,7 @@ pub enum ActionCategory {
     Notes,
     Import,
     Append,
+    Bases,
     Views,
     Settings,
 }

@@ -1298,8 +1298,14 @@ fn drain_queued_mouse_events<V: OverlayView>(
 fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::OverlayResult) {
     use crate::overlay::OverlayResult;
     match res {
-        OverlayResult::OpenCommandPalette => {
-            app.open_command_palette(None);
+        OverlayResult::OpenCommandPalette(category) => {
+            if app.open_command_palette(None)
+                && let Some(category) = category
+                && let Some(mut palette) = app.command_palette.take()
+            {
+                palette.select_category(category, app);
+                app.command_palette = Some(palette);
+            }
         }
         OverlayResult::OpenHelp(tab) => {
             app.reload_theme();
