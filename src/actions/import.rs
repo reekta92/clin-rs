@@ -153,7 +153,11 @@ fn extract_html_title(html: &str) -> Option<String> {
         let absolute_start = cursor + start_bracket;
         let rest = &html[absolute_start..];
 
-        if rest.len() >= 6 && rest[..6].eq_ignore_ascii_case("<title") {
+        if rest
+            .as_bytes()
+            .get(..6)
+            .is_some_and(|s| s.eq_ignore_ascii_case(b"<title"))
+        {
             let next_char = rest.as_bytes().get(6);
             if (next_char.is_none()
                 || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')))
@@ -166,7 +170,11 @@ fn extract_html_title(html: &str) -> Option<String> {
                 while let Some(close_bracket_offset) = after_tag[close_cursor..].find('<') {
                     let absolute_close_start = close_cursor + close_bracket_offset;
                     let close_rest = &after_tag[absolute_close_start..];
-                    if close_rest.len() >= 8 && close_rest[..8].eq_ignore_ascii_case("</title>") {
+                    if close_rest
+                        .as_bytes()
+                        .get(..8)
+                        .is_some_and(|s| s.eq_ignore_ascii_case(b"</title>"))
+                    {
                         let inner_text = &after_tag[..absolute_close_start];
                         return Some(inner_text.trim().to_string());
                     }
@@ -510,6 +518,17 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn html_titles_allow_unicode_before_and_inside_tags() {
+        for html in [
+            "<!-- é --><TITLE>Résumé</TITLE>",
+            "<title>Résumé<!-- éé --> end</title>",
+        ] {
+            assert!(extract_html_title(html).unwrap().starts_with("Résumé"));
+        }
+        assert_eq!(extract_html_title("<!-- é -->"), None);
+    }
 
     #[test]
     fn import_sanitization_preserves_structure() {

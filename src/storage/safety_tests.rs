@@ -11,6 +11,51 @@ fn fixture(root: &Path) -> Storage {
     }
 }
 
+#[test]
+fn pinning_rejects_structured_documents_without_changing_bytes() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let storage = fixture(root.path());
+    for id in ["board.canvas", "art.draw", "table.base", "data.json"] {
+        let source = "{\"nodes\":[],\"edges\":[]}";
+        fs::write(root.path().join(id), source)?;
+        assert!(storage.toggle_pin(id).is_err(), "{id}");
+        assert_eq!(fs::read_to_string(root.path().join(id))?, source);
+    }
+    Ok(())
+}
+
+#[test]
+fn extension_migration_requires_drawing_structure() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let storage = fixture(root.path());
+    let canvas = r#"{"nodes":[{"text":"version"}],"edges":[]}"#;
+    for (id, source) in [
+        ("board.canvas", canvas),
+        ("empty.canvas", "{}"),
+        ("broken.canvas", "{\"elements\": ["),
+        ("legacy.canvas", "{\"elements\":[]}"),
+        ("current.canvas", "{\"version\":2,\"elements\":[]}"),
+        ("future.canvas", "{\"version\":255,\"elements\":[]}"),
+    ] {
+        fs::write(root.path().join(id), source)?;
+    }
+    storage.migrate_extensions();
+    assert_eq!(
+        fs::read_to_string(root.path().join("board.canvas"))?,
+        canvas
+    );
+    for id in [
+        "empty.canvas",
+        "broken.canvas",
+        "future.canvas",
+        "legacy.draw",
+        "current.draw",
+    ] {
+        assert!(root.path().join(id).is_file(), "{id}");
+    }
+    Ok(())
+}
+
 fn recovery_count(root: &Path) -> usize {
     fs::read_dir(root.join(".clin/document-recovery-v2"))
         .unwrap()

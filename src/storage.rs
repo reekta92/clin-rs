@@ -520,14 +520,19 @@ impl Storage {
                                 }
                             }
                             "canvas" => {
-                                if let Ok(content) = fs::read_to_string(&path) {
-                                    let trimmed = content.trim();
-                                    let is_draw_format = trimmed.starts_with(
-                                        "{\
-  \"elements\"",
-                                    ) || trimmed.starts_with("{\"elements\"");
-                                    let is_new_draw = trimmed.contains("\"version\"");
-                                    if is_draw_format || is_new_draw {
+                                if let Ok(content) =
+                                    documents::read_bounded_text(&path, 16 * 1024 * 1024)
+                                    && let Ok(value) =
+                                        serde_json::from_str::<serde_json::Value>(&content)
+                                    && value
+                                        .get("elements")
+                                        .is_some_and(serde_json::Value::is_array)
+                                    && value.get("nodes").is_none()
+                                    && value.get("edges").is_none()
+                                {
+                                    if serde_json::from_value::<::draw::state::DrawData>(value)
+                                        .is_ok()
+                                    {
                                         let new_path = path.with_extension("draw");
                                         if !new_path.exists() {
                                             let _ = fs::rename(&path, &new_path);
@@ -1216,6 +1221,10 @@ impl Storage {
         }
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        anyhow::ensure!(
+            matches!(ext, "md" | "txt"),
+            "Only Markdown and text notes support pin metadata"
+        );
         if crate::storage::is_image_ext(ext) {
             anyhow::bail!("Cannot pin image files");
         }
