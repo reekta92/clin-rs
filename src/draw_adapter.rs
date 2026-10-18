@@ -380,7 +380,7 @@ fn to_lib_action(action: DrawAction) -> ::draw::DrawAction {
 }
 
 /// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
-/// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
+/// `draw_ui` header render (via `ui/mod.rs`) and the draw mouse hit-test
 /// so they never drift — same pattern as other view tab bars.
 pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 5] {
     [

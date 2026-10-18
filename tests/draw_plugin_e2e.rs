@@ -82,7 +82,8 @@ fn custom_keys_render_save_reopen_and_failed_departure() {
     terminal
         .draw(|frame| plugin.overlay_render(frame, Rect::new(10, 3, 80, 24), &mut app))
         .expect("render engine and footer");
-    assert_eq!(plugin.state.last_area, Rect::new(10, 3, 80, 23));
+    let point = draw::input::screen_to_canvas(49, 14, &plugin.state);
+    assert!((point.0 + 1.25).abs() < 1e-10 && point.1.abs() < 1e-10);
     let original = std::fs::read(&path).expect("saved data");
     std::fs::remove_file(&path).expect("block save destination");
     std::fs::create_dir(&path).expect("blocking directory");

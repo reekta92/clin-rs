@@ -2522,14 +2522,7 @@ fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host()
     terminal
         .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
         .unwrap();
-    let rect = f
-        .app
-        .draw_state
-        .as_ref()
-        .unwrap()
-        .state
-        .text_editor_rect
-        .unwrap();
+    let rect = Rect::new(21, 18, 58, 3);
     for (kind, col) in [
         (MouseEventKind::Down(MouseButton::Left), rect.x),
         (MouseEventKind::Drag(MouseButton::Left), rect.x + 4),

@@ -1019,6 +1019,7 @@ dependencies = [
 [[package]]
 name = "draw-rs"
 version = "0.1.0"
+source = "git+https://github.com/reekta92/draw-rs?rev=6befa0461d609f4686edb5794bc2662165bed256#6befa0461d609f4686edb5794bc2662165bed256"
 dependencies = [
  "anyhow",
  "crossterm",
