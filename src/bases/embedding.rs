@@ -268,7 +268,7 @@ impl Embeds {
                 ratatui::widgets::Block::default().style(app.app_theme.bg_style()),
                 rect,
             );
-            state.render_native(frame, rect, app);
+            super::render::render(frame, rect, state, app);
         }
     }
     fn poll(&mut self, app: &mut App) -> bool {

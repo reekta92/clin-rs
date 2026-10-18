@@ -155,6 +155,8 @@ files/views show diagnostics. Inline definitions retain their source anchors;
 they are live native views, including Table, List, Cards, and Kanban controls.
 The same regions appear in the editor, Notes preview, linked-note preview,
 and Canvas `.base` file nodes and text nodes containing Bases definitions.
+Embedded regions render only the view body, using the full region for content.
+The Bases header and footer appear when the region is expanded into the full view.
 
 Click a region to focus its rows/properties, then use the configured Bases
 bindings. Esc closes its popup first, then returns keyboard focus to the host.

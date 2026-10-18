@@ -79,6 +79,63 @@ fn embedded_key(app: &mut App, code: KeyCode) {
 }
 
 #[test]
+fn embedded_layouts_hide_bars_use_full_region_and_restore_fullscreen_bars() {
+    for layout in ["table", "list", "cards", "kanban"] {
+        for inline in [false, true] {
+            let (_root, mut app) = fixture();
+            app.app_theme.hint_bar_style = crate::config::HintBarStyle::Classic;
+            for index in 0..7 {
+                app.storage
+                    .create_document(&format!("row{index}.md"), "Body")
+                    .unwrap();
+            }
+            let definition = format!(
+                "filters: file.ext == 'md'\nviews: [{{type: {layout}, name: Test, order: [file.name]{}}}]\n",
+                if layout == "kanban" {
+                    ", groupBy: {property: status}"
+                } else {
+                    ""
+                },
+            );
+            let base = app.storage.load_document("board.base").unwrap();
+            app.storage.save_document(&base, &definition).unwrap();
+            let source = if inline {
+                format!("```base\n{definition}```\n")
+            } else {
+                "![[board.base#Test]]\n".into()
+            };
+            let host = app.storage.load_document("public.md").unwrap();
+            app.storage.save_document(&host, &source).unwrap();
+            app.bases_state = None;
+            app.mode = ViewMode::List;
+            app.invalidate_bases();
+            let renderer = markdown(&source, Some("public.md"));
+            let output = rendered(&mut app, &renderer, "public.md");
+            assert!(!output.contains("Bases ·"), "{layout}/{inline}: {output}");
+            assert!(!output.contains("Esc back"), "{layout}/{inline}: {output}");
+            if layout == "list" {
+                for index in 0..7 {
+                    assert!(output.contains(&format!("row{index}.md")), "{output}");
+                }
+            }
+            expand_first(&mut app, &renderer);
+            assert_eq!(app.mode, ViewMode::Bases);
+            let fullscreen = render(&mut app);
+            assert!(fullscreen.contains("Bases ·"));
+            assert!(fullscreen.contains("Esc back"));
+            crate::finish_overlay_event(
+                &mut app,
+                crate::overlay::ViewKind::Bases,
+                OverlayResult::Exit,
+            );
+            let restored = screen(&mut app, &renderer);
+            assert!(!restored.contains("Bases ·"));
+            assert!(!restored.contains("Esc back"));
+        }
+    }
+}
+
+#[test]
 fn embedded_dialogs_keep_modal_focus_and_custom_palette_expands_without_private_context() {
     let (_root, mut app) = fixture();
     app.bases_state = None;
@@ -540,15 +597,20 @@ fn inline_configuration_changes_only_anchored_yaml_and_stale_or_unsaved_hosts_re
 
 fn expand_first(app: &mut App, renderer: &MarkdownRenderer) {
     rendered(app, renderer, "public.md");
-    embedded_event(
-        app,
-        Event::Mouse(crossterm::event::MouseEvent {
-            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
-            column: 4,
-            row: 1,
-            modifiers: KeyModifiers::NONE,
-        }),
-    );
+    for kind in [
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+    ] {
+        embedded_event(
+            app,
+            Event::Mouse(crossterm::event::MouseEvent {
+                kind,
+                column: 4,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+    }
     embedded_event(
         app,
         Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL)),
