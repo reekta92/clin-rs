@@ -25,6 +25,12 @@ confirmations, and other direct shortcut dialogs keep their existing presentatio
 In an embedded Bases region, `:` expands the region into Bases and opens its
 palette category; leaving Bases restores the host view.
 
+Layout, table row height, list markers, list property indentation, and image fit
+use searchable option lists with the current value selected and marked. Choose
+with Enter or the mouse; successful saves close the palette. Default choices
+remove the setting and restore its native default. Other configuration commands
+retain their value inputs.
+
 Configurable `bases` keybindings control navigation and editing;
 press the Bases Help binding (`?` by default) for the current map.
 

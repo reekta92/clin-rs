@@ -410,7 +410,7 @@ fn palette_bases_remapped_configure_opens_category_and_mouse_applies() {
     );
     let palette = app.command_palette.as_ref().unwrap();
     assert_eq!(palette.tabs[palette.active_tab].0, "Bases");
-    crate::palette_tests::drive(&mut app, Event::Paste("Rename view".into()));
+    crate::palette_tests::drive(&mut app, Event::Paste("Layout".into()));
     let render = |app: &mut App| {
         let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
         terminal
@@ -436,14 +436,17 @@ fn palette_bases_remapped_configure_opens_category_and_mouse_applies() {
     };
     render(&mut app);
     click_apply(&mut app);
-    assert!(
+    assert!(!app.command_palette.as_ref().unwrap().is_value_input());
+    assert_eq!(
         app.command_palette
             .as_ref()
             .unwrap()
             .bases_page()
-            .is_some_and(Page::is_prompt)
+            .unwrap()
+            .current_value(),
+        Some("Table")
     );
-    crate::palette_tests::drive(&mut app, Event::Paste("Mouse view".into()));
+    crate::palette_tests::drive(&mut app, Event::Paste("Cards".into()));
     for (width, height) in [(8, 4), (1, 1), (100, 40)] {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal
@@ -453,12 +456,11 @@ fn palette_bases_remapped_configure_opens_category_and_mouse_applies() {
     click_apply(&mut app);
     wait(&mut app, |app| app.command_palette.is_none());
     idle(&mut app);
-    assert!(
-        app.storage
-            .load_document("board.base")
-            .unwrap()
-            .source()
-            .contains("Mouse view")
+    let saved = app.storage.load_document("board.base").unwrap();
+    let document = crate::bases::format::BaseDocument::parse(saved.source()).unwrap();
+    assert_eq!(
+        document.config.views[0].layout,
+        crate::bases::format::Layout::Cards
     );
 }
 
@@ -481,5 +483,203 @@ fn palette_bases_source_repair_remains_available_without_a_loaded_document() {
     assert_eq!(
         app.editor.public_document_source().unwrap(),
         "views: [invalid"
+    );
+}
+
+#[test]
+fn palette_bases_fixed_options_keep_current_values_guarded_history_and_defaults() {
+    for (layout, field, title, original, current, next, count) in [
+        ("table", "type", "Layout", "table", "table", "list", 4),
+        (
+            "table",
+            "rowHeight",
+            "Table row height",
+            "medium",
+            "medium",
+            "extra",
+            4,
+        ),
+        (
+            "list",
+            "markers",
+            "List markers",
+            "number",
+            "number",
+            "none",
+            3,
+        ),
+        (
+            "list",
+            "indentProperties",
+            "Indent list properties",
+            "false",
+            "",
+            "true",
+            2,
+        ),
+        ("cards", "imageFit", "Image fit", "cover", "", "contain", 2),
+    ] {
+        let (_root, mut app) = fixture();
+        let baseline = app.storage.load_document("board.base").unwrap();
+        let field_yaml = if field == "type" {
+            String::new()
+        } else {
+            format!(", {field}: {original}")
+        };
+        let source = format!(
+            "# retained\nplugin: {{opaque: true}}\nfilters: file.ext == 'md'\nviews: [{{type: {layout}, name: Public, groupBy: {{property: score}}, order: [file.name, score]{field_yaml}}}]\n"
+        );
+        app.storage.save_document(&baseline, &source).unwrap();
+        key(&mut app, KeyCode::Char('r'));
+        idle(&mut app);
+        let public = app.storage.load_document("public.md").unwrap();
+        let private = fs::read(app.storage.notes_dir.join("private.clin")).unwrap();
+        menu(&mut app, title);
+        let palette = app.command_palette.as_ref().unwrap();
+        assert!(!palette.is_value_input(), "{field}");
+        assert_eq!(palette.items.len(), count, "{field}");
+        let selected = &palette.items[palette.state.selected().unwrap()];
+        assert_eq!(selected.id, current, "{field}");
+        assert_eq!(selected.description, "Current");
+        assert_eq!(
+            palette.bases_page().unwrap().current_value(),
+            Some(selected.name.as_str())
+        );
+        workflow_choice(&mut app, next);
+        assert!(app.command_palette.as_ref().unwrap().is_submitting());
+        crate::palette_tests::drive(&mut app, Event::Paste("blocked during save".into()));
+        assert_eq!(app.command_palette.as_ref().unwrap().input.lines()[0], "");
+        crate::palette_tests::drive(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+        );
+        wait(&mut app, |app| app.command_palette.is_none());
+        idle(&mut app);
+        assert_eq!(
+            app.bases_state.as_ref().unwrap().undo.len(),
+            1,
+            "only one write"
+        );
+        let saved = app.storage.load_document("board.base").unwrap();
+        let document = crate::bases::format::BaseDocument::parse(saved.source()).unwrap();
+        let value = &document.config.views[0].options[field];
+        if field == "indentProperties" {
+            assert_eq!(value.as_bool(), Some(true));
+        } else {
+            assert_eq!(value.as_str(), Some(next));
+        }
+        assert!(
+            saved
+                .source()
+                .contains("# retained\nplugin: {opaque: true}")
+        );
+        key(&mut app, KeyCode::Char('u'));
+        idle(&mut app);
+        assert_eq!(
+            app.storage.load_document("board.base").unwrap().source(),
+            source
+        );
+        event(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+        );
+        idle(&mut app);
+        assert_eq!(
+            app.storage.load_document("board.base").unwrap().source(),
+            saved.source()
+        );
+        if field != "type" {
+            menu(&mut app, title);
+            let palette = app.command_palette.as_ref().unwrap();
+            assert_eq!(palette.items[palette.state.selected().unwrap()].id, next);
+            workflow_choice(&mut app, "");
+            wait(&mut app, |app| app.command_palette.is_none());
+            idle(&mut app);
+            let saved = app.storage.load_document("board.base").unwrap();
+            let document = crate::bases::format::BaseDocument::parse(saved.source()).unwrap();
+            assert!(!document.config.views[0].options.contains_key(field));
+        }
+        assert_eq!(
+            app.storage.load_document("public.md").unwrap().source(),
+            public.source()
+        );
+        assert_eq!(
+            fs::read(app.storage.notes_dir.join("private.clin")).unwrap(),
+            private
+        );
+    }
+}
+
+#[test]
+fn palette_bases_selector_validation_and_cancel_retain_filtered_choices_and_root() {
+    let (_root, mut app) = fixture();
+    let baseline = app.storage.load_document("board.base").unwrap();
+    let source = baseline
+        .source()
+        .replace("type: table", "type: table\n    markers: bullets");
+    app.storage.save_document(&baseline, &source).unwrap();
+    key(&mut app, KeyCode::Char('r'));
+    idle(&mut app);
+    bases_category(&mut app);
+    crate::palette_tests::drive(&mut app, Event::Paste("Layout".into()));
+    workflow_choice(&mut app, "bases.config.layout");
+    crate::palette_tests::drive(&mut app, Event::Paste("List".into()));
+    crate::palette_tests::drive(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+    );
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(palette.error.as_ref().unwrap().contains("markers must"));
+    assert_eq!(palette.input.lines()[0], "List");
+    assert_eq!(palette.items[palette.state.selected().unwrap()].id, "list");
+    assert!(!palette.is_submitting());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    crate::palette_tests::drive(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+    );
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(palette.workflow.is_none());
+    assert_eq!(palette.tabs[palette.active_tab].0, "Bases");
+    assert_eq!(palette.input.lines()[0], "Layout");
+    assert_eq!(
+        palette.items[palette.state.selected().unwrap()].id,
+        "bases.config.layout"
+    );
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        source
+    );
+}
+
+#[test]
+fn palette_bases_selector_rejects_external_replacement_and_retains_selection() {
+    let (_root, mut app) = fixture();
+    menu(&mut app, "Table row height");
+    crate::palette_tests::drive(&mut app, Event::Paste("Extra".into()));
+    let baseline = app.storage.load_document("board.base").unwrap();
+    let external = baseline.source().replace("opaque: true", "opaque: false");
+    app.storage.save_document(&baseline, &external).unwrap();
+    app.invalidate_bases();
+    idle(&mut app);
+    crate::palette_tests::drive(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+    );
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(
+        palette
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("Bases document changed")
+    );
+    assert_eq!(palette.input.lines()[0], "Extra");
+    assert_eq!(palette.items[palette.state.selected().unwrap()].id, "extra");
+    assert!(!palette.is_submitting());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        external
     );
 }

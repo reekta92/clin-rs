@@ -299,6 +299,20 @@ fn menu(app: &mut App, label: &str) {
     key(app, KeyCode::Enter);
 }
 fn prompt_text(app: &mut App, text: &str) {
+    if let Some(palette) = app.command_palette.as_mut().filter(|p| {
+        p.bases_page()
+            .is_some_and(|page| page.current_value().is_some())
+    }) {
+        let index = palette
+            .items
+            .iter()
+            .position(|item| item.id == text)
+            .expect("fixed configuration option");
+        palette.state.select(Some(index));
+        key(app, KeyCode::Enter);
+        idle(app);
+        return;
+    }
     if let Some(palette) = app
         .command_palette
         .as_mut()

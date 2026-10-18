@@ -177,16 +177,10 @@ fn list_settings_wrap_focus_mouse_and_lossless_reset() {
             .any(|(_, _, column)| *column == 2)
     );
     menu(&mut app, "List markers");
-    prompt_text(&mut app, "bullets");
-    assert!(
-        app.command_palette
-            .as_ref()
-            .unwrap()
-            .error
-            .as_ref()
-            .unwrap()
-            .contains("markers must")
-    );
+    event(&mut app, Event::Paste("bullets".into()));
+    key(&mut app, KeyCode::Enter);
+    assert!(app.command_palette.as_ref().unwrap().items.is_empty());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
     key(&mut app, KeyCode::Esc);
     menu(&mut app, "List markers");
     prompt_text(&mut app, "none");
@@ -270,16 +264,10 @@ fn table_heights_widths_wrapping_focus_and_authoring_are_native_and_guarded() {
     assert_eq!(app.bases_state.as_ref().unwrap().hit_rows[0].0.height, 8);
     let before = app.storage.load_document("board.base").unwrap();
     menu(&mut app, "Table row height");
-    prompt_text(&mut app, "giant");
-    assert!(
-        app.command_palette
-            .as_ref()
-            .unwrap()
-            .error
-            .as_ref()
-            .unwrap()
-            .contains("rowHeight must")
-    );
+    event(&mut app, Event::Paste("giant".into()));
+    key(&mut app, KeyCode::Enter);
+    assert!(app.command_palette.as_ref().unwrap().items.is_empty());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
     assert_eq!(
         app.storage.load_document("board.base").unwrap().source(),
         before.source()

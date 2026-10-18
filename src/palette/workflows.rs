@@ -409,7 +409,7 @@ impl App {
         selected: usize,
     ) {
         if matches!(palette.workflow, Some(Workflow::Bases(_))) {
-            self.activate_palette_bases(palette);
+            self.activate_palette_bases(palette, selected);
             return;
         }
         if matches!(

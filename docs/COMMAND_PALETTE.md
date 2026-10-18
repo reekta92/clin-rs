@@ -142,7 +142,7 @@ When launched from the palette, these workflows keep the same frame:
 | Drawing, Canvas, Bases creation | Name input; collisions retain input and never overwrite a file |
 | URL import/append | URL input, retaining the original append target |
 | Vault switcher | Filterable vaults; F2 renames the selected vault, Delete requests the existing removal confirmation |
-| Bases configuration | Commands appear directly under All and Bases; follow-up inputs stay in the palette |
+| Bases configuration | Commands appear directly under All and Bases; fixed layout/row-height/marker/indentation/image-fit options use searchable selectors with current values; other inputs stay in the palette |
 | Bases property edit, public note creation, export, group move | Existing typed value/path inputs with guarded asynchronous writes |
 
 The header field filters a choice list or edits the requested value, depending on the step. Category tabs appear only at the command root. Esc returns to the parent, restoring its query, selection and scroll. Outside clicks close through the workflow's save/cleanup path. Failed validation or writes retain the input and display the error. Pending writes block departure and duplicate submission.

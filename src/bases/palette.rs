@@ -251,6 +251,61 @@ impl Selection {
     }
 }
 
+pub(crate) struct Choices {
+    options: &'static [(&'static str, &'static str)],
+    current: String,
+}
+
+impl Choices {
+    fn for_target(target: &Target, state: &BasesState) -> Option<Self> {
+        let Target::Config {
+            command: Command::View(key),
+            view,
+            ..
+        } = target
+        else {
+            return None;
+        };
+        let options: &[(&str, &str)] = match *key {
+            "type" => &[
+                ("table", "Table"),
+                ("list", "List"),
+                ("cards", "Cards"),
+                ("kanban", "Kanban"),
+            ],
+            "rowHeight" => &[
+                ("", "Short (default)"),
+                ("medium", "Medium"),
+                ("tall", "Tall"),
+                ("extra", "Extra"),
+            ],
+            "markers" => &[
+                ("", "Bullet (default)"),
+                ("number", "Numbered"),
+                ("none", "None"),
+            ],
+            "indentProperties" => &[("", "Off (default)"), ("true", "On")],
+            "imageFit" => &[("", "Cover (default)"), ("contain", "Contain")],
+            _ => return None,
+        };
+        let view = state.loaded.as_ref()?.document.config.views.get(*view)?;
+        let current = match (*key, view.options.get(*key)) {
+            (_, None) | ("indentProperties", Some(serde_yaml_ng::Value::Bool(false))) => "",
+            ("indentProperties", Some(serde_yaml_ng::Value::Bool(true))) => "true",
+            ("indentProperties", _) => "Invalid value",
+            ("markers", Some(serde_yaml_ng::Value::String(value))) if value == "bullet" => "",
+            ("markers", Some(serde_yaml_ng::Value::String(value))) if value.is_empty() => {
+                "Invalid value"
+            }
+            ("imageFit", Some(serde_yaml_ng::Value::String(value))) if value == "cover" => "",
+            (_, Some(serde_yaml_ng::Value::String(value))) => value.as_str(),
+            _ => "Invalid value",
+        }
+        .to_owned();
+        Some(Self { options, current })
+    }
+}
+
 pub(crate) enum Page {
     Running {
         title: String,
@@ -265,6 +320,7 @@ pub(crate) enum Page {
         hint: String,
         selection: Selection,
         submitting: bool,
+        choices: Option<Choices>,
     },
 }
 
@@ -278,16 +334,53 @@ impl Page {
     }
     pub(crate) fn hint(&self) -> &str {
         match self {
+            Self::Prompt {
+                choices: Some(_), ..
+            } => "",
             Self::Prompt { hint, .. } => hint,
             Self::Preparing { .. } => "Preparing captured public property…",
             Self::Running { .. } => "Operation in progress…",
         }
     }
     pub(crate) fn is_prompt(&self) -> bool {
-        matches!(self, Self::Prompt { .. })
+        matches!(self, Self::Prompt { choices: None, .. })
+    }
+    pub(crate) fn current_value(&self) -> Option<&str> {
+        let Self::Prompt {
+            choices: Some(choices),
+            ..
+        } = self
+        else {
+            return None;
+        };
+        Some(
+            choices
+                .options
+                .iter()
+                .find(|(value, _)| *value == choices.current)
+                .map_or(choices.current.as_str(), |(_, name)| *name),
+        )
     }
     pub(crate) fn rows(&self) -> Vec<(String, String, String)> {
         match self {
+            Self::Prompt {
+                choices: Some(choices),
+                ..
+            } => choices
+                .options
+                .iter()
+                .map(|(value, name)| {
+                    (
+                        (*value).into(),
+                        (*name).into(),
+                        if *value == choices.current {
+                            "Current".into()
+                        } else {
+                            String::new()
+                        },
+                    )
+                })
+                .collect(),
             Self::Preparing { .. } => vec![(
                 "retry".into(),
                 "Retry preparation".into(),
@@ -358,6 +451,7 @@ impl BasesState {
                 }
                 (
                     Page::Prompt {
+                        choices: Choices::for_target(&target, self),
                         target,
                         title,
                         hint,
@@ -372,7 +466,24 @@ impl BasesState {
         if palette.workflow_action.is_none() {
             palette.workflow_action = palette.launching_action.clone();
         }
+        let initial_choice = match &page {
+            Page::Prompt {
+                choices: Some(choices),
+                ..
+            } => Some(choices.current.clone()),
+            _ => None,
+        };
+        let input = if initial_choice.is_some() {
+            crate::ui::make_popup_textarea(&app.app_theme, "Search options...")
+        } else {
+            input
+        };
         palette.push_workflow(Workflow::Bases(Box::new(page)), input, app);
+        if let Some(current) = initial_choice
+            && let Some(index) = palette.items.iter().position(|item| item.id == current)
+        {
+            palette.state.select(Some(index));
+        }
         app.command_palette = Some(palette);
     }
 
@@ -502,7 +613,7 @@ impl App {
         }
     }
 
-    pub(crate) fn activate_palette_bases(&mut self, mut palette: CommandPalette) {
+    pub(crate) fn activate_palette_bases(&mut self, mut palette: CommandPalette, selected: usize) {
         let result = (|| -> Result<()> {
             crate::actions::validate_action_context(
                 palette.workflow_action.as_deref().unwrap_or(""),
@@ -533,6 +644,7 @@ impl App {
         self.command_palette = Some(palette);
         let mut state = self.bases_state.take().expect("validated Bases state");
         let mut palette = self.command_palette.take().expect("palette");
+        let option = palette.items.get(selected).map(|item| item.id.clone());
         let result = match palette.workflow.as_mut().expect("Bases workflow") {
             Workflow::Bases(page) => match &mut **page {
                 Page::Running { .. } => {
@@ -544,9 +656,19 @@ impl App {
                     state.start_edit(self, EditIntent::Edit)
                 }
                 Page::Prompt {
-                    target, submitting, ..
+                    target,
+                    submitting,
+                    choices,
+                    ..
                 } => {
-                    let result = state.submit(self, target, &palette.input.lines().join("\n"));
+                    let source = if let Some(choices) = choices {
+                        option
+                            .filter(|id| choices.options.iter().any(|(value, _)| *value == id))
+                            .context("Configuration option unavailable")
+                    } else {
+                        Ok(palette.input.lines().join("\n"))
+                    };
+                    let result = source.and_then(|source| state.submit(self, target, &source));
                     if result.is_ok() {
                         *submitting = true;
                     }

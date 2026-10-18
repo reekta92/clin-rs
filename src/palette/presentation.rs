@@ -76,6 +76,12 @@ impl CommandPalette {
                 app.config.goals.note_goal.to_string()
             }
             Some(Workflow::Vault(_)) => app.storage.data_dir.to_string_lossy().into_owned(),
+            Some(Workflow::Bases(page)) => {
+                let Some(current) = page.current_value() else {
+                    return Vec::new();
+                };
+                current.to_owned()
+            }
             _ => return Vec::new(),
         };
         vec![(
