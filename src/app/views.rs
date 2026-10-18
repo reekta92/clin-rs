@@ -88,7 +88,7 @@ impl App {
         Ok(())
     }
 
-    fn save_editor_before_navigation(&mut self) -> anyhow::Result<()> {
+    pub(crate) fn save_editor_before_navigation(&mut self) -> anyhow::Result<()> {
         if let Err(error) = self.autosave() {
             self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
             self.editor.autosave_timer = None;
@@ -151,7 +151,23 @@ impl App {
         } else {
             None
         };
-        // Everything that can fail has completed; now release the old owners.
+        let retained_graph = if destination == "graph.open" {
+            self.graph_plugin.take()
+        } else {
+            None
+        };
+        self.release_navigation_owners();
+        if destination == "graph.open" {
+            self.graph_plugin = graph.or(retained_graph);
+            self.mode = ViewMode::Graph;
+            self.return_mode = Some(ViewMode::List);
+        }
+        self.sync_retained_view_settings();
+        Ok(())
+    }
+
+    /// Commit departure only after saving and preparing the destination.
+    pub(crate) fn release_navigation_owners(&mut self) {
         if self.mode == ViewMode::Help {
             self.close_help_page();
         }
@@ -162,11 +178,6 @@ impl App {
                 crate::overlay::OverlayResult::Exit,
             );
         }
-        let retained_graph = if destination == "graph.open" {
-            self.graph_plugin.take()
-        } else {
-            None
-        };
         self.graph_plugin = None;
         self.draw_state = None;
         self.canvas_state = None;
@@ -180,13 +191,6 @@ impl App {
         self.return_mode = None;
         self.visit_return_mode = None;
         self.back_to_list(None, None);
-        if destination == "graph.open" {
-            self.graph_plugin = graph.or(retained_graph);
-            self.mode = ViewMode::Graph;
-            self.return_mode = Some(ViewMode::List);
-        }
-        self.sync_retained_view_settings();
-        Ok(())
     }
     pub fn open_help_page(&mut self) {
         self.open_help_page_with_tab(HelpTab::Notes);

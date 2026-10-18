@@ -157,7 +157,8 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "settings.scrollbars"
         | "settings.scrollbar_pan_mode"
         | "settings.confirm_quit" => Shared,
-        "notes.open" | "help.open" | "graph.open" | "setup_wizard" | "vault.switch" => Navigation,
+        "notes.open" | "help.open" | "graph.open" | "setup_wizard" | "vault.switch"
+        | "navigation.back" | "navigation.forward" | "document.save" | "app.quit" => Navigation,
         "draw.create"
         | "create_canvas"
         | "external_editor.toggle"
@@ -272,6 +273,15 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
     match scope {
         Shared => true,
         Navigation => match id {
+            "navigation.back" => app.can_navigate_history(false),
+            "navigation.forward" => app.can_navigate_history(true),
+            "document.save" => {
+                context.owner == ActionContext::owner(app)
+                    && matches!(
+                        context.mode,
+                        ViewMode::Edit | ViewMode::Draw | ViewMode::Canvas
+                    )
+            }
             "notes.open" => !list,
             "help.open" => context.mode != ViewMode::Help,
             "graph.open" => context.mode != ViewMode::Graph,

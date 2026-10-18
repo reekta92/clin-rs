@@ -147,6 +147,68 @@ fn embedded_dialogs_keep_modal_focus_and_custom_palette_expands_without_private_
 }
 
 #[test]
+fn palette_ctrl_space_and_history_restore_expanded_bases_host_routes() {
+    for mode in [ViewMode::List, ViewMode::Edit, ViewMode::Canvas] {
+        let (_root, mut app) = fixture();
+        app.bases_state = None;
+        app.mode = ViewMode::List;
+        if mode == ViewMode::Edit {
+            app.load_and_open_note("public.md", None);
+        }
+        if mode == ViewMode::Canvas {
+            let path = app.storage.notes_dir.join("map.canvas");
+            fs::write(&path, "{\"nodes\":[],\"edges\":[]}").unwrap();
+            app.canvas_state = Some(
+                crate::pinstar_adapter::PinstarPlugin::new(
+                    &path,
+                    &app.config,
+                    app.keybinds.clone(),
+                    crate::keybinds::KeyMatcher::default(),
+                    None,
+                    &app.storage.data_dir,
+                )
+                .unwrap(),
+            );
+        }
+        app.mode = mode;
+        app.observe_navigation();
+        let renderer = markdown("![[board.base#List]]", Some("public.md"));
+        rendered(&mut app, &renderer, "• public.md, 2");
+        embedded_event(
+            &mut app,
+            Event::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: 4,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        crate::palette_tests::drive(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL)),
+        );
+        assert_eq!(app.mode, ViewMode::Bases);
+        app.dismiss_command_palette();
+        crate::actions::execute_action("notes.open", &mut app, None).unwrap();
+        crate::actions::execute_action("navigation.back", &mut app, None).unwrap();
+        assert_eq!(app.mode, ViewMode::Bases);
+        let state = app.bases_state.as_ref().unwrap();
+        assert!(state.embedded_request.is_some());
+        assert_eq!(state.previous_mode, mode);
+        crate::finish_overlay_event(
+            &mut app,
+            crate::overlay::ViewKind::Bases,
+            OverlayResult::Exit,
+        );
+        assert_eq!(app.mode, mode);
+        if mode == ViewMode::Edit {
+            assert_eq!(app.editor.editing_id.as_deref(), Some("public.md"));
+        }
+        rendered(&mut app, &renderer, "• public.md, 2");
+    }
+}
+
+#[test]
 fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialogs_modal() {
     for mode in [ViewMode::List, ViewMode::Edit, ViewMode::Canvas] {
         let (_root, mut app) = fixture();

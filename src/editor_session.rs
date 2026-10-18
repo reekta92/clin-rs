@@ -185,6 +185,22 @@ pub(crate) fn dispatch_editor_event<B: ratatui::backend::Backend>(
 where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
+    app.observe_navigation();
+    let result = dispatch_editor_event_inner(terminal, app, event, focus, mouse_selection);
+    app.observe_navigation();
+    result
+}
+
+fn dispatch_editor_event_inner<B: ratatui::backend::Backend>(
+    terminal: &mut ratatui::Terminal<B>,
+    app: &mut App,
+    event: Event,
+    focus: &mut EditFocus,
+    mouse_selection: &mut MouseTextSelection,
+) -> Result<bool>
+where
+    B::Error: std::error::Error + Send + Sync + 'static,
+{
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
     if crate::events::handle_open_palette_event(app, &event, area) {

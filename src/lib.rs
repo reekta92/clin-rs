@@ -1658,6 +1658,22 @@ fn dispatch_event<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
+    app.observe_navigation();
+    let result = dispatch_event_inner(events, app, ev, focus, terminal);
+    app.observe_navigation();
+    result
+}
+
+fn dispatch_event_inner<B: ratatui::backend::Backend>(
+    events: &mut crate::event_source::EventSource,
+    app: &mut crate::app::App,
+    ev: crossterm::event::Event,
+    focus: &mut EditFocus,
+    terminal: &mut ratatui::Terminal<B>,
+) -> anyhow::Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
     let size = terminal.size().context("failed to get terminal size")?;
     if crate::events::handle_open_palette_event(app, &ev, Rect::new(0, 0, size.width, size.height))
     {

@@ -7,6 +7,7 @@ mod edit_panes;
 mod folders;
 mod import_ops;
 mod loading;
+mod navigation;
 mod notes;
 mod popups;
 mod search;
@@ -399,6 +400,7 @@ pub struct App {
     pub editor: NoteEditor,
     pub list: ListView,
     pub mode: ViewMode,
+    pub(crate) navigation: navigation::History,
     pub status: Cow<'static, str>,
     pub status_until: Option<Instant>,
     pub help_page: u16,
@@ -669,6 +671,7 @@ impl App {
             editor,
             list,
             mode: ViewMode::List,
+            navigation: navigation::History::default(),
             status: Cow::Borrowed(""),
             status_until: None,
             help_page: 0,
@@ -679,7 +682,7 @@ impl App {
             help_info_active: 0,
             help_suggestions: Vec::new(),
             command_palette: None,
-            command_usage: Default::default(),
+            command_usage: std::collections::BTreeMap::default(),
             command_usage_path: None,
             quick_keybinds_open: false,
             vault_switcher: None,
@@ -949,6 +952,7 @@ impl App {
             list,
             notes_worker_pool: notes_worker_pool.clone(),
             mode: ViewMode::List,
+            navigation: navigation::History::default(),
             status: Cow::Borrowed("Validating notes…"),
             status_until: None,
             help_page: 0,
@@ -959,7 +963,7 @@ impl App {
             help_info_active: 0,
             help_suggestions: Vec::new(),
             command_palette: None,
-            command_usage: Default::default(),
+            command_usage: std::collections::BTreeMap::default(),
             command_usage_path: None,
             quick_keybinds_open: false,
             vault_switcher: None,
@@ -2068,6 +2072,9 @@ impl App {
     }
 
     pub fn initiate_quit(&mut self) {
+        if self.command_palette.is_none() {
+            self.record_command_usage("app.quit");
+        }
         if self.confirm_on_quit {
             self.show_confirm(ConfirmAction::QuitApp);
         } else {

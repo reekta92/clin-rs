@@ -119,7 +119,7 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ### Search Behavior
 
 - Fuzzy matching against dynamic action **names**, not descriptions
-- Results ranked by `SkimMatcherV2` score
+- Exact names, prefixes and substrings precede fuzzy-only matches; frequency and recency rank each group
 - Results update on every keystroke and relevant context/config refresh
 - Pasted CR/LF sequences become spaces; paste refreshes before Enter can activate
 - Copy/cut/select-all operate on the query without changing the background editor or quitting
@@ -240,6 +240,14 @@ and original editor/overlay return route. Shared settings/navigation do not inhe
 
 Notes has up to six root categories: All, Notes, Import, Append, Views, and Settings. Empty categories are hidden. Notes and Append need a captured Markdown/text-note target; selecting a folder or another file type can leave All, Import, Views, and Settings. Import and Append also require the Import feature. Eligibility is refreshed after actions and before execution so a stale target cannot be edited.
 
+## Basic actions and view history
+
+**Go Back** and **Go Forward** revisit views and documents, including Help return routes, specialized source/template editors and expanded live Bases hosts. History is session-only, bounded to 64 locations, and resets on vault rebootstrap. Ordinary navigation after Back discards the forward branch; opening or closing the palette and editing its query do not create history entries.
+
+Replay saves live and suspended owners, prepares the destination, then commits departure. Missing, renamed, invalid or disabled destinations report an error and retain the current buffers and history cursor. Active Bases writes still block departure. History reopens saved documents; it does not retain editor undo stacks or cursor/scroll positions for departed views.
+
+**Save** is available in Edit, Draw and Canvas and revalidates the captured document. **Quit App** saves active and suspended documents before using the existing quit confirmation. Setup keeps its existing Finish/Cancel ownership: finish or cancel the wizard before using these actions.
+
 ## Suggestions and usage
 
 An empty search ranks available commands by app-wide access count, then most recent access. Counts survive restarts in private local `state.json`; only command IDs, counts and timestamps are stored. Existing version-1 state needs no migration. State updates coordinate cooperating writers and preserve goals and vault settings.
@@ -250,7 +258,7 @@ Successful palette launches count once, including opening a choice/input workflo
 
 ## Verification
 
-The palette suites cover real main/editor dispatch, every view and preset, custom F6 bindings, captured targets, retained/suspended owners, integrated step navigation, live settings and Setup persistence. Workflow tests cover rendered previews, background controls by mouse/shortcut, category eligibility across settings changes, the standalone subnotes handoff and multiline saving, separate confirmations, stale Bases snapshots, blocked writes and a concurrent Bases filename collision.
+The palette suites cover real main/editor dispatch, every view and preset, global Ctrl+Space/F6 bindings, remapped sequences, captured targets, retained/suspended owners, integrated step navigation, live settings and Setup persistence. Workflow tests cover rendered previews, background controls by mouse/shortcut, category eligibility across settings changes, the standalone subnotes handoff and multiline saving, separate confirmations, stale Bases snapshots, blocked writes and a concurrent Bases filename collision.
 
 Run `cargo test --locked palette_`, `cargo test --locked actions::`, and the affected `bases::` and editor suites. Release checks include `cargo fmt --all --check`, locked all-target checking, Clippy with `-D warnings`, the full test suite with temporary XDG directories, dependency auditing, and Rust 1.90.0 checking. Image HTTP tests need local sockets; opt-in performance checks remain separate.
 

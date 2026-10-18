@@ -354,6 +354,22 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     ];
     actions.extend(
         [
+            (
+                "navigation.back",
+                "Go Back",
+                "Revisit the previous view or document",
+            ),
+            (
+                "navigation.forward",
+                "Go Forward",
+                "Revisit the next view or document",
+            ),
+            ("document.save", "Save", "Save the current document"),
+            (
+                "app.quit",
+                "Quit App",
+                "Save pending changes and quit the application",
+            ),
             ("notes.open", "Open Notes", "Return to the Notes list"),
             ("help.open", "Open Help", "Show help for the current view"),
             (
@@ -470,7 +486,9 @@ pub(crate) fn execute_action_in_context(
         anyhow::bail!("Action unavailable while another input owns the view");
     }
     validate_action_context(action_id, app, context)?;
+    app.observe_navigation();
     action.execute(app, context.note_id.as_deref())?;
+    app.observe_navigation();
     app.record_command_usage(action_id);
     Ok(())
 }
@@ -488,6 +506,7 @@ pub(crate) fn validate_action_context(
 }
 
 struct NavigationAction(&'static str, &'static str, &'static str);
+
 impl Action for NavigationAction {
     fn id(&self) -> Cow<'static, str> {
         self.0.into()
@@ -499,10 +518,19 @@ impl Action for NavigationAction {
         self.2.into()
     }
     fn category(&self) -> ActionCategory {
-        ActionCategory::Views
+        match self.0 {
+            "app.quit" | "document.save" => ActionCategory::General,
+            _ => ActionCategory::Views,
+        }
     }
     fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
-        app.navigate_from_palette(self.0)
+        match self.0 {
+            "navigation.back" => app.navigate_history(false),
+            "navigation.forward" => app.navigate_history(true),
+            "document.save" => app.save_active_view(),
+            "app.quit" => app.quit_from_palette(),
+            _ => app.navigate_from_palette(self.0),
+        }
     }
 }
 

@@ -28,6 +28,18 @@ pub(crate) struct Embeds {
     public_revision: u64,
 }
 impl Embeds {
+    pub(crate) fn return_mode(&self) -> Option<crate::app::ViewMode> {
+        self.return_mode
+    }
+
+    pub(crate) fn retain_history_host(
+        &mut self,
+        return_mode: Option<crate::app::ViewMode>,
+        suspended: Option<Box<super::state::BasesState>>,
+    ) {
+        self.return_mode = return_mode;
+        self.suspended_base = suspended;
+    }
     pub(crate) fn clear_palette_matchers(&mut self) {
         for state in self.entries.get_mut().values_mut() {
             state.matcher.clear();

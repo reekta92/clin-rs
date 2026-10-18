@@ -842,6 +842,13 @@ pub(crate) fn handle_open_palette_event(
     }
     match event {
         crossterm::event::Event::Key(key) => {
+            if key.kind == crossterm::event::KeyEventKind::Press {
+                match app.resolve_palette_shortcut(*key, app.mode) {
+                    crate::keybinds::MatchOutcome::Matched(_, _)
+                    | crate::keybinds::MatchOutcome::Pending => return true,
+                    crate::keybinds::MatchOutcome::NoMatch => {}
+                }
+            }
             if app.palette_theme_shortcut(*key) || app.palette_manager_shortcut(*key) {
                 return true;
             }

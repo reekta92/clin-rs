@@ -179,6 +179,7 @@ impl App {
         if self.command_palette.is_some() || !self.palette_input_available() {
             return false;
         }
+        self.observe_navigation();
         let context = ActionContext::capture(self, focus, None);
         self.clear_palette_matchers();
         self.quick_keybinds_open = false;

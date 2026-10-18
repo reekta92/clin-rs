@@ -359,6 +359,97 @@ fn palette_and_remapped_direct_shortcuts_share_counts_without_recording_typing()
 }
 
 #[test]
+fn palette_history_roundtrips_views_documents_and_truncates_forward_navigation() {
+    for mode in MODES
+        .into_iter()
+        .filter(|mode| !matches!(mode, ViewMode::List | ViewMode::Setup))
+    {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        activate(&mut f.app, "notes.open");
+        assert_eq!(f.app.mode, ViewMode::List);
+        activate(&mut f.app, "navigation.back");
+        assert_eq!(f.app.mode, mode, "{mode:?}");
+        activate(&mut f.app, "navigation.forward");
+        assert_eq!(f.app.mode, ViewMode::List);
+    }
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    drive(&mut f.app, key(KeyCode::F(6)));
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.app.load_and_open_note("selected.md", None);
+    activate(&mut f.app, "navigation.back");
+    assert_eq!(f.app.editor.editing_id.as_deref(), Some("editing.md"));
+    activate(&mut f.app, "navigation.forward");
+    assert_eq!(f.app.editor.editing_id.as_deref(), Some("selected.md"));
+    activate(&mut f.app, "navigation.back");
+    activate(&mut f.app, "graph.open");
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert!(!visible(&f.app, "navigation.forward"));
+}
+
+#[test]
+fn palette_history_failed_destination_and_save_keep_buffers_and_history() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    activate(&mut f.app, "notes.open");
+    let path = f.app.storage.note_path("editing.md");
+    let source = fs::read(&path).unwrap();
+    fs::remove_file(&path).unwrap();
+    activate(&mut f.app, "navigation.back");
+    assert_eq!(f.app.mode, ViewMode::List);
+    assert!(f.app.can_navigate_history(false));
+    assert!(!f.app.can_navigate_history(true));
+    fs::write(&path, source).unwrap();
+    activate(&mut f.app, "navigation.back");
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    f.app.editor.body.insert_str("pending");
+    fs::write(&path, "External replacement\n").unwrap();
+    let pending = f.app.editor.body.text();
+    activate(&mut f.app, "navigation.back");
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    assert_eq!(f.app.editor.body.text(), pending);
+    assert!(f.app.can_navigate_history(true));
+    activate(&mut f.app, "app.quit");
+    assert!(!f.app.should_quit);
+    assert_eq!(f.app.editor.body.text(), pending);
+    assert_eq!(fs::read_to_string(path).unwrap(), "External replacement\n");
+}
+
+#[test]
+fn palette_save_and_quit_preserve_confirmation_and_suspended_editors() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    f.app.editor.body.insert_str("saved through palette\n");
+    activate(&mut f.app, "document.save");
+    assert!(
+        fs::read_to_string(f.app.storage.note_path("editing.md"))
+            .unwrap()
+            .contains("saved through palette")
+    );
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    f.app.editor.body.insert_str("suspended edit\n");
+    activate(&mut f.app, "help.open");
+    f.app.confirm_on_quit = true;
+    activate(&mut f.app, "app.quit");
+    assert!(!f.app.should_quit);
+    assert!(matches!(
+        f.app.popups.confirm.as_ref().map(|popup| &popup.action),
+        Some(crate::popups::ConfirmAction::QuitApp)
+    ));
+    assert!(
+        fs::read_to_string(f.app.storage.note_path("editing.md"))
+            .unwrap()
+            .contains("suspended edit")
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(!f.app.should_quit);
+    activate(&mut f.app, "app.quit");
+    f.app.confirm_action();
+    assert!(f.app.should_quit);
+}
+
+#[test]
 fn palette_custom_f6_strokes_keep_existing_sequence_resolution() {
     let mut f = Fixture::new();
     for sequence in ["F6", "F6 x", "g F6"] {
