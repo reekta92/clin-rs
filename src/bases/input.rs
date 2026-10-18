@@ -35,7 +35,12 @@ impl OverlayView for BasesState {
                     app.config.sequences_enabled(),
                     app.config.counts_enabled(),
                 ) {
-                    MatchOutcome::Matched(action, count) => Some((action, count.unwrap_or(1))),
+                    MatchOutcome::Matched(action, count) => {
+                        if let Some(id) = action.palette_action_id() {
+                            app.record_command_usage(id);
+                        }
+                        Some((action, count.unwrap_or(1)))
+                    }
                     _ => None,
                 }
             }

@@ -1308,6 +1308,7 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
             }
         }
         OverlayResult::OpenHelp(tab) => {
+            app.record_command_usage("help.open");
             app.reload_theme();
             app.open_help_page_with_tab(tab);
         }

@@ -240,6 +240,14 @@ and original editor/overlay return route. Shared settings/navigation do not inhe
 
 Notes has up to six root categories: All, Notes, Import, Append, Views, and Settings. Empty categories are hidden. Notes and Append need a captured Markdown/text-note target; selecting a folder or another file type can leave All, Import, Views, and Settings. Import and Append also require the Import feature. Eligibility is refreshed after actions and before execution so a stale target cannot be edited.
 
+## Suggestions and usage
+
+An empty search ranks available commands by app-wide access count, then most recent access. Counts survive restarts in private local `state.json`; only command IDs, counts and timestamps are stored. Existing version-1 state needs no migration. State updates coordinate cooperating writers and preserve goals and vault settings.
+
+Search keeps exact names ahead of prefixes, then substrings, then fuzzy matches. Within each match group, frequency and recency take priority, followed by fuzzy score. Unused ties retain registry order. Ineligible commands remain excluded, and background refresh retains the selected command identity.
+
+Successful palette launches count once, including opening a choice/input workflow. Direct bindings for the same Notes/editor/Bases commands, Graph legend/minimap controls, Canvas save, overlay Help and the vault switcher share their command IDs. Typing, sequence prefixes and rejected palette commands do not count.
+
 ## Verification
 
 The palette suites cover real main/editor dispatch, every view and preset, custom F6 bindings, captured targets, retained/suspended owners, integrated step navigation, live settings and Setup persistence. Workflow tests cover rendered previews, background controls by mouse/shortcut, category eligibility across settings changes, the standalone subnotes handoff and multiline saving, separate confirmations, stale Bases snapshots, blocked writes and a concurrent Bases filename collision.

@@ -409,6 +409,8 @@ pub struct App {
     pub help_info_active: usize,
     pub help_suggestions: Vec<crate::ui::HelpSuggestion>,
     pub command_palette: Option<crate::palette::CommandPalette>,
+    pub(crate) command_usage: std::collections::BTreeMap<String, crate::local_state::CommandUsage>,
+    pub(crate) command_usage_path: Option<std::path::PathBuf>,
     pub quick_keybinds_open: bool,
     pub vault_switcher: Option<crate::app::vaults::VaultSwitcher>,
     pub needs_full_redraw: bool,
@@ -677,6 +679,8 @@ impl App {
             help_info_active: 0,
             help_suggestions: Vec::new(),
             command_palette: None,
+            command_usage: Default::default(),
+            command_usage_path: None,
             quick_keybinds_open: false,
             vault_switcher: None,
             popups: crate::popups::PopupManager::default(),
@@ -777,6 +781,8 @@ impl App {
                 crate::config::ClinConfig::config_path().unwrap_or_default(),
             ) {
                 if let Ok(state) = crate::local_state::LocalState::load(&paths.state_path()) {
+                    app.command_usage = state.command_usage;
+                    app.command_usage_path = Some(paths.state_path());
                     if let Some(vault_state) = state.vaults.get(&vault_key) {
                         if !vault_state.expanded_folders.is_empty() {
                             for folder in &vault_state.expanded_folders {
@@ -953,6 +959,8 @@ impl App {
             help_info_active: 0,
             help_suggestions: Vec::new(),
             command_palette: None,
+            command_usage: Default::default(),
+            command_usage_path: None,
             quick_keybinds_open: false,
             vault_switcher: None,
             popups: crate::popups::PopupManager::default(),
@@ -1053,6 +1061,8 @@ impl App {
                 crate::config::ClinConfig::config_path().unwrap_or_default(),
             ) {
                 if let Ok(state) = crate::local_state::LocalState::load(&paths.state_path()) {
+                    app.command_usage = state.command_usage;
+                    app.command_usage_path = Some(paths.state_path());
                     if let Some(vault_state) = state.vaults.get(&vault_key) {
                         if !vault_state.expanded_folders.is_empty() {
                             for folder in &vault_state.expanded_folders {

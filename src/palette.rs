@@ -232,8 +232,24 @@ impl CommandPalette {
                     });
                 }
             }
-            matched.sort_by_key(|b| std::cmp::Reverse(b.score));
         }
+        matched.sort_by_key(|item| {
+            let usage = app.command_usage.get(&item.id).copied().unwrap_or_default();
+            let name = item.name.to_lowercase();
+            let query = query.to_lowercase();
+            let relevance = if query.is_empty() {
+                0
+            } else if name.split(" [").next() == Some(query.as_str()) {
+                4
+            } else if name.starts_with(&query) {
+                3
+            } else if name.contains(&query) {
+                2
+            } else {
+                1
+            };
+            std::cmp::Reverse((relevance, usage.count, usage.last_used, item.score))
+        });
         self.items = matched;
         if self.items.is_empty() {
             self.state.select(None);

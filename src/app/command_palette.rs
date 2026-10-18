@@ -4,6 +4,43 @@ use crate::keybinds::{GlobalAction, KeyCombo, MatchOutcome};
 use crossterm::event::KeyEvent;
 
 impl App {
+    pub(crate) fn record_command_usage(&mut self, id: &str) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        let now = now.max(
+            self.command_usage
+                .values()
+                .map(|usage| usage.last_used)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1),
+        );
+        self.command_usage
+            .entry(id.to_owned())
+            .or_default()
+            .record(now);
+        let Some(path) = &self.command_usage_path else {
+            return;
+        };
+        match crate::local_state::LocalState::update(path, |state| {
+            state
+                .command_usage
+                .entry(id.to_owned())
+                .or_default()
+                .record(now);
+            Ok(())
+        }) {
+            Ok(state) => self.command_usage = state.command_usage,
+            Err(error) => self.messages.push(
+                format!("Command usage could not be saved: {error:#}"),
+                super::messages::MessageSeverity::Warning,
+            ),
+        }
+    }
+
     pub(crate) fn palette_shortcuts(&self, mode: ViewMode) -> Vec<KeyCombo> {
         fn claimed<A>(
             bindings: &std::collections::HashMap<A, Vec<crate::keybinds::KeyCombo>>,

@@ -1502,7 +1502,15 @@ impl crate::overlay::OverlayView for GrafPlugin {
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let config = _app.config.clone();
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &config, &keybinds, term_area)? {
+        let before = (self.show_minimap, self.show_legend);
+        let outcome = handle_event(event, self, &config, &keybinds, term_area)?;
+        if self.show_minimap != before.0 {
+            _app.record_command_usage("settings.graph_show_minimap");
+        }
+        if self.show_legend != before.1 {
+            _app.record_command_usage("settings.graph_show_legend");
+        }
+        if let Some(action) = outcome {
             match action {
                 EventAction::Quit => {
                     self.shutdown();

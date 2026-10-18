@@ -220,10 +220,15 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
-    match app
+    let outcome = app
         .keybinds
-        .resolve_edit(&mut app.seq_matcher, key, seq, counts)
+        .resolve_edit(&mut app.seq_matcher, key, seq, counts);
+    if let crate::keybinds::MatchOutcome::Matched(action, _) = outcome
+        && let Some(id) = action.palette_action_id()
     {
+        app.record_command_usage(id);
+    }
+    match outcome {
         crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
             EditAction::ToggleFrontmatter => {
                 app.toggle_frontmatter();

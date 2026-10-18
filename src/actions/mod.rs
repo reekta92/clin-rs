@@ -470,7 +470,9 @@ pub(crate) fn execute_action_in_context(
         anyhow::bail!("Action unavailable while another input owns the view");
     }
     validate_action_context(action_id, app, context)?;
-    action.execute(app, context.note_id.as_deref())
+    action.execute(app, context.note_id.as_deref())?;
+    app.record_command_usage(action_id);
+    Ok(())
 }
 
 pub(crate) fn validate_action_context(

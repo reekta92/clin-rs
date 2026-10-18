@@ -34,9 +34,25 @@ pub struct LocalState {
     /// Global daily goals progress.
     #[serde(default)]
     pub goals: DailyProgress,
+    /// App-wide command access counts; no document names or contents.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub command_usage: BTreeMap<String, CommandUsage>,
     /// Per‑vault UI state keyed by absolute vault identity path.
     #[serde(default)]
     pub vaults: BTreeMap<String, VaultState>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommandUsage {
+    pub count: u64,
+    pub last_used: u64,
+}
+
+impl CommandUsage {
+    pub(crate) fn record(&mut self, now: u64) {
+        self.count = self.count.saturating_add(1);
+        self.last_used = now;
+    }
 }
 
 /// Record of a pending storage‑path migration.
@@ -139,6 +155,27 @@ impl LocalState {
     where
         F: FnOnce(&mut Self) -> Result<()>,
     {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).context("failed to create state directory")?;
+        }
+        let lock_path = path.with_extension("json.lock");
+        if let Ok(metadata) = std::fs::symlink_metadata(&lock_path) {
+            anyhow::ensure!(
+                metadata.is_file() && !metadata.file_type().is_symlink(),
+                "state lock must be a regular non-symlink file"
+            );
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let lock = options
+            .open(lock_path)
+            .context("failed to open state lock")?;
+        lock.lock().context("failed to lock state")?;
         let mut state = Self::load(path)?;
         f(&mut state)?;
         state.save(path)?;
@@ -152,6 +189,7 @@ impl LocalState {
             version: LOCAL_STATE_VERSION,
             storage_migration: None,
             goals: DailyProgress::default(),
+            command_usage: BTreeMap::new(),
             vaults: BTreeMap::new(),
         }
     }
@@ -277,6 +315,39 @@ mod tests {
         assert_eq!(state.version, 1);
         assert!(state.storage_migration.is_none());
         assert_eq!(state.vaults.len(), 0);
+        assert!(state.command_usage.is_empty());
+    }
+
+    #[test]
+    fn command_usage_updates_preserve_existing_state_and_concurrent_counts() {
+        let tmp = TempDir::new().unwrap();
+        let path = state_path(&tmp);
+        std::fs::write(
+            &path,
+            r#"{"version":1,"goals":{"date":"today","words_written":42,"notes_modified":[]}}"#,
+        )
+        .unwrap();
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                let path = &path;
+                scope.spawn(move || {
+                    for tick in 0..10 {
+                        LocalState::update(path, |state| {
+                            state
+                                .command_usage
+                                .entry("help.open".into())
+                                .or_default()
+                                .record(tick);
+                            Ok(())
+                        })
+                        .unwrap();
+                    }
+                });
+            }
+        });
+        let saved = LocalState::load(&path).unwrap();
+        assert_eq!(saved.command_usage["help.open"].count, 40);
+        assert_eq!(saved.goals.words_written, 42);
     }
 
     #[test]

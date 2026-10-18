@@ -33,6 +33,9 @@ impl App {
     /// `[core] vaults` entries (expanded, deduped), then the implicit
     /// `+ Add new vault…` row rendered at index `vaults.len()`.
     pub fn open_vault_switcher(&mut self) {
+        if self.command_palette.is_none() {
+            self.record_command_usage("vault.switch");
+        }
         let active = self
             .config
             .effective_storage_path()

@@ -720,6 +720,9 @@ impl PinstarPlugin {
                 } else {
                     action
                 };
+                if let Some(id) = action.palette_action_id() {
+                    app.record_command_usage(id);
+                }
                 self.dispatch_action(action, n, app)
             }
             MatchOutcome::Pending => OverlayResult::Continue,

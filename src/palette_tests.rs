@@ -83,6 +83,8 @@ impl Fixture {
         config.save().unwrap();
         let mut app = App::new(storage).unwrap();
         app.config = config;
+        app.command_usage.clear();
+        app.command_usage_path = Some(root.path().join("state.json"));
         app.keybinds = KeybindPreset::Default.base_keybinds();
         app.notes = ["selected.md", "editing.md"]
             .into_iter()
@@ -296,6 +298,64 @@ fn palette_global_remapping_roundtrips_and_resolves_sequences() {
     );
     assert_eq!(f.app.list.preview_enabled, !before);
     assert!(f.app.command_palette.is_none());
+}
+
+#[test]
+fn palette_usage_ranks_frequency_then_recency_and_preserves_strong_matches() {
+    let mut f = Fixture::new();
+    f.app.record_command_usage("switch_theme");
+    f.app.record_command_usage("switch_theme");
+    f.app.record_command_usage("vault.switch");
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().items[0].id,
+        "switch_theme"
+    );
+    drive(&mut f.app, key(KeyCode::Esc));
+    f.app.record_command_usage("vault.switch");
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().items[0].id,
+        "vault.switch"
+    );
+    let mut palette = f.app.command_palette.take().unwrap();
+    palette.paste_text("Switch Theme", &f.app);
+    assert_eq!(palette.items[0].id, "switch_theme");
+    assert!(!palette.items.iter().any(|item| item.id == "vault.switch"));
+    f.app.command_palette = Some(palette);
+    drive(&mut f.app, key(KeyCode::Esc));
+    let saved =
+        crate::local_state::LocalState::load(f.app.command_usage_path.as_ref().unwrap()).unwrap();
+    assert_eq!(saved.command_usage["switch_theme"].count, 2);
+    assert_eq!(saved.command_usage["vault.switch"].count, 2);
+    f.app.command_usage = saved.command_usage;
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert_eq!(
+        f.app.command_palette.as_ref().unwrap().items[0].id,
+        "vault.switch"
+    );
+}
+
+#[test]
+fn palette_and_remapped_direct_shortcuts_share_counts_without_recording_typing() {
+    let mut f = Fixture::new();
+    f.app.keybinds.list.insert(
+        ListAction::ToggleWrap,
+        vec![KeyCombo::parse("F9 x").unwrap()],
+    );
+    drive(&mut f.app, key(KeyCode::F(9)));
+    assert!(!f.app.command_usage.contains_key("settings.wrap"));
+    drive(&mut f.app, key(KeyCode::Char('x')));
+    assert_eq!(f.app.command_usage["settings.wrap"].count, 1);
+    activate(&mut f.app, "settings.wrap");
+    assert_eq!(f.app.command_usage["settings.wrap"].count, 2);
+    f.enter(ViewMode::Edit);
+    let before = f.app.command_usage.clone();
+    drive(&mut f.app, key(KeyCode::Char('x')));
+    assert_eq!(f.app.command_usage, before);
+    let context = ActionContext::capture(&f.app, None, None);
+    assert!(execute_action_in_context("settings.calendar", &mut f.app, &context).is_err());
+    assert!(!f.app.command_usage.contains_key("settings.calendar"));
 }
 
 #[test]
