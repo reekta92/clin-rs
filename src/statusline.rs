@@ -181,6 +181,7 @@ pub struct StatuslineContext<'a> {
     pub draw: Option<&'a crate::draw::app::DrawAppState>,
     pub outline: Option<&'a crate::outline::state::OutlineState>,
     pub canvas: Option<&'a pinstar::PinstarState>,
+    pub bases: Option<&'a crate::bases::state::BasesState>,
     pub setup: Option<&'a crate::setup::SetupState>,
 
     // selected/edited note summary:
@@ -213,6 +214,7 @@ impl<'a> StatuslineContext<'a> {
             draw: None,
             outline: None,
             canvas: None,
+            bases: None,
             setup: None,
             note: None,
             preview_info: None,
@@ -241,6 +243,7 @@ impl<'a> StatuslineContext<'a> {
             draw: None,
             outline: None,
             canvas: None,
+            bases: None,
             setup: None,
             note: None,
             preview_info: None,
@@ -282,7 +285,9 @@ pub fn active_note(app: &App, view: ViewMode) -> Option<&NoteSummary> {
 impl StatuslineContext<'_> {
     pub fn resolve(&self, name: &str) -> Option<Cow<'static, str>> {
         if self.view == ViewMode::Bases {
-            let state = self.app.and_then(|app| app.bases_state.as_ref());
+            let state = self
+                .bases
+                .or_else(|| self.app.and_then(|app| app.bases_state.as_ref()));
             let result = state.and_then(|state| state.result());
             let value = match name {
                 "bases_rows" | "visual_total" => {
