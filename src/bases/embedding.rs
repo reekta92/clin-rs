@@ -274,6 +274,9 @@ impl Embeds {
     fn poll(&mut self, app: &mut App) -> bool {
         let mut dirty = false;
         for (&key, state) in self.entries.get_mut().iter_mut() {
+            if self.visible.borrow().contains(&key) {
+                dirty |= state.poll_media(app);
+            }
             if state.write_task.is_some() {
                 dirty |= state.poll_write(app);
                 if state.loading {

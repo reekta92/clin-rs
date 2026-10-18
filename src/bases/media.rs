@@ -84,7 +84,8 @@ impl PublicImages {
                 .count(),
         )
     }
-    fn poll(&mut self, picker: &Picker) {
+    fn poll(&mut self, picker: &Picker) -> bool {
+        let mut changed = false;
         while let Ok(response) = self.rx.try_recv() {
             if self.cache.contains(&response.key) {
                 let entry = match response.image {
@@ -92,8 +93,10 @@ impl PublicImages {
                     Err(error) => Entry::Error(format!("{error:#}")),
                 };
                 self.cache.put(response.key, entry);
+                changed = true;
             }
         }
+        changed
     }
     pub fn render(
         &mut self,
@@ -209,6 +212,13 @@ impl PublicImages {
             Some(Entry::Error(error)) => diagnostic(frame, area, &format!("Cover: {error}"), app),
             _ => diagnostic(frame, area, "Loading cover…", app),
         }
+    }
+}
+impl super::state::BasesState {
+    pub(crate) fn poll_media(&mut self, app: &App) -> bool {
+        app.image_picker
+            .as_ref()
+            .is_some_and(|picker| self.media.poll(picker))
     }
 }
 fn diagnostic(frame: &mut Frame, area: Rect, text: &str, app: &App) {

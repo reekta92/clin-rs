@@ -2,6 +2,67 @@
 use super::*;
 
 #[test]
+fn covers_redraw_after_decode_without_input() {
+    for mode in [ViewMode::Bases, ViewMode::List, ViewMode::Edit] {
+        for (layout, fit) in [("cards", "cover"), ("kanban", "contain")] {
+            let (_root, mut app) = fixture();
+            app.image_picker = Some(ratatui_image::picker::Picker::halfblocks());
+            app.config.features.images = FeatureState::Enabled;
+            image::RgbaImage::from_pixel(64, 32, image::Rgba([40, 180, 70, 255]))
+                .save(app.storage.notes_dir.join("cover.png"))
+                .unwrap();
+            let base = app.storage.load_document("board.base").unwrap();
+            app.storage.save_document(&base, &format!(
+                "filters: file.ext == 'md'\nformulas: {{cover: 'image(\"cover.png\")'}}\nviews: [{{type: {layout}, name: Media, order: [file.name, score], groupBy: {{property: score}}, image: formula.cover, imageFit: {fit}}}]\n"
+            )).unwrap();
+            key(&mut app, KeyCode::Char('r'));
+            idle(&mut app);
+            if mode != ViewMode::Bases {
+                app.bases_state = None;
+            }
+            app.mode = mode;
+            let renderer = super::embeds::markdown("![[board.base]]", Some("public.md"));
+            let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+            let draw = |terminal: &mut Terminal<TestBackend>, app: &mut App| {
+                if mode == ViewMode::Bases {
+                    let mut state = app.bases_state.take().unwrap();
+                    terminal
+                        .draw(|frame| state.render_native(frame, AREA, app))
+                        .unwrap();
+                    app.bases_state = Some(state);
+                    return;
+                }
+                app.base_embeds.begin_frame();
+                terminal
+                    .draw(|frame| {
+                        app.base_embeds.draw(frame, AREA, &renderer, 0..28, app);
+                    })
+                    .unwrap();
+            };
+            draw(&mut terminal, &mut app);
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if app.poll_bases() {
+                    draw(&mut terminal, &mut app);
+                }
+                if terminal.backend().buffer().content().iter().any(|cell| {
+                    cell.fg == ratatui::style::Color::Rgb(40, 180, 70)
+                        || cell.bg == ratatui::style::Color::Rgb(40, 180, 70)
+                }) {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "{mode:?}/{layout}/{fit}: cover never repainted"
+                );
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(!app.poll_bases(), "completed covers must let the view idle");
+        }
+    }
+}
+
+#[test]
 fn card_and_kanban_covers_use_public_native_protocol_and_guarded_configuration() {
     for layout in ["cards", "kanban"] {
         let (_root, mut app) = fixture();

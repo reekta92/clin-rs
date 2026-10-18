@@ -430,6 +430,7 @@ impl App {
             dirty = true;
         }
         if let Some(mut state) = self.bases_state.take() {
+            dirty |= state.poll_media(self);
             dirty |= state.poll_write(self);
             self.bases_state = Some(state);
         }
