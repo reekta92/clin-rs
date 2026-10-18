@@ -508,6 +508,53 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
+    // Check strip section clicks (Draw→open draw, Graf→open graph)
+    if app.list.calendar_enabled && mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+        let (_list_area, _preview_area, calendar_area) = crate::ui::list_view_layout(
+            terminal_area,
+            app.list.preview_enabled,
+            app.preview_position,
+            app.list.calendar_enabled,
+            app.preview_fullscreen,
+            app.list.preview_width_ratio,
+            app.list.calendar_height,
+            app.config.list.calendar_position,
+        );
+        if let Some(cal_rect) = calendar_area {
+            let active = app.active_strip_sections_for(cal_rect.width);
+            let sec_rects = crate::ui::section_rects(cal_rect, &active);
+            for (sec, r) in active.iter().zip(sec_rects.iter().copied()) {
+                if mouse_event.column >= r.x
+                    && mouse_event.column < r.right()
+                    && mouse_event.row >= r.y
+                    && mouse_event.row < r.bottom()
+                {
+                    match sec {
+                        crate::config::NotesSection::Draw => {
+                            if let Some(id) = app
+                                .draw_preview
+                                .as_ref()
+                                .map(|(id, _)| id.clone())
+                                .filter(|id| !id.is_empty())
+                            {
+                                if let Err(error) = app.open_draw_document(&id) {
+                                    app.set_temporary_status(&format!("{error:#}"));
+                                }
+                            } else {
+                                app.begin_create_draw();
+                            }
+                        }
+                        crate::config::NotesSection::Graf => {
+                            app.open_graph_view();
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1052,51 +1099,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         } else {
             app.list.visual_index = clicked_visual_index;
             app.request_preview_update();
-        }
-        // Check strip section clicks (Draw→open draw, Graf→open graph)
-        if app.list.calendar_enabled {
-            let (_list_area, _preview_area, calendar_area) = crate::ui::list_view_layout(
-                terminal_area,
-                app.list.preview_enabled,
-                app.preview_position,
-                app.list.calendar_enabled,
-                app.preview_fullscreen,
-                app.list.preview_width_ratio,
-                app.list.calendar_height,
-                app.config.list.calendar_position,
-            );
-            if let Some(cal_rect) = calendar_area {
-                let active = app.active_strip_sections_for(cal_rect.width);
-                let sec_rects = crate::ui::section_rects(cal_rect, &active);
-                for (sec, r) in active.iter().zip(sec_rects.iter().copied()) {
-                    if mouse_event.column >= r.x
-                        && mouse_event.column < r.right()
-                        && mouse_event.row >= r.y
-                        && mouse_event.row < r.bottom()
-                    {
-                        match sec {
-                            crate::config::NotesSection::Draw => {
-                                if let Some(id) = app
-                                    .draw_preview
-                                    .as_ref()
-                                    .map(|(id, _)| id.clone())
-                                    .filter(|id| !id.is_empty())
-                                {
-                                    if let Err(error) = app.open_draw_document(&id) {
-                                        app.set_temporary_status(&format!("{error:#}"));
-                                    }
-                                } else {
-                                    app.begin_create_draw();
-                                }
-                            }
-                            crate::config::NotesSection::Graf => {
-                                app.open_graph_view();
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
         }
     }
     if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {

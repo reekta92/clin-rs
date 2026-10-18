@@ -104,7 +104,9 @@ Five sub-views (Graph, Draw, Canvas, Bases, Outline) implement the [`OverlayView
 - [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
 - [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
 
-Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawAppState>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Bases/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+Draw uses the independent [draw-rs](https://github.com/reekta92/draw-rs) engine through `DrawPlugin.state`; its model, geometry, history, gestures, private grid/menu helpers and snapshot painter live upstream. The adapter maps current themes and resolved semantic actions, validates vault IDs, and retains failed saves. Ordinary departure checks interactions and saves before dropping the owner.
+
+Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawPlugin>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Bases/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
 
 Bases stores its original return mode on `BasesState`, preserving it through
 public-source handoff and reopening. No sub-view takes terminal ownership or
@@ -139,7 +141,7 @@ App
   ├── app_theme: AppThemeColors           // derived colors from theme config
   ├── return_mode: Option<ViewMode>       // where to return after overlay exit
   ├── graph_plugin: Option<GrafPlugin>         // clin adapter over upstream graf
-  ├── draw_state: Option<DrawAppState>         // freehand drawing overlay
+  ├── draw_state: Option<DrawPlugin>         // freehand drawing overlay
   ├── canvas_state: Option<PinstarPlugin>      // clin adapter over upstream pinstar
   ├── outline_state: Option<OutlineState>  // header-based outline overlay
   └── ...status helpers, config, caches
@@ -300,10 +302,6 @@ src/
 │   └── help_meta.rs      — Action metadata for help UI
 ├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
 │   ├── mod.rs            — Central UI dispatcher, shared helpers
-│   ├── canvas_grid.rs    — Adaptive grid state/rendering for local Draw
-│   ├── canvas_menu.rs    — Context menu for canvas/draw
-│   ├── canvas_overlay.rs — Shared canvas drawing overlays (marquee, grid)
-│   ├── canvas_selection.rs — Multi-select node/edge state
 │   ├── list_view.rs      — Main list/grid view rendering
 │   ├── edit_view.rs      — Editor body rendering
 │   ├── help.rs           — Full help view
@@ -341,11 +339,7 @@ src/
 ├── graf_adapter.rs       — GrafPlugin: host preview/search/config/status, note I/O
 ├── pinstar_adapter.rs    — PinstarPlugin: host keybinds/status/clipboard/images
 ├── snapshot.rs           — Canvas and Draw preview snapshots
-├── draw/                 — Freehand drawing overlay
-│   ├── geometry.rs       — Affine transform and bounding box math
-│   ├── input.rs          — Mouse/keyboard handlers
-│   ├── render.rs         — Canvas + element rendering
-│   └── state.rs          — DrawData, DrawElement, DrawTool
+├── draw_adapter.rs       — DrawPlugin: host IDs/keybinds/status/clipboard over draw-rs
 ├── outline/              — Header outline view
 │   ├── app.rs            — OutlineState, OverlayView implementation
 │   ├── input.rs          — Keyboard/mouse handlers
