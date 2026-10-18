@@ -2,13 +2,124 @@
 
 All notable changes to clin are documented in this file.
 
-## [Unreleased]
+## [0.14.0-beta.0] - 2026-10-18
+
+### Added
+
+- Replace application icon across platforms
+- Make input fields follow palette theme
+- Change fixed values into selector boxes
+- Integrate guarded Bases workflow continuations
+- Embed vault and subnote manager steps
+- Integrate selectors creation and URL inputs
+- Integrate theme and goal workflow steps
+- Integrate properties and raw editing with Bases
+- Enable contextual commands and safe navigation in every view
+- Show folder badges and editable config items
+- Support folder-local custom variables (#172)
+- Complete native layouts and guarded live embeds
+- Reuse public-scoped command palette actions
+- Create native public bases and scope app integration
+- Render bounded native covers and author card layout options
+- Move public folder cards with binary-safe recovery
+- Add public search and collapsible grouped sections
+- Add guarded Kanban column and card workflows
+- Activate guarded public images through native terminal preview
+- Render viewport-bounded native cards grid
+- Refine native focus and expose table summaries
+- Add contextual help and native workflow regression tests
+- Add native authoring and guarded property transactions
+- Recover guarded public document writes from encrypted records
+- Integrate overlay view and background query worker
+- Enforce bounded ECMAScript regexp semantics
+- Evaluate typed properties and grouped queries
+- Compile bounded native expressions
+- Parse and losslessly author core view configuration
+- Index privacy-filtered vault properties and links
+- Add lossless typed property document edits
+- Add guarded plaintext document storage
+- Toggle Mermaid edit previews with Alt+m
+- Render Mermaid flowcharts inline with source scroll sync
+- Dynamic colors for tab selections
+- Show selected text char count
+- Dynamic selected word count in edit statusline
+- Hide specific file types according to feat states
+- Added layout and feature set options to setup wizard
+- Deleted features keybinds invisible
+- Add 'deleted' feature state to clear keybinds
+- Hide disabled tabs in help view and empty categories in command palette
+- Add [features] config table to toggle views and features
+
+### Documentation
+
+- Explain integrated command palette workflows and exceptions
+- Record release checks and terminal smoke coverage
+- Explain view scopes, F6 fallback, and guarded lifecycle
+- Record native audit and release acceptance
+- Describe native workflows and remaining implementation
+- Updated docs to reflect a terminal specific config
+- Publish project wiki with automatic sync
 
 ### Fixed
 
-- Migrate the default-origin backup regression test to feature-based enablement when merging main.
-- Fix strict Clippy failures in graph previews, feature-toggle tests, and keybinding helper placement.
+- Preserve failed exits and cancel pending source reads
+- Make note persistence trustworthy and retire backup and encryption
+- Reject stale selection and normalize every paste path
+- Randomize cryptographic keys in Bases and recovery fixtures
+- Replaced hardcoded values with default:
+- Keep grid folder icons aligned with badges
+- Update rustls for current security advisories
+- Use maintained YAML across Bases and Mermaid
+- Retain watcher events and persist metadata invalidation
+- Preserve public source bytes and resolve startup titles
+- Preserve wiki-only embeds in public metadata
+- Small compactness change by removing title
+- Small visual fix in help view
+- Compact help side pane content
+- Resolve feature-toggle lint and merged backup test failures
+- Fixed setup wizard settings not syncing
+- Fixed setup wizard layout previews
+- Renamed calendar pane -> widget pane
+- Set all the features to enabled as default
 
+### Miscellaneous
+
+- Fmt and clippy fixes
+- Bump actions/checkout from 4 to 7
+- Bump zeroize from 1.9.0 to 1.9.1
+- Bump signal-hook from 0.4.4 to 0.4.5
+- Bump ratatui-textarea from 0.9.2 to 0.9.3
+- Bump uuid from 1.26.1 to 1.27.0
+- Bump comrak from 0.55.0 to 0.56.0
+- Documentation sync
+- Merge remote formatting changes
+- Roadmap update
+- Applied automated clippy fixes
+
+### Styling
+
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt
+- Cargo fmt
+
+### Testing
+
+- Cover clipboard, host recovery, aliases, and write guards
+
+### Build
+
+- Pin locked Pinstar preview dependencies
+- Pin hardened Mermaid parser preflight
+- Pin audited Pinstar Mermaid preview revision
+
+### Merge
+
+- Integrate trustworthy note persistence into Bases
+- Integrate main template variables with guarded Bases workflows
 ## [0.13.2] - 2026-10-02
 
 ### Fixed
@@ -23,6 +134,10 @@ All notable changes to clin are documented in this file.
 ### Styling
 
 - Cargo fmt
+
+### Release
+
+- V0.13.2
 ## [0.13.1] - 2026-09-29
 
 ### Fixed
