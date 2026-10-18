@@ -428,6 +428,13 @@ impl App {
         if !self.prepare_editor_transition() {
             return;
         }
+        self.open_prepared_public_document(snapshot);
+    }
+
+    pub(crate) fn open_prepared_public_document(
+        &mut self,
+        snapshot: crate::storage::documents::DocumentSnapshot,
+    ) {
         self.editor.editing_id = Some(snapshot.id().to_owned());
         self.editor.template_edit_path = None;
         self.editor.title_editor = make_title_editor(
@@ -464,51 +471,59 @@ impl App {
         if !self.prepare_editor_transition() {
             return;
         }
-        if let Ok(note) = self.storage.load_note(note_id) {
-            self.editor.bases_sidebar_renderer = None;
-            if self.editor.sidebar == crate::editor::EditSidebar::Bases {
-                self.editor.sidebar = crate::editor::EditSidebar::None;
-            }
-            self.editor.public_document = None;
-            self.editor.public_document_body_only = false;
-            self.editor.public_document_title = None;
-            self.editor.template_edit_path = None;
-            self.editor.note_baseline = note.baseline.clone();
-            self.editor.editing_id = Some(note_id.to_string());
-            self.editor.initial_word_count = crate::goals::count_words(&note.content);
-            self.editor.title_editor = make_title_editor(
-                &note.title,
-                self.app_theme.highlight_fg,
-                self.app_theme.highlight_bg,
-            );
-            let mut body = EditorDocument::from_source(&note.content);
-            if let Some(l) = line_number {
-                body.move_cursor(ratatui_textarea::CursorMove::Jump(
-                    l.saturating_sub(1) as u16,
-                    0,
-                ));
-            }
-            self.editor.body = body;
-            let (fm, _) = crate::frontmatter::parse(&note.content);
-            self.editor.text_align = fm.text_align.unwrap_or(self.config.editor.text_align);
-            self.apply_editor_prefs();
-            self.rebuild_outline();
-            self.editor.links = self.compute_links();
-            // Clone image infrastructure into the editor so markdown images
-            // can be decoded and rendered in the preview pane.
-            self.editor.image_picker = self.image_picker.clone();
-            self.editor.image_decode_tx = self.image_decode_tx.clone();
-            self.mode = ViewMode::Edit;
-
-            if self.editor.editor_preview_enabled {
-                self.update_editor_markdown_preview();
-            } else {
-                self.editor.md_preview_renderer = None;
-            }
-            self.status = Cow::Borrowed("");
-        } else {
-            self.status = Cow::Borrowed("Failed to load note!");
+        match self.storage.load_note(note_id) {
+            Ok(note) => self.open_loaded_note(note_id, note, line_number),
+            Err(_) => self.status = Cow::Borrowed("Failed to load note!"),
         }
+    }
+
+    pub(crate) fn open_loaded_note(
+        &mut self,
+        note_id: &str,
+        note: crate::storage::Note,
+        line_number: Option<usize>,
+    ) {
+        self.editor.bases_sidebar_renderer = None;
+        if self.editor.sidebar == crate::editor::EditSidebar::Bases {
+            self.editor.sidebar = crate::editor::EditSidebar::None;
+        }
+        self.editor.public_document = None;
+        self.editor.public_document_body_only = false;
+        self.editor.public_document_title = None;
+        self.editor.template_edit_path = None;
+        self.editor.note_baseline = note.baseline.clone();
+        self.editor.editing_id = Some(note_id.to_string());
+        self.editor.initial_word_count = crate::goals::count_words(&note.content);
+        self.editor.title_editor = make_title_editor(
+            &note.title,
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
+        let mut body = EditorDocument::from_source(&note.content);
+        if let Some(l) = line_number {
+            body.move_cursor(ratatui_textarea::CursorMove::Jump(
+                l.saturating_sub(1) as u16,
+                0,
+            ));
+        }
+        self.editor.body = body;
+        let (fm, _) = crate::frontmatter::parse(&note.content);
+        self.editor.text_align = fm.text_align.unwrap_or(self.config.editor.text_align);
+        self.apply_editor_prefs();
+        self.rebuild_outline();
+        self.editor.links = self.compute_links();
+        // Clone image infrastructure into the editor so markdown images
+        // can be decoded and rendered in the preview pane.
+        self.editor.image_picker = self.image_picker.clone();
+        self.editor.image_decode_tx = self.image_decode_tx.clone();
+        self.mode = ViewMode::Edit;
+
+        if self.editor.editor_preview_enabled {
+            self.update_editor_markdown_preview();
+        } else {
+            self.editor.md_preview_renderer = None;
+        }
+        self.status = Cow::Borrowed("");
     }
 
     pub fn open_note_in_external_editor(&mut self, note_id: &str, line_number: Option<usize>) {

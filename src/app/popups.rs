@@ -190,6 +190,11 @@ impl App {
             }
         };
 
+        self.open_template_source(path, content);
+    }
+
+    pub(crate) fn open_template_source(&mut self, path: &std::path::Path, content: String) {
+        let folder_config = crate::templates::is_folder_template_config(path);
         self.mode = ViewMode::Edit;
         self.editor.editing_id = None;
         self.editor.public_document = None;
