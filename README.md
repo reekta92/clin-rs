@@ -1,5 +1,5 @@
 <div align="center">
-<img width="512" height="512" alt="clin logo" src="assets/icon.svg" />
+<img width="256" height="256" alt="clin logo" src="assets/icon.svg" />
  
 # clin
 
