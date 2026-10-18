@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,11 +14,12 @@ def main():
     with TemporaryDirectory() as temporary:
         master = Path(temporary) / "icon.png"
         subprocess.run(
-            ["rsvg-convert", "--width", "1024", "--height", "1024", "--output", str(master),
+            ["rsvg-convert", "--keep-aspect-ratio", "--width", "1024", "--height", "1024", "--output", str(master),
              str(ROOT / "assets/icon.svg")],
             check=True,
         )
-        with Image.open(master) as icon:
+        with Image.open(master) as rendered:
+            icon = ImageOps.pad(rendered.convert("RGBA"), (1024, 1024), color=(0, 0, 0, 0))
             assert icon.size == (1024, 1024) and icon.mode == "RGBA"
             icon.resize((256, 256), Image.Resampling.LANCZOS).save(ROOT / "assets/clin.png")
             icon.save(ROOT / "clin.ico", sizes=[(size, size) for size in (16, 24, 32, 48, 64, 128, 256)])
