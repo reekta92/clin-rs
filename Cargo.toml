@@ -95,6 +95,7 @@ assets = [
 ]
 
 [dependencies]
+draw = { package = "draw-rs", path = "/tmp/draw-rs" }
 anyhow = "1.0"
 base64 = "0.22"
 arboard = "3.6.1"

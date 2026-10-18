@@ -362,7 +362,7 @@ pub fn handle_bracketed_paste(
         }
         ViewMode::Draw => {
             if let Some(draw) = &mut app.draw_state
-                && let Some((_, ta)) = &mut draw.text_editor
+                && let Some((_, ta)) = &mut draw.state.text_editor
             {
                 ta.insert_str(&data);
                 true

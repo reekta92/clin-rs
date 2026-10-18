@@ -46,7 +46,7 @@ pub enum OverlayState {
     Graph(crate::graf_adapter::GrafPlugin),
     Canvas(crate::pinstar_adapter::PinstarPlugin),
     Bases(crate::bases::state::BasesState),
-    Draw(crate::draw::app::DrawAppState),
+    Draw(crate::draw_adapter::DrawPlugin),
     Outline(crate::outline::state::OutlineState),
 }
 

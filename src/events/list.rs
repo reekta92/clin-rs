@@ -1076,7 +1076,18 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     {
                         match sec {
                             crate::config::NotesSection::Draw => {
-                                app.open_draw_view();
+                                if let Some(id) = app
+                                    .draw_preview
+                                    .as_ref()
+                                    .map(|(id, _)| id.clone())
+                                    .filter(|id| !id.is_empty())
+                                {
+                                    if let Err(error) = app.open_draw_document(&id) {
+                                        app.set_temporary_status(&format!("{error:#}"));
+                                    }
+                                } else {
+                                    app.begin_create_draw();
+                                }
                             }
                             crate::config::NotesSection::Graf => {
                                 app.open_graph_view();

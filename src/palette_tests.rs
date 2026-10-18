@@ -106,14 +106,17 @@ impl Fixture {
             ViewMode::Help => app.open_help_page(),
             ViewMode::Graph => app.open_graph_view(),
             ViewMode::Draw => {
-                app.draw_state = Some(crate::draw::app::DrawAppState::new(
-                    app.storage.clone(),
-                    Some("art.draw".into()),
-                    app.app_theme.clone(),
-                    app.keybinds.clone(),
-                    crate::keybinds::KeyMatcher::default(),
-                ));
+                app.draw_state = Some(
+                    crate::draw_adapter::DrawPlugin::load(
+                        &app.storage,
+                        "art.draw",
+                        app.keybinds.clone(),
+                        crate::keybinds::KeyMatcher::default(),
+                    )
+                    .unwrap(),
+                );
             }
+
             ViewMode::Canvas => {
                 app.canvas_state = Some(
                     crate::pinstar_adapter::PinstarPlugin::new(
@@ -724,7 +727,7 @@ fn palette_modal_gates_preserve_each_owners_pending_input() {
                     .is_panning = true;
             }
             ViewMode::Draw => {
-                f.app.draw_state.as_mut().unwrap().creation_origin = Some((1.0, 2.0));
+                f.app.draw_state.as_mut().unwrap().state.creation_origin = Some((1.0, 2.0));
             }
             ViewMode::Canvas => {
                 f.app.canvas_state.as_mut().unwrap().state.floating_editor =
@@ -956,7 +959,7 @@ fn palette_canvas_image_history_and_failed_save_keep_live_data() {
 fn palette_draw_save_failure_and_fileless_changes_block_departure() {
     let mut f = Fixture::new();
     f.enter(ViewMode::Draw);
-    f.app.draw_state.as_mut().unwrap().data.background = Some("#ffffff".into());
+    f.app.draw_state.as_mut().unwrap().state.data.background = Some("#ffffff".into());
     activate(&mut f.app, "notes.open");
     assert_eq!(f.app.mode, ViewMode::List);
     assert!(
@@ -965,15 +968,23 @@ fn palette_draw_save_failure_and_fileless_changes_block_departure() {
             .contains("#ffffff")
     );
     f.enter(ViewMode::Draw);
-    f.app.draw_state.as_mut().unwrap().current_file = None;
-    f.app.draw_state.as_mut().unwrap().data.background = Some("#000000".into());
+    f.app.draw_state.as_mut().unwrap().state = ::draw::DrawState::new();
+    f.app.draw_state.as_mut().unwrap().state.data.background = Some("#000000".into());
     activate(&mut f.app, "graph.open");
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.status.contains("no save target"));
-    let blocker = f.root.path().join("blocked");
-    fs::write(&blocker, "block").unwrap();
-    f.app.draw_state.as_mut().unwrap().storage.notes_dir = blocker;
-    f.app.draw_state.as_mut().unwrap().current_file = Some("art.draw".into());
+    f.enter(ViewMode::Draw);
+    let destination = f
+        .app
+        .draw_state
+        .as_ref()
+        .unwrap()
+        .state
+        .path()
+        .unwrap()
+        .to_path_buf();
+    fs::remove_file(&destination).unwrap();
+    fs::create_dir(&destination).unwrap();
     activate(&mut f.app, "notes.open");
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.draw_state.is_some());
@@ -1211,7 +1222,10 @@ fn palette_retained_draw_canvas_outline_settings_survive_help_and_setup() {
         match mode {
             ViewMode::Draw => {
                 let state = f.app.draw_state.as_ref().unwrap();
-                assert_eq!(state.theme.fg, f.app.app_theme.fg);
+                assert_eq!(
+                    crate::draw_adapter::theme_colors(&f.app.app_theme).accent,
+                    f.app.app_theme.accent
+                );
                 assert_eq!(state.keybinds.draw, f.app.keybinds.draw);
             }
             ViewMode::Canvas => assert_eq!(
@@ -1236,7 +1250,7 @@ fn palette_retained_draw_canvas_outline_settings_survive_help_and_setup() {
 fn palette_strokes_connections_and_setup_rebootstrap_preserve_pending_owners() {
     let mut f = Fixture::new();
     f.enter(ViewMode::Draw);
-    f.app.draw_state.as_mut().unwrap().current_stroke = Some(crate::draw::state::Stroke {
+    f.app.draw_state.as_mut().unwrap().state.current_stroke = Some(crate::draw::state::Stroke {
         points: vec![(1.0, 2.0)],
         color: (255, 255, 255),
     });
@@ -1247,6 +1261,7 @@ fn palette_strokes_connections_and_setup_rebootstrap_preserve_pending_owners() {
             .draw_state
             .as_ref()
             .unwrap()
+            .state
             .current_stroke
             .as_ref()
             .unwrap()

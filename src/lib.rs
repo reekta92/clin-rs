@@ -6,13 +6,20 @@ pub mod calendar;
 pub mod cli;
 pub mod config;
 pub mod console;
+pub mod draw_adapter;
+/// Compatibility paths for the upstream drawing model and geometry.
 pub mod draw {
-    pub mod app;
-    pub mod geometry;
-    pub mod input;
-    pub mod render;
-    pub mod state;
+    pub mod state {
+        pub use ::draw::state::*;
+    }
+    pub mod geometry {
+        pub use ::draw::geometry::*;
+    }
+    pub mod render {
+        pub use ::draw::smooth_points;
+    }
 }
+
 pub mod editor;
 pub(crate) mod editor_document;
 pub(crate) mod editor_session;

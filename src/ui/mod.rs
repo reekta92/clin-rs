@@ -12,10 +12,6 @@ use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
-pub(crate) mod canvas_grid;
-pub(crate) mod canvas_menu;
-pub(crate) mod canvas_overlay;
-pub(crate) mod canvas_selection;
 mod edit_view;
 mod help;
 pub(crate) mod help_content;
@@ -29,10 +25,6 @@ pub(crate) mod setup;
 mod title_bar;
 pub(crate) mod vault_switcher;
 
-pub(crate) use canvas_grid::{CanvasGridProjection, draw_canvas_grid};
-pub(crate) use canvas_menu::{CanvasContextMenu, CanvasMenuItemSpec, render_canvas_context_menu};
-pub(crate) use canvas_overlay::MarqueeDragState;
-pub(crate) use canvas_selection::CanvasSelection;
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
@@ -193,9 +185,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 let icon_mode = app.config.ui.icon_mode;
-                let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
+                let tabs_arr = crate::draw_adapter::draw_tool_tabs(icon_mode);
                 let tabs = tab_vec_from_array(&tabs_arr);
-                let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
+                let active = crate::draw_adapter::draw_tool_tab_index(draw.state.active_tool);
                 draw.sync_header_status(app);
                 let hovered = app.mouse_pos.and_then(|(col, row)| {
                     if row == outer[0].y {
@@ -221,7 +213,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.draw = Some(&draw);
+                ctx.draw = Some(&draw.state);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,
@@ -239,7 +231,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     Some(app.status.as_ref()),
                     app.load_spinner_tick,
                 );
-                draw.mouse_pos = app.mouse_pos;
+                draw.state.mouse_pos = app.mouse_pos;
                 draw.overlay_render(frame, outer[1], app);
                 app.draw_state = Some(draw);
             }
