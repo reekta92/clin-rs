@@ -20,8 +20,9 @@ and appears only in the Bases view. `:` opens that category directly; F6 or
 Ctrl+p opens the shared palette. Configuration uses palette inputs instead of a
 separate configuration menu. Property edits, public note creation, export and
 group moves launched from the palette also keep their inputs there. Esc returns one step.
-Failed writes retain the entered value. Search, cover previews, typed CLEAR/DELETE
-confirmations, and other direct shortcut dialogs keep their existing presentation.
+Failed writes retain the entered value. Removing a view requires typing DELETE
+inside the palette; the last view cannot be removed. Search, cover previews,
+typed CLEAR confirmations, and other direct shortcut dialogs keep their existing presentation.
 In an embedded Bases region, `:` expands the region into Bases and opens its
 palette category; leaving Bases restores the host view.
 

@@ -1,6 +1,5 @@
 use super::*;
 use crate::bases::palette::Page;
-use crate::palette::workflows::Workflow;
 fn palette(app: &mut App, query: &str) {
     assert!(app.open_command_palette(None));
     assert!(
@@ -284,30 +283,64 @@ fn palette_bases_stale_property_write_retains_value_and_private_files() {
 }
 
 #[test]
-fn palette_bases_delete_confirmation_stays_separate_and_restores_category() {
+fn palette_bases_delete_confirmation_uses_value_input_and_protects_last_view() {
     let (_root, mut app) = fixture();
+    let baseline = app.storage.load_document("board.base").unwrap();
     bases_category(&mut app);
     workflow_choice(&mut app, "bases.config.remove_view");
-    assert!(app.palette_bases_dialog_open());
-    assert!(matches!(
-        app.command_palette.as_ref().unwrap().workflow,
-        Some(Workflow::Bases(_))
-    ));
+    assert!(!app.palette_bases_dialog_open());
+    assert!(app.bases_state.as_ref().unwrap().dialog.is_none());
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(palette.is_value_input());
+    assert_eq!(palette.input_height(30), 3);
+    assert_eq!(
+        palette.workflow_title(),
+        "COMMANDS › Bases › Remove current view"
+    );
+    workflow_value(&mut app, "delete");
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(palette.error.as_ref().unwrap().contains("type DELETE"));
+    assert_eq!(palette.input.lines()[0], "delete");
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    app.command_palette.as_mut().unwrap().input.select_all();
     crate::palette_tests::drive(&mut app, Event::Paste("DELETE".into()));
-    if let Some(crate::bases::authoring::Dialog::Prompt { input, .. }) =
-        &app.bases_state.as_ref().unwrap().dialog
-    {
-        assert_eq!(input.lines()[0], "DELETE");
-    } else {
-        panic!("missing separate confirmation");
-    }
-    assert_eq!(app.command_palette.as_ref().unwrap().input.lines()[0], "");
     crate::palette_tests::drive(
         &mut app,
         Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
     );
     assert!(!app.palette_bases_dialog_open());
     assert_eq!(app.command_palette.as_ref().unwrap().items.len(), 34);
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        baseline.source()
+    );
+    workflow_choice(&mut app, "bases.config.remove_view");
+    workflow_value(&mut app, "DELETE");
+    assert!(app.command_palette.as_ref().unwrap().is_submitting());
+    wait(&mut app, |app| app.command_palette.is_none());
+    idle(&mut app);
+    let saved = app.storage.load_document("board.base").unwrap();
+    let document = crate::bases::format::BaseDocument::parse(saved.source()).unwrap();
+    assert_eq!(document.config.views.len(), 1);
+    assert_eq!(document.config.views[0].name, "List");
+    bases_category(&mut app);
+    workflow_choice(&mut app, "bases.config.remove_view");
+    workflow_value(&mut app, "DELETE");
+    let palette = app.command_palette.as_ref().unwrap();
+    assert!(
+        palette
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("cannot remove the last base view")
+    );
+    assert_eq!(palette.input.lines()[0], "DELETE");
+    assert!(!palette.is_submitting());
+    assert!(app.bases_state.as_ref().unwrap().write_task.is_none());
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        saved.source()
+    );
 }
 
 #[test]
@@ -682,4 +715,86 @@ fn palette_bases_selector_rejects_external_replacement_and_retains_selection() {
         app.storage.load_document("board.base").unwrap().source(),
         external
     );
+}
+
+#[test]
+fn palette_bases_value_inputs_match_creation_style_and_multiline_mouse_submit() {
+    let (_root, mut app) = fixture();
+    app.config.features.canvas_view = FeatureState::Enabled;
+    app.config.features.draw_view = FeatureState::Enabled;
+    app.mode = ViewMode::List;
+    let mut creation_style = None;
+    for id in ["create_canvas", "draw.create"] {
+        assert!(app.open_command_palette(None));
+        workflow_choice(&mut app, id);
+        let palette = app.command_palette.as_ref().unwrap();
+        let style = (
+            palette.input.style(),
+            palette.input.cursor_line_style(),
+            palette.content_areas(Rect::new(0, 0, 80, 30), false),
+        );
+        if let Some(expected) = &creation_style {
+            assert_eq!(&style, expected);
+        }
+        creation_style = Some(style);
+        app.dismiss_command_palette();
+    }
+    app.mode = ViewMode::Bases;
+    for title in ["Rename view", "Global filter", "Row sorting", "Formula"] {
+        menu(&mut app, title);
+        let palette = app.command_palette.as_ref().unwrap();
+        assert!(palette.workflow_title().starts_with("COMMANDS › Bases › "));
+        assert_eq!(palette.workflow_hint(), "");
+        assert_eq!(palette.input_height(30), 3);
+        assert_eq!(
+            (
+                palette.input.style(),
+                palette.input.cursor_line_style(),
+                palette.content_areas(Rect::new(0, 0, 80, 30), false)
+            ),
+            creation_style.unwrap()
+        );
+        assert_eq!(
+            palette.input.placeholder_style().unwrap().fg,
+            Some(app.app_theme.muted)
+        );
+        crate::palette_tests::drive(
+            &mut app,
+            Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+        );
+    }
+    menu(&mut app, "Formula");
+    crate::palette_tests::drive(&mut app, Event::Paste("Total = 1".into()));
+    crate::palette_tests::drive(
+        &mut app,
+        Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT)),
+    );
+    crate::palette_tests::drive(&mut app, Event::Paste("+ 2".into()));
+    assert_eq!(app.command_palette.as_ref().unwrap().input_height(30), 4);
+    for (width, height) in [(8, 4), (1, 1), (100, 40)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+            .unwrap();
+    }
+    let area = app
+        .command_palette
+        .as_ref()
+        .unwrap()
+        .last_results_area
+        .unwrap();
+    crate::palette_tests::drive(
+        &mut app,
+        Event::Mouse(crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: area.x + 2,
+            row: area.y + 1,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    wait(&mut app, |app| app.command_palette.is_none());
+    idle(&mut app);
+    let saved = app.storage.load_document("board.base").unwrap();
+    let document = crate::bases::format::BaseDocument::parse(saved.source()).unwrap();
+    assert_eq!(document.config.formulas["Total"], "1\n+ 2");
 }

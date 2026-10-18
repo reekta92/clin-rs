@@ -15,7 +15,11 @@ impl CommandPalette {
 
     pub(crate) fn input_height(&self, height: u16) -> u16 {
         if self.multiline_input() {
-            (height / 2).clamp(3, 10)
+            self.input
+                .lines()
+                .len()
+                .saturating_add(2)
+                .min(usize::from((height / 2).clamp(3, 10))) as u16
         } else {
             3
         }

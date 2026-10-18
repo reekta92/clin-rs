@@ -317,7 +317,6 @@ pub(crate) enum Page {
     Prompt {
         target: Target,
         title: String,
-        hint: String,
         selection: Selection,
         submitting: bool,
         choices: Option<Choices>,
@@ -334,10 +333,7 @@ impl Page {
     }
     pub(crate) fn hint(&self) -> &str {
         match self {
-            Self::Prompt {
-                choices: Some(_), ..
-            } => "",
-            Self::Prompt { hint, .. } => hint,
+            Self::Prompt { .. } => "",
             Self::Preparing { .. } => "Preparing captured public property…",
             Self::Running { .. } => "Operation in progress…",
         }
@@ -396,11 +392,7 @@ impl BasesState {
         let confirmation = matches!(
             &dialog,
             Dialog::Prompt {
-                target: Target::Cell { clear: true, .. }
-                    | Target::Config {
-                        command: Command::RemoveView,
-                        ..
-                    },
+                target: Target::Cell { clear: true, .. },
                 ..
             }
         );
@@ -449,16 +441,17 @@ impl BasesState {
                     palette.pop_workflow();
                     palette.workflow_action = action;
                 }
+                let mut styled_input = crate::ui::make_popup_textarea(&app.app_theme, &hint);
+                styled_input.insert_str(input.lines().join("\n"));
                 (
                     Page::Prompt {
                         choices: Choices::for_target(&target, self),
                         target,
-                        title,
-                        hint,
+                        title: format!("COMMANDS › Bases › {title}"),
                         selection: Selection::capture(self),
                         submitting: false,
                     },
-                    *input,
+                    styled_input,
                 )
             }
             Dialog::Image { .. } => unreachable!("image handled separately"),
