@@ -133,7 +133,46 @@ impl PinstarPlugin {
         picker: Option<ratatui_image::picker::Picker>,
         storage_data_dir: &std::path::Path,
     ) -> anyhow::Result<Self> {
-        let mut state = PinstarState::load(path)?;
+        let storage = crate::storage::Storage {
+            notes_dir: path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_owned(),
+            data_dir: storage_data_dir.to_owned(),
+            config_dir: std::path::PathBuf::new(),
+            templates_dir: std::path::PathBuf::new(),
+            skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
+        };
+        Self::new_in_storage(path, config, keybinds, seq_matcher, picker, &storage)
+    }
+
+    pub(crate) fn new_in_storage(
+        path: &std::path::Path,
+        config: &crate::config::ClinConfig,
+        keybinds: Keybinds,
+        seq_matcher: KeyMatcher,
+        picker: Option<ratatui_image::picker::Picker>,
+        storage: &crate::storage::Storage,
+    ) -> anyhow::Result<Self> {
+        let root = storage.notes_dir.canonicalize()?;
+        let path = path.canonicalize()?;
+        let target = path
+            .strip_prefix(root)?
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("invalid Canvas path"))?
+            .replace('\\', "/");
+        let expected_path = storage.document_path(&target)?;
+        let mut state = PinstarState::load(&expected_path)?;
+        let writer = storage.clone();
+        state.set_save_handler(move |path, before, after| {
+            anyhow::ensure!(
+                path == expected_path,
+                "Canvas path changed; reopen before saving"
+            );
+            writer.replace_document(&target, before, after)
+        });
         state.settings = Settings {
             enable_image_nodes: true,
             image_cache_size: config.image.cache_size,
@@ -149,7 +188,7 @@ impl PinstarPlugin {
         };
 
         // Load per-vault orthogonal preference.
-        if let Ok(vault_id) = crate::local_state::vault_identity_path(storage_data_dir) {
+        if let Ok(vault_id) = crate::local_state::vault_identity_path(&storage.data_dir) {
             let vault_key = vault_id.to_string_lossy().into_owned();
             if let Ok(paths) = crate::paths::AppPaths::discover(
                 crate::config::ClinConfig::config_path().unwrap_or_default(),
@@ -279,7 +318,8 @@ impl PinstarPlugin {
     }
 
     pub(crate) fn base_host_has_pending_changes(&self) -> bool {
-        self.state.editor_focus
+        self.state.last_save_failed()
+            || self.state.editor_focus
             || self.state.floating_editor.is_some()
             || self.state.rename_popup.is_some()
             || self.state.drag_start_pos.is_some()
@@ -539,6 +579,9 @@ impl OverlayView for PinstarPlugin {
         };
         if self.state.last_modified != modified {
             self.base_host_raw = self.state.raw_editor.lines().join("\n");
+        }
+        if let Some(error) = self.state.take_save_error() {
+            app.set_temporary_status(&format!("Canvas save failed; edits retained: {error}"));
         }
         outcome
     }

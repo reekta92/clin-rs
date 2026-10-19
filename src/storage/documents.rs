@@ -154,13 +154,23 @@ impl Storage {
         baseline: &DocumentSnapshot,
         source: &str,
     ) -> Result<DocumentSnapshot> {
+        self.replace_document(baseline.id(), baseline.source(), source)?;
+        Ok(DocumentSnapshot {
+            id: baseline.id.clone(),
+            source: source.into(),
+            existing: true,
+            recovery_id: baseline.recovery_id,
+        })
+    }
+
+    pub(crate) fn replace_document(&self, id: &str, before: &str, source: &str) -> Result<()> {
         let _guard = self.write_guard()?;
         if source.len() > 16 * 1024 * 1024 {
             bail!("document exceeds 16777216-byte safety limit");
         }
-        let path = self.document_path(baseline.id())?;
+        let path = self.document_path(id)?;
         let current = read_bounded_text(&path, 16 * 1024 * 1024)?;
-        if current != baseline.source() {
+        if current != before {
             bail!("document changed on disk; reload before saving");
         }
         if current != source {
@@ -169,12 +179,7 @@ impl Storage {
             }
             crate::fsutil::atomic_write_preserving_permissions(&path, source.as_bytes())?;
         }
-        Ok(DocumentSnapshot {
-            id: baseline.id.clone(),
-            source: source.into(),
-            existing: true,
-            recovery_id: baseline.recovery_id,
-        })
+        Ok(())
     }
 
     pub fn save_properties(

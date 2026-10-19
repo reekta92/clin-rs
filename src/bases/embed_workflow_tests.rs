@@ -216,13 +216,13 @@ fn palette_ctrl_space_and_history_restore_expanded_bases_host_routes() {
             let path = app.storage.notes_dir.join("map.canvas");
             fs::write(&path, "{\"nodes\":[],\"edges\":[]}").unwrap();
             app.canvas_state = Some(
-                crate::pinstar_adapter::PinstarPlugin::new(
+                crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                     &path,
                     &app.config,
                     app.keybinds.clone(),
                     crate::keybinds::KeyMatcher::default(),
                     None,
-                    &app.storage.data_dir,
+                    &app.storage,
                 )
                 .unwrap(),
             );
@@ -278,13 +278,13 @@ fn palette_f6_expands_focused_embeds_in_notes_editor_and_canvas_and_keeps_dialog
             let path = app.storage.notes_dir.join("map.canvas");
             fs::write(&path, "{\"nodes\":[],\"edges\":[]}").unwrap();
             app.canvas_state = Some(
-                crate::pinstar_adapter::PinstarPlugin::new(
+                crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                     &path,
                     &app.config,
                     app.keybinds.clone(),
                     crate::keybinds::KeyMatcher::default(),
                     None,
-                    &app.storage.data_dir,
+                    &app.storage,
                 )
                 .unwrap(),
             );
@@ -461,13 +461,13 @@ fn canvas_file_and_inline_text_nodes_use_live_native_regions_and_exact_json_spli
     app.storage.create_document("test.canvas", &canvas).unwrap();
     app.invalidate_bases();
     app.mode = ViewMode::Canvas;
-    let mut plugin = crate::pinstar_adapter::PinstarPlugin::new(
+    let mut plugin = crate::pinstar_adapter::PinstarPlugin::new_in_storage(
         &app.storage.notes_dir.join("test.canvas"),
         &app.config,
         app.keybinds.clone(),
         crate::keybinds::KeyMatcher::default(),
         None,
-        &app.storage.data_dir,
+        &app.storage,
     )
     .unwrap();
     plugin.state.zoom = 1.0;
@@ -509,6 +509,38 @@ fn canvas_file_and_inline_text_nodes_use_live_native_regions_and_exact_json_spli
         app.storage.load_document("test.canvas").unwrap().source(),
         canvas
     );
+}
+
+#[test]
+fn failed_canvas_eager_save_retains_nodes_when_external_changes_are_polled() {
+    let (_root, app) = fixture();
+    let path = app.storage.notes_dir.join("conflict.canvas");
+    app.storage
+        .create_document("conflict.canvas", "{\"nodes\":[],\"edges\":[]}")
+        .unwrap();
+    let mut plugin = crate::pinstar_adapter::PinstarPlugin::new_in_storage(
+        &path,
+        &app.config,
+        app.keybinds.clone(),
+        crate::keybinds::KeyMatcher::default(),
+        None,
+        &app.storage,
+    )
+    .unwrap();
+    let external = "{\"nodes\":[],\"edges\":[],\"external\":true}";
+    std::fs::write(&path, external).unwrap();
+    plugin.state.add_text_node(0.0, 0.0);
+    plugin.state.resizing_node_id = None;
+    assert!(
+        plugin
+            .state
+            .take_save_error()
+            .unwrap()
+            .contains("changed on disk")
+    );
+    plugin.poll_base_renderers().unwrap();
+    assert_eq!(plugin.state.data.nodes.len(), 1);
+    assert_eq!(std::fs::read_to_string(path).unwrap(), external);
 }
 
 #[test]
@@ -834,6 +866,7 @@ fn metadata_rebase_retains_unsaved_body_and_recovery_draft_through_undo() {
             .contains("score: 2")
     );
     let expected = app.editor.public_document_source().unwrap();
+    drop(app.drafts.take());
     assert_eq!(
         app.storage.recover_documents().unwrap(),
         Vec::<String>::new()
@@ -977,13 +1010,13 @@ fn canvas_inline_write_and_history_reload_native_state_and_reject_pending_raw_ed
     app.storage.create_document("test.canvas", &source).unwrap();
     app.invalidate_bases();
     app.canvas_state = Some(
-        crate::pinstar_adapter::PinstarPlugin::new(
+        crate::pinstar_adapter::PinstarPlugin::new_in_storage(
             &app.storage.notes_dir.join("test.canvas"),
             &app.config,
             app.keybinds.clone(),
             crate::keybinds::KeyMatcher::default(),
             None,
-            &app.storage.data_dir,
+            &app.storage,
         )
         .unwrap(),
     );

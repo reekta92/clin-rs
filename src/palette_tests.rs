@@ -119,13 +119,13 @@ impl Fixture {
 
             ViewMode::Canvas => {
                 app.canvas_state = Some(
-                    crate::pinstar_adapter::PinstarPlugin::new(
+                    crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                         &app.storage.note_path("map.canvas"),
                         &app.config,
                         app.keybinds.clone(),
                         crate::keybinds::KeyMatcher::default(),
                         None,
-                        &app.storage.data_dir,
+                        &app.storage,
                     )
                     .unwrap(),
                 );
@@ -2249,7 +2249,7 @@ fn draw_dispatch_recovers_direct_and_queued_save_failures_without_reapplying_edi
     assert_eq!(state.data.elements.len(), 1);
     assert_eq!(state.undo_stack.len(), 1);
     assert!(state.current_stroke.is_none());
-    assert!(f.app.status.contains("failed to publish"));
+    assert!(f.app.status.contains("failed"));
     drive(&mut f.app, key(KeyCode::Char('q')));
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.draw_state.is_some());

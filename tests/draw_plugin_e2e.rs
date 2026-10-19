@@ -91,7 +91,7 @@ fn custom_keys_render_save_reopen_and_failed_departure() {
         .overlay_handle_event(key(KeyCode::Char('q')), &mut app, area)
         .expect("recoverable save error");
     assert!(matches!(result, OverlayResult::Continue));
-    assert!(app.status.contains("failed to publish"));
+    assert!(app.status.contains("failed"));
     assert_eq!(plugin.state.data.elements.len(), 1);
     std::fs::remove_dir(&path).expect("restore destination");
     std::fs::write(&path, original).expect("restore saved bytes");
@@ -99,4 +99,60 @@ fn custom_keys_render_save_reopen_and_failed_departure() {
         .overlay_handle_event(key(KeyCode::Char('q')), &mut app, area)
         .expect("saved departure");
     assert!(matches!(result, OverlayResult::Exit));
+}
+
+#[test]
+fn drawing_saves_keep_permissions_and_reject_external_and_cooperating_writes() -> anyhow::Result<()>
+{
+    let root = tempfile::tempdir()?;
+    let storage = clin::storage::Storage {
+        data_dir: root.path().into(),
+        notes_dir: root.path().into(),
+        config_dir: root.path().join("config"),
+        templates_dir: root.path().join("templates"),
+        skip_dir_patterns: Vec::new(),
+        frontmatter_policy: clin::frontmatter::WritePolicy::default(),
+    };
+    let path = root.path().join("art.draw");
+    draw::DrawState::create(&path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    let mut plugin =
+        DrawPlugin::load(&storage, "art.draw", Keybinds::default(), KeyMatcher::new())?;
+    plugin.state.data.width = 2048.0;
+    plugin.state.save()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&path)?.permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let saved = std::fs::read(&path)?;
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(root.path().join(".clin/write.lock"))?;
+    lock.lock()?;
+    plugin.state.data.width = 3072.0;
+    assert!(plugin.state.save().is_err());
+    assert_eq!(std::fs::read(&path)?, saved);
+    drop(lock);
+    plugin.state.save()?;
+    let external = serde_json::to_vec(&draw::state::DrawData::default())?;
+    std::fs::write(&path, &external)?;
+    assert!(
+        plugin
+            .save_for_navigation()
+            .expect_err("external changes must block navigation")
+            .to_string()
+            .contains("changed on disk")
+    );
+    assert_eq!(std::fs::read(&path)?, external);
+    assert_eq!(plugin.state.data.width, 3072.0);
+    Ok(())
 }

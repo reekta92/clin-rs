@@ -35,7 +35,12 @@ impl DrawPlugin {
                 .is_some_and(|ext| ext == "draw"),
             "Not a drawing: {id}"
         );
-        let state = DrawState::load(&storage.document_path(id)?)?;
+        let mut state = DrawState::load(&storage.document_path(id)?)?;
+        let target = id.to_owned();
+        let storage = storage.clone();
+        state.set_save_handler(move |before, after| {
+            storage.replace_document(&target, before, after)
+        });
         Ok(Self {
             state,
             current_file: id.into(),

@@ -598,13 +598,13 @@ impl App {
                 );
             }
 
-            match crate::pinstar_adapter::PinstarPlugin::new(
+            match crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                 &path,
                 &self.config,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
                 self.image_picker.clone(),
-                &self.storage.data_dir,
+                &self.storage,
             ) {
                 Ok(plugin) => {
                     self.canvas_state = Some(plugin);

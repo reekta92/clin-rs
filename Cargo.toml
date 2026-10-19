@@ -95,7 +95,7 @@ assets = [
 ]
 
 [dependencies]
-draw = { package = "draw-rs", version = "0.1.0", git = "https://github.com/reekta92/draw-rs", rev = "e39385ffd2d8238a408d4be4b3ddd38b554c74e8" }
+draw = { package = "draw-rs", version = "0.1.0", git = "https://github.com/reekta92/draw-rs", rev = "50120747b061e6be5bb8f0da9f75373c10b2af37" }
 anyhow = "1.0"
 base64 = "0.22"
 arboard = "3.6.1"
@@ -114,7 +114,7 @@ tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = "0.30"
 graf = { package = "graf-rs", version = "1.1.0", git = "https://github.com/reekta92/graf", rev = "9c32610" }
-pinstar = { version = "1.0.0", git = "https://github.com/reekta92/pinstar", rev = "5ce3dbc94165", features = ["images", "mermaid-preview"] }
+pinstar = { version = "1.0.0", git = "https://github.com/reekta92/pinstar", rev = "3fe2e49eeff8c841bbd8cf592c83966c42e19688", features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 # Keep existing imports while using YAML Organization's maintained backend.

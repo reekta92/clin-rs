@@ -198,13 +198,13 @@ impl Location {
                 let _: serde_json::Value =
                     serde_json::from_str(snapshot.source()).context("failed to reopen Canvas")?;
                 Prepared::overlay(OverlayState::Canvas(
-                    crate::pinstar_adapter::PinstarPlugin::new(
+                    crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                         path,
                         &app.config,
                         app.keybinds.clone(),
                         KeyMatcher::default(),
                         app.image_picker.clone(),
-                        &app.storage.data_dir,
+                        &app.storage,
                     )?,
                 ))
             }

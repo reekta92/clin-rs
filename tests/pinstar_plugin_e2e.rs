@@ -84,6 +84,30 @@ fn key(c: char) -> crossterm::event::Event {
     ))
 }
 
+#[cfg(unix)]
+#[test]
+fn canvas_eager_saves_preserve_private_modes_and_leave_readonly_files_untouched()
+-> anyhow::Result<()> {
+    use ratatui::layout::Rect;
+    use std::os::unix::fs::PermissionsExt;
+    let (mut plugin, path) = make_plugin("{\"nodes\":[],\"edges\":[]}");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    let mut app = test_app();
+    plugin.overlay_handle_event(key('t'), &mut app, Rect::new(0, 0, 80, 24))?;
+    assert_eq!(
+        std::fs::metadata(&path)?.permissions().mode() & 0o777,
+        0o600
+    );
+    let saved = std::fs::read(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400))?;
+    plugin.overlay_handle_event(key('t'), &mut app, Rect::new(0, 0, 80, 24))?;
+    assert_eq!(std::fs::read(&path)?, saved);
+    assert!(app.status.contains("read-only"));
+    assert_eq!(plugin.state.data.nodes.len(), 2);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
 fn esc() -> crossterm::event::Event {
     crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Esc,

@@ -1317,13 +1317,13 @@ impl App {
                 self.seq_matcher.clone(),
             )?);
         } else {
-            self.canvas_state = Some(crate::pinstar_adapter::PinstarPlugin::new(
+            self.canvas_state = Some(crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                 &self.storage.document_path(&id)?,
                 &self.config,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
                 self.image_picker.clone(),
-                &self.storage.data_dir,
+                &self.storage,
             )?);
         }
         self.return_mode = Some(self.mode);

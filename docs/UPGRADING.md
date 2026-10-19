@@ -19,13 +19,15 @@ These records contain plaintext note contents, including prior contents used for
 
 Draft writes are coalesced off the input thread, with a 150 ms scheduling window. Save and orderly session transitions flush pending writes. Abrupt process or machine failure can lose changes not yet persisted. Failed writes, malformed records, and recovery conflicts are retained and reported, not discarded.
 
-Live draft workers and transactions hold a native shared recovery lock. Startup and migration require the exclusive lock, so they leave recovery records alone while another clin session is writing. Recovery resumes after those owners close or exit.
+Live draft workers and transactions hold a native shared recovery lock. Startup and migration require the exclusive lock, so they leave recovery records alone while another clin session is writing. The next startup can recover them after those owners close or exit.
 
 `clin storage migrate` copies the complete vault, including attachments, `.base` files, `.obsidian` settings, subnotes, templates, and recovery records. It rejects symlink traversal, nested source/destination vaults, live recovery owners, and read failures. Source data remains in place; external legacy keys still require a separate copy.
 
 ## Safe note saving
 
 Loaded notes and public documents share raw-source baseline checks, read-only checks, permission-preserving atomic replacement, and a native lock for cooperating clin writers. A disk change already present when saving is checked causes a conflict rather than silently replacing newer content. Other editors do not honor clin's lock; no cross-application guarantee is made for a write racing inside the final check/publication interval.
+
+Drawing and Canvas engines use the same guarded storage path for eager saves and navigation saves. Canvas save failures remain visible and keep the unsaved model in memory instead of automatically reloading over it.
 
 Ordinary title/body saves retain the existing filename. New notes still derive an initial filename from their title. Explicit file rename is separate and warns that incoming links are not rewritten. Existing `rename_on_title_change` settings are retired.
 
