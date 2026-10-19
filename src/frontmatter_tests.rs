@@ -57,6 +57,105 @@ fn key(app: &mut App, focus: &mut EditFocus, code: KeyCode, modifiers: KeyModifi
 }
 
 #[test]
+fn list_rename_updates_note_title_without_changing_filename() {
+    let (_guard, _root, mut app) = fixture();
+    app.keybinds = crate::keybinds::Keybinds::default();
+    for ext in ["md", "txt"] {
+        for pinned in [false, true] {
+            let id = format!("stable.{ext}");
+            let source = format!(
+                "---\r\n# keep header\r\ntitle: 'Old title' # keep comment\r\npinned: {pinned}\r\ncustom: [a, b]\r\n---\r\nbody [[stable]]\r\n"
+            );
+            fs::write(app.storage.notes_dir.join(&id), &source).unwrap();
+            app.storage.frontmatter_policy.title = false;
+            let subnotes = vec![crate::storage::SubNote {
+                id: "child".into(),
+                title: "Attached".into(),
+                content: "Keep me".into(),
+                updated_at: 1,
+            }];
+            app.storage.set_subnotes(&id, &subnotes).unwrap();
+            app.notes = vec![app.storage.load_note_summary(&id).unwrap()];
+            app.refresh_visual_list();
+            app.list.visual_index = app
+                .list
+                .visual_list
+                .iter()
+                .position(|item| matches!(item, crate::list_view::VisualItem::Note { .. }))
+                .unwrap();
+            crate::events::handle_list_keys(
+                &mut app,
+                KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+            );
+            let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active else {
+                panic!("r should open the note rename popup");
+            };
+            popup.input.select_all();
+            popup.input.insert_str("New title");
+            assert!(crate::events::handle_global_popups_and_palette(
+                &mut app,
+                crossterm::event::Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
+                ratatui::layout::Rect::default(),
+            ));
+            let saved = fs::read_to_string(app.storage.notes_dir.join(&id)).unwrap();
+            assert_eq!(
+                crate::frontmatter::parse(&saved).0.title.as_deref(),
+                Some("New title")
+            );
+            assert!(saved.contains("# keep header\r\n"));
+            assert!(saved.contains("# keep comment\r\n"));
+            assert!(saved.contains("custom: [a, b]\r\n"));
+            assert!(saved.ends_with("---\r\nbody [[stable]]\r\n"));
+            assert!(
+                !app.storage
+                    .notes_dir
+                    .join(format!("New title.{ext}"))
+                    .exists()
+            );
+            assert_eq!(app.storage.get_subnotes(&id).unwrap(), subnotes);
+            assert_eq!(app.notes.len(), 1);
+            assert_eq!(app.notes[0].id, id);
+            assert_eq!(app.notes[0].title, "New title");
+            assert_eq!(app.notes[0].pinned, pinned);
+        }
+    }
+}
+
+#[test]
+fn list_rename_other_file_types_preserves_source_bytes() {
+    let (_guard, _root, mut app) = fixture();
+    for (ext, source) in [
+        ("png", &b"\x89PNG\r\n\x1a\n\0\xff"[..]),
+        ("base", b"views: [{type: table}]\n"),
+        ("canvas", b"{\"nodes\":[],\"edges\":[]}\n"),
+        ("draw", b"{\"name\":\"Keep data\"}\n"),
+    ] {
+        let id = format!("original.{ext}");
+        fs::write(app.storage.notes_dir.join(&id), source).unwrap();
+        let mut input = crate::ui::make_popup_textarea(&app.app_theme, "");
+        input.insert_str("Renamed");
+        app.popups.active = Some(crate::popups::ActivePopup::NoteRename(
+            crate::popups::NoteRenamePopup {
+                note_id: id.clone(),
+                input,
+            },
+        ));
+        app.confirm_rename_note();
+        let renamed = format!("Renamed.{ext}");
+        assert_eq!(
+            fs::read(app.storage.notes_dir.join(&renamed)).unwrap(),
+            source
+        );
+        assert!(!app.storage.notes_dir.join(&id).exists());
+        assert!(
+            app.notes
+                .iter()
+                .any(|note| note.id == renamed && note.title == "Renamed")
+        );
+    }
+}
+
+#[test]
 fn frontmatter_modes_defaults_validation_and_retired_config_cleanup() {
     let (_guard, root, mut app) = fixture();
     assert_eq!(
