@@ -286,8 +286,14 @@ impl App {
                     SortOrder::Ascending => a.updated_at.cmp(&b.updated_at),
                 },
                 SortField::Title => match self.list.sort_order {
-                    SortOrder::Ascending => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
-                    SortOrder::Descending => b.title.to_lowercase().cmp(&a.title.to_lowercase()),
+                    SortOrder::Ascending => a
+                        .file_stem()
+                        .to_lowercase()
+                        .cmp(&b.file_stem().to_lowercase()),
+                    SortOrder::Descending => b
+                        .file_stem()
+                        .to_lowercase()
+                        .cmp(&a.file_stem().to_lowercase()),
                 },
             }
         });

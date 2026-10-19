@@ -1342,7 +1342,7 @@ impl App {
                 }
 
                 let sanitized_title =
-                    crate::fsutil::sanitize_for_terminal(summary.title.as_str()).into_owned();
+                    crate::fsutil::sanitize_for_terminal(summary.file_stem()).into_owned();
                 spans.push(Span::styled(sanitized_title, text_style));
                 if self.list.inline_info {
                     if self.notes_with_subnotes.contains(&summary.id) {

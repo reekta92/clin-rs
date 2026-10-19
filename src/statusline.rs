@@ -789,7 +789,13 @@ impl StatuslineContext<'_> {
             // Note (List + Edit)
             "note_title" => Some(
                 self.note
-                    .map(|n| n.title.as_str())
+                    .map(|n| {
+                        if self.view == ViewMode::List {
+                            n.file_stem()
+                        } else {
+                            n.title.as_str()
+                        }
+                    })
                     .unwrap_or("")
                     .to_string()
                     .into(),

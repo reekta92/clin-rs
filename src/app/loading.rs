@@ -533,7 +533,7 @@ impl App {
                     let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
                     let note = pidx.and_then(|i| self.notes.get(i));
                     let name = note
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| parent_id.clone());
                     let parent_expanded = self
                         .list
@@ -716,7 +716,7 @@ impl App {
                     let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
                     let name = pidx
                         .and_then(|i| self.notes.get(i))
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| parent_id.clone());
                     visual.push(VisualItem::Folder {
                         path: format!("subnotes:{parent_id}"),
@@ -1207,7 +1207,7 @@ impl App {
                 .map(|(_, n)| n)
                 .filter(|n| n.pinned)
                 .map(|n| FolderGraphNode {
-                    label: n.title.clone(),
+                    label: n.file_stem().to_owned(),
                     is_note: true,
                     x: 0.0,
                     y: 0.0,
@@ -1231,7 +1231,7 @@ impl App {
                     .iter()
                     .filter_map(|&i| self.notes.get(i))
                     .map(|n| FolderGraphNode {
-                        label: n.title.clone(),
+                        label: n.file_stem().to_owned(),
                         is_note: true,
                         x: 0.0,
                         y: 0.0,
@@ -1273,7 +1273,7 @@ impl App {
             .map(|(_, n)| n)
             .filter(|n| n.folder == focused_path)
             .map(|n| FolderGraphNode {
-                label: n.title.clone(),
+                label: n.file_stem().to_owned(),
                 is_note: true,
                 x: 0.0,
                 y: 0.0,
@@ -1631,7 +1631,7 @@ impl App {
                         note.folder == folder_path
                     };
                     if matches {
-                        notes.push(note.title.clone());
+                        notes.push(note.file_stem().to_owned());
                     }
                 }
                 notes.sort();
@@ -1727,7 +1727,7 @@ impl App {
                         .notes
                         .iter()
                         .find(|n| n.id == *pid)
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| pid.clone());
                     md.push_str(&format!("- \u{f02c} {title} ({})\n", subs.len()));
                 }

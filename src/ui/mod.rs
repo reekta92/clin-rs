@@ -1333,7 +1333,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             let note_summary =
                                 app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
                             let title = note_summary
-                                .map(|n| n.title.as_str())
+                                .map(crate::storage::NoteSummary::file_stem)
                                 .unwrap_or(&*hit.note_id);
                             let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
                             let label = if folder.is_empty() {
@@ -1396,7 +1396,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .map(|idx| {
                     let id_arc = &popup.title_result_ids[idx];
                     let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
-                    let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
+                    let title = note_summary
+                        .map(crate::storage::NoteSummary::file_stem)
+                        .unwrap_or(&**id_arc);
                     let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
                     let label = if folder.is_empty() {
                         title.to_string()

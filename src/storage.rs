@@ -52,6 +52,16 @@ pub struct NoteSummary {
     pub links: Vec<String>,
     pub size_bytes: u64,
 }
+
+impl NoteSummary {
+    pub(crate) fn file_stem(&self) -> &str {
+        Path::new(&self.id)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(&self.title)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FileStamp {
     pub modified_nanos: Option<u128>,

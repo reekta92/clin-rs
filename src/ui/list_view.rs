@@ -1055,7 +1055,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .notes
                         .iter()
                         .find(|n| n.id == parent_id)
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| parent_id.to_string());
                     spans.push(Span::styled(
                         format!(" {}", label),
@@ -1320,7 +1320,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         } else {
                             "MD"
                         };
-                        (ic, label, col, s.title.clone())
+                        (ic, label, col, s.file_stem().to_owned())
                     }
                     crate::app::VisualItem::TemplateConfig { .. } => (
                         crate::ui::get_char('\u{f15c}', '\u{2699}', app.config.ui.icon_mode),
@@ -1564,7 +1564,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .notes
                 .iter()
                 .find(|n| n.id == *parent_id)
-                .map(|n| n.title.clone())
+                .map(|n| n.file_stem().to_owned())
                 .unwrap_or_else(|| parent_id.clone());
             let subnotes: Vec<crate::storage::SubNote> = app
                 .subnotes_view_cache
@@ -2020,9 +2020,10 @@ fn get_item_name(app: &App, idx: usize) -> Option<String> {
         match item {
             crate::list_view::VisualItem::Folder { name, .. } => Some(name.clone()),
             crate::list_view::VisualItem::SmartFolder { label, .. } => Some(label.clone()),
-            crate::list_view::VisualItem::Note { summary_idx, .. } => {
-                app.notes.get(*summary_idx).map(|n| n.title.clone())
-            }
+            crate::list_view::VisualItem::Note { summary_idx, .. } => app
+                .notes
+                .get(*summary_idx)
+                .map(|n| n.file_stem().to_owned()),
             crate::list_view::VisualItem::CreateNew { .. } => Some("Create...".to_string()),
             crate::list_view::VisualItem::TemplateConfig { .. } => {
                 Some(crate::templates::FOLDER_TEMPLATE_CONFIG.to_string())
@@ -2155,7 +2156,7 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                 } else {
                     format!("Vault/{}", note.folder)
                 };
-                (folder, note.title.clone())
+                (folder, note.file_stem().to_owned())
             }
             crate::list_view::VisualItem::Subnote {
                 parent_id,
@@ -2359,6 +2360,102 @@ mod tests {
             column,
             row,
             modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn note_names_use_filenames_in_lists_previews_and_search() {
+        use crate::config::{IconMode, NotesLayout};
+        use crate::list_view::{SortField, SortOrder};
+        use crate::popups::ActivePopup;
+
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.mode = ViewMode::List;
+        app.config.ui.icon_mode = IconMode::None;
+        let source = "---\ntitle: test\n---\nbody";
+        for id in ["test (2).md", "test.md"] {
+            std::fs::write(app.storage.note_path(id), source).unwrap();
+            app.notes.push(app.storage.load_note_summary(id).unwrap());
+        }
+        app.list.sort_field = SortField::Title;
+        app.list.sort_order = SortOrder::Ascending;
+        app.sort_notes();
+        assert_eq!(app.notes[0].id, "test.md");
+        assert_eq!(app.notes[1].id, "test (2).md");
+        assert!(app.notes.iter().all(|note| note.title == "test"));
+
+        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+        for layout in [NotesLayout::Tree, NotesLayout::Grid] {
+            app.list.notes_layout = layout.clone();
+            app.refresh_visual_list();
+            draw_grid(&mut terminal, &mut app);
+            let text: String = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect();
+            assert!(text.contains("test (2)"), "{layout:?}");
+            let index = app
+                .list
+                .visual_list
+                .iter()
+                .position(|item| {
+                    matches!(
+                        item,
+                        crate::list_view::VisualItem::Note { summary_idx: 1, .. }
+                    )
+                })
+                .unwrap();
+            assert_eq!(get_item_name(&app, index).as_deref(), Some("test (2)"));
+            app.list.visual_index = index;
+            app.preview_fullscreen = true;
+            assert_eq!(get_preview_info(&app).unwrap().item_name, "test (2)");
+            app.preview_fullscreen = false;
+        }
+
+        for query in ["test", "g:body"] {
+            app.begin_search();
+            let Some(ActivePopup::Search(popup)) = &mut app.popups.active else {
+                panic!("search popup missing");
+            };
+            popup.input.insert_str(query);
+            popup.title_result_ids = app
+                .notes
+                .iter()
+                .map(|note| note.id.clone().into())
+                .collect();
+            popup.grep_results = app
+                .notes
+                .iter()
+                .map(|note| crate::popups::SearchNoteHit {
+                    note_id: note.id.clone().into(),
+                    match_count: 1,
+                    lines: vec![],
+                    truncated: false,
+                })
+                .collect();
+            popup.rebuild_grep_offsets();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+                .unwrap();
+            let text: String = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect();
+            assert!(text.contains("test (2)"), "{query}");
+            app.popups.active = None;
+        }
+        for id in ["test.md", "test (2).md"] {
+            assert_eq!(
+                std::fs::read_to_string(app.storage.note_path(id)).unwrap(),
+                source
+            );
         }
     }
 
@@ -2828,7 +2925,7 @@ mod tests {
             get_preview_info(&app),
             Some(PreviewHeaderInfo {
                 path: "Vault/work/projects".to_string(),
-                item_name: "My Note".to_string(),
+                item_name: "note1".to_string(),
                 prev_name: Some("projects".to_string()),
                 next_name: Some("other".to_string()),
             })
