@@ -119,9 +119,9 @@ pub fn draw_outline(
                     crate::outline::parse::NodeKind::Header { title, .. } => {
                         let arrow = if node.has_children {
                             if state.expanded.contains(&idx) {
-                                "▼ "
+                                "▾ "
                             } else {
-                                "▶ "
+                                "▸ "
                             }
                         } else {
                             "  "

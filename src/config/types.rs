@@ -421,6 +421,34 @@ impl HintBarStyle {
             _ => None,
         }
     }
+
+    /// Preserve bar geometry without requiring Powerline characters in portable modes.
+    pub fn cell_caps_for_mode(self, mode: IconMode) -> Option<(&'static str, &'static str)> {
+        match (self, mode) {
+            (_, IconMode::Nerd) => self.cell_caps(),
+            (Self::Bubbles, _) => Some(("(", ")")),
+            (Self::Hexagon, _) => Some(("<", ">")),
+            _ => self.cell_caps(),
+        }
+    }
+
+    /// Chained bar separator, shared by headers, hints and editor badges.
+    pub fn separator(self, is_right: bool, mode: IconMode) -> &'static str {
+        match (self, is_right, mode) {
+            (Self::Sharp | Self::SharpGradient, true, IconMode::Nerd) => "\u{e0b2}",
+            (Self::Sharp | Self::SharpGradient, false, IconMode::Nerd) => "\u{e0b0}",
+            (Self::Rounded | Self::RoundedGradient, true, IconMode::Nerd) => "\u{e0b6}",
+            (Self::Rounded | Self::RoundedGradient, false, IconMode::Nerd) => "\u{e0b4}",
+            (Self::Slanted | Self::SlantedGradient, true, IconMode::Nerd) => "\u{e0be}",
+            (Self::Slanted | Self::SlantedGradient, false, IconMode::Nerd) => "\u{e0bc}",
+            (Self::Sharp | Self::SharpGradient, true, _) => "<",
+            (Self::Sharp | Self::SharpGradient, false, _) => ">",
+            (Self::Rounded | Self::RoundedGradient, true, _) => "(",
+            (Self::Rounded | Self::RoundedGradient, false, _) => ")",
+            (Self::Slanted | Self::SlantedGradient, _, _) => "/",
+            _ => "",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

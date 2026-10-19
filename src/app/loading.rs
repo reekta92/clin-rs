@@ -1653,12 +1653,22 @@ impl App {
                     name.clone()
                 };
 
+                let preview_icon = |icon: crate::ui::icons::Icon| {
+                    let glyph = icon.get(self.config.ui.icon_mode);
+                    if glyph.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{glyph} ")
+                    }
+                };
+                let folder_icon = preview_icon(crate::ui::icons::FOLDER);
+                let note_icon = preview_icon(crate::ui::icons::FILE);
                 let mut md = format!("# {display_title}\n\n");
 
                 if !subfolders.is_empty() {
                     md.push_str("## Folders\n");
                     for sub in &subfolders {
-                        md.push_str(&format!("- \u{f07b} {sub}\n"));
+                        md.push_str(&format!("- {}{sub}\n", folder_icon));
                     }
                     md.push('\n');
                 }
@@ -1666,7 +1676,7 @@ impl App {
                 if !notes.is_empty() {
                     md.push_str("## Notes\n");
                     for note in &notes {
-                        md.push_str(&format!("- \u{f15c} {note}\n"));
+                        md.push_str(&format!("- {}{note}\n", note_icon));
                     }
                 } else if subfolders.is_empty() {
                     md.push_str("*This folder is empty.*\n");
@@ -1729,7 +1739,9 @@ impl App {
                         .find(|n| n.id == *pid)
                         .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| pid.clone());
-                    md.push_str(&format!("- \u{f02c} {title} ({})\n", subs.len()));
+                    let icon = crate::ui::icons::SUBNOTES.get(self.config.ui.icon_mode);
+                    let gap = if icon.is_empty() { "" } else { " " };
+                    md.push_str(&format!("- {icon}{gap}{title} ({})\n", subs.len()));
                 }
                 if self.subnotes_view_cache.is_empty() {
                     md.push_str("*No subnotes.*\n");
@@ -2021,6 +2033,88 @@ mod tests {
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (temp_dir, App::new(storage).unwrap())
+    }
+
+    #[test]
+    fn folder_and_subnote_previews_follow_live_icon_mode() {
+        use crate::config::IconMode;
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_td, mut app) = make_app();
+        std::fs::create_dir_all(app.storage.notes_dir.join("docs/sub")).unwrap();
+        std::fs::write(app.storage.notes_dir.join("docs/note.md"), "# Note\n").unwrap();
+        let load = crate::app::catalog::load_notes_blocking(
+            &app.storage,
+            &app.notes_worker_pool,
+            false,
+            false,
+        )
+        .unwrap();
+        app.notes = load.summaries;
+        app.catalog_folders = load.folders;
+        app.subnotes_view_cache = vec![("docs/note.md".into(), Vec::new())];
+        app.list.preview_enabled = true;
+        app.config.list.folder_graph_preview = false;
+        app.list.visual_index = 0;
+        for (path, icon) in [
+            ("docs", crate::ui::icons::FOLDER),
+            (
+                crate::app::VIRTUAL_SUBNOTES_PATH,
+                crate::ui::icons::SUBNOTES,
+            ),
+        ] {
+            app.list.visual_list = vec![VisualItem::Folder {
+                path: path.into(),
+                name: "Preview".into(),
+                depth: 0,
+                is_expanded: true,
+                note_count: 1,
+                recursive_count: 1,
+                stale: false,
+                is_pinned: false,
+            }];
+            for (selected, mode) in [
+                (0, IconMode::Nerd),
+                (1, IconMode::Unicode),
+                (2, IconMode::None),
+            ] {
+                app.apply_icon_selection(selected).unwrap();
+                assert_eq!(app.app_theme.icon_mode, mode);
+                let Some(PreviewContent::Markdown(renderer)) = &mut app.list.preview_content else {
+                    panic!("expected generated Markdown preview");
+                };
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while renderer.is_pending() {
+                    renderer.poll();
+                    assert!(Instant::now() < deadline, "preview did not finish");
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                let text = renderer
+                    .document()
+                    .unwrap()
+                    .lines()
+                    .iter()
+                    .map(|line| {
+                        line.spans
+                            .iter()
+                            .map(|span| span.text.as_str())
+                            .collect::<String>()
+                    })
+                    .collect::<String>();
+                if path == "docs" {
+                    assert!(text.contains("sub"), "{mode:?}: {text}");
+                }
+                assert!(text.contains("note"), "{mode:?}: {text}");
+                if mode != IconMode::None {
+                    assert!(text.contains(icon.get(mode)), "{mode:?}: {text}");
+                }
+                if mode != IconMode::Nerd {
+                    assert!(
+                        !text.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)),
+                        "{mode:?}: {text}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

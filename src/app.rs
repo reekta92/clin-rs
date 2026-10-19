@@ -1206,34 +1206,34 @@ impl App {
                     if *is_expanded {
                         format!(
                             "{} {}",
-                            crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
-                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                            crate::ui::icons::EXPANDED.get(self.config.ui.icon_mode),
+                            crate::ui::icons::PIN.get(self.config.ui.icon_mode)
                         )
                     } else {
                         format!(
                             "{} {}",
-                            crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
-                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                            crate::ui::icons::COLLAPSED.get(self.config.ui.icon_mode),
+                            crate::ui::icons::PIN.get(self.config.ui.icon_mode)
                         )
                     }
                 } else {
                     let folder_glyph = if *path == crate::app::VIRTUAL_SUBNOTES_PATH {
-                        crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode)
+                        crate::ui::icons::SUBNOTES.get(self.config.ui.icon_mode)
                     } else if path.starts_with("subnotes:") {
-                        crate::ui::get_icon("\u{f15b}", "\u{1f4c3}", self.config.ui.icon_mode)
+                        crate::ui::icons::FILE.get(self.config.ui.icon_mode)
                     } else {
-                        crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", self.config.ui.icon_mode)
+                        crate::ui::icons::FOLDER.get(self.config.ui.icon_mode)
                     };
                     if *is_expanded {
                         format!(
                             "{} {}",
-                            crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                            crate::ui::icons::EXPANDED.get(self.config.ui.icon_mode),
                             folder_glyph
                         )
                     } else {
                         format!(
                             "{} {}",
-                            crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                            crate::ui::icons::COLLAPSED.get(self.config.ui.icon_mode),
                             folder_glyph
                         )
                     }
@@ -1264,8 +1264,7 @@ impl App {
                 let sanitized_name = crate::fsutil::sanitize_for_terminal(name);
                 let mut display_name = sanitized_name.into_owned();
                 if *is_pinned {
-                    let pin_icon =
-                        crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
+                    let pin_icon = crate::ui::icons::PIN.get(self.config.ui.icon_mode);
                     if !pin_icon.is_empty() {
                         display_name = format!("{pin_icon} {display_name}");
                     }
@@ -1284,8 +1283,7 @@ impl App {
                 }
                 let mut spans = vec![Span::styled(text, style)];
                 if name != ".." && self.list.template_config_folders.contains(path) {
-                    let glyph =
-                        crate::ui::get_icon("\u{f013}", "\u{2699}", self.config.ui.icon_mode);
+                    let glyph = crate::ui::icons::SETTINGS.get(self.config.ui.icon_mode);
                     if !glyph.is_empty() {
                         spans.push(Span::styled(
                             format!(" {glyph}"),
@@ -1316,8 +1314,7 @@ impl App {
 
                 spans.push(Span::raw("  "));
                 if summary.pinned {
-                    let icon =
-                        crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
+                    let icon = crate::ui::icons::PIN.get(self.config.ui.icon_mode);
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),
@@ -1342,10 +1339,14 @@ impl App {
                 spans.push(Span::styled(sanitized_title, text_style));
                 if self.list.inline_info {
                     if self.notes_with_subnotes.contains(&summary.id) {
-                        let sub_icon = match self.config.ui.icon_mode {
-                            crate::config::IconMode::Nerd => " ⧉",
-                            crate::config::IconMode::Unicode => " ⧉",
-                            crate::config::IconMode::None => " +",
+                        let sub_icon = if self.config.ui.icon_mode == crate::config::IconMode::None
+                        {
+                            " +".to_string()
+                        } else {
+                            format!(
+                                " {}",
+                                crate::ui::icons::SUBNOTES.get(self.config.ui.icon_mode)
+                            )
                         };
                         spans.push(Span::styled(
                             sub_icon.to_string(),
@@ -1401,7 +1402,7 @@ impl App {
             }
             VisualItem::TemplateConfig { depth, .. } => {
                 let indent = "  ".repeat(*depth);
-                let icon = crate::ui::get_icon("\u{f15c}", "\u{2699}", self.config.ui.icon_mode);
+                let icon = crate::ui::icons::SETTINGS.get(self.config.ui.icon_mode);
                 let label = if icon.is_empty() {
                     format!("{indent}{}", crate::templates::FOLDER_TEMPLATE_CONFIG)
                 } else {
@@ -1417,7 +1418,7 @@ impl App {
             }
             VisualItem::CreateNew { depth, .. } => {
                 let indent = "  ".repeat(*depth);
-                let icon = crate::ui::get_icon("\u{f067}", "\u{2795}", self.config.ui.icon_mode);
+                let icon = crate::ui::icons::ADD.get(self.config.ui.icon_mode);
                 let text = if icon.is_empty() {
                     format!("{indent}Create new...")
                 } else {
@@ -1442,18 +1443,18 @@ impl App {
                 let indent = "  ".repeat(*depth);
                 let icon_mode = self.config.ui.icon_mode;
                 let (nerd, unicode) = match kind {
-                    SmartFolderKind::Today => ("\u{f133}", "\u{1f4c5}"),
-                    SmartFolderKind::ThisWeek => ("\u{f073}", "\u{1f5d3}"),
-                    SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
-                    SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
-                    SmartFolderKind::Custom(_) => ("\u{f0e7}", "\u{26a1}"),
-                    SmartFolderKind::Tagged => ("\u{f0e7}", "\u{26a1}"),
+                    SmartFolderKind::Today => crate::ui::icons::TODAY.pair(),
+                    SmartFolderKind::ThisWeek => crate::ui::icons::CALENDAR.pair(),
+                    SmartFolderKind::Untagged => crate::ui::icons::UNTAGGED.pair(),
+                    SmartFolderKind::Tag(_) => crate::ui::icons::TAG.pair(),
+                    SmartFolderKind::Custom(_) => crate::ui::icons::FILTER.pair(),
+                    SmartFolderKind::Tagged => crate::ui::icons::TAG.pair(),
                 };
 
                 let arrow = if *is_expanded {
-                    crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode)
+                    crate::ui::icons::EXPANDED.get(icon_mode)
                 } else {
-                    crate::ui::get_icon("\u{f054}", "\u{25b6}", icon_mode)
+                    crate::ui::icons::COLLAPSED.get(icon_mode)
                 };
 
                 let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
@@ -1486,7 +1487,7 @@ impl App {
                 depth,
             } => {
                 let indent = "  ".repeat(*depth);
-                let icon = crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode);
+                let icon = crate::ui::icons::SUBNOTES.get(self.config.ui.icon_mode);
                 let title = self
                     .subnotes_view_cache
                     .iter()

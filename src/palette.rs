@@ -29,51 +29,47 @@ fn tabs_for_actions(
     let icon_mode = app.config.ui.icon_mode;
     let has_cat = |cat: crate::actions::ActionCategory| actions.iter().any(|a| a.category == cat);
 
-    let mut tabs = vec![(
-        "All",
-        crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", icon_mode),
-        None,
-    )];
+    let mut tabs = vec![("All", crate::ui::icons::LIST.get(icon_mode), None)];
 
     if has_cat(crate::actions::ActionCategory::Notes) {
         tabs.push((
             "Notes",
-            crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode),
+            crate::ui::icons::FILE.get(icon_mode),
             Some(crate::actions::ActionCategory::Notes),
         ));
     }
     if has_cat(crate::actions::ActionCategory::Import) {
         tabs.push((
             "Import",
-            crate::ui::get_icon("\u{f019}", "\u{1f4e5}", icon_mode),
+            crate::ui::icons::IMPORT.get(icon_mode),
             Some(crate::actions::ActionCategory::Import),
         ));
     }
     if has_cat(crate::actions::ActionCategory::Append) {
         tabs.push((
             "Append",
-            crate::ui::get_icon("\u{f067}", "\u{2795}", icon_mode),
+            crate::ui::icons::ADD.get(icon_mode),
             Some(crate::actions::ActionCategory::Append),
         ));
     }
     if has_cat(crate::actions::ActionCategory::Bases) {
         tabs.push((
             "Bases",
-            crate::ui::get_icon("\u{f0ce}", "\u{25a6}", icon_mode),
+            crate::ui::icons::BASES.get(icon_mode),
             Some(crate::actions::ActionCategory::Bases),
         ));
     }
     if has_cat(crate::actions::ActionCategory::Views) {
         tabs.push((
             "Views",
-            crate::ui::get_icon("\u{f06e}", "\u{1f441}", icon_mode),
+            crate::ui::icons::VIEWS.get(icon_mode),
             Some(crate::actions::ActionCategory::Views),
         ));
     }
     if has_cat(crate::actions::ActionCategory::Settings) {
         tabs.push((
             "Settings",
-            crate::ui::get_icon("\u{f013}", "\u{2699}", icon_mode),
+            crate::ui::icons::SETTINGS.get(icon_mode),
             Some(crate::actions::ActionCategory::Settings),
         ));
     }

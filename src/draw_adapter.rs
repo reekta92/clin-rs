@@ -389,26 +389,11 @@ fn to_lib_action(action: DrawAction) -> ::draw::DrawAction {
 /// so they never drift — same pattern as other view tab bars.
 pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 5] {
     [
-        (
-            "Cursor",
-            crate::ui::get_icon("\u{f245}", "\u{25b6}", icon_mode),
-        ),
-        (
-            "Draw",
-            crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode),
-        ),
-        (
-            "Shape",
-            crate::ui::get_icon("\u{f0c8}", "\u{25a0}", icon_mode),
-        ),
-        (
-            "Text",
-            crate::ui::get_icon("\u{f031}", "\u{1f4dd}", icon_mode),
-        ),
-        (
-            "Erase",
-            crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", icon_mode),
-        ),
+        ("Cursor", crate::ui::icons::SELECT.get(icon_mode)),
+        ("Draw", crate::ui::icons::EDIT.get(icon_mode)),
+        ("Shape", crate::ui::icons::SHAPE.get(icon_mode)),
+        ("Text", crate::ui::icons::TEXT.get(icon_mode)),
+        ("Erase", crate::ui::icons::ERASE.get(icon_mode)),
     ]
 }
 /// Tab order is fixed and intentionally not tied to `DrawTool` declaration

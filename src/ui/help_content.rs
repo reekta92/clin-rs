@@ -558,7 +558,7 @@ const NOTES_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Subnotes",
-        body: "Press {list:ManageSubnotes} for **Subnotes**. Arrows move, ``n`` adds, ``d`` removes, ``Enter`` edits. ``Tab`` cycles focus, ``Ctrl+e`` opens external editor. Auto-saves on close. Parents show ⧉.",
+        body: "Press {list:ManageSubnotes} for **Subnotes**. Arrows move, ``n`` adds, ``d`` removes, ``Enter`` edits. ``Tab`` cycles focus, ``Ctrl+e`` opens external editor. Auto-saves on close. Parents show a subnotes badge.",
     },
     PopupHelp {
         name: "Search",

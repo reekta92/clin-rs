@@ -24,7 +24,7 @@ impl Action for RasterizeNoteAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f03a}", "\u{2637}")
+        crate::ui::icons::ALIGN.pair()
     }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {

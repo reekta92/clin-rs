@@ -129,12 +129,12 @@ impl CommandPalette {
                     "1" => IconMode::Unicode,
                     _ => IconMode::None,
                 };
-                for (nerd, unicode, label, color) in [
-                    ("\u{f15c}", "📄", "Note", theme.accent),
-                    ("\u{f07b}", "📁", "Folder", theme.folder),
-                    ("\u{f013}", "⚙", "Settings", theme.tag),
+                for (icon, label, color) in [
+                    (crate::ui::icons::FILE, "Note", theme.accent),
+                    (crate::ui::icons::FOLDER, "Folder", theme.folder),
+                    (crate::ui::icons::SETTINGS, "Settings", theme.tag),
                 ] {
-                    let icon = crate::ui::get_icon(nerd, unicode, mode);
+                    let icon = icon.get(mode);
                     spans.push(Span::styled(
                         format!(
                             "{}{}{}   ",

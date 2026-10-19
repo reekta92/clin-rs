@@ -205,7 +205,7 @@ Theme/preset/UI changes update retained owners, including those suspended under 
            ActionCategory::General
        }
         fn glyph(&self) -> (&'static str, &'static str) {
-            ("\u{f059}", "\u{2753}") // question-circle
+            clin::ui::icons::HELP.pair() // question-circle with a single-cell Unicode fallback
         }
        fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
            // your logic here
@@ -214,7 +214,7 @@ Theme/preset/UI changes update retained owners, including those suspended under 
    }
    ```
 
-**Note:** Glyphs use Nerd Font icons. The terminal must use a Nerd Font for these to render correctly.
+**Note:** `icon_mode = "nerd"` uses Nerd Font icons; `"unicode"` uses single-cell text symbols; `"none"` hides decorative icons. Built-in actions share the catalog in `src/ui/icons.rs`. Custom action glyphs should also occupy one terminal cell and avoid emoji or combining sequences.
 3. Register in `src/actions/mod.rs`:
    - Add `pub mod my_action;`
    - Add `Box::new(my_action::MyAction),` to the `ACTIONS` vec

@@ -146,7 +146,7 @@ pub fn render_canvas_snapshot(
             let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
 
             if is_image {
-                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let icon = crate::ui::icons::IMAGE.get(icon_mode);
                 let filled_block = Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(node_color))
@@ -263,7 +263,7 @@ pub fn render_canvas_snapshot(
             let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
 
             if is_image {
-                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let icon = crate::ui::icons::IMAGE.get(icon_mode);
                 let filled_block = Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(node_color))

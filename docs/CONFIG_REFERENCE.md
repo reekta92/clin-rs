@@ -171,8 +171,8 @@ Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Dis
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 19 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
 | `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
-| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
-| `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
+| `tab_icons_only` | `bool` | `false` | Show only icons on tab bars; text labels remain in `"none"` mode |
+| `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"none"`: text labels without decorative icons. Unicode/None use portable bar separators |
 | `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
 | `scrollbar_pan_mode` | `bool` | `false` | Notes list scrollbar pans without moving selection |
 | `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blurred"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |

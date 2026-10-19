@@ -49,7 +49,7 @@ pub trait Action: Send + Sync {
 #[macro_export]
 macro_rules! simple_action {
     ($name:ident, $id:literal, $label:literal, $desc:literal,
-     $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident) => {
+     $cat:expr, $glyph:expr, $method:ident) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
             fn id(&self) -> ::std::borrow::Cow<'static, str> {
@@ -65,7 +65,7 @@ macro_rules! simple_action {
                 $cat
             }
             fn glyph(&self) -> (&'static str, &'static str) {
-                ($glyph_nerd, $glyph_unicode)
+                $glyph
             }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
                 app.$method();
@@ -73,12 +73,16 @@ macro_rules! simple_action {
             }
         }
     };
+    ($name:ident, $id:literal, $label:literal, $desc:literal,
+     $cat:expr, $nerd:literal, $unicode:literal, $method:ident) => {
+        $crate::simple_action!($name, $id, $label, $desc, $cat, ($nerd, $unicode), $method);
+    };
 }
 
 #[macro_export]
 macro_rules! toggle_action {
     ($name:ident, $id:literal, $label:literal, $desc:literal,
-     $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident, $state_var:ident, $state_expr:expr $(, $fallible:ident)?) => {
+     $cat:expr, $glyph:expr, $method:ident, $state_var:ident, $state_expr:expr $(, $fallible:ident)?) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
             fn id(&self) -> ::std::borrow::Cow<'static, str> {
@@ -94,7 +98,7 @@ macro_rules! toggle_action {
                 $cat
             }
             fn glyph(&self) -> (&'static str, &'static str) {
-                ($glyph_nerd, $glyph_unicode)
+                $glyph
             }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
                 $crate::toggle_action!(@result app.$method() $(, $fallible)?)
@@ -104,6 +108,10 @@ macro_rules! toggle_action {
                 format!("{} [{}]", $label, $state_expr)
             }
         }
+    };
+    ($name:ident, $id:literal, $label:literal, $desc:literal,
+     $cat:expr, $nerd:literal, $unicode:literal, $method:ident, $state_var:ident, $state_expr:expr $(, $fallible:ident)?) => {
+        $crate::toggle_action!($name, $id, $label, $desc, $cat, ($nerd, $unicode), $method, $state_var, $state_expr $(, $fallible)?);
     };
     (@result $result:expr, fallible) => { $result };
     (@result $result:expr) => { { $result; Ok(()) } };
@@ -115,8 +123,7 @@ simple_action!(
     "Toggle Frontmatter",
     "Show or hide note properties above Body",
     ActionCategory::Views,
-    "",
-    "",
+    crate::ui::icons::LIST.pair(),
     toggle_frontmatter
 );
 
@@ -126,8 +133,7 @@ simple_action!(
     "Edit Folder Template Variables",
     "Create or edit the current physical folder's .clin-template.toml",
     ActionCategory::Settings,
-    "\u{f15c}",
-    "\u{270f}",
+    crate::ui::icons::SETTINGS.pair(),
     edit_folder_template_variables
 );
 simple_action!(
@@ -136,8 +142,7 @@ simple_action!(
     "Create Drawing",
     "Create a new drawing file",
     ActionCategory::Views,
-    "\u{f1fc}",
-    "\u{270f}",
+    crate::ui::icons::DRAW.pair(),
     begin_create_draw
 );
 
@@ -147,8 +152,7 @@ simple_action!(
     "Create Bases File",
     "Create a public .base query and open its native table view",
     ActionCategory::Views,
-    "\u{f0ce}",
-    "\u{25a6}",
+    crate::ui::icons::BASES.pair(),
     begin_create_base
 );
 simple_action!(
@@ -157,8 +161,7 @@ simple_action!(
     "Create Canvas Map",
     "Create a new .canvas map file (Obsidian-compatible)",
     ActionCategory::Views,
-    "\u{f005}",
-    "\u{1f58c}",
+    crate::ui::icons::CANVAS.pair(),
     begin_create_canvas
 );
 toggle_action!(
@@ -167,8 +170,7 @@ toggle_action!(
     "Toggle External Editor Mode",
     "Switch between the built-in editor and your $EDITOR for opening notes",
     ActionCategory::Settings,
-    "\u{f120}",
-    "\u{2328}",
+    crate::ui::icons::TERMINAL.pair(),
     toggle_external_editor_mode,
     app,
     if app.editor.external_editor_enabled {
@@ -183,8 +185,7 @@ toggle_action!(
     "Toggle Notes Layout",
     "Switch between Tree and Grid layout for the notes view",
     ActionCategory::Settings,
-    "\u{f0c9}",
-    "\u{1f4cb}",
+    crate::ui::icons::LAYOUT.pair(),
     toggle_notes_layout,
     app,
     match app.list.notes_layout {
@@ -198,8 +199,7 @@ toggle_action!(
     "Switch Theme",
     "Select from available color themes",
     ActionCategory::Settings,
-    "\u{f042}",
-    "\u{1f3a8}",
+    crate::ui::icons::THEME.pair(),
     begin_theme_selection,
     app,
     app.config.ui.theme.clone()
@@ -210,8 +210,7 @@ simple_action!(
     "Switch Navigation Preset",
     "Choose navigation keys (default, helix, vim, emacs); text editing remains non-modal",
     ActionCategory::Settings,
-    "\u{f11c}",
-    "\u{2328}",
+    crate::ui::icons::KEYBOARD.pair(),
     begin_keybind_preset_selection
 );
 
@@ -221,8 +220,7 @@ simple_action!(
     "Switch Vault",
     "Quick-switch the active vault (F4 overlay)",
     ActionCategory::Views,
-    "\u{f07c}",
-    "\u{1f4c2}",
+    crate::ui::icons::OPEN_FOLDER.pair(),
     open_vault_switcher
 );
 simple_action!(
@@ -231,8 +229,7 @@ simple_action!(
     "Manage Sub-notes",
     "Open the sub-notes manager for the selected note.",
     ActionCategory::Notes,
-    "\u{f022}",
-    "\u{1f4dd}",
+    crate::ui::icons::SUBNOTES.pair(),
     open_subnotes_popup
 );
 
@@ -534,6 +531,22 @@ impl Action for NavigationAction {
             _ => ActionCategory::Views,
         }
     }
+    fn glyph(&self) -> (&'static str, &'static str) {
+        use crate::ui::icons;
+        match self.0 {
+            "navigation.back" => icons::BACK,
+            "navigation.forward" => icons::FORWARD,
+            "document.save" => icons::SAVE,
+            "app.quit" => icons::QUIT,
+            "notes.open" => icons::MARKDOWN,
+            "help.open" => icons::HELP,
+            "graph.open" => icons::GRAPH,
+            "setup.finish" => icons::SUCCESS,
+            "setup.cancel" => icons::CANCEL,
+            _ => icons::SETTINGS,
+        }
+        .pair()
+    }
     fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
         match self.0 {
             "navigation.back" => app.navigate_history(false),
@@ -548,6 +561,26 @@ impl Action for NavigationAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registered_actions_have_single_cell_icons() {
+        use unicode_width::UnicodeWidthStr;
+        for action in get_all_actions() {
+            let (nerd, unicode) = action.glyph();
+            for mode in [
+                crate::config::IconMode::Nerd,
+                crate::config::IconMode::Unicode,
+            ] {
+                let glyph = crate::ui::get_icon(nerd, unicode, mode);
+                assert_eq!(glyph.chars().count(), 1, "{}: {mode:?}", action.id());
+                assert_eq!(glyph.width(), 1, "{}: {mode:?}", action.id());
+            }
+            assert_eq!(
+                crate::ui::get_icon(nerd, unicode, crate::config::IconMode::None),
+                ""
+            );
+        }
+    }
 
     fn make_test_storage(dir: &std::path::Path) -> crate::storage::Storage {
         crate::storage::Storage {

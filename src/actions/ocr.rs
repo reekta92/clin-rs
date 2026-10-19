@@ -88,7 +88,7 @@ impl Action for OcrPasteAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f03e}", "\u{1f5b9}")
+        crate::ui::icons::OCR.pair()
     }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
@@ -169,7 +169,7 @@ impl Action for PasteImageAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f03e}", "\u{1f5bc}")
+        crate::ui::icons::IMAGE.pair()
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
@@ -223,7 +223,7 @@ impl Action for InsertImageFromFileAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f15c}", "\u{1f4c1}")
+        crate::ui::icons::IMAGE.pair()
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {

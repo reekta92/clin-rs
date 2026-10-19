@@ -535,13 +535,9 @@ impl StatuslineContext<'_> {
                                     let prefix = if app.config.ui.icon_mode == IconMode::None {
                                         "M"
                                     } else {
-                                        crate::ui::get_icon(
-                                            "\u{f03eb}",
-                                            "\u{270e}",
-                                            app.config.ui.icon_mode,
-                                        )
+                                        crate::ui::icons::EDIT.get(app.config.ui.icon_mode)
                                     };
-                                    let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                                    let arrow = if ascending { "▴" } else { "▾" };
                                     format!("{prefix}{arrow}")
                                 }
                             }
@@ -550,7 +546,7 @@ impl StatuslineContext<'_> {
                                 crate::list_view::SortField::Title => "Title",
                                 crate::list_view::SortField::Modified => "Modified",
                             };
-                            let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                            let arrow = if ascending { "▴" } else { "▾" };
                             format!("{field} {arrow}")
                         }
                     })
@@ -1590,32 +1586,7 @@ pub fn line_from_segments<'a>(
         }
         style if style.is_chained() => {
             // Chained powerline family: Sharp, Rounded, Slanted.
-            let sep_char = match style {
-                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
-                    if is_right {
-                        "\u{e0b2}"
-                    } else {
-                        "\u{e0b0}"
-                    }
-                }
-                crate::config::HintBarStyle::Rounded
-                | crate::config::HintBarStyle::RoundedGradient => {
-                    if is_right {
-                        "\u{e0b6}"
-                    } else {
-                        "\u{e0b4}"
-                    }
-                }
-                crate::config::HintBarStyle::Slanted
-                | crate::config::HintBarStyle::SlantedGradient => {
-                    if is_right {
-                        "\u{e0be}"
-                    } else {
-                        "\u{e0bc}"
-                    }
-                }
-                _ => unreachable!(),
-            };
+            let sep_char = style.separator(is_right, theme.icon_mode);
 
             let mut cell_idx = 0;
 
@@ -1752,7 +1723,9 @@ pub fn line_from_segments<'a>(
         }
         style if style.cell_caps().is_some() => {
             // Detached family: Bubbles, Blurred, Chips. Symmetrical — same render for left/right.
-            let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
+            let (cap_l, cap_r) = style
+                .cell_caps_for_mode(theme.icon_mode)
+                .unwrap_or(("", ""));
 
             let mut cell_idx = 0;
             for (idx, seg) in flat.iter().enumerate() {
@@ -2211,6 +2184,51 @@ mod tests {
         ctx2.graph_fps = Some(12.34);
         let segs_fps_val = render_segments("{fps}", &ctx2, &theme);
         assert_eq!(text_cells(segs_fps_val), vec!["12.3".to_string()]);
+    }
+
+    #[test]
+    fn portable_icon_modes_render_all_bar_styles_without_private_use_glyphs() {
+        use crate::config::{HintBarStyle, IconMode, UiConfig};
+        for mode in [IconMode::Unicode, IconMode::None] {
+            for style in HintBarStyle::ALL {
+                let config = ClinConfig::default();
+                let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+                let theme = AppThemeColors::from_config(
+                    &UiConfig {
+                        icon_mode: mode,
+                        hint_bar_style: style,
+                        ..Default::default()
+                    },
+                    &mut Vec::new(),
+                );
+                let (header, _) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
+                let hints = crate::ui::format_keybind_hints(
+                    &theme,
+                    &[("g".into(), "Go"), ("q".into(), "Quit")],
+                );
+                let badge = Line::from(crate::ui::ext_badge_spans(true, &theme, None));
+                for line in [header, hints, badge] {
+                    assert!(line.width() > 0, "{mode:?}: {style:?}");
+                    assert!(
+                        !line
+                            .to_string()
+                            .chars()
+                            .any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)),
+                        "{mode:?}: {style:?}: {line}"
+                    );
+                }
+                for right in [false, true] {
+                    let separator = style.separator(right, mode);
+                    assert!(separator.is_ascii(), "{mode:?}: {style:?}");
+                }
+                if let Some((left, right)) = style.cell_caps_for_mode(mode) {
+                    assert_eq!(
+                        unicode_width::UnicodeWidthStr::width(left),
+                        unicode_width::UnicodeWidthStr::width(right)
+                    );
+                }
+            }
+        }
     }
 
     #[test]

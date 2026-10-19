@@ -23,7 +23,7 @@ impl Action for ShowInfoAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f05a}", "ℹ️")
+        crate::ui::icons::INFO.pair()
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {

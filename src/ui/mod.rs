@@ -15,6 +15,7 @@ pub(crate) mod braille;
 mod edit_view;
 mod help;
 pub(crate) mod help_content;
+pub mod icons;
 mod list_view;
 pub(crate) mod message_overlay;
 mod popups;
@@ -65,20 +66,20 @@ pub(crate) fn note_file_glyph(
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("");
-    let (nerd, unicode, label, color) = match ext {
-        "md" => ('\u{f48a}', '\u{1f4dd}', "MD", theme.text),
-        "txt" => ('\u{f15c}', '\u{1f4c4}', "TXT", theme.text),
-        "clin" => ('\u{f023}', '\u{1f512}', "CX", theme.destructive),
-        "draw" => ('\u{f1fc}', '\u{270f}', "D", theme.success),
-        "canvas" => ('\u{f005}', '\u{2b50}', "C", theme.accent),
-        "base" => ('\u{f1c0}', '\u{1f5c3}', "BASE", theme.accent),
-        "png" => ('\u{f1c5}', '\u{1f5bc}', "PNG", theme.warning),
-        "jpg" | "jpeg" => ('\u{f03e}', '\u{1f4f7}', "JPEG", theme.warning),
-        "gif" => ('\u{f008}', '\u{1f39e}', "GIF", theme.warning),
-        "webp" => ('\u{f0ac}', '\u{1f310}', "WEBP", theme.warning),
-        _ => ('?', '?', "?", theme.text),
+    let (icon, label, color) = match ext.to_ascii_lowercase().as_str() {
+        "md" => (icons::MARKDOWN, "MD", theme.text),
+        "txt" => (icons::FILE, "TXT", theme.text),
+        "clin" => (icons::LOCK, "CX", theme.destructive),
+        "draw" => (icons::DRAW, "D", theme.success),
+        "canvas" => (icons::CANVAS, "C", theme.accent),
+        "base" => (icons::BASES, "BASE", theme.accent),
+        "png" => (icons::PNG, "PNG", theme.warning),
+        "jpg" | "jpeg" => (icons::JPEG, "JPEG", theme.warning),
+        "gif" => (icons::GIF, "GIF", theme.warning),
+        "webp" => (icons::WEBP, "WEBP", theme.warning),
+        _ => (icons::UNKNOWN, "?", theme.text),
     };
-    (get_char(nerd, unicode, mode), label, color)
+    (icon.char(mode), label, color)
 }
 
 pub(crate) fn note_file_icon(
@@ -1222,7 +1223,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let text = if f.is_empty() { "Vault" } else { f.as_str() };
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode)
+                    crate::ui::icons::OPEN_FOLDER
+                        .get(app.config.ui.icon_mode)
                         .to_string(),
                     Style::default()
                         .fg(app.app_theme.accent)
@@ -1238,8 +1240,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             if parsed.pinned_only {
                 add_sep(&mut spans, &mut first, &app.app_theme);
-                let pin_icon =
-                    crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode);
+                let pin_icon = crate::ui::icons::PIN.get(app.config.ui.icon_mode);
                 spans.push(Span::styled(
                     format!("{pin_icon} Pinned"),
                     Style::default()
@@ -1254,7 +1255,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 } else {
                     sn_text.clone()
                 };
-                let sn_icon = crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", app.config.ui.icon_mode);
+                let sn_icon = crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode);
                 spans.push(Span::styled(
                     format!("{sn_icon} {sn_display}"),
                     Style::default()
@@ -1268,8 +1269,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 } else {
                     parsed.grep_text.clone()
                 };
-                let search_icon =
-                    crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode);
+                let search_icon = crate::ui::icons::SEARCH.get(app.config.ui.icon_mode);
                 spans.push(Span::styled(
                     format!("{search_icon} {grep_display}"),
                     Style::default()
@@ -1285,7 +1285,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     tags.join(", ")
                 };
                 spans.push(Span::styled(
-                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
+                    crate::ui::icons::TAG
+                        .get(app.config.ui.icon_mode)
                         .to_string(),
                     Style::default()
                         .fg(app.app_theme.accent)
@@ -1392,9 +1393,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         let hit = &popup.grep_results[hit_idx];
                         if r == base {
                             let arrow = if popup.grep_expanded.contains(&hit.note_id) {
-                                "▼ "
+                                "▾ "
                             } else {
-                                "▶ "
+                                "▸ "
                             };
                             let note_summary =
                                 app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);

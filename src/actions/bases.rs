@@ -21,7 +21,7 @@ impl Action for BasesCommand {
         ActionCategory::Views
     }
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f0ce}", "\u{25a6}")
+        crate::ui::icons::BASES.pair()
     }
     fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
         if app.mode != ViewMode::Bases {
@@ -104,7 +104,7 @@ impl Action for BasesConfigurationCommand {
         ActionCategory::Bases
     }
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f0ce}", "\u{25a6}")
+        crate::ui::icons::BASES.pair()
     }
     fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
         if app.mode != ViewMode::Bases {

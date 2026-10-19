@@ -133,24 +133,20 @@ pub(crate) fn render_grid_tile(
         buf.set_string(icon_x, icon_y, icon_char.to_string(), icon_style);
     }
 
-    // Pack badges tightly: the Unicode folder and pin each occupy two cells,
-    // so an extra gap would overlap the centered folder glyph. Use matching
-    // Octicons for the Nerd Font pin/gear to avoid mixing icon families.
+    // Pack badges tightly: the Unicode folder and pin previously occupied two cells;
+    // the shared one-cell catalog now keeps their sizes consistent across layouts.
+    // Use matching Font Awesome icons for the Nerd Font pin/gear to avoid mixing families.
     // Icon-free mode leaves this corner empty.
     let badges = [
-        (
-            has_tags,
-            crate::ui::get_char('\u{f02b}', '\u{1f3f7}', icon_mode),
-            theme.tag,
-        ),
+        (has_tags, crate::ui::icons::TAG.char(icon_mode), theme.tag),
         (
             is_pinned,
-            crate::ui::get_char('\u{f435}', '\u{1f4cc}', icon_mode),
+            crate::ui::icons::PIN.char(icon_mode),
             theme.pinned,
         ),
         (
             has_local_template,
-            crate::ui::get_char('\u{f423}', '\u{2699}', icon_mode),
+            crate::ui::icons::SETTINGS.char(icon_mode),
             theme.muted,
         ),
     ];
@@ -861,40 +857,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut tabs = vec![
                 (
                     "Vault",
-                    Some(crate::ui::get_icon(
-                        "\u{f07b}",
-                        "\u{1f4c1}",
-                        app.config.ui.icon_mode,
-                    )),
+                    Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
                 ),
                 (
                     "Pinned",
-                    Some(crate::ui::get_icon(
-                        "\u{f435}",
-                        "\u{1f4cc}",
-                        app.config.ui.icon_mode,
-                    )),
+                    Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
                 ),
             ];
             if app.config.features.smart_folders.is_enabled() {
                 tabs.push((
                     "Smart",
-                    Some(crate::ui::get_icon(
-                        "\u{f0e7}",
-                        "\u{26a1}",
-                        app.config.ui.icon_mode,
-                    )),
+                    Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
                 ));
             }
             // Subnotes tab (like Pinned) — hidden when the feature is off.
             if app.config.features.subnotes.is_enabled() {
                 tabs.push((
                     "Subnotes",
-                    Some(crate::ui::get_icon(
-                        "\u{f02c}",
-                        "\u{1f3f7}",
-                        app.config.ui.icon_mode,
-                    )),
+                    Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
                 ));
             }
             let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
@@ -1174,33 +1154,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             && (path.as_str() == crate::app::VIRTUAL_SUBNOTES_PATH
                                 || crate::app::App::is_subnotes_parent_grid_path(path));
                         let (ic, label) = if is_subnotes {
-                            (
-                                crate::ui::get_char(
-                                    '\u{f15b}',
-                                    '\u{1f4c3}',
-                                    app.config.ui.icon_mode,
-                                ),
-                                "SN",
-                            )
+                            (crate::ui::icons::FILE.char(app.config.ui.icon_mode), "SN")
                         } else if is_parent {
-                            (
-                                crate::ui::get_char(
-                                    '\u{f062}',
-                                    '\u{2b06}',
-                                    app.config.ui.icon_mode,
-                                ),
-                                "^",
-                            )
+                            (crate::ui::icons::PARENT.char(app.config.ui.icon_mode), "^")
                         } else {
                             // Always folder icon — if pinned, pin glyph goes top-right
-                            (
-                                crate::ui::get_char(
-                                    '\u{f07b}',
-                                    '\u{1f4c1}',
-                                    app.config.ui.icon_mode,
-                                ),
-                                "F",
-                            )
+                            (crate::ui::icons::FOLDER.char(app.config.ui.icon_mode), "F")
                         };
                         let col = if is_pinned {
                             app.app_theme.pinned
@@ -1214,51 +1173,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     crate::app::VisualItem::SmartFolder { kind, label, .. } => {
                         let (ic, text_label) = match kind {
                             crate::list_view::SmartFolderKind::Today => (
-                                crate::ui::get_char(
-                                    '\u{f133}',
-                                    '\u{1f4c5}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::icons::TODAY.char(app.config.ui.icon_mode),
                                 "Today",
                             ),
                             crate::list_view::SmartFolderKind::ThisWeek => (
-                                crate::ui::get_char(
-                                    '\u{f073}',
-                                    '\u{1f5d3}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::icons::CALENDAR.char(app.config.ui.icon_mode),
                                 "Week",
                             ),
                             crate::list_view::SmartFolderKind::Untagged => (
-                                crate::ui::get_char(
-                                    '\u{f187}',
-                                    '\u{1f4e5}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::icons::UNTAGGED.char(app.config.ui.icon_mode),
                                 "Untag",
                             ),
-                            crate::list_view::SmartFolderKind::Tag(_) => (
-                                crate::ui::get_char(
-                                    '\u{f02c}',
-                                    '\u{1f3f7}',
-                                    app.config.ui.icon_mode,
-                                ),
-                                "Tag",
-                            ),
+                            crate::list_view::SmartFolderKind::Tag(_) => {
+                                (crate::ui::icons::TAG.char(app.config.ui.icon_mode), "Tag")
+                            }
                             crate::list_view::SmartFolderKind::Custom(_) => (
-                                crate::ui::get_char(
-                                    '\u{f0e7}',
-                                    '\u{26a1}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::icons::FILTER.char(app.config.ui.icon_mode),
                                 "Custom",
                             ),
                             crate::list_view::SmartFolderKind::Tagged => (
-                                crate::ui::get_char(
-                                    '\u{f0e7}',
-                                    '\u{26a1}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::icons::TAG.char(app.config.ui.icon_mode),
                                 "Tagged",
                             ),
                         };
@@ -1274,13 +1208,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         (ic, label, col, s.file_stem().to_owned())
                     }
                     crate::app::VisualItem::TemplateConfig { .. } => (
-                        crate::ui::get_char('\u{f15c}', '\u{2699}', app.config.ui.icon_mode),
+                        crate::ui::icons::SETTINGS.char(app.config.ui.icon_mode),
                         "Vars",
                         app.app_theme.muted,
                         crate::templates::FOLDER_TEMPLATE_CONFIG.to_string(),
                     ),
                     crate::app::VisualItem::CreateNew { .. } => (
-                        crate::ui::get_char('\u{f067}', '\u{2795}', app.config.ui.icon_mode),
+                        crate::ui::icons::ADD.char(app.config.ui.icon_mode),
                         "+",
                         app.app_theme.success,
                         "Create...".to_string(),
@@ -1290,8 +1224,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         subnote_idx,
                         ..
                     } => {
-                        let ic =
-                            crate::ui::get_char('\u{f02c}', '\u{1f3f7}', app.config.ui.icon_mode);
+                        let ic = crate::ui::icons::SUBNOTES.char(app.config.ui.icon_mode);
                         let title = app
                             .subnotes_view_cache
                             .iter()
@@ -2181,7 +2114,7 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
                 .add_modifier(Modifier::BOLD);
             let mut groups = Vec::new();
 
-            let clock = crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode);
+            let clock = crate::ui::icons::CLOCK.get(app.config.ui.icon_mode);
             let mut age = Vec::new();
             if !clock.is_empty() {
                 age.push(Span::styled(clock, muted));
@@ -2194,8 +2127,7 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
             groups.push((ListHeaderField::Age, age));
 
             if app.config.features.tags.is_enabled() && !note.tags.is_empty() {
-                let tag_icon =
-                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode);
+                let tag_icon = crate::ui::icons::TAG.get(app.config.ui.icon_mode);
                 let mut tags = Vec::new();
                 if !tag_icon.is_empty() {
                     tags.push(Span::styled(tag_icon, tag_icon_style));
@@ -2225,7 +2157,7 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
             recursive_count,
             ..
         } if name != ".." => {
-            let icon = crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode);
+            let icon = crate::ui::icons::LIST.get(app.config.ui.icon_mode);
             let count = if *recursive_count > *note_count {
                 format!("{note_count}+{}", recursive_count - note_count)
             } else {
@@ -2243,7 +2175,7 @@ pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHead
             Some(ListHeaderDetail::new(vec![(ListHeaderField::Count, spans)]))
         }
         crate::app::VisualItem::SmartFolder { note_count, .. } => {
-            let icon = crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode);
+            let icon = crate::ui::icons::LIST.get(app.config.ui.icon_mode);
             let mut spans = Vec::new();
             if !icon.is_empty() {
                 spans.push(Span::styled(icon, Style::default().fg(app.app_theme.tag)));
@@ -2583,33 +2515,23 @@ mod tests {
         app.list.list_density = crate::config::ListDensity::Compact;
         let mut terminal = Terminal::new(TestBackend::new(100, 60)).unwrap();
 
-        for (mode, icons) in [
-            (
-                IconMode::Nerd,
-                [
-                    "\u{f48a}", "\u{f15c}", "\u{f1fc}", "\u{f005}", "\u{f1c0}", "\u{f023}",
-                    "\u{f1c5}", "\u{f03e}", "\u{f008}", "\u{f0ac}", "\u{f03e}", "?",
-                ],
-            ),
-            (
-                IconMode::Unicode,
-                [
-                    "\u{1f4dd}",
-                    "\u{1f4c4}",
-                    "\u{270f}",
-                    "\u{2b50}",
-                    "\u{1f5c3}",
-                    "\u{1f512}",
-                    "\u{1f5bc}",
-                    "\u{1f4f7}",
-                    "\u{1f39e}",
-                    "\u{1f310}",
-                    "\u{1f4f7}",
-                    "?",
-                ],
-            ),
-            (IconMode::None, [""; 12]),
-        ] {
+        for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
+            use crate::ui::icons;
+            let icons = [
+                icons::MARKDOWN,
+                icons::FILE,
+                icons::DRAW,
+                icons::CANVAS,
+                icons::BASES,
+                icons::LOCK,
+                icons::PNG,
+                icons::JPEG,
+                icons::GIF,
+                icons::WEBP,
+                icons::JPEG,
+                icons::UNKNOWN,
+            ]
+            .map(|icon| icon.get(mode));
             app.config.ui.icon_mode = mode;
             let list_area = Rect::new(0, 0, 100, ids.len() as u16);
             let mut list_buffer = Buffer::empty(list_area);
@@ -2672,7 +2594,7 @@ mod tests {
                         let text: String =
                             result_rows[i].iter().map(|cell| cell.symbol()).collect();
                         assert!(
-                            text.trim_start_matches([' ', '│', '▶', '▼'])
+                            text.trim_start_matches([' ', '│', '▸', '▾'])
                                 .starts_with("folder/test")
                         );
                     } else {
@@ -2725,10 +2647,10 @@ mod tests {
                         assert!(row.contains(icons[i]), "{}: {row}", ids[i]);
                         assert!(tile_text.contains(icons[i]), "{}: {tile_text}", ids[i]);
                         if pinned {
-                            let pin = crate::ui::get_icon("\u{f435}", "\u{1f4cc}", mode);
+                            let pin = crate::ui::icons::PIN.get(mode);
                             assert!(tile_text.contains(pin), "{}: {tile_text}", ids[i]);
                         }
-                        let tag = crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", mode);
+                        let tag = crate::ui::icons::TAG.get(mode);
                         assert!(tile_text.contains(tag), "{}: {tile_text}", ids[i]);
                     }
                 }
@@ -2751,7 +2673,7 @@ mod tests {
         for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
             for (pin, template) in [(false, false), (true, false), (false, true), (true, true)] {
                 let mut buffer = ratatui::buffer::Buffer::empty(area);
-                let icon = crate::ui::get_char('\u{f07b}', '\u{1f4c1}', mode);
+                let icon = crate::ui::icons::FOLDER.char(mode);
                 render_grid_tile(
                     &mut buffer,
                     area,
@@ -2782,8 +2704,8 @@ mod tests {
                 assert_eq!(buffer.cell((main_x, 2)).unwrap().symbol(), " ");
                 let mut badge_right = GRID_TILE_W - 1;
                 for (enabled, glyph) in [
-                    (pin, crate::ui::get_char('\u{f435}', '\u{1f4cc}', mode)),
-                    (template, crate::ui::get_char('\u{f423}', '\u{2699}', mode)),
+                    (pin, crate::ui::icons::PIN.char(mode)),
+                    (template, crate::ui::icons::SETTINGS.char(mode)),
                 ] {
                     if !enabled || glyph == ' ' {
                         continue;
@@ -3282,12 +3204,12 @@ mod tests {
             (
                 crate::list_view::SortField::Modified,
                 crate::list_view::SortOrder::Ascending,
-                "✎▲",
+                "✎▴",
             ),
             (
                 crate::list_view::SortField::Modified,
                 crate::list_view::SortOrder::Descending,
-                "✎▼",
+                "✎▾",
             ),
         ] {
             app.list.sort_field = field;
@@ -3299,11 +3221,11 @@ mod tests {
         }
         app.config.ui.icon_mode = crate::config::IconMode::Nerd;
         let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
-        assert_eq!(ctx.resolve("sort").as_deref(), Some("\u{f03eb}▼"));
+        assert_eq!(ctx.resolve("sort").as_deref(), Some("\u{f040}▾"));
         app.list.sort_field = crate::list_view::SortField::Modified;
         app.config.ui.icon_mode = crate::config::IconMode::None;
         let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
-        assert_eq!(ctx.resolve("sort").as_deref(), Some("M▼"));
+        assert_eq!(ctx.resolve("sort").as_deref(), Some("M▾"));
 
         assert_eq!(crate::statusline::compact_list_tags(&[]), "");
         assert_eq!(
@@ -3447,7 +3369,7 @@ mod tests {
                 Some(without_age.width().saturating_sub(1) as u16),
             )
             .expect("header without sort");
-            assert!(!without_sort.to_string().contains("M▼"), "{style:?}");
+            assert!(!without_sort.to_string().contains("M▾"), "{style:?}");
             let literals_only = render_list_header_right(
                 &app,
                 &theme,
@@ -3480,6 +3402,6 @@ mod tests {
             render_list_header_right(&app, &theme, Some(full.width().saturating_sub(1) as u16))
                 .expect("folder header without count");
         assert!(!without_count.to_string().contains("2+3"));
-        assert!(without_count.to_string().contains("M▼"));
+        assert!(without_count.to_string().contains("M▾"));
     }
 }

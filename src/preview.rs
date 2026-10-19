@@ -129,7 +129,7 @@ pub fn draw_preview_pane(
         }) => {
             let mut lines: Vec<Line> = Vec::new();
             // Header
-            let icon = crate::ui::get_icon("\u{f0e7}", "\u{26a1}", icon_mode);
+            let icon = crate::ui::icons::FILTER.get(icon_mode);
             lines.push(Line::from(vec![
                 Span::styled(
                     format!(" {icon} "),

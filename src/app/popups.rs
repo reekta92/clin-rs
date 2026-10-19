@@ -707,6 +707,8 @@ template = """
             _ => crate::config::IconMode::None,
         };
         self.config.ui.icon_mode = mode;
+        self.refresh_theme_from_config();
+        self.update_preview();
         let status = match mode {
             crate::config::IconMode::Nerd => "Icon mode: Nerd Font",
             crate::config::IconMode::Unicode => "Icon mode: Unicode",

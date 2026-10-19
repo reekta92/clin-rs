@@ -1950,10 +1950,10 @@ fn palette_settings_rows_render_previews_and_current_values() {
         .unwrap();
     assert!(rendered_text(&buffer, results.y + 2).contains("\u{f15c} Note"));
     let unicode = rendered_text(&buffer, results.y + 4);
-    assert!(unicode.contains('📄') && unicode.contains("Note"));
+    assert!(unicode.contains('≡') && unicode.contains("Note"));
     let none = rendered_text(&buffer, results.y + 6);
     assert!(none.contains("Note   Folder   Settings"));
-    assert!(!none.contains('📄') && !none.contains('\u{f15c}'));
+    assert!(!none.contains('≡') && !none.contains('\u{f15c}'));
     assert!(rendered_text(&buffer, results.y - 1).contains("Current: Nerd Font"));
     let current_x = rendered_text(&buffer, results.y - 1)
         .find("Current:")

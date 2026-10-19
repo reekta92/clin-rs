@@ -20,19 +20,19 @@ pub fn help_tabs(
     features: &crate::config::FeaturesConfig,
 ) -> Vec<(HelpTab, &'static str, Option<&'static str>)> {
     let pairs = [
-        (HelpTab::Notes, "Notes", "\u{f02d}", "\u{1f4d8}"),
-        (HelpTab::Editor, "Editor", "\u{f03eb}", "\u{270f}"),
-        (HelpTab::Graph, "Graph", "\u{f1e0}", "\u{1f5c2}"),
-        (HelpTab::Draw, "Draw", "\u{f1fc}", "\u{1f3a8}"),
-        (HelpTab::Canvas, "Canvas", "\u{f0b2}", "\u{1f4cc}"),
-        (HelpTab::Templates, "Templates", "\u{f15b}", "\u{1f4c4}"),
-        (HelpTab::About, "About", "\u{f05a}", "\u{2139}"),
-        (HelpTab::Bases, "Bases", "\u{f0ce}", "\u{25a6}"),
+        (HelpTab::Notes, "Notes", crate::ui::icons::MARKDOWN),
+        (HelpTab::Editor, "Editor", crate::ui::icons::EDIT),
+        (HelpTab::Graph, "Graph", crate::ui::icons::GRAPH),
+        (HelpTab::Draw, "Draw", crate::ui::icons::DRAW),
+        (HelpTab::Canvas, "Canvas", crate::ui::icons::CANVAS),
+        (HelpTab::Templates, "Templates", crate::ui::icons::TEMPLATE),
+        (HelpTab::About, "About", crate::ui::icons::INFO),
+        (HelpTab::Bases, "Bases", crate::ui::icons::BASES),
     ];
     pairs
         .into_iter()
-        .filter(|(t, _, _, _)| help_tab_enabled(*t, features))
-        .map(|(t, label, nerd, uni)| (t, label, Some(crate::ui::get_icon(nerd, uni, icon_mode))))
+        .filter(|(t, _, _)| help_tab_enabled(*t, features))
+        .map(|(t, label, icon)| (t, label, Some(icon.get(icon_mode))))
         .collect()
 }
 
@@ -1032,7 +1032,7 @@ fn split_lock_spans(
     }
 
     let mut last = 0;
-    let lock_char = crate::ui::get_char('\u{f023}', '\u{1f512}', icon_mode);
+    let lock_char = crate::ui::icons::LOCK.char(icon_mode);
     for (i, c) in text.char_indices() {
         if c == '\u{f023}' || c == '\u{1f512}' {
             if i > last {
@@ -1202,7 +1202,7 @@ fn draw_help_info_pane(
         let mut chevron_spans = Vec::new();
         for i in 0..popups.len() {
             let is_active = i == active;
-            let marker = if is_active { "▼" } else { "›" };
+            let marker = if is_active { "▾" } else { "›" };
             let style = if is_active {
                 Style::default()
                     .fg(theme.success)
@@ -1599,7 +1599,7 @@ mod tests {
             .find(|(t, _, _)| *t == HelpTab::Editor)
             .unwrap();
         assert_eq!(editor_tab.1, "Editor");
-        assert_eq!(editor_tab.2, Some("\u{f03eb}"));
+        assert_eq!(editor_tab.2, Some("\u{f040}"));
     }
 
     #[test]

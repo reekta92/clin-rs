@@ -765,16 +765,7 @@ pub fn ext_badge_spans<'a>(
         | crate::config::HintBarStyle::SharpGradient
         | crate::config::HintBarStyle::RoundedGradient
         | crate::config::HintBarStyle::SlantedGradient => {
-            let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
-                    "\u{e0b0}"
-                }
-                crate::config::HintBarStyle::Rounded
-                | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted
-                | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
-                _ => unreachable!(),
-            };
+            let sep_char = theme.hint_bar_style.separator(false, theme.icon_mode);
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
@@ -808,7 +799,10 @@ pub fn ext_badge_spans<'a>(
         | crate::config::HintBarStyle::Blurred
         | crate::config::HintBarStyle::Chips
         | crate::config::HintBarStyle::Hexagon => {
-            let (cap_l, cap_r) = theme.hint_bar_style.cell_caps().unwrap_or(("", ""));
+            let (cap_l, cap_r) = theme
+                .hint_bar_style
+                .cell_caps_for_mode(theme.icon_mode)
+                .unwrap_or(("", ""));
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
@@ -943,16 +937,7 @@ pub fn format_keybind_hints<'a>(
         | crate::config::HintBarStyle::SharpGradient
         | crate::config::HintBarStyle::RoundedGradient
         | crate::config::HintBarStyle::SlantedGradient) => {
-            let sep_char = match style {
-                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
-                    "\u{e0b0}"
-                }
-                crate::config::HintBarStyle::Rounded
-                | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted
-                | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
-                _ => unreachable!(),
-            };
+            let sep_char = style.separator(false, theme.icon_mode);
             let bg_colors = build_bg_colors();
             let fg = theme.highlight_fg;
             let mut spans = Vec::new();
@@ -996,7 +981,9 @@ pub fn format_keybind_hints<'a>(
         | crate::config::HintBarStyle::Blurred
         | crate::config::HintBarStyle::Chips
         | crate::config::HintBarStyle::Hexagon) => {
-            let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
+            let (cap_l, cap_r) = style
+                .cell_caps_for_mode(theme.icon_mode)
+                .unwrap_or(("", ""));
             let bg_colors = build_bg_colors();
             let fg = theme.highlight_fg;
             let bar_bg = theme.hint_line_bg();

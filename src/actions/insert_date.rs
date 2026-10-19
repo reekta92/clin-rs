@@ -23,7 +23,7 @@ impl Action for InsertDateAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f133}", "\u{1f4c5}")
+        crate::ui::icons::TODAY.pair()
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {

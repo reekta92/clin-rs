@@ -873,39 +873,23 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 let mut tabs = vec![
                     (
                         "Vault",
-                        Some(crate::ui::get_icon(
-                            "\u{f07b}",
-                            "\u{1f4c1}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
                     ),
                     (
                         "Pinned",
-                        Some(crate::ui::get_icon(
-                            "\u{f4cc}",
-                            "\u{1f4cc}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
                     ),
                 ];
                 if app.config.features.smart_folders.is_enabled() {
                     tabs.push((
                         "Smart",
-                        Some(crate::ui::get_icon(
-                            "\u{f0e7}",
-                            "\u{26a1}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
                     ));
                 }
                 if app.config.features.subnotes.is_enabled() {
                     tabs.push((
                         "Subnotes",
-                        Some(crate::ui::get_icon(
-                            "\u{f02c}",
-                            "\u{1f3f7}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
                     ));
                 }
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
