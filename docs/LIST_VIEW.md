@@ -25,7 +25,7 @@ The Grid layout displays notes as cards. It is optimized for visual recognition 
 The Tree layout provides a hierarchical view of your folders and notes, similar to a traditional file explorer. It is ideal for navigating complex vault structures.
 - **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, and one folder per *Tag*. Control with `[features] smart_folders = true` (enabled by default). *This Week* means updated within the last seven days, not the calendar week. Custom rules live in `[list] custom_smart_folders`.
 - **Folder Pinning**: Pin folders to the top of the list for quick access by selecting a folder and pressing the pin key (`p`).
-- **Inline Rename**: Rename notes and folders directly in the tree list by pressing the rename key (`r`). Press `Enter` to commit, or `Esc` to cancel.
+- **Inline Rename**: Rename notes and folders by pressing the rename key (`r`). Press `Enter` to commit, or `Esc` to cancel. Markdown/text notes update their displayed title while retaining their filename, incoming links, and subnotes. Other file types rename the file and warn that links are not updated.
 - **Drag-to-Move**: Click and drag notes onto folders to move them. Alternatively, use the default `U` keyboard shortcut (`g u` in Helix/Vim presets) to move the selected note to its parent directory.
 ---
 
