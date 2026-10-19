@@ -21,6 +21,7 @@ enum Command {
 }
 
 pub(crate) struct DraftWorker {
+    _lease: std::fs::File,
     pending: Jobs,
     commands: mpsc::SyncSender<Command>,
     error: Arc<Mutex<Option<String>>>,
@@ -52,6 +53,7 @@ fn persist(storage: &Storage, pending: &Jobs, error: &Mutex<Option<String>>) -> 
 
 impl DraftWorker {
     pub(crate) fn spawn(storage: Storage) -> Result<Self> {
+        let lease = storage.recovery_guard(false)?;
         let pending: Jobs = Arc::new(Mutex::new(HashMap::new()));
         let error = Arc::new(Mutex::new(None));
         let (commands, receiver) = mpsc::sync_channel(1);
@@ -97,6 +99,7 @@ impl DraftWorker {
                 }
             })?;
         Ok(Self {
+            _lease: lease,
             pending,
             commands,
             error,

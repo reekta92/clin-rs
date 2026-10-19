@@ -72,6 +72,9 @@ impl App {
             let Some((baseline, draft)) = drafts.into_iter().last() else {
                 return Ok(());
             };
+            if self.drafts.is_none() {
+                self.drafts = Some(DraftWorker::spawn(self.storage.clone())?);
+            }
             self.editor.frontmatter = None;
             self.editor.initial_word_count = if baseline.exists() {
                 crate::frontmatter::properties::PropertyFrame::parse(baseline.source())

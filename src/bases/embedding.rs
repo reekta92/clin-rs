@@ -655,7 +655,15 @@ impl App {
                         worker.forget(old.recovery_id())?;
                     }
                     if pending {
-                        self.storage.write_document_draft(after, &source)?;
+                        if self.drafts.is_none() {
+                            self.drafts = Some(crate::storage::drafts::DraftWorker::spawn(
+                                self.storage.clone(),
+                            )?);
+                        }
+                        self.drafts
+                            .as_ref()
+                            .expect("draft worker initialized")
+                            .submit(after.clone(), source)?;
                     }
                     Ok(())
                 })();

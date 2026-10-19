@@ -609,6 +609,7 @@ mod tests {
         )
         .unwrap();
         crate::fsutil::remove_file_if_exists(&root.path().join("a.png")).unwrap();
+        drop(_journal);
         assert_eq!(storage.recover_documents().unwrap(), Vec::<String>::new());
         assert_eq!(fs::read(root.path().join("a.png")).unwrap(), [0, 255, 128]);
         assert!(!root.path().join("folder/a.png").exists());
@@ -628,6 +629,7 @@ mod tests {
         storage
             .commit_public_move_transaction(&journal, &plans)
             .unwrap();
+        drop(journal);
         assert_eq!(storage.recover_documents().unwrap(), Vec::<String>::new());
         assert_eq!(
             fs::read(root.path().join("folder/a.png")).unwrap(),

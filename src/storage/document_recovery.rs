@@ -34,7 +34,10 @@ pub(crate) struct EditorRecovery {
     pub input: Option<(String, String, bool, Option<String>)>,
 }
 type Entry = (String, String, String);
-pub(crate) struct DocumentTransaction(PathBuf);
+pub(crate) struct DocumentTransaction {
+    path: PathBuf,
+    _lease: fs::File,
+}
 
 fn sync_directory(path: &Path) -> Result<()> {
     #[cfg(unix)]
@@ -101,6 +104,7 @@ impl Storage {
         &self,
         plans: &[(DocumentSnapshot, String)],
     ) -> Result<DocumentTransaction> {
+        let lease = self.recovery_guard(false)?;
         let entries = plans
             .iter()
             .map(|(snapshot, after)| {
@@ -112,12 +116,16 @@ impl Storage {
             .document_recovery_dir(true)?
             .join(format!("{}.bin", uuid::Uuid::new_v4()));
         self.write_document_record(&path, &Record::Pending(entries))?;
-        Ok(DocumentTransaction(path))
+        Ok(DocumentTransaction {
+            path,
+            _lease: lease,
+        })
     }
     pub(crate) fn begin_public_move_transaction(
         &self,
         entries: &[super::public_moves::FileMove],
     ) -> Result<DocumentTransaction> {
+        let lease = self.recovery_guard(false)?;
         let path = self
             .document_recovery_dir(true)?
             .join(format!("{}.bin", uuid::Uuid::new_v4()));
@@ -128,7 +136,10 @@ impl Storage {
                 committed: false,
             },
         )?;
-        Ok(DocumentTransaction(path))
+        Ok(DocumentTransaction {
+            path,
+            _lease: lease,
+        })
     }
     pub(crate) fn commit_public_move_transaction(
         &self,
@@ -136,7 +147,7 @@ impl Storage {
         entries: &[super::public_moves::FileMove],
     ) -> Result<()> {
         self.write_document_record(
-            &journal.0,
+            &journal.path,
             &Record::<Entry>::Moves {
                 entries: entries.to_vec(),
                 committed: true,
@@ -149,11 +160,11 @@ impl Storage {
         entries: Vec<(&str, &str, &str)>,
     ) -> Result<()> {
         // Retain prior bytes in the durable marker too, including failed cleanup/rollback paths.
-        self.write_document_record(&journal.0, &Record::Committed(entries))?;
-        self.remove_document_record(&journal.0)
+        self.write_document_record(&journal.path, &Record::Committed(entries))?;
+        self.remove_document_record(&journal.path)
     }
     pub(crate) fn abort_document_transaction(&self, journal: DocumentTransaction) -> Result<()> {
-        self.remove_document_record(&journal.0)
+        self.remove_document_record(&journal.path)
     }
     pub fn write_document_draft(&self, baseline: &DocumentSnapshot, source: &str) -> Result<()> {
         self.document_path(baseline.id())?;
@@ -205,6 +216,11 @@ impl Storage {
         self.write_document_record::<Entry>(&path, &Record::Editor(editor.clone()))
     }
     pub(crate) fn editor_drafts(&self) -> Result<Vec<(DocumentSnapshot, EditorRecovery)>> {
+        let _lease = match self.recovery_guard(true) {
+            Ok(lease) => lease,
+            Err(error) if recovery_busy(&error) => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
         let directory = self.document_recovery_dir(false)?;
         if !directory.exists() {
             return Ok(Vec::new());
@@ -258,6 +274,11 @@ impl Storage {
     }
     /// Startup storage recovery, before catalogs/queries. Conflicts and corrupt records remain for inspection.
     pub fn recover_documents(&self) -> Result<Vec<String>> {
+        let _lease = match self.recovery_guard(true) {
+            Ok(lease) => lease,
+            Err(error) if recovery_busy(&error) => return Ok(Vec::new()),
+            Err(error) => return Err(error),
+        };
         let directory = self.document_recovery_dir(false)?;
         if !directory.exists() {
             return Ok(Vec::new());
@@ -340,6 +361,12 @@ impl Storage {
         Ok(warnings)
     }
 }
+
+fn recovery_busy(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<std::fs::TryLockError>()
+        .is_some_and(|error| matches!(error, std::fs::TryLockError::WouldBlock))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,9 +393,13 @@ mod tests {
                 (b.clone(), "edited b".into()),
             ])
             .unwrap();
-        let bytes = fs::read(&journal.0).unwrap();
+        let journal_path = journal.path.clone();
+        let bytes = fs::read(&journal.path).unwrap();
         assert!(bytes.windows(10).any(|window| window == b"original a"));
         storage.save_document(&a, "edited a").unwrap();
+        assert_eq!(storage.recover_documents().unwrap(), Vec::<String>::new());
+        assert_eq!(storage.load_document("a.md").unwrap().source(), "edited a");
+        drop(journal);
         assert_eq!(storage.recover_documents().unwrap(), Vec::<String>::new());
         assert_eq!(
             storage.load_document("a.md").unwrap().source(),
@@ -378,7 +409,7 @@ mod tests {
             storage.load_document("b.md").unwrap().source(),
             "original b"
         );
-        assert!(!journal.0.exists());
+        assert!(!journal_path.exists());
         assert!(dir.path().join(".clin/document-recovery-v2").exists());
     }
     #[test]
@@ -391,10 +422,11 @@ mod tests {
         let after = storage.save_document(&a, "edited").unwrap();
         storage
             .write_document_record(
-                &journal.0,
+                &journal.path,
                 &Record::Committed(vec![("a.md", "original", "edited")]),
             )
             .unwrap();
+        drop(journal);
         assert_eq!(storage.recover_documents().unwrap(), Vec::<String>::new());
         assert_eq!(storage.load_document("a.md").unwrap().source(), "edited");
         storage.write_document_draft(&after, "draft").unwrap();
