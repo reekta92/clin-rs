@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.13.2"
+version = "0.14.0-beta.1"
 edition = "2024"
 rust-version = "1.90.0"
 description = "Feature-packed terminal note management app inspired by Obsidian"
@@ -9,9 +9,9 @@ repository = "https://github.com/reekta92/clin-rs"
 homepage = "https://github.com/reekta92/clin-rs"
 license = "GPL-3.0-only"
 readme = "README.md"
-keywords = ["tui", "notes", "obsidian", "encryption", "terminal"]
+keywords = ["tui", "notes", "obsidian", "markdown", "terminal"]
 categories = ["command-line-utilities", "text-editors"]
-exclude = ["assets/*", "docs/*", "examples/*", "dev_scripts/*", "PKGBUILD", "clin.ico", ".github/*"]
+exclude = ["assets/*", "docs/*", "examples/*", "dev_scripts/*", "PKGBUILD", ".github/*"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
@@ -74,27 +74,32 @@ path = "src/bin/clin.rs"
 name = "clin-rs"
 maintainer = "reekta <reekta@localhost>"
 copyright = "2026, reekta"
-depends = "libc6 (>= 2.31), libssl3 | libssl1.1"
+depends = "libc6 (>= 2.31)"
 section = "utils"
 priority = "optional"
 assets = [
 	["target/release/clin", "usr/bin/clin", "755"],
-	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
+	["assets/clin.desktop", "usr/share/applications/clin.desktop", "644"],
+	["assets/icon.svg", "usr/share/icons/hicolor/scalable/apps/clin.svg", "644"],
+	["assets/clin.png", "usr/share/icons/hicolor/256x256/apps/clin.png", "644"],
 ]
-extended-description = "clin-rs is a terminal-first encrypted note app with in-app editing and mouse support."
+extended-description = "clin-rs is a terminal-first Markdown note app with in-app editing and mouse support."
 
 [package.metadata.generate-rpm]
 name = "clin-rs"
 assets = [
 	{ source = "target/release/clin", dest = "/usr/bin/clin", mode = "0755" },
-	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
+	{ source = "assets/clin.desktop", dest = "/usr/share/applications/clin.desktop", mode = "0644" },
+	{ source = "assets/icon.svg", dest = "/usr/share/icons/hicolor/scalable/apps/clin.svg", mode = "0644" },
+	{ source = "assets/clin.png", dest = "/usr/share/icons/hicolor/256x256/apps/clin.png", mode = "0644" },
 ]
 
 [dependencies]
+draw = { package = "draw-rs", version = "0.1.0", git = "https://github.com/reekta92/draw-rs", rev = "50120747b061e6be5bb8f0da9f75373c10b2af37" }
 anyhow = "1.0"
+base64 = "0.22"
 arboard = "3.6.1"
 bincode = { version = "2.0", features = ["serde"] }
-chacha20poly1305 = "0.10"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 csv = "1.3"
@@ -104,12 +109,14 @@ fuzzy-matcher = "0.3.7"
 lru = "0.18.1"
 image = "0.25.10"
 ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm", "image-defaults"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = "0.30"
 graf = { package = "graf-rs", version = "1.1.0", git = "https://github.com/reekta92/graf", rev = "9c32610" }
-pinstar = { version = "1.0.0", git = "https://github.com/reekta92/pinstar", rev = "5ce3dbc94165", features = ["images", "mermaid-preview"] }
+pinstar = { version = "1.0.0", git = "https://github.com/reekta92/pinstar", rev = "3fe2e49eeff8c841bbd8cf592c83966c42e19688", features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["raw_value"] }
 # Keep existing imports while using YAML Organization's maintained backend.
 serde_yaml_ng = { package = "yaml_serde", version = "=0.10.7" }
 signal-hook = "0.4"
@@ -122,27 +129,31 @@ uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
 comrak = { version = "0.56", default-features = false }
 syntect = { version = "5.2", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
-zeroize = { version = "1.8.2", features = ["derive"] }
 unicode-width = "0.2"
 unicode-segmentation = "1.13"
-git2 = { version = "0.21", features = ["ssh", "https"] }
 notify = "8.2.0"
 same-file = "1"
+sha2 = "0.10.9"
 rayon = "1.12"
 regex = "1"
+ryu-js = "1.0.3"
+rquickjs = { version = "0.14.0", default-features = false, features = ["std"] }
 strum = { version = "0.28", features = ["derive"] }
+yaml-edit = { version = "0.3.2", default-features = false }
 
 [dev-dependencies]
 tempfile = "3.27.0"
 
+[build-dependencies]
+winresource = "0.1.34"
+
 [patch.crates-io]
-# Preserve Mermaid 0.6 APIs and Rust 1.90 with a maintained YAML backend.
+# Preserve Mermaid 0.6 APIs/MSRV while replacing its archived YAML dependency.
 merman-core = { git = "https://github.com/reekta92/merman", rev = "ba16ce6a43a5f0d2d070bd40cf91b958fd7e22e0" }
 
 [profile.release]
 lto = "thin"
 codegen-units = 1
-panic = "abort"
 strip = true
 opt-level = 3
 

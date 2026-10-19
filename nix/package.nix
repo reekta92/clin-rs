@@ -4,9 +4,7 @@
   rustPlatform,
   makeBinaryWrapper,
   pkg-config,
-  openssl,
   zlib,
-  libgit2,
   libx11,
   libxcb,
 
@@ -37,8 +35,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
         (root + /src)
         (root + /Cargo.toml)
         (root + /Cargo.lock)
-        (root + /assets/clin.desktop)
-        (root + /assets/clin.png)
+        (root + /build.rs)
+        (root + /clin.ico)
+        (root + /assets)
       ];
     };
 
@@ -53,16 +52,24 @@ rustPlatform.buildRustPackage (finalAttrs: {
   ++ lib.optional doWrap makeBinaryWrapper;
 
   buildInputs = [
-    openssl
     zlib
-    libgit2
     libx11
     libxcb
   ];
 
   postInstall = ''
     install -Dm444 assets/clin.desktop -t $out/share/applications
+    install -Dm444 assets/icon.svg $out/share/icons/hicolor/scalable/apps/clin.svg
     install -Dm444 assets/clin.png -t $out/share/icons/hicolor/256x256/apps
+  '' + lib.optionalString stdenv.hostPlatform.isDarwin ''
+    app=$out/Applications/clin.app
+    mkdir -p $out/Applications
+    cp -R assets/clin.app "$app"
+    mkdir -p "$app/Contents/Resources"
+    ln -s $out/bin/clin "$app/Contents/Resources/clin"
+    cp assets/clin.icns "$app/Contents/Resources/clin.icns"
+    substituteInPlace "$app/Contents/Info.plist" \
+      --replace-fail '<string>0.0.0</string>' '<string>${lib.head (lib.splitString "-" finalAttrs.version)}</string>'
   '';
 
   postFixup = lib.optionalString doWrap ''

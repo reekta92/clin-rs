@@ -1,5 +1,46 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GlobalAction {
+    CommandPalette,
+}
+
+macro_rules! palette_aliases {
+    ($action:ty, $($variant:ident => $id:literal),* $(,)?) => {
+        impl $action {
+            pub(crate) fn palette_action_id(self) -> Option<&'static str> {
+                match self { $(Self::$variant => Some($id),)* _ => None }
+            }
+        }
+    };
+}
+
+palette_aliases!(ListAction,
+    Help => "help.open", OpenGraph => "graph.open",
+    ToggleExternalEditor => "external_editor.toggle", TogglePreview => "settings.preview_pane",
+    ToggleWrap => "settings.wrap", ToggleCalendar => "settings.calendar",
+    CycleSort => "settings.cycle_sort", ToggleFoldersFirst => "settings.folders_first",
+    ManageSubnotes => "manage_subnotes_list", ShowInfo => "info.show",
+);
+palette_aliases!(EditAction,
+    ToggleFrontmatter => "editor.frontmatter", ToggleZenMode => "settings.zen",
+    ToggleWrap => "settings.wrap", ManageSubnotes => "manage_subnotes_list",
+    PasteImage => "paste_image", InsertImageFromFile => "insert_image_from_file",
+    InsertDate => "editor.insert_date", CycleAlignment => "settings.text_align",
+    Save => "document.save",
+);
+palette_aliases!(CanvasAction, Save => "document.save");
+palette_aliases!(BasesAction,
+    Refresh => "bases.refresh", NextView => "bases.next_view", PreviousView => "bases.previous_view",
+    Edit => "bases.edit", Clear => "bases.clear", Copy => "bases.copy", Paste => "bases.paste",
+    ToggleSelect => "bases.select", SelectAll => "bases.select_all", Undo => "bases.undo",
+    Redo => "bases.redo", NewNote => "bases.new_note", Export => "bases.export",
+    MoveToGroup => "bases.move_to_group", Search => "bases.search", ToggleGroup => "bases.toggle_group",
+    OpenCover => "bases.open_cover", PreviousProperty => "bases.previous_property",
+    NextProperty => "bases.next_property",
+);
+
 #[derive(
     Debug,
     Clone,
@@ -99,6 +140,7 @@ pub enum EditAction {
     DeleteNextWord,
     MoveToTop,
     MoveToBottom,
+    ToggleFrontmatter,
     ToggleMarkdownPreview,
     ToggleMermaidRendering,
     TogglePreviewFullscreen,
@@ -113,6 +155,7 @@ pub enum EditAction {
     InsertDate,
     ToggleOutline,
     ToggleLinks,
+    ToggleBases,
     PreviewLink,
     GoToLine,
     Save,
@@ -303,30 +346,15 @@ pub enum CanvasAction {
     strum::EnumIter,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum BackupAction {
-    Back,
-    MoveDown,
+pub enum OutlineAction {
     MoveUp,
-    ScrollDiffDown,
-    ScrollDiffUp,
-    Refresh,
-    EnterCommit,
-    Push,
-    OpenSettings,
-    CycleSection,
-    CancelCommit,
-    ConfirmCommit,
-    CloseSettings,
-    NextField,
-    PrevField,
-    ActivateField,
-    CancelEditField,
-    ConfirmEditField,
+    MoveDown,
+    ToggleCollapse,
+    ExpandAll,
+    CollapseAll,
+    Open,
+    Back,
     Help,
-    Pull,
-    StageFile,
-    UnstageFile,
-    StageAll,
 }
 
 #[derive(
@@ -343,15 +371,39 @@ pub enum BackupAction {
     strum::EnumIter,
 )]
 #[serde(rename_all = "snake_case")]
-pub enum OutlineAction {
-    MoveUp,
-    MoveDown,
-    ToggleCollapse,
-    ExpandAll,
-    CollapseAll,
-    Open,
+pub enum BasesAction {
     Back,
     Help,
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
+    PageUp,
+    PageDown,
+    First,
+    Last,
+    Open,
+    Refresh,
+    NextView,
+    PreviousView,
+    Edit,
+    Clear,
+    Copy,
+    Paste,
+    ToggleSelect,
+    SelectAll,
+    Undo,
+    Redo,
+    Configure,
+    CommandPalette,
+    NewNote,
+    Export,
+    MoveToGroup,
+    Search,
+    ToggleGroup,
+    OpenCover,
+    PreviousProperty,
+    NextProperty,
 }
 
 #[derive(

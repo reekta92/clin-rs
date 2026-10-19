@@ -162,7 +162,7 @@ pub fn draw_quick_search<T, F>(
     frame.render_widget(&header_block, header_rect);
 
     // --- Icon + "Find:" label + centered input field ---
-    let icon = crate::ui::get_icon("\u{f002}", "\u{1f50d}", icon_mode);
+    let icon = crate::ui::icons::SEARCH.get(icon_mode);
     let label_text = format!("{} Find: ", icon);
     let label_width = label_text.chars().count() as u16;
     let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
@@ -263,7 +263,7 @@ pub fn handle_quick_search_mouse<T>(
 
     let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
 
-    let icon = crate::ui::get_icon("\u{f002}", "\u{1f50d}", icon_mode);
+    let icon = crate::ui::icons::SEARCH.get(icon_mode);
     let label_text = format!("{} Find: ", icon);
     let label_width = label_text.chars().count() as u16;
     let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));

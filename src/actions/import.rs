@@ -3,10 +3,15 @@ use crate::app::App;
 use crate::popups::{ImportSource, ImportTarget};
 use anyhow::{Context, Result, bail};
 use std::borrow::Cow;
-use std::fs;
 use std::io::Cursor;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+mod process;
+pub(super) const MAX_IMPORT_BYTES: usize = 16 * 1024 * 1024;
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct ImportAction {
     pub source: ImportSource,
@@ -79,11 +84,11 @@ impl Action for ImportAction {
 
     fn glyph(&self) -> (&'static str, &'static str) {
         match self.source {
-            ImportSource::File => ("\u{f15b}", "\u{1f4c4}"),
-            ImportSource::Csv => ("\u{f0ce}", "\u{1f4c5}"),
-            ImportSource::Json => ("\u{f121}", "\u{1f4cb}"),
-            ImportSource::Url => ("\u{f0ac}", "\u{1f310}"),
-            ImportSource::Clipboard => ("\u{f0ea}", "\u{1f4cb}"),
+            ImportSource::File => crate::ui::icons::FILE.pair(),
+            ImportSource::Csv => crate::ui::icons::BASES.pair(),
+            ImportSource::Json => crate::ui::icons::CODE.pair(),
+            ImportSource::Url => crate::ui::icons::WEB.pair(),
+            ImportSource::Clipboard => crate::ui::icons::CLIPBOARD.pair(),
         }
     }
 
@@ -120,25 +125,7 @@ impl Action for ImportAction {
                 };
 
                 if let Some(path) = crate::ui::pick_file(filter_name, filter_ext)? {
-                    let result = match self.source {
-                        ImportSource::File => convert_file(&path),
-                        ImportSource::Csv => convert_csv(&path),
-                        ImportSource::Json => convert_json(&path),
-                        _ => unreachable!(),
-                    };
-
-                    match result {
-                        Ok((title, md)) => {
-                            app.insert_content(self.target, note_id.as_deref(), title, md)?;
-                        }
-                        Err(e) => {
-                            app.set_temporary_status(&format!("Import failed: {e:#}"));
-                            app.messages.push(
-                                format!("Import failed: {e:#}"),
-                                crate::app::messages::MessageSeverity::Warning,
-                            );
-                        }
-                    }
+                    app.apply_import(self.source, self.target, note_id.as_deref(), &path)?;
                 }
             }
         }
@@ -153,7 +140,11 @@ fn extract_html_title(html: &str) -> Option<String> {
         let absolute_start = cursor + start_bracket;
         let rest = &html[absolute_start..];
 
-        if rest.len() >= 6 && rest[..6].eq_ignore_ascii_case("<title") {
+        if rest
+            .as_bytes()
+            .get(..6)
+            .is_some_and(|s| s.eq_ignore_ascii_case(b"<title"))
+        {
             let next_char = rest.as_bytes().get(6);
             if (next_char.is_none()
                 || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')))
@@ -166,7 +157,11 @@ fn extract_html_title(html: &str) -> Option<String> {
                 while let Some(close_bracket_offset) = after_tag[close_cursor..].find('<') {
                     let absolute_close_start = close_cursor + close_bracket_offset;
                     let close_rest = &after_tag[absolute_close_start..];
-                    if close_rest.len() >= 8 && close_rest[..8].eq_ignore_ascii_case("</title>") {
+                    if close_rest
+                        .as_bytes()
+                        .get(..8)
+                        .is_some_and(|s| s.eq_ignore_ascii_case(b"</title>"))
+                    {
                         let inner_text = &after_tag[..absolute_close_start];
                         return Some(inner_text.trim().to_string());
                     }
@@ -237,7 +232,11 @@ fn sanitized(title: String, content: String) -> (String, String) {
 }
 
 pub fn convert_file(path: &str) -> Result<(String, String)> {
-    let mut cmd = if crate::fsutil::can_run("markitdown") {
+    convert_file_cancellable(path, &AtomicBool::new(false))
+}
+
+fn convert_file_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(String, String)> {
+    let cmd = if crate::fsutil::can_run("markitdown") {
         let mut c = Command::new("markitdown");
         c.arg(path);
         c
@@ -256,11 +255,7 @@ pub fn convert_file(path: &str) -> Result<(String, String)> {
         );
     };
 
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .context("Failed to run conversion tool")?;
+    let output = process::run(cmd, cancelled, COMMAND_TIMEOUT)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -290,7 +285,8 @@ fn detect_delimiter(first_line: &str) -> u8 {
 }
 
 pub fn convert_csv(path: &str) -> Result<(String, String)> {
-    let text = fs::read_to_string(path).context("Failed to read CSV file")?;
+    let text = crate::storage::documents::read_bounded_text(Path::new(path), MAX_IMPORT_BYTES)
+        .context("Failed to read CSV file")?;
     if text.trim().is_empty() {
         bail!("CSV file is empty");
     }
@@ -347,7 +343,8 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
 }
 
 pub fn convert_json(path: &str) -> Result<(String, String)> {
-    let text = fs::read_to_string(path).context("Failed to read JSON file")?;
+    let text = crate::storage::documents::read_bounded_text(Path::new(path), MAX_IMPORT_BYTES)
+        .context("Failed to read JSON file")?;
     let value: serde_json::Value = serde_json::from_str(&text).context("Invalid JSON")?;
 
     if let Some(arr) = value.as_array()
@@ -406,87 +403,79 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
 }
 
 pub fn convert_url(url: &str) -> Result<(String, String)> {
-    if !crate::fsutil::can_run("curl") {
-        bail!("curl is required to fetch URLs");
-    }
+    convert_url_cancellable(url, &AtomicBool::new(false))
+}
 
-    let ext = url
-        .split('?')
-        .next()
-        .unwrap_or(url)
-        .split('.')
-        .next_back()
-        .filter(|e| e.len() <= 5 && e.chars().all(|c| c.is_alphanumeric()))
-        .map(|e| format!(".{e}"))
-        .unwrap_or_else(|| ".html".to_string());
+fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(String, String)> {
+    let url = reqwest::Url::parse(source).context("Invalid import URL")?;
+    anyhow::ensure!(
+        matches!(url.scheme(), "http" | "https"),
+        "URL imports require HTTP(S)"
+    );
+    let ext = Path::new(url.path())
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .filter(|ext| ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+        .unwrap_or("html");
+    let directory = process::ImportDirectory::new()?;
+    let downloaded = directory.path.join(format!("download.{ext}"));
+    let temp_path = downloaded.to_str().context("temp path is not UTF-8")?;
+    let mut command = Command::new("curl");
+    command.args([
+        "--fail",
+        "--location",
+        "--silent",
+        "--show-error",
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "30",
+        "--max-redirs",
+        "5",
+        "--max-filesize",
+        "16777216",
+        "--proto",
+        "=http,https",
+        "--proto-redir",
+        "=http,https",
+        "--url",
+        url.as_str(),
+    ]);
+    let output = process::run(command, cancelled, COMMAND_TIMEOUT)?;
+    anyhow::ensure!(
+        output.status.success(),
+        "curl failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let title = std::str::from_utf8(&output.stdout)
+        .ok()
+        .and_then(extract_html_title)
+        .unwrap_or_else(|| url_fallback_title(source));
+    crate::fsutil::atomic_write_with_mode(&downloaded, &output.stdout, 0o600)?;
+    drop(output);
+    // Convert the downloaded bytes once; title and body come from the same response.
+    let (_, content) = convert_file_cancellable(temp_path, cancelled)?;
+    Ok(sanitized(title, content))
+}
 
-    let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path(&ext));
-    let temp_path = temp_file
-        .path()
-        .to_str()
-        .expect("temp path is UTF-8")
-        .to_string();
-
-    let output = Command::new("curl")
-        .args(["-sL", "-o", &temp_path, url])
-        .stderr(Stdio::piped())
-        .output()
-        .context("Failed to run curl")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("curl failed: {stderr}");
-    }
-
-    // If markitdown is available, let it handle the URL directly for better results
-    if crate::fsutil::can_run("markitdown") {
-        let output = Command::new("markitdown")
-            .arg(url)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .context("Failed to run markitdown on URL")?;
-
-        if output.status.success() {
-            let md = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !md.is_empty() {
-                // Still need title extraction for the note name
-                let mut title = None;
-                let temp_file =
-                    crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("html"));
-                let temp_path = temp_file
-                    .path()
-                    .to_str()
-                    .expect("temp path is UTF-8")
-                    .to_string();
-                let _ = Command::new("curl")
-                    .args(["-sL", "-o", &temp_path, url])
-                    .status();
-                if let Ok(html) = fs::read_to_string(&temp_path) {
-                    title = extract_html_title(&html);
-                }
-                let final_title = title.unwrap_or_else(|| url_fallback_title(url));
-                let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
-                std::eprintln!(
-                    "[{ts}] [INFO] [import] Import URL: {url} → {final_title} ({} bytes)",
-                    md.len()
-                );
-                return Ok(sanitized(final_title, md));
-            }
-        }
-    }
-
-    let (_, md) = convert_file(&temp_path)?;
-    let mut title = None;
-    if (ext == ".html" || ext == ".htm")
-        && let Ok(html) = fs::read_to_string(&temp_path)
-    {
-        title = extract_html_title(&html);
-    }
-
-    let title = title.unwrap_or_else(|| url_fallback_title(url));
-
-    Ok(sanitized(title, md))
+pub(crate) fn convert_source(
+    source: ImportSource,
+    input: &str,
+    cancelled: &AtomicBool,
+) -> Result<(String, String)> {
+    anyhow::ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
+    let result = match source {
+        ImportSource::File => convert_file_cancellable(input, cancelled),
+        ImportSource::Csv => convert_csv(input),
+        ImportSource::Json => convert_json(input),
+        ImportSource::Url => convert_url_cancellable(input, cancelled),
+        ImportSource::Clipboard => bail!("Clipboard imports do not use a prompt"),
+    }?;
+    anyhow::ensure!(
+        result.1.len() <= MAX_IMPORT_BYTES,
+        "Imported note exceeds 16 MiB safety limit"
+    );
+    Ok(result)
 }
 
 pub fn clipboard_to_md() -> Result<(String, String)> {
@@ -510,6 +499,17 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn html_titles_allow_unicode_before_and_inside_tags() {
+        for html in [
+            "<!-- é --><TITLE>Résumé</TITLE>",
+            "<title>Résumé<!-- éé --> end</title>",
+        ] {
+            assert!(extract_html_title(html).unwrap().starts_with("Résumé"));
+        }
+        assert_eq!(extract_html_title("<!-- é -->"), None);
+    }
 
     #[test]
     fn import_sanitization_preserves_structure() {

@@ -36,6 +36,7 @@ pub struct AppThemeColors {
     pub highlight_bg: Color,
     pub selection_indicator: Color,
     pub hint_bar_style: crate::config::HintBarStyle,
+    pub icon_mode: crate::config::IconMode,
 }
 
 impl Default for AppThemeColors {
@@ -75,6 +76,7 @@ impl AppThemeColors {
                 highlight_bg: Color::Cyan,
                 selection_indicator: Color::Reset,
                 hint_bar_style: crate::config::HintBarStyle::default(),
+                icon_mode: crate::config::IconMode::default(),
             },
             crate::config::custom_themes::ResolvedTheme::Builtin(t) => {
                 let tc = theme_colors(t, bg_enum.clone());
@@ -142,6 +144,7 @@ impl AppThemeColors {
                         .unwrap_or(Color::Cyan),
                     selection_indicator: tc.selected_indicator_color,
                     hint_bar_style: crate::config::HintBarStyle::default(),
+                    icon_mode: crate::config::IconMode::default(),
                 }
             }
         };
@@ -216,6 +219,7 @@ impl AppThemeColors {
             colors.bg = Some(c);
         }
         colors.hint_bar_style = config.hint_bar_style;
+        colors.icon_mode = config.icon_mode;
         colors
     }
 
@@ -247,6 +251,7 @@ impl AppThemeColors {
             selection_indicator: crate::config::parse_hex_color(&c.selection_indicator)
                 .unwrap_or(Color::Reset),
             hint_bar_style: crate::config::HintBarStyle::default(),
+            icon_mode: crate::config::IconMode::default(),
         }
     }
 

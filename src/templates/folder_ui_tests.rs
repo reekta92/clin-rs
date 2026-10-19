@@ -167,9 +167,9 @@ fn folder_template_glyph_renders_in_both_layouts_without_overwriting_pin() {
                     );
                     if path == "book" {
                         assert!(badges.contains('⚙'), "{badges}");
-                        assert!(badges.contains('📌'), "{badges}");
+                        assert!(badges.contains('♦'), "{badges}");
                         assert!(
-                            badges.contains('📁'),
+                            badges.contains('▱'),
                             "folder icon moved off badge row: {badges}"
                         );
                         assert!(
@@ -179,7 +179,7 @@ fn folder_template_glyph_renders_in_both_layouts_without_overwriting_pin() {
                                 tile.rect.x + 1,
                                 tile.rect.right() - 1
                             )
-                            .contains('📁')
+                            .contains('▱')
                         );
                     } else {
                         assert!(!badges.contains('⚙'), "{path}: {badges}");
@@ -192,7 +192,7 @@ fn folder_template_glyph_renders_in_both_layouts_without_overwriting_pin() {
                 .find(|line| line.contains("book"))
                 .unwrap();
             assert!(book.contains('⚙'), "{book}");
-            assert!(book.contains('📌'), "{book}");
+            assert!(book.contains('♦'), "{book}");
             let plain = (1..34)
                 .map(|y| row(buffer, y, 0, 120))
                 .find(|line| line.contains("plain"))

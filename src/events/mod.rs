@@ -168,9 +168,12 @@ fn route_selection_popup(
         crate::popups::ActivePopup::Sort(p) => {
             route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
         }
-        crate::popups::ActivePopup::CreateFormat(p) => {
-            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
-        }
+        crate::popups::ActivePopup::CreateFormat(p) => route_selection_list(
+            &key,
+            &app.keybinds,
+            &mut p.selected,
+            crate::popups::CreateFormatPopup::COUNT - 1,
+        ),
         _ => return false,
     };
     match action {
@@ -204,6 +207,9 @@ pub fn handle_bracketed_paste(
     use crate::popups::ActivePopup;
     use crate::popups::SubnotesFocus;
 
+    if app.popups.confirm.is_some() {
+        return true;
+    }
     // 1. Active popup
     if let Some(ref mut popup) = app.popups.active {
         match popup {
@@ -272,8 +278,9 @@ pub fn handle_bracketed_paste(
     }
 
     // 2. Command palette
-    if let Some(ref mut palette) = app.command_palette {
-        palette.input.insert_str(&data);
+    if let Some(mut palette) = app.command_palette.take() {
+        palette.paste_text(&data, app);
+        app.command_palette = Some(palette);
         return true;
     }
     // 3. Help search popup
@@ -299,6 +306,21 @@ pub fn handle_bracketed_paste(
                 app.editor.body.insert_str(&data);
                 app.request_editor_preview_update();
                 true
+            }
+            EditFocus::Frontmatter => {
+                let raw =
+                    app.config.editor.frontmatter_mode == crate::config::FrontmatterMode::RawYaml;
+                if let Some(input) = app
+                    .editor
+                    .frontmatter
+                    .as_mut()
+                    .and_then(|state| state.input_mut(raw))
+                {
+                    input.insert_str(&data);
+                    true
+                } else {
+                    false
+                }
             }
             EditFocus::Sidebar => false,
         },
@@ -340,37 +362,13 @@ pub fn handle_bracketed_paste(
         }
         ViewMode::Draw => {
             if let Some(draw) = &mut app.draw_state
-                && let Some((_, ta)) = &mut draw.text_editor
+                && let Some((_, ta)) = &mut draw.state.text_editor
             {
                 ta.insert_str(&data);
                 true
             } else {
                 false
             }
-        }
-        ViewMode::Backup => {
-            if let Some(backup) = &mut app.backup_state {
-                match backup.input_mode {
-                    crate::backup::state::BackupInputMode::EditCommitMessage => {
-                        backup.commit_textarea.insert_str(&data);
-                        return true;
-                    }
-                    crate::backup::state::BackupInputMode::EditSettingsField => {
-                        match backup.settings.focused_field {
-                            crate::backup::state::SettingsField::RemoteUrl => {
-                                backup.settings.remote_url.insert_str(&data);
-                            }
-                            crate::backup::state::SettingsField::RemoteName => {
-                                backup.settings.remote_name.insert_str(&data);
-                            }
-                            _ => return false,
-                        }
-                        return true;
-                    }
-                    _ => return false,
-                }
-            }
-            false
         }
         _ => false,
     }
@@ -799,11 +797,106 @@ pub fn is_universal_quit_key(key: &crossterm::event::KeyEvent) -> bool {
 /// overlay; tag additionally handles a layered confirm inline. The standalone
 /// confirm check therefore runs only when no group-A popup is active, and
 /// group-B popups (trash, folder_picker, template, theme, …) follow it.
+pub(crate) fn handle_open_palette_event(
+    app: &mut App,
+    event: &crossterm::event::Event,
+    area: Rect,
+) -> bool {
+    if app.command_palette.is_none() {
+        return false;
+    }
+    if app.popups.confirm.is_some() {
+        match event {
+            crossterm::event::Event::Key(key)
+                if key.kind == crossterm::event::KeyEventKind::Press =>
+            {
+                match route_confirm_key(key, &app.keybinds, false) {
+                    ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
+                    ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
+                    ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
+                    ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
+                    ConfirmKeyAction::Confirm => app.confirm_action(),
+                    ConfirmKeyAction::Cancel => app.cancel_confirm(),
+                    ConfirmKeyAction::Unhandled => {}
+                }
+            }
+            crossterm::event::Event::Mouse(mouse) => {
+                popup_mouse::handle_global_popup_mouse(app, mouse, area);
+            }
+            _ => {}
+        }
+        return true;
+    }
+    if app.palette_bases_dialog_open() {
+        let mut state = app.bases_state.take().expect("Bases dialog");
+        let consumed = state.dialog_event(event, app);
+        app.bases_state = Some(state);
+        app.finish_palette_bases_confirmation();
+        return consumed;
+    }
+    if !matches!(event, crossterm::event::Event::Key(key) if key.code == KeyCode::Enter) {
+        app.refresh_command_palette();
+    }
+    if app.command_palette.is_none() {
+        return true;
+    }
+    match event {
+        crossterm::event::Event::Key(key) => {
+            if key.kind == crossterm::event::KeyEventKind::Press {
+                match app.resolve_palette_shortcut(*key, app.mode) {
+                    crate::keybinds::MatchOutcome::Matched(_, _)
+                    | crate::keybinds::MatchOutcome::Pending => return true,
+                    crate::keybinds::MatchOutcome::NoMatch => {}
+                }
+            }
+            if app.palette_theme_shortcut(*key) || app.palette_manager_shortcut(*key) {
+                return true;
+            }
+            let mut palette = app.command_palette.take().expect("open palette");
+            if palette.handle_input(*key, app) {
+                if key.code == KeyCode::Enter {
+                    if let Some(selected) = palette
+                        .state
+                        .selected()
+                        .or_else(|| palette.is_value_input().then_some(0))
+                    {
+                        app.activate_palette(palette, selected);
+                    } else if palette.workflow.is_some() {
+                        app.command_palette = Some(palette);
+                    } else {
+                        app.dismiss_command_palette();
+                    }
+                } else {
+                    app.leave_palette_step(palette, false);
+                }
+            } else {
+                app.command_palette = Some(palette);
+            }
+        }
+        crossterm::event::Event::Mouse(mouse) => {
+            popup_mouse::handle_command_palette_mouse(app, mouse, area);
+        }
+        crossterm::event::Event::Paste(data) => {
+            let mut palette = app.command_palette.take().expect("open palette");
+            palette.paste_text(data, app);
+            app.command_palette = Some(palette);
+        }
+        _ => {}
+    }
+    if let Some(notice) = crate::text_edit::take_clipboard_notice() {
+        app.set_temporary_status(notice);
+    }
+    true
+}
+
 pub fn handle_global_popups_and_palette(
     app: &mut App,
     event: crossterm::event::Event,
     _terminal_area: Rect,
 ) -> bool {
+    if handle_open_palette_event(app, &event, _terminal_area) {
+        return true;
+    }
     let crossterm::event::Event::Key(key) = event else {
         return false;
     };
@@ -854,6 +947,19 @@ pub fn handle_global_popups_and_palette(
             }
             _ => true, // swallow everything else
         };
+    }
+
+    if app.palette_input_available() {
+        match app.resolve_palette_shortcut(key, app.mode) {
+            crate::keybinds::MatchOutcome::Matched(_, _) => {
+                app.open_command_palette(None);
+                return true;
+            }
+            crate::keybinds::MatchOutcome::Pending => return true,
+            crate::keybinds::MatchOutcome::NoMatch => {}
+        }
+    } else {
+        app.palette_matcher.clear();
     }
 
     // QuickKeybinds toggle — identical combo in every view. F2 is unbound in
@@ -1014,29 +1120,6 @@ pub fn handle_global_popups_and_palette(
             }
             None => {}
         }
-        return true;
-    }
-    if let Some(mut palette) = app.command_palette.take() {
-        if palette.handle_input(key, app) {
-            if key.code == KeyCode::Enter
-                && let Some(selected_idx) = palette.state.selected()
-                && let Some(item) = palette.items.get(selected_idx)
-            {
-                let action_id = item.id.clone();
-
-                let note_id = palette.context_note_id.clone();
-                if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
-                {
-                    app.set_temporary_status(&format!("Action failed: {e}"));
-                    app.messages.push(
-                        format!("Action failed: {e}"),
-                        crate::app::messages::MessageSeverity::Warning,
-                    );
-                }
-            }
-            return true;
-        }
-        app.command_palette = Some(palette);
         return true;
     }
 
@@ -1785,7 +1868,11 @@ impl crate::popups::ActivePopup {
                                 }
                             }
                             crate::app::ThemePopupFocus::GeneralBg => {
-                                popup.focus = crate::app::ThemePopupFocus::GraphBg;
+                                popup.focus = if popup.setup_owned {
+                                    crate::app::ThemePopupFocus::ThemeList
+                                } else {
+                                    crate::app::ThemePopupFocus::GraphBg
+                                };
                             }
                             crate::app::ThemePopupFocus::GraphBg => {
                                 popup.focus = crate::app::ThemePopupFocus::ThemeList;
@@ -1800,7 +1887,11 @@ impl crate::popups::ActivePopup {
                                 popup.focus = crate::app::ThemePopupFocus::GeneralBg
                             }
                             crate::app::ThemePopupFocus::GeneralBg => {
-                                popup.focus = crate::app::ThemePopupFocus::GraphBg
+                                popup.focus = if popup.setup_owned {
+                                    crate::app::ThemePopupFocus::ThemeList
+                                } else {
+                                    crate::app::ThemePopupFocus::GraphBg
+                                }
                             }
                             crate::app::ThemePopupFocus::GraphBg => {
                                 popup.focus = crate::app::ThemePopupFocus::ThemeList
@@ -2050,9 +2141,8 @@ mod tests {
             config_dir: temp_dir.path().join("config"),
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.data_dir,
@@ -2259,6 +2349,7 @@ mod tests {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (_temp_dir, mut app) = test_app();
         let note = crate::storage::Note {
+            baseline: None,
             title: "Tagged".into(),
             content: String::new(),
             updated_at: 0,
@@ -2414,9 +2505,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
@@ -2501,9 +2591,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
@@ -2597,9 +2686,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor
@@ -2741,9 +2829,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.body =
@@ -2805,9 +2892,8 @@ mod tests {
             config_dir: temp_dir.path().join("config"),
             notes_dir: temp_dir.path().join("notes"),
             templates_dir: temp_dir.path().join("templates"),
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         std::fs::create_dir_all(&storage.data_dir).unwrap();
         std::fs::create_dir_all(&storage.config_dir).unwrap();

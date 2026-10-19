@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>clin</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.github.reekta92.clin-rs</string>
+    <key>CFBundleExecutable</key>
+    <string>clin</string>
+    <key>CFBundleIconFile</key>
+    <string>clin.icns</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>0.0.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>clin opens Terminal to run the terminal application.</string>
+</dict>
+</plist>

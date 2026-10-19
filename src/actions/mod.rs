@@ -1,5 +1,6 @@
-pub mod decrypt;
-pub mod encrypt;
+mod context;
+pub(crate) use context::ActionContext;
+mod bases;
 pub mod import;
 pub mod info;
 pub mod insert_date;
@@ -19,6 +20,7 @@ pub enum ActionCategory {
     Notes,
     Import,
     Append,
+    Bases,
     Views,
     Settings,
 }
@@ -47,7 +49,7 @@ pub trait Action: Send + Sync {
 #[macro_export]
 macro_rules! simple_action {
     ($name:ident, $id:literal, $label:literal, $desc:literal,
-     $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident) => {
+     $cat:expr, $glyph:expr, $method:ident) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
             fn id(&self) -> ::std::borrow::Cow<'static, str> {
@@ -63,7 +65,7 @@ macro_rules! simple_action {
                 $cat
             }
             fn glyph(&self) -> (&'static str, &'static str) {
-                ($glyph_nerd, $glyph_unicode)
+                $glyph
             }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
                 app.$method();
@@ -71,12 +73,16 @@ macro_rules! simple_action {
             }
         }
     };
+    ($name:ident, $id:literal, $label:literal, $desc:literal,
+     $cat:expr, $nerd:literal, $unicode:literal, $method:ident) => {
+        $crate::simple_action!($name, $id, $label, $desc, $cat, ($nerd, $unicode), $method);
+    };
 }
 
 #[macro_export]
 macro_rules! toggle_action {
     ($name:ident, $id:literal, $label:literal, $desc:literal,
-     $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident, $state_var:ident, $state_expr:expr) => {
+     $cat:expr, $glyph:expr, $method:ident, $state_var:ident, $state_expr:expr $(, $fallible:ident)?) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
             fn id(&self) -> ::std::borrow::Cow<'static, str> {
@@ -92,11 +98,10 @@ macro_rules! toggle_action {
                 $cat
             }
             fn glyph(&self) -> (&'static str, &'static str) {
-                ($glyph_nerd, $glyph_unicode)
+                $glyph
             }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
-                app.$method();
-                Ok(())
+                $crate::toggle_action!(@result app.$method() $(, $fallible)?)
             }
             fn name_dynamic(&self, $state_var: &$crate::app::App) -> String {
                 let _ = $state_var;
@@ -104,25 +109,31 @@ macro_rules! toggle_action {
             }
         }
     };
+    ($name:ident, $id:literal, $label:literal, $desc:literal,
+     $cat:expr, $nerd:literal, $unicode:literal, $method:ident, $state_var:ident, $state_expr:expr $(, $fallible:ident)?) => {
+        $crate::toggle_action!($name, $id, $label, $desc, $cat, ($nerd, $unicode), $method, $state_var, $state_expr $(, $fallible)?);
+    };
+    (@result $result:expr, fallible) => { $result };
+    (@result $result:expr) => { { $result; Ok(()) } };
 }
+
 simple_action!(
-    OpenBackupAction,
-    "backup.open",
-    "Open Backup Dashboard",
-    "View git backup status, commit history, and push to remote",
+    ToggleFrontmatterAction,
+    "editor.frontmatter",
+    "Toggle Frontmatter",
+    "Show or hide note properties above Body",
     ActionCategory::Views,
-    "\u{f1d3}",
-    "\u{1f4be}",
-    open_backup_view
+    crate::ui::icons::LIST.pair(),
+    toggle_frontmatter
 );
+
 simple_action!(
     EditFolderTemplateVariablesAction,
     "templates.edit_folder_variables",
     "Edit Folder Template Variables",
     "Create or edit the current physical folder's .clin-template.toml",
     ActionCategory::Settings,
-    "\u{f15c}",
-    "\u{270f}",
+    crate::ui::icons::SETTINGS.pair(),
     edit_folder_template_variables
 );
 simple_action!(
@@ -131,19 +142,18 @@ simple_action!(
     "Create Drawing",
     "Create a new drawing file",
     ActionCategory::Views,
-    "\u{f1fc}",
-    "\u{270f}",
+    crate::ui::icons::DRAW.pair(),
     begin_create_draw
 );
+
 simple_action!(
-    OpenGraphAction,
-    "graph.open",
-    "Open Graph View",
-    "Visualize note connections as a force-directed graph",
+    CreateBaseAction,
+    "bases.create",
+    "Create Bases File",
+    "Create a public .base query and open its native table view",
     ActionCategory::Views,
-    "\u{f0e8}",
-    "\u{1f5fa}",
-    open_graph_view
+    crate::ui::icons::BASES.pair(),
+    begin_create_base
 );
 simple_action!(
     CreateCanvasAction,
@@ -151,8 +161,7 @@ simple_action!(
     "Create Canvas Map",
     "Create a new .canvas map file (Obsidian-compatible)",
     ActionCategory::Views,
-    "\u{f005}",
-    "\u{1f58c}",
+    crate::ui::icons::CANVAS.pair(),
     begin_create_canvas
 );
 toggle_action!(
@@ -161,8 +170,7 @@ toggle_action!(
     "Toggle External Editor Mode",
     "Switch between the built-in editor and your $EDITOR for opening notes",
     ActionCategory::Settings,
-    "\u{f120}",
-    "\u{2328}",
+    crate::ui::icons::TERMINAL.pair(),
     toggle_external_editor_mode,
     app,
     if app.editor.external_editor_enabled {
@@ -177,8 +185,7 @@ toggle_action!(
     "Toggle Notes Layout",
     "Switch between Tree and Grid layout for the notes view",
     ActionCategory::Settings,
-    "\u{f0c9}",
-    "\u{1f4cb}",
+    crate::ui::icons::LAYOUT.pair(),
     toggle_notes_layout,
     app,
     match app.list.notes_layout {
@@ -192,43 +199,28 @@ toggle_action!(
     "Switch Theme",
     "Select from available color themes",
     ActionCategory::Settings,
-    "\u{f042}",
-    "\u{1f3a8}",
+    crate::ui::icons::THEME.pair(),
     begin_theme_selection,
     app,
-    crate::config::ClinConfig::load()
-        .0
-        .map(|c| c.ui.theme.clone())
-        .unwrap_or_else(|_| "default".to_string())
+    app.config.ui.theme.clone()
 );
 simple_action!(
     SwitchKeybindPresetAction,
     "keybind.preset",
-    "Switch Keybind Preset",
-    "Choose a keybind preset (default, helix, vim, emacs)",
+    "Switch Navigation Preset",
+    "Choose navigation keys (default, helix, vim, emacs); text editing remains non-modal",
     ActionCategory::Settings,
-    "\u{f11c}",
-    "\u{2328}",
+    crate::ui::icons::KEYBOARD.pair(),
     begin_keybind_preset_selection
 );
-simple_action!(
-    OpenSetupWizardAction,
-    "setup_wizard",
-    "Run Setup Wizard",
-    "Re-run the first-run setup to choose theme, keybinds, backup, and more",
-    ActionCategory::Settings,
-    "\u{f0a9}",
-    "\u{2699}",
-    open_setup_view
-);
+
 simple_action!(
     OpenVaultSwitcherAction,
     "vault.switch",
     "Switch Vault",
     "Quick-switch the active vault (F4 overlay)",
     ActionCategory::Views,
-    "\u{f07c}",
-    "\u{1f4c2}",
+    crate::ui::icons::OPEN_FOLDER.pair(),
     open_vault_switcher
 );
 simple_action!(
@@ -237,8 +229,7 @@ simple_action!(
     "Manage Sub-notes",
     "Open the sub-notes manager for the selected note.",
     ActionCategory::Notes,
-    "\u{f022}",
-    "\u{1f4dd}",
+    crate::ui::icons::SUBNOTES.pair(),
     open_subnotes_popup
 );
 
@@ -251,28 +242,26 @@ pub struct ActionInfo {
 }
 
 pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyLock::new(|| {
-    vec![
+    let mut actions: Vec<Box<dyn Action>> = vec![
         Box::new(OpenVaultSwitcherAction),
-        Box::new(encrypt::EncryptNoteAction),
-        Box::new(decrypt::DecryptNoteAction),
         Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
         Box::new(insert_date::InsertDateAction),
-        Box::new(OpenGraphAction),
         Box::new(outline::OpenOutlineAction),
-        Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
+        Box::new(ToggleFrontmatterAction),
         Box::new(EditFolderTemplateVariablesAction),
         Box::new(CreateCanvasAction),
+        Box::new(CreateBaseAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(ocr::PasteImageAction),
         Box::new(ocr::InsertImageFromFileAction),
         Box::new(SwitchThemeAction),
-        Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
         Box::new(ToggleExternalEditorAction),
         Box::new(ToggleLayoutAction),
         Box::new(settings::ToggleLayoutEditModeAction),
+        Box::new(settings::FeaturesAction),
         Box::new(settings::TogglePreviewPaneAction),
         Box::new(settings::ToggleWrapAction),
         Box::new(settings::ToggleZenModeAction),
@@ -282,7 +271,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleConfirmDeleteAction),
         Box::new(settings::TogglePinnedOnTopAction),
         Box::new(settings::ToggleConfirmQuitAction),
-        Box::new(settings::TogglePreviewEncryptionAction),
         Box::new(settings::CycleSortAction),
         Box::new(settings::ToggleShowHiddenFilesAction),
         Box::new(settings::ToggleShowAllFilesAction),
@@ -316,7 +304,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleSubnotesAction),
         Box::new(settings::ToggleTemplatesAction),
         Box::new(settings::ToggleImportAction),
-        Box::new(settings::ToggleEncryptionAction),
         Box::new(settings::ToggleGraphPreviewAction),
         Box::new(settings::ToggleGraphShowLegendAction),
         Box::new(settings::ToggleGraphShowMinimapAction),
@@ -362,51 +349,117 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
             source: crate::popups::ImportSource::Clipboard,
             target: crate::popups::ImportTarget::AppendCurrent,
         }),
-    ]
+    ];
+    actions.extend(
+        [
+            (
+                "navigation.back",
+                "Go Back",
+                "Revisit the previous view or document",
+            ),
+            (
+                "navigation.forward",
+                "Go Forward",
+                "Revisit the next view or document",
+            ),
+            ("document.save", "Save", "Save the current document"),
+            (
+                "app.quit",
+                "Quit App",
+                "Save pending changes and quit the application",
+            ),
+            ("notes.open", "Open Notes", "Return to the Notes list"),
+            ("help.open", "Open Help", "Show help for the current view"),
+            (
+                "graph.open",
+                "Open Graph View",
+                "Visualize note connections as a force-directed graph",
+            ),
+            (
+                "setup_wizard",
+                "Run Setup Wizard",
+                "Choose theme, navigation keys, and appearance",
+            ),
+            ("setup.finish", "Finish Setup", "Save the wizard settings"),
+            (
+                "setup.cancel",
+                "Cancel Setup",
+                "Confirm whether to discard the wizard settings",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, name, description)| {
+            Box::new(NavigationAction(id, name, description)) as Box<dyn Action>
+        }),
+    );
+    actions.extend(bases::commands());
+    actions
 });
+
+pub(crate) fn feature_toggle_state(id: &str, app: &App) -> Option<crate::config::FeatureState> {
+    let features = &app.config.features;
+    Some(match id {
+        "settings.toggle_graph_view" => features.graph_view,
+        "settings.toggle_canvas_view" => features.canvas_view,
+        "settings.toggle_draw_view" => features.draw_view,
+        "settings.toggle_outline_view" => features.outline_view,
+        "settings.toggle_help_view" => features.help_view,
+        "settings.toggle_tags" => features.tags,
+        "settings.toggle_trash" => features.trash,
+        "settings.toggle_subnotes" => features.subnotes,
+        "settings.toggle_templates" => features.templates,
+        "settings.toggle_import" => features.import,
+        "settings.goals" => features.goals,
+        "settings.calendar" => features.calendar,
+        "settings.smart_folders" => features.smart_folders,
+        _ => return None,
+    })
+}
 
 /// Whether a palette action is available given the current feature toggles.
 /// `true` for every action not explicitly tied to a feature.
 fn action_feature_enabled(id: &str, app: &App) -> bool {
+    if let Some(state) = feature_toggle_state(id, app) {
+        return !state.is_deleted();
+    }
+    if id.starts_with("bases.") && id != "bases.create" {
+        return app.mode == crate::app::ViewMode::Bases
+            && app.config.features.bases_view.is_enabled();
+    }
     match id {
         "templates.edit_folder_variables" => {
             app.config.features.templates.is_enabled() && app.mode == crate::app::ViewMode::List
         }
-        "backup.open" => app.config.features.backup.is_enabled(),
+        "help.open" => app.config.features.help_view.is_enabled(),
         "draw.create" => app.config.features.draw_view.is_enabled(),
         "graph.open" => app.config.features.graph_view.is_enabled(),
         "create_canvas" => app.config.features.canvas_view.is_enabled(),
+        "bases.create" => app.config.features.bases_view.is_enabled(),
         "outline.open" => app.config.features.outline_view.is_enabled(),
         "manage_subnotes_list" => app.config.features.subnotes.is_enabled(),
-        "note.encrypt" | "note.decrypt" => app.config.features.encryption.is_enabled(),
         "settings.configure_smart_folders" => app.config.features.smart_folders.is_enabled(),
         "ocr.paste" | "paste_image" | "insert_image_from_file" => {
             app.config.features.import.is_enabled()
         }
         id if id.starts_with("insert.") => app.config.features.import.is_enabled(),
-        "settings.toggle_graph_view" => !app.config.features.graph_view.is_deleted(),
-        "settings.toggle_canvas_view" => !app.config.features.canvas_view.is_deleted(),
-        "settings.toggle_draw_view" => !app.config.features.draw_view.is_deleted(),
-        "settings.toggle_outline_view" => !app.config.features.outline_view.is_deleted(),
-        "settings.toggle_help_view" => !app.config.features.help_view.is_deleted(),
-        "settings.toggle_tags" => !app.config.features.tags.is_deleted(),
-        "settings.toggle_trash" => !app.config.features.trash.is_deleted(),
-        "settings.toggle_subnotes" => !app.config.features.subnotes.is_deleted(),
-        "settings.toggle_templates" => !app.config.features.templates.is_deleted(),
-        "settings.toggle_import" => !app.config.features.import.is_deleted(),
-        "settings.toggle_encryption" => !app.config.features.encryption.is_deleted(),
-        "settings.goals" => !app.config.features.goals.is_deleted(),
-        "settings.toggle_calendar" => !app.config.features.calendar.is_deleted(),
-        "settings.toggle_smart_folders" => !app.config.features.smart_folders.is_deleted(),
         _ => true,
     }
 }
 
 pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
+    get_action_infos_in_context(app, &ActionContext::capture(app, None, None))
+}
+
+pub(crate) fn get_action_infos_in_context(app: &App, context: &ActionContext) -> Vec<ActionInfo> {
+    if !app.palette_input_available() {
+        return Vec::new();
+    }
     let icon_mode = app.config.ui.icon_mode;
     ACTIONS
         .iter()
-        .filter(|a| action_feature_enabled(&a.id(), app))
+        .filter(|a| {
+            action_feature_enabled(&a.id(), app) && context::eligible(&a.id(), app, context)
+        })
         .map(|a| {
             let (nerd, unicode) = a.glyph();
             ActionInfo {
@@ -424,20 +477,110 @@ pub fn get_all_actions() -> &'static [Box<dyn Action>] {
     &ACTIONS
 }
 pub fn execute_action(action_id: &str, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
-    if !action_feature_enabled(action_id, app) {
-        anyhow::bail!("Action disabled: {action_id}");
+    let context = ActionContext::capture(app, None, context_note_id);
+    execute_action_in_context(action_id, app, &context)
+}
+
+pub(crate) fn execute_action_in_context(
+    action_id: &str,
+    app: &mut App,
+    context: &ActionContext,
+) -> Result<()> {
+    let action = ACTIONS
+        .iter()
+        .find(|action| action.id() == action_id)
+        .ok_or_else(|| anyhow::anyhow!("Action not found: {action_id}"))?;
+    if !app.palette_input_available() {
+        anyhow::bail!("Action unavailable while another input owns the view");
     }
-    for action in get_all_actions() {
-        if action.id() == action_id {
-            return action.execute(app, context_note_id);
+    validate_action_context(action_id, app, context)?;
+    app.observe_navigation();
+    action.execute(app, context.note_id.as_deref())?;
+    app.observe_navigation();
+    app.record_command_usage(action_id);
+    Ok(())
+}
+
+pub(crate) fn validate_action_context(
+    action_id: &str,
+    app: &App,
+    context: &ActionContext,
+) -> Result<()> {
+    anyhow::ensure!(
+        action_feature_enabled(action_id, app) && context::eligible(action_id, app, context),
+        "Action unavailable in the current context: {action_id}"
+    );
+    Ok(())
+}
+
+struct NavigationAction(&'static str, &'static str, &'static str);
+
+impl Action for NavigationAction {
+    fn id(&self) -> Cow<'static, str> {
+        self.0.into()
+    }
+    fn name(&self) -> Cow<'static, str> {
+        self.1.into()
+    }
+    fn description(&self) -> Cow<'static, str> {
+        self.2.into()
+    }
+    fn category(&self) -> ActionCategory {
+        match self.0 {
+            "app.quit" | "document.save" => ActionCategory::General,
+            _ => ActionCategory::Views,
         }
     }
-    anyhow::bail!("Action not found: {action_id}")
+    fn glyph(&self) -> (&'static str, &'static str) {
+        use crate::ui::icons;
+        match self.0 {
+            "navigation.back" => icons::BACK,
+            "navigation.forward" => icons::FORWARD,
+            "document.save" => icons::SAVE,
+            "app.quit" => icons::QUIT,
+            "notes.open" => icons::MARKDOWN,
+            "help.open" => icons::HELP,
+            "graph.open" => icons::GRAPH,
+            "setup.finish" => icons::SUCCESS,
+            "setup.cancel" => icons::CANCEL,
+            _ => icons::SETTINGS,
+        }
+        .pair()
+    }
+    fn execute(&self, app: &mut App, _: Option<&str>) -> Result<()> {
+        match self.0 {
+            "navigation.back" => app.navigate_history(false),
+            "navigation.forward" => app.navigate_history(true),
+            "document.save" => app.save_active_view(),
+            "app.quit" => app.quit_from_palette(),
+            _ => app.navigate_from_palette(self.0),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registered_actions_have_single_cell_icons() {
+        use unicode_width::UnicodeWidthStr;
+        for action in get_all_actions() {
+            let (nerd, unicode) = action.glyph();
+            for mode in [
+                crate::config::IconMode::Nerd,
+                crate::config::IconMode::Unicode,
+            ] {
+                let glyph = crate::ui::get_icon(nerd, unicode, mode);
+                assert_eq!(glyph.chars().count(), 1, "{}: {mode:?}", action.id());
+                assert_eq!(glyph.width(), 1, "{}: {mode:?}", action.id());
+            }
+            assert_eq!(
+                crate::ui::get_icon(nerd, unicode, crate::config::IconMode::None),
+                ""
+            );
+        }
+    }
 
     fn make_test_storage(dir: &std::path::Path) -> crate::storage::Storage {
         crate::storage::Storage {
@@ -445,9 +588,8 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

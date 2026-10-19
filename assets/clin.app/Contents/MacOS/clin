@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+CLIN_EXECUTABLE="$(cd -- "$(dirname -- "$0")/../Resources" && pwd)/clin"
+exec /usr/bin/osascript - "$CLIN_EXECUTABLE" <<'APPLESCRIPT'
+on run argv
+    tell application "Terminal"
+        activate
+        do script quoted form of (item 1 of argv)
+    end tell
+end run
+APPLESCRIPT

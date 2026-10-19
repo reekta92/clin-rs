@@ -1,5 +1,7 @@
 # Editor View
 
+Press unmodified `F6` for editor settings, applicable body commands, shared settings, and guarded navigation. Custom editor F6 bindings take priority. Title/frontmatter/sidebar focus hides body insertion; Markdown-only commands are unavailable in structured public/template source buffers. Cancelling preserves focus, cursor, selection, and pending edits. Palette navigation saves the editor before departure; failure retains the buffer and recovery draft. `Ctrl+p` still toggles Markdown preview.
+
 ## Overview
 
 A built-in title/body editor with find popup, soft-wrap, sidebars with wikilink
@@ -13,10 +15,35 @@ event loop), `src/ui/edit_view.rs` (rendering), `src/events/edit.rs` (input).
 Edit runs in dedicated same-process session. It draws initial frame, batches up
 to 64 queued input events without reordering keys, coalesces only consecutive
 mouse-move or resize events, and redraws only after dirty editor-local work.
-Catalog, watcher, search, and other generic app queues wait until Edit exits.
+Catalog, search, and other generic app queues wait until Edit exits. While live
+Bases regions are visible, Edit narrowly drains watcher changes and the shared
+public query worker, without replacing unsaved editor text.
 
 `EditorDocument` currently wraps `ratatui-textarea` behind body APIs; title,
-canvas JSON, popups, Draw, and Backup retain their own `TextArea` instances.
+canvas JSON, popups, and Draw retain their own `TextArea` instances.
+
+## Frontmatter properties
+
+**F7** (`edit.toggle_frontmatter`, remappable) shows or hides one region above Body. It starts hidden on existing and new Markdown/text notes, opens with focus, and retains edits and undo when hidden. The command palette also offers **Toggle Frontmatter**. Sidebars remain available. Metadata stays outside Markdown preview, outline, body links, and writing counts.
+
+The default properties presentation lists fields in source order with their YAML types. Use arrows or the mouse to select, **a** to add, **Enter** to edit (or toggle a boolean), and **Delete** to remove. The value input accepts YAML scalars, null, lists, and mappings. **Tab** switches Name/Value, **Ctrl+Enter** applies, and **Esc** cancels the value input. Removing a field and setting `null` are different operations. Changed values follow the same declared types as Bases, read from `.obsidian/types.json`; an unrelated existing type mismatch does not block editing another field. Complex keys or unsafe alias/tag patches require raw editing.
+
+To edit YAML directly in the same region:
+
+```toml
+[editor]
+frontmatter_mode = "raw_yaml" # default: "properties"
+```
+
+Raw mode supports multiline editing, paste, selection, clipboard, mouse scrolling, and undo/redo. Edit the YAML inside the delimiters. Invalid input remains editable and blocks save, exit, and navigation. Switching presentation/configuration retains pending input; an open property value input remains available until applied or cancelled.
+
+Explicit header edits/removals win over automatic managed output for that save. Conflicting edits to Title and YAML `title` require correction before saving. Removing `title` uses the filename for display. Existing filenames remain stable after title edits, so `[[CL-01]]` keeps its target; renaming a file is a separate explicit operation.
+
+Body-only saves preserve unrelated header bytes, comments, quoting, order, blank lines, BOM, newline convention, and Unix permissions. Missing managed fields stay missing. `[notes.frontmatter]` controls automatic output; see [Configuration](CONFIG_REFERENCE.md#notesfrontmatter). A later body edit can refresh enabled links/timestamps already present. Uninterpretable managed values remain untouched.
+
+Invalid YAML, unfinished property inputs, and Title conflicts use private repair-only recovery records. On restart the newest repair draft opens in the editor without publishing invalid content; other repair drafts remain on disk. Correct and save the restored input. External source changes still reject saving against the original baseline. See [Upgrading](UPGRADING.md) for recovery privacy and compatibility.
+
+Templates, verbatim `.base`/Canvas/Draw source, attachments, legacy encrypted notes, and virtual subnotes have no frontmatter region. Whole-file external editing remains unchanged.
 
 ## Preview Lifecycle
 
@@ -114,6 +141,14 @@ while older text above and all text below the current paragraph are dimmed.
 
 The `EditSidebar` on `NoteEditor` displays forward/back link panes alongside the editor. `[[wikilink]]` targets and back-references are resolved and listed. The `link_preview` state field tracks the active preview. `Ctrl+o` toggles Outline, `Ctrl+b` toggles Links, and `Ctrl+t` cycles focus to a visible sidebar. `Alt+l` previews the link under the cursor.
 
+**Ctrl+g Ctrl+b** (`edit.ToggleBases`) opens the `.base` link under the cursor in
+a live sidebar using the current public file as `this`; repeat to close it.
+Public Markdown and linked-note previews also render named and fenced Bases
+definitions. Click a region to use Bases controls; Esc returns focus to the
+editor. The Bases palette binding expands the region into its full view and
+returns to the same host afterward. See [BASES.md](BASES.md) for privacy, source
+anchors, refresh, guarded writes, and resource limits.
+
 ## Keyboard Text Selection
 
 Title and body fields support:
@@ -205,15 +240,40 @@ zen_focus_unit = "paragraph"
 zen_focus_context = 3
 ```
 
-## Draft Recovery and Encrypted Notes
-
-Editor mutations attempt to write an encrypted draft to `<vault>/.clin/editor_draft.bin`. Startup attempts to recover it into the note, then removes the readable draft even if decoding or saving fails. This is best-effort recovery, not a guarantee against every crash or disk-write failure.
-
-`.clin` notes cannot be edited directly: use **Decrypt Note** from the palette first. Draft writes exclude `.clin` IDs; encryption uses the application-wide key outside the vault. See [ENCRYPTION.md](ENCRYPTION.md).
-
 ## Connections
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, view state machine
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full configuration reference
 - [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — keybind presets and sequence syntax
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — editor-related actions
+
+Ordinary public Markdown editors use lossless guarded saving, including live
+Bases regions. The editor still presents the body
+and title separately. It retains the original YAML, line endings, trailing body
+bytes, permissions, and opening baseline; title edits do not rename the file.
+Inline configuration saves update the containing buffer. Metadata-only writes can
+rebase pending body edits and migrate their plaintext recovery draft. Conflicts
+retain the pending editor and reject stale saves. A source handoff suspends and
+restores the containing editor, including unsaved text.
+## Save and recovery guarantees
+
+Ordinary saves preserve filename identity and Unix permissions, reject read-only files, and check the loaded raw source against disk. Conflicts and save failures remain unsaved; autosave retries instead of claiming success. Explicit file rename warns that incoming references are not rewritten.
+
+Recovery drafts are coalesced off the input thread, with durable flushes at save/session boundaries. New records are plaintext with private Unix permissions; old encrypted records are retained, never converted or deleted automatically. See [Upgrading](UPGRADING.md) for privacy and legacy-data requirements.
+
+`Ctrl+C` copies an active selection. Without selection it reports that nothing is selected, not an emergency process exit. Navigation presets do not turn the body into Vim or Helix.
+
+## Clipboard transport
+
+Copy and cut use the native system clipboard when available. On SSH, or when
+native clipboard access fails, clin can send bounded OSC 52 output to the
+terminal, including tmux passthrough. The terminal and tmux must permit OSC 52;
+clin cannot confirm delivery. “Copy sent to terminal (OSC 52)” means only that
+the escape sequence was written. Failed system copies remain in the app-local
+clipboard, available to clin's text fields for the current process.
+
+Existing notes retain trailing empty lines. Unchanged saves retain raw CRLF and
+frontmatter formatting. Body edits preserve unrelated frontmatter comments,
+quoting, and unknown properties. Adding a newline is an edit. Template saves
+check their loaded source before replacement; templates do not get note recovery
+drafts.

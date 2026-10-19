@@ -290,37 +290,6 @@ impl Default for SearchConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(default)]
-pub struct BackupConfig {
-    #[serde(default)]
-    pub backup_on_save: bool,
-    #[serde(default)]
-    pub backup_on_quit: bool,
-    #[serde(default)]
-    pub auto_push: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub auto_backup_interval: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct NotesConfig {
-    pub rename_on_title_change: bool,
-}
-
-impl Default for NotesConfig {
-    fn default() -> Self {
-        Self {
-            rename_on_title_change: true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ImageConfig {
@@ -358,8 +327,6 @@ pub struct ListConfig {
     pub preview_enabled: bool,
     #[serde(default)]
     pub preview_position: PreviewPosition,
-    #[serde(default)]
-    pub preview_encryption: bool,
     #[serde(default)]
     pub show_file_size: bool,
     pub date_format: String,
@@ -402,7 +369,6 @@ impl Default for ListConfig {
         Self {
             preview_enabled: true,
             preview_position: PreviewPosition::default(),
-            preview_encryption: false,
             show_file_size: false,
             date_format: "%Y-%m-%d".to_string(),
             density: ListDensity::default(),
@@ -436,9 +402,24 @@ pub enum FocusUnit {
     Line,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontmatterMode {
+    #[default]
+    Properties,
+    RawYaml,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct NotesConfig {
+    pub frontmatter: crate::frontmatter::WritePolicy,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EditorConfig {
+    pub frontmatter_mode: FrontmatterMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_command: Option<String>,
     #[serde(default)]
@@ -464,6 +445,7 @@ pub struct EditorConfig {
 impl Default for EditorConfig {
     fn default() -> Self {
         Self {
+            frontmatter_mode: FrontmatterMode::default(),
             external_command: None,
             external_enabled: false,
             preview_enabled: false,
@@ -603,7 +585,6 @@ pub struct StatuslineConfig {
     pub graph: Option<StatuslineOverride>,
     pub draw: Option<StatuslineOverride>,
     pub canvas: Option<StatuslineOverride>,
-    pub backup: Option<StatuslineOverride>,
     pub outline: Option<StatuslineOverride>,
 }
 
@@ -693,6 +674,7 @@ impl<'de> serde::Deserialize<'de> for FeatureState {
 pub struct FeaturesConfig {
     pub graph_view: FeatureState,
     pub canvas_view: FeatureState,
+    pub bases_view: FeatureState,
     pub draw_view: FeatureState,
     pub outline_view: FeatureState,
     pub help_view: FeatureState,
@@ -701,9 +683,7 @@ pub struct FeaturesConfig {
     pub subnotes: FeatureState,
     pub templates: FeatureState,
     pub import: FeatureState,
-    pub encryption: FeatureState,
     pub images: FeatureState,
-    pub backup: FeatureState,
     pub goals: FeatureState,
     pub calendar: FeatureState,
     pub smart_folders: FeatureState,
@@ -714,6 +694,7 @@ impl Default for FeaturesConfig {
         Self {
             graph_view: FeatureState::Enabled,
             canvas_view: FeatureState::Enabled,
+            bases_view: FeatureState::Enabled,
             draw_view: FeatureState::Enabled,
             outline_view: FeatureState::Enabled,
             help_view: FeatureState::Enabled,
@@ -722,9 +703,7 @@ impl Default for FeaturesConfig {
             subnotes: FeatureState::Enabled,
             templates: FeatureState::Enabled,
             import: FeatureState::Enabled,
-            encryption: FeatureState::Enabled,
             images: FeatureState::Enabled,
-            backup: FeatureState::Enabled,
             goals: FeatureState::Enabled,
             calendar: FeatureState::Enabled,
             smart_folders: FeatureState::Enabled,
@@ -735,6 +714,7 @@ impl FeaturesConfig {
     pub fn file_view_enabled(&self, path: impl AsRef<std::path::Path>) -> bool {
         let ext = path.as_ref().extension().and_then(|e| e.to_str());
         match ext {
+            Some("base") => self.bases_view.is_enabled(),
             Some("draw") => self.draw_view.is_enabled(),
             Some("canvas") | Some("pinstar") => self.canvas_view.is_enabled(),
             _ => true,
@@ -745,15 +725,11 @@ impl FeaturesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ClinConfig {
+    pub notes: NotesConfig,
     #[serde(default)]
     pub core: CoreConfig,
     #[serde(default)]
     pub ui: UiConfig,
-    #[serde(default)]
-    pub backup: BackupConfig,
-    #[serde(default)]
-    pub notes: NotesConfig,
-
     #[serde(default)]
     pub list: ListConfig,
     #[serde(default)]

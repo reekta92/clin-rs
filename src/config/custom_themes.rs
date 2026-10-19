@@ -152,6 +152,20 @@ pub fn list_custom_themes() -> Vec<String> {
     names
 }
 
+/// Preserve each caller's built-in order while labeling custom overrides once.
+pub fn theme_choices(builtins: &[&str]) -> (Vec<String>, Vec<bool>) {
+    let custom = list_custom_themes();
+    let mut themes: Vec<String> = builtins.iter().map(|name| (*name).to_owned()).collect();
+    let mut is_custom: Vec<bool> = themes.iter().map(|name| custom.contains(name)).collect();
+    for name in custom {
+        if !themes.contains(&name) {
+            themes.push(name);
+            is_custom.push(true);
+        }
+    }
+    (themes, is_custom)
+}
+
 /// Load a custom theme file by name (stem only, no `.toml` extension).
 ///
 /// Returns `None` if the file doesn't exist. Pushes parse/read errors to

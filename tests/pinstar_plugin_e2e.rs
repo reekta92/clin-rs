@@ -26,9 +26,8 @@ fn temp_canvas(content: &str) -> (std::path::PathBuf, clin::storage::Storage) {
         config_dir,
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: [0u8; 32],
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
+        frontmatter_policy: clin::frontmatter::WritePolicy::default(),
     };
     std::fs::create_dir_all(&storage.data_dir).expect("e2e fixture");
     std::fs::create_dir_all(&storage.templates_dir).expect("e2e fixture");
@@ -85,6 +84,30 @@ fn key(c: char) -> crossterm::event::Event {
     ))
 }
 
+#[cfg(unix)]
+#[test]
+fn canvas_eager_saves_preserve_private_modes_and_leave_readonly_files_untouched()
+-> anyhow::Result<()> {
+    use ratatui::layout::Rect;
+    use std::os::unix::fs::PermissionsExt;
+    let (mut plugin, path) = make_plugin("{\"nodes\":[],\"edges\":[]}");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    let mut app = test_app();
+    plugin.overlay_handle_event(key('t'), &mut app, Rect::new(0, 0, 80, 24))?;
+    assert_eq!(
+        std::fs::metadata(&path)?.permissions().mode() & 0o777,
+        0o600
+    );
+    let saved = std::fs::read(&path)?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400))?;
+    plugin.overlay_handle_event(key('t'), &mut app, Rect::new(0, 0, 80, 24))?;
+    assert_eq!(std::fs::read(&path)?, saved);
+    assert!(app.status.contains("read-only"));
+    assert_eq!(plugin.state.data.nodes.len(), 2);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
 fn esc() -> crossterm::event::Event {
     crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
         crossterm::event::KeyCode::Esc,
@@ -103,9 +126,8 @@ fn test_app() -> clin::app::App {
         config_dir,
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: [0u8; 32],
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
+        frontmatter_policy: clin::frontmatter::WritePolicy::default(),
     };
     clin::app::App::new(storage).expect("e2e fixture")
 }

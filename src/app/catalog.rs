@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::time::{Duration, Instant};
 
-const NOTE_CACHE_VERSION: u16 = 3;
+const NOTE_CACHE_VERSION: u16 = 5;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct PersistedNoteCache {
@@ -122,7 +122,7 @@ pub(crate) fn load_notes_blocking(
 
 #[allow(clippy::type_complexity)]
 pub(crate) fn load_persisted_note_cache(
-    storage: &Storage,
+    _storage: &Storage,
     cache_path: &Path,
     vault_digest: u64,
     show_hidden: bool,
@@ -136,16 +136,13 @@ pub(crate) fn load_persisted_note_cache(
         Ok(r) => r,
         Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
     };
-    let (_fm, payload) = crate::storage::split_frontmatter_payload(&raw);
-    let plain = match storage.decrypt(payload) {
-        Ok(p) => p,
+    let cache: PersistedNoteCache = match bincode::serde::decode_from_slice(
+        &raw,
+        bincode::config::standard().with_limit::<{ 64 * 1024 * 1024 }>(),
+    ) {
+        Ok((c, _)) => c,
         Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
     };
-    let cache: PersistedNoteCache =
-        match bincode::serde::decode_from_slice(&plain, bincode::config::standard()) {
-            Ok((c, _)) => c,
-            Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
-        };
 
     if cache.version != NOTE_CACHE_VERSION || cache.vault_digest != vault_digest {
         return (Vec::new(), HashMap::new(), Vec::new());
@@ -169,7 +166,7 @@ pub(crate) fn load_persisted_note_cache(
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
-            let accepted = matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+            let accepted = matches!(ext, "md" | "txt" | "draw" | "canvas" | "base")
                 || crate::storage::is_image_ext(ext);
             if !accepted {
                 continue;
@@ -193,9 +190,8 @@ pub(crate) fn load_persisted_note_cache(
 }
 
 fn save_persisted_note_cache(
-    storage: &Storage,
+    _storage: &Storage,
     cache_path: &Path,
-    legacy_cache_path: &Path,
     vault_digest: u64,
     show_hidden: bool,
     show_all: bool,
@@ -221,11 +217,7 @@ fn save_persisted_note_cache(
     };
 
     let encoded = bincode::serde::encode_to_vec(&cache_obj, bincode::config::standard())?;
-    let ciphertext = storage.encrypt(&encoded)?;
-
-    let mut content = Vec::new();
-    content.extend_from_slice(b"---\nversion: 2\n---\n");
-    content.extend_from_slice(&ciphertext);
+    let content = encoded;
 
     if let Some(parent) = cache_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -234,8 +226,6 @@ fn save_persisted_note_cache(
     crate::fsutil::atomic_write_with_mode(cache_path, &content, 0o600)?;
     #[cfg(not(unix))]
     crate::fsutil::atomic_write(cache_path, &content)?;
-
-    let _ = crate::fsutil::remove_file_if_exists(legacy_cache_path);
 
     Ok(())
 }
@@ -267,7 +257,6 @@ pub(crate) fn spawn_catalog_worker(
     storage: Storage,
     pool: Arc<rayon::ThreadPool>,
     cache_path: PathBuf,
-    legacy_cache_path: PathBuf,
     vault_digest: u64,
     show_hidden: bool,
     show_all: bool,
@@ -295,7 +284,6 @@ pub(crate) fn spawn_catalog_worker(
                     let _ = save_persisted_note_cache(
                         &storage,
                         &cache_path,
-                        &legacy_cache_path,
                         vault_digest,
                         show_hidden,
                         show_all,
@@ -327,7 +315,6 @@ pub(crate) fn spawn_catalog_worker(
                             let _ = save_persisted_note_cache(
                                 &storage,
                                 &cache_path,
-                                &legacy_cache_path,
                                 vault_digest,
                                 show_hidden,
                                 show_all,
@@ -687,18 +674,19 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 
     #[test]
-    fn cache_ciphertext_hides_note_metadata() {
+    fn plaintext_cache_is_private_and_roundtrips() {
         let tmp = TempDir::new().unwrap();
         let storage = make_test_storage(tmp.path());
         let cache_path = tmp.path().join("cache/note_cache.bin");
         let legacy_path = tmp.path().join("cache/legacy.bin");
+        std::fs::create_dir_all(legacy_path.parent().unwrap()).unwrap();
+        std::fs::write(&legacy_path, b"opaque legacy cache").unwrap();
         let digest = 42u64;
 
         let summary = NoteSummary {
@@ -723,22 +711,14 @@ mod tests {
         );
         let folders = vec!["folder".to_string()];
 
-        save_persisted_note_cache(
-            &storage,
-            &cache_path,
-            &legacy_path,
-            digest,
-            false,
-            false,
-            &folders,
-            &map,
-        )
-        .unwrap();
+        save_persisted_note_cache(&storage, &cache_path, digest, false, false, &folders, &map)
+            .unwrap();
 
+        assert_eq!(std::fs::read(&legacy_path).unwrap(), b"opaque legacy cache");
         let raw = std::fs::read(&cache_path).unwrap();
         let raw_str = String::from_utf8_lossy(&raw);
-        assert!(!raw_str.contains("Super Secret Title"));
-        assert!(!raw_str.contains("secret_note.md"));
+        assert!(raw_str.contains("Super Secret Title"));
+        assert!(raw_str.contains("secret_note.md"));
 
         #[cfg(unix)]
         {

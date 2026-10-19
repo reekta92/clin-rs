@@ -26,9 +26,8 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
         config_dir: config_dir.clone(),
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: Default::default(),
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
+        frontmatter_policy: clin::frontmatter::WritePolicy::default(),
     };
     std::fs::create_dir_all(&storage.data_dir).expect("e2e fixture");
     std::fs::create_dir_all(&storage.templates_dir).expect("e2e fixture");
@@ -95,9 +94,8 @@ fn test_app() -> clin::app::App {
         config_dir,
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: Default::default(),
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
+        frontmatter_policy: clin::frontmatter::WritePolicy::default(),
     };
     clin::app::App::new(storage).expect("e2e fixture")
 }
@@ -300,9 +298,8 @@ fn feature_view_files_graph_preview_same_key() {
         config_dir: config_dir.clone(),
         notes_dir,
         templates_dir: dir.join("templates"),
-        key: Default::default(),
         skip_dir_patterns: Vec::new(),
-        rename_on_title_change: true,
+        frontmatter_policy: clin::frontmatter::WritePolicy::default(),
     };
     std::fs::create_dir_all(&storage.data_dir).expect("e2e fixture");
     std::fs::create_dir_all(&storage.templates_dir).expect("e2e fixture");

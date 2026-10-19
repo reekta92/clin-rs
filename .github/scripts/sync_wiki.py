@@ -29,16 +29,19 @@ def page_names(root):
 
 
 def rewrite_links(text, source, names, root, repository, revision):
-    def replace(match):
-        target = match.group(0)
+    def replace(target, raw=False):
         url = urlsplit(target)
         if url.scheme or url.netloc or not url.path:
             return target
         path = posixpath.normpath(posixpath.join(posixpath.dirname(source), unquote(url.path)))
-        if path in names:
+        if path in names and not raw:
             return urlunsplit(("", "", names[path], url.query, url.fragment))
         if path.startswith("../") or not (root / path).exists():
             raise ValueError(f"Broken repository link in {source}: {target}")
+        if raw:
+            return urlunsplit(("https", "raw.githubusercontent.com",
+                              f"/{repository}/{quote(revision, safe='')}/{quote(path)}",
+                              url.query, url.fragment))
         kind = "tree" if (root / path).is_dir() else "blob"
         absolute = f"https://github.com/{repository}/{kind}/{quote(revision, safe='')}/{quote(path)}"
         return urlunsplit(("https", "github.com", urlsplit(absolute).path, url.query, url.fragment))
@@ -58,7 +61,12 @@ def rewrite_links(text, source, names, root, repository, revision):
         elif fence is not None:
             lines.append(line)
         else:
-            lines.append(re.sub(r"(?<=\]\()[^\s)]+", replace, line))
+            line = re.sub(r"(?<=\]\()[^\s)]+", lambda match: replace(match[0]), line)
+            lines.append(re.sub(
+                r'''(<img\b[^>]*\bsrc=["'])([^"']+)(["'])''',
+                lambda match: match[1] + replace(match[2], raw=True) + match[3],
+                line, flags=re.IGNORECASE,
+            ))
     return "".join(lines)
 
 

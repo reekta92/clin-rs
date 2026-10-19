@@ -33,6 +33,9 @@ impl App {
     /// `[core] vaults` entries (expanded, deduped), then the implicit
     /// `+ Add new vault…` row rendered at index `vaults.len()`.
     pub fn open_vault_switcher(&mut self) {
+        if self.command_palette.is_none() {
+            self.record_command_usage("vault.switch");
+        }
         let active = self
             .config
             .effective_storage_path()
@@ -63,7 +66,7 @@ impl App {
                 });
             }
         }
-        self.vault_switcher = Some(VaultSwitcher {
+        self.present_vault_switcher(VaultSwitcher {
             vaults,
             selected: 0,
         });
@@ -75,6 +78,10 @@ impl App {
     pub fn switch_vault(&mut self, path: PathBuf) {
         if same_vault(&path, &self.storage.data_dir) {
             self.set_temporary_status_static("Vault already active");
+            return;
+        }
+        if let Err(error) = self.save_before_session_replace() {
+            self.set_temporary_status(&format!("Vault switch blocked: {error:#}"));
             return;
         }
         let previous_config = self.config.clone();
@@ -122,39 +129,46 @@ impl App {
     /// override is active, in which case the addition is session-only).
     /// Adding never auto-switches.
     pub fn begin_add_vault(&mut self) {
-        match crate::ui::pick_directory("Select vault directory") {
-            Ok(crate::ui::DirectoryPickerOutcome::Selected(picked)) => {
-                let path = crate::config::path::expand_path(&picked.to_string_lossy());
-                if !crate::config::has_storage_path_override()
-                    && !self.config.core.vaults.iter().any(|v| same_vault(v, &path))
-                {
-                    self.config.core.vaults.push(path.clone());
-                    if let Err(error) = self.config.save() {
-                        self.config.core.vaults.pop();
-                        self.set_temporary_status(&format!("Failed to save config: {error}"));
-                        return;
-                    }
-                }
-                if let Some(switcher) = self.vault_switcher.as_mut() {
-                    if !switcher.vaults.iter().any(|r| same_vault(&r.path, &path)) {
-                        switcher.vaults.push(VaultRow {
-                            raw_path: path.to_string_lossy().into_owned(),
-                            path: path.clone(),
-                        });
+        match self.pick_and_add_vault() {
+            Ok(Some(row)) => {
+                if let Some(switcher) = &mut self.vault_switcher {
+                    if !switcher
+                        .vaults
+                        .iter()
+                        .any(|r| same_vault(&r.path, &row.path))
+                    {
+                        switcher.vaults.push(row);
                     }
                     switcher.selected = switcher.vaults.len().saturating_sub(1);
                 }
             }
-            Ok(crate::ui::DirectoryPickerOutcome::Cancelled) => {}
-            Ok(crate::ui::DirectoryPickerOutcome::Unavailable) => {
-                self.set_temporary_status_static(
-                    "Directory picker unavailable — install zenity or kdialog, or add vaults in config.toml",
-                );
-            }
-            Err(error) => {
-                self.set_temporary_status(&format!("Directory picker failed: {error}"));
-            }
+            Ok(None) => {}
+            Err(error) => self.set_temporary_status(&format!("Could not add vault: {error:#}")),
         }
+    }
+
+    pub(crate) fn pick_and_add_vault(&mut self) -> anyhow::Result<Option<VaultRow>> {
+        let path = match crate::ui::pick_directory("Select vault directory")? {
+            crate::ui::DirectoryPickerOutcome::Selected(path) => {
+                crate::config::path::expand_path(&path.to_string_lossy())
+            }
+            crate::ui::DirectoryPickerOutcome::Cancelled => return Ok(None),
+            crate::ui::DirectoryPickerOutcome::Unavailable => anyhow::bail!(
+                "Directory picker unavailable — install zenity or kdialog, or add vaults in config.toml"
+            ),
+        };
+        if !crate::config::has_storage_path_override()
+            && !self.config.core.vaults.iter().any(|v| same_vault(v, &path))
+        {
+            let mut config = self.config.clone();
+            config.core.vaults.push(path.clone());
+            config.save()?;
+            self.config = config;
+        }
+        Ok(Some(VaultRow {
+            raw_path: path.to_string_lossy().into_owned(),
+            path,
+        }))
     }
 
     /// Confirmed `ConfirmAction::RemoveVault`: drop the path from `[core]
@@ -163,18 +177,22 @@ impl App {
     pub fn remove_vault_from_list(&mut self, path: &str) {
         let target = crate::config::path::expand_path(path);
         if !crate::config::has_storage_path_override() {
-            let before = self.config.core.vaults.len();
-            self.config.core.vaults.retain(|v| !same_vault(v, &target));
-            if self.config.core.vaults.len() != before
-                && let Err(error) = self.config.save()
+            let mut config = self.config.clone();
+            let before = config.core.vaults.len();
+            config.core.vaults.retain(|v| !same_vault(v, &target));
+            if config.core.vaults.len() != before
+                && let Err(error) = config.save()
             {
                 self.set_temporary_status(&format!("Failed to save config: {error}"));
+                return;
             }
+            self.config = config;
         }
         if let Some(switcher) = self.vault_switcher.as_mut() {
             switcher.vaults.retain(|r| !same_vault(&r.path, &target));
             switcher.selected = switcher.selected.min(switcher.vaults.len());
         }
+        self.remove_palette_vault(path);
     }
 
     /// Confirm visual renaming of a vault in the application. Updates
@@ -183,19 +201,32 @@ impl App {
         let Some(crate::popups::ActivePopup::VaultRename(popup)) = self.popups.active.take() else {
             return;
         };
-        let new_name = popup.input.lines().join(" ").trim().to_string();
-        if new_name.is_empty() {
-            self.config.core.vault_names.remove(&popup.raw_path_key);
+        if let Err(error) =
+            self.apply_vault_alias(&popup.raw_path_key, &popup.input.lines().join(" "))
+        {
+            self.set_temporary_status(&format!("Failed to save config: {error:#}"));
+        }
+    }
+
+    pub(crate) fn apply_vault_alias(
+        &mut self,
+        raw_path_key: &str,
+        name: &str,
+    ) -> anyhow::Result<()> {
+        let mut config = self.config.clone();
+        let name = name.trim();
+        if name.is_empty() {
+            config.core.vault_names.remove(raw_path_key);
         } else {
-            self.config
+            config
                 .core
                 .vault_names
-                .insert(popup.raw_path_key, new_name);
+                .insert(raw_path_key.to_owned(), name.to_owned());
         }
-        if !crate::config::has_storage_path_override()
-            && let Err(error) = self.config.save()
-        {
-            self.set_temporary_status(&format!("Failed to save config: {error}"));
+        if !crate::config::has_storage_path_override() {
+            config.save()?;
         }
+        self.config = config;
+        Ok(())
     }
 }

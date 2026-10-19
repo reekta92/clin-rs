@@ -45,6 +45,21 @@ class WikiTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Broken repository link"):
             rewrite_links("[Escape](../../outside)", "docs/INDEX.md", {}, ROOT, "owner/repo", "main")
 
+    def test_local_logo_is_renderable_in_wiki_and_code_examples_stay_unchanged(self):
+        text = (
+            '<img width="512" src="assets/icon.svg" alt="clin logo" />\n'
+            "<img src='assets/clin.png' />\n"
+            '<img src="https://example.com/icon.svg" />\n'
+            '```html\n<img src="assets/icon.svg" />\n```\n'
+        )
+        actual = rewrite_links(text, "README.md", {}, ROOT, "reekta92/clin-rs", "abc123")
+        self.assertIn('src="https://raw.githubusercontent.com/reekta92/clin-rs/abc123/assets/icon.svg"', actual)
+        self.assertIn("src='https://raw.githubusercontent.com/reekta92/clin-rs/abc123/assets/clin.png'", actual)
+        self.assertIn('src="https://example.com/icon.svg"', actual)
+        self.assertIn('```html\n<img src="assets/icon.svg" />\n```', actual)
+        with self.assertRaisesRegex(ValueError, "Broken repository link"):
+            rewrite_links('<img src="missing.svg" />', "README.md", {}, ROOT, "owner/repo", "main")
+
     def test_new_docs_are_discovered_and_duplicate_titles_fail(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

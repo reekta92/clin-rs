@@ -292,7 +292,7 @@ pub fn preview_spans<'a>(info: &PreviewHeaderInfo, theme: &AppThemeColors) -> Ve
             Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
         ));
     }
-    spans.push(Span::styled(" ❯ ", Style::default().fg(theme.accent)));
+    spans.push(Span::styled(" › ", Style::default().fg(theme.accent)));
     spans.push(Span::styled(
         info.item_name.clone(),
         Style::default()

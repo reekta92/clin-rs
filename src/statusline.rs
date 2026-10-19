@@ -148,19 +148,12 @@ fn selected_counts(document: &crate::editor_document::EditorDocument) -> Option<
 
 #[derive(Default)]
 pub(crate) struct EditMemo {
-    pub(crate) counts: Option<(usize, usize)>,
     pub(crate) content: Option<String>,
     selected_counts: std::cell::OnceCell<Option<(usize, usize)>>,
 }
 impl EditMemo {
     pub(crate) fn counts(&mut self, app: &crate::app::App) -> (usize, usize) {
-        *self.counts.get_or_insert_with(|| {
-            let lines = app.editor.body.lines();
-            let words: usize = lines.iter().map(|l| crate::goals::count_words(l)).sum();
-            let chars: usize = lines.iter().map(|l| l.chars().count()).sum::<usize>()
-                + lines.len().saturating_sub(1);
-            (words, chars)
-        })
+        app.editor.body.counts()
     }
     pub(crate) fn content<'a>(&'a mut self, app: &'a crate::app::App) -> &'a str {
         self.content
@@ -185,10 +178,10 @@ pub struct StatuslineContext<'a> {
 
     // active overlay states:
     pub graph: Option<&'a graf::GraphState>,
-    pub draw: Option<&'a crate::draw::app::DrawAppState>,
-    pub backup: Option<&'a crate::backup::state::BackupState>,
+    pub draw: Option<&'a ::draw::DrawState>,
     pub outline: Option<&'a crate::outline::state::OutlineState>,
     pub canvas: Option<&'a pinstar::PinstarState>,
+    pub bases: Option<&'a crate::bases::state::BasesState>,
     pub setup: Option<&'a crate::setup::SetupState>,
 
     // selected/edited note summary:
@@ -219,9 +212,9 @@ impl<'a> StatuslineContext<'a> {
             app: Some(app),
             graph: None,
             draw: None,
-            backup: None,
             outline: None,
             canvas: None,
+            bases: None,
             setup: None,
             note: None,
             preview_info: None,
@@ -248,9 +241,9 @@ impl<'a> StatuslineContext<'a> {
             app: None,
             graph: None,
             draw: None,
-            backup: None,
             outline: None,
             canvas: None,
+            bases: None,
             setup: None,
             note: None,
             preview_info: None,
@@ -291,6 +284,60 @@ pub fn active_note(app: &App, view: ViewMode) -> Option<&NoteSummary> {
 
 impl StatuslineContext<'_> {
     pub fn resolve(&self, name: &str) -> Option<Cow<'static, str>> {
+        if self.view == ViewMode::Bases {
+            let state = self
+                .bases
+                .or_else(|| self.app.and_then(|app| app.bases_state.as_ref()));
+            let result = state.and_then(|state| state.result());
+            let value = match name {
+                "bases_rows" | "visual_total" => {
+                    Some(result.map_or(0, |result| result.rows.len()).to_string())
+                }
+                "bases_matched" | "note_count" => {
+                    Some(result.map_or(0, |result| result.matched).to_string())
+                }
+                "bases_selected" | "selected_count" => Some(
+                    state
+                        .map_or(0, |state| state.selected_ids.len())
+                        .to_string(),
+                ),
+                "visual_index" => Some(
+                    state
+                        .and_then(|state| match state.items.get(state.selected) {
+                            Some(crate::bases::state::Item::Row(index)) => Some(index + 1),
+                            _ => None,
+                        })
+                        .unwrap_or(0)
+                        .to_string(),
+                ),
+                "bases_view" => Some(
+                    state
+                        .and_then(|state| state.loaded.as_ref())
+                        .map_or_else(String::new, |loaded| {
+                            loaded.document.config.views[loaded.view].name.clone()
+                        }),
+                ),
+                "bases_property" => Some(
+                    state
+                        .and_then(|state| {
+                            state
+                                .loaded
+                                .as_ref()
+                                .and_then(|loaded| loaded.columns.get(state.column))
+                        })
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+                _ => None,
+            };
+            if let Some(value) = value {
+                return Some(
+                    crate::fsutil::sanitize_for_terminal(&value)
+                        .into_owned()
+                        .into(),
+                );
+            }
+        }
         match name {
             // Global / App
             "view" => {
@@ -301,7 +348,7 @@ impl StatuslineContext<'_> {
                     ViewMode::Graph => "Graph",
                     ViewMode::Draw => "Draw",
                     ViewMode::Canvas => "Canvas",
-                    ViewMode::Backup => "Backup",
+                    ViewMode::Bases => "Bases",
                     ViewMode::Outline => "Outline",
                     ViewMode::Setup => "Setup",
                 };
@@ -460,7 +507,7 @@ impl StatuslineContext<'_> {
                     ViewMode::Graph => "Graph".to_string(),
                     ViewMode::Draw => "Draw".to_string(),
                     ViewMode::Canvas => "Canvas".to_string(),
-                    ViewMode::Backup => "Backup".to_string(),
+                    ViewMode::Bases => "Bases".to_string(),
                     ViewMode::Outline => self.outline.map_or_else(
                         || "Outline".to_string(),
                         |tree| format!("OUTLINE — {}", tree.note_title),
@@ -488,13 +535,9 @@ impl StatuslineContext<'_> {
                                     let prefix = if app.config.ui.icon_mode == IconMode::None {
                                         "M"
                                     } else {
-                                        crate::ui::get_icon(
-                                            "\u{f03eb}",
-                                            "\u{270e}",
-                                            app.config.ui.icon_mode,
-                                        )
+                                        crate::ui::icons::EDIT.get(app.config.ui.icon_mode)
                                     };
-                                    let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                                    let arrow = if ascending { "▴" } else { "▾" };
                                     format!("{prefix}{arrow}")
                                 }
                             }
@@ -503,7 +546,7 @@ impl StatuslineContext<'_> {
                                 crate::list_view::SortField::Title => "Title",
                                 crate::list_view::SortField::Modified => "Modified",
                             };
-                            let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                            let arrow = if ascending { "▴" } else { "▾" };
                             format!("{field} {arrow}")
                         }
                     })
@@ -742,7 +785,13 @@ impl StatuslineContext<'_> {
             // Note (List + Edit)
             "note_title" => Some(
                 self.note
-                    .map(|n| n.title.as_str())
+                    .map(|n| {
+                        if self.view == ViewMode::List {
+                            n.file_stem()
+                        } else {
+                            n.title.as_str()
+                        }
+                    })
                     .unwrap_or("")
                     .to_string()
                     .into(),
@@ -888,27 +937,28 @@ impl StatuslineContext<'_> {
                             })
                             .unwrap_or(true)
                         {
-                            let is_mod = if let Some(id) = &app.editor.editing_id {
-                                if let Ok(note) = app.storage.load_note(id) {
-                                    let current_title =
-                                        crate::events::get_title_text(&app.editor.title_editor);
-                                    let mut memo = self.edit_memo.borrow_mut();
-                                    let content = memo.content(app);
-                                    current_title != note.title || content != note.content
+                            let is_mod = app.editor.header_pending()
+                                || if let Some(id) = &app.editor.editing_id {
+                                    if let Ok(note) = app.storage.load_note(id) {
+                                        let current_title =
+                                            crate::events::get_title_text(&app.editor.title_editor);
+                                        let mut memo = self.edit_memo.borrow_mut();
+                                        let content = memo.content(app);
+                                        current_title != note.title || content != note.content
+                                    } else {
+                                        false
+                                    }
+                                } else if let Some(path) = &app.editor.template_edit_path {
+                                    if let Ok(orig_content) = std::fs::read_to_string(path) {
+                                        let mut memo = self.edit_memo.borrow_mut();
+                                        let content = memo.content(app);
+                                        content != orig_content
+                                    } else {
+                                        false
+                                    }
                                 } else {
                                     false
-                                }
-                            } else if let Some(path) = &app.editor.template_edit_path {
-                                if let Ok(orig_content) = std::fs::read_to_string(path) {
-                                    let mut memo = self.edit_memo.borrow_mut();
-                                    let content = memo.content(app);
-                                    content != orig_content
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            };
+                                };
                             *cache = Some((now, is_mod));
                         }
                         (if cache.unwrap().1 { "on" } else { "off" }).to_string()
@@ -1230,120 +1280,6 @@ impl StatuslineContext<'_> {
                 Some(val.into())
             }
 
-            // Backup view
-            "branch" | "ahead" | "behind" | "staged" | "unstaged" | "untracked"
-            | "commit_count" | "last_commit" | "last_commit_msg" | "last_commit_author"
-            | "last_commit_time" | "remote" | "remote_url" | "backup_section" | "input_mode"
-            | "auto_push" | "repo_dirty" | "modified_text" => {
-                let backup = match self.backup {
-                    Some(b) => b,
-                    None => return Some("".into()),
-                };
-
-                let val = match name {
-                    "branch" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.branch.clone())
-                        .unwrap_or_default(),
-                    "ahead" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.ahead.to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "behind" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.behind.to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "staged" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.staged.len().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "unstaged" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.unstaged.len().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "untracked" => backup
-                        .status
-                        .as_ref()
-                        .map(|s| s.untracked.len().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    "commit_count" => backup.commits.len().to_string(),
-                    "last_commit" => backup
-                        .commits
-                        .first()
-                        .map(|c| c.id[..std::cmp::min(7, c.id.len())].to_string())
-                        .unwrap_or_default(),
-                    "last_commit_msg" => backup
-                        .commits
-                        .first()
-                        .map(|c| c.message.clone())
-                        .unwrap_or_default(),
-                    "last_commit_author" => backup
-                        .commits
-                        .first()
-                        .map(|c| c.author.clone())
-                        .unwrap_or_default(),
-                    "last_commit_time" => backup
-                        .commits
-                        .first()
-                        .map(|c| list_relative_age(c.time))
-                        .unwrap_or_default(),
-                    "remote" => backup.settings.remote_name.lines().join(""),
-                    "remote_url" => backup.settings.remote_url.lines().join(""),
-                    "backup_section" => match backup.selected_section {
-                        crate::backup::state::BackupSection::Status => "status",
-                        crate::backup::state::BackupSection::History => "history",
-                    }
-                    .to_string(),
-                    "input_mode" => match backup.input_mode {
-                        crate::backup::state::BackupInputMode::Normal => "normal",
-                        crate::backup::state::BackupInputMode::EditCommitMessage => "edit_commit",
-                        crate::backup::state::BackupInputMode::EditSettings => "edit_settings",
-                        crate::backup::state::BackupInputMode::EditSettingsField => {
-                            "edit_settings_field"
-                        }
-                    }
-                    .to_string(),
-                    "auto_push" => (if backup.settings.auto_push {
-                        "on"
-                    } else {
-                        "off"
-                    })
-                    .to_string(),
-                    "repo_dirty" => {
-                        let dirty = backup
-                            .status
-                            .as_ref()
-                            .map(|s| {
-                                !s.staged.is_empty()
-                                    || !s.unstaged.is_empty()
-                                    || !s.untracked.is_empty()
-                            })
-                            .unwrap_or(false);
-                        (if dirty { "on" } else { "off" }).to_string()
-                    }
-                    "modified_text" => if let Some(status) = &backup.status {
-                        if !status.staged.is_empty()
-                            || !status.unstaged.is_empty()
-                            || !status.untracked.is_empty()
-                        {
-                            "modified"
-                        } else {
-                            "clean"
-                        }
-                    } else {
-                        ""
-                    }
-                    .to_string(),
-                    _ => unreachable!(),
-                };
-                Some(val.into())
-            }
-
             _ => None,
         }
     }
@@ -1650,32 +1586,7 @@ pub fn line_from_segments<'a>(
         }
         style if style.is_chained() => {
             // Chained powerline family: Sharp, Rounded, Slanted.
-            let sep_char = match style {
-                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
-                    if is_right {
-                        "\u{e0b2}"
-                    } else {
-                        "\u{e0b0}"
-                    }
-                }
-                crate::config::HintBarStyle::Rounded
-                | crate::config::HintBarStyle::RoundedGradient => {
-                    if is_right {
-                        "\u{e0b6}"
-                    } else {
-                        "\u{e0b4}"
-                    }
-                }
-                crate::config::HintBarStyle::Slanted
-                | crate::config::HintBarStyle::SlantedGradient => {
-                    if is_right {
-                        "\u{e0be}"
-                    } else {
-                        "\u{e0bc}"
-                    }
-                }
-                _ => unreachable!(),
-            };
+            let sep_char = style.separator(is_right, theme.icon_mode);
 
             let mut cell_idx = 0;
 
@@ -1812,7 +1723,9 @@ pub fn line_from_segments<'a>(
         }
         style if style.cell_caps().is_some() => {
             // Detached family: Bubbles, Blurred, Chips. Symmetrical — same render for left/right.
-            let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
+            let (cap_l, cap_r) = style
+                .cell_caps_for_mode(theme.icon_mode)
+                .unwrap_or(("", ""));
 
             let mut cell_idx = 0;
             for (idx, seg) in flat.iter().enumerate() {
@@ -1935,7 +1848,7 @@ pub fn effective_templates(cfg: &StatuslineConfig, view: ViewMode) -> Statusline
         ViewMode::Graph => cfg.graph.as_ref(),
         ViewMode::Draw => cfg.draw.as_ref(),
         ViewMode::Canvas => cfg.canvas.as_ref(),
-        ViewMode::Backup => cfg.backup.as_ref(),
+        ViewMode::Bases => None,
         ViewMode::Outline => cfg.outline.as_ref(),
         ViewMode::Setup => None,
     };
@@ -2271,6 +2184,51 @@ mod tests {
         ctx2.graph_fps = Some(12.34);
         let segs_fps_val = render_segments("{fps}", &ctx2, &theme);
         assert_eq!(text_cells(segs_fps_val), vec!["12.3".to_string()]);
+    }
+
+    #[test]
+    fn portable_icon_modes_render_all_bar_styles_without_private_use_glyphs() {
+        use crate::config::{HintBarStyle, IconMode, UiConfig};
+        for mode in [IconMode::Unicode, IconMode::None] {
+            for style in HintBarStyle::ALL {
+                let config = ClinConfig::default();
+                let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+                let theme = AppThemeColors::from_config(
+                    &UiConfig {
+                        icon_mode: mode,
+                        hint_bar_style: style,
+                        ..Default::default()
+                    },
+                    &mut Vec::new(),
+                );
+                let (header, _) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
+                let hints = crate::ui::format_keybind_hints(
+                    &theme,
+                    &[("g".into(), "Go"), ("q".into(), "Quit")],
+                );
+                let badge = Line::from(crate::ui::ext_badge_spans(true, &theme, None));
+                for line in [header, hints, badge] {
+                    assert!(line.width() > 0, "{mode:?}: {style:?}");
+                    assert!(
+                        !line
+                            .to_string()
+                            .chars()
+                            .any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)),
+                        "{mode:?}: {style:?}: {line}"
+                    );
+                }
+                for right in [false, true] {
+                    let separator = style.separator(right, mode);
+                    assert!(separator.is_ascii(), "{mode:?}: {style:?}");
+                }
+                if let Some((left, right)) = style.cell_caps_for_mode(mode) {
+                    assert_eq!(
+                        unicode_width::UnicodeWidthStr::width(left),
+                        unicode_width::UnicodeWidthStr::width(right)
+                    );
+                }
+            }
+        }
     }
 
     #[test]

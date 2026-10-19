@@ -16,7 +16,7 @@ pub enum ViewMode {
     Graph,   // Force-directed graph (graf)
     Draw,    // Freehand drawing canvas
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
-    Backup,  // Git backup dashboard
+    Bases,   // Public-only .base queries and native authoring
     Outline,  // Header-based note outline
     Setup,   // First-run setup wizard
 }
@@ -29,21 +29,22 @@ List  ──Enter──► Edit
 List  ──Ctrl+G─► Graph
 List  ──Enter──► Draw    (on .draw file)
 List  ──Enter──► Canvas  (on .canvas file)
+List  ──Enter──► Bases   (on .base file)
+Bases ──Back───► previous view
+Bases ──Enter──► public source editor / native image popup
 Edit  ──Esc───► List
 Graph ──Esc───► List
 Draw  ──Esc───► List
 Canvas──Esc───► List
 List  ──?/F1──► Help
 Help  ──Esc───► previous view
-List  ──palette──► Backup   (via command palette backup.open)
 List  ──palette──► Outline  (via command palette outline.open)
 List  ──palette──► Setup   (via setup_wizard)
 Setup ──Esc───► List
-Backup ──Esc───► List
 Outline ──Esc───► List
 ```
 
-Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Backup, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
+Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Bases, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
 
 ---
 
@@ -57,7 +58,7 @@ main()
       ├─ no subcommand → session::bootstrap_app() → run_tui_session() → run_app()
       ├─ --help / --version → clap output, exit
       ├─ Command::Notes → list/new/open/cat/quick/search
-      │    └─ new opens TUI unless --body or --no-tui is supplied
+      │    └─ new opens TUI unless --body, --stdin, --no-tui, or non-terminal stdin is supplied
       └─ Command::{Storage,Keybinds,Templates,Config,Cache} → operation, exit
 ```
 
@@ -75,7 +76,7 @@ run_tui_session(app)
 ### Main Event Loop (`run_app()`)
 
 `run_app()` owns generic application work: catalog/search/watcher
-drains, backup scheduling, list and graph state, then generic rendering.
+drains, list and graph state, then generic rendering.
 
 When `app.mode == ViewMode::Edit`, it enters `editor_session::run_editor_session`
 and continues the generic loop only after Edit exits. Edit remains in same
@@ -98,14 +99,30 @@ loop resumes.
 
 ### Sub-view Overlays (OverlayView trait)
 
-Five sub-views (Graph, Draw, Canvas, Backup, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
+Five sub-views (Graph, Draw, Canvas, Bases, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
 
 - [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
 - [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
 
-Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawAppState>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Backup/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+Draw uses the independent [draw-rs](https://github.com/reekta92/draw-rs) engine through `DrawPlugin.state`; its model, geometry, history, gestures, private grid/menu helpers and snapshot painter live upstream. The adapter maps current themes and resolved semantic actions, validates vault IDs, and retains failed saves. Ordinary departure checks interactions and saves before dropping the owner.
 
-No sub-view takes terminal ownership or runs a separate event loop.
+Their state is stored as `Option<X>` fields on `App` (e.g. `graph_plugin: Option<GrafPlugin>`, `draw_state: Option<DrawPlugin>`, `canvas_state: Option<PinstarPlugin>`) . When the user enters Graph/Draw/Canvas/Bases/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+
+Bases stores its original return mode on `BasesState`, preserving it through
+public-source handoff and reopening. No sub-view takes terminal ownership or
+runs a separate event loop.
+
+Live Bases regions reuse that renderer and input state through
+`bases/embedding.rs`; source identity and lossless inline splices belong to
+`bases/embed_source.rs`. One query worker serves the active overlay or bounded
+visible regions, sharing immutable public metadata. File metadata uses `Arc`
+with copy-on-write updates so host edits and watcher deltas do not duplicate
+every file's properties. Metadata generations invalidate dependent queries;
+cancelled generations cannot install results. Markdown caches store reserved
+source geometry, while app-owned region state supplies live results and focus.
+Canvas integration projects existing Pinstar nodes through the host adapter;
+there is no second Canvas engine or new dependency fork. `serde_json`'s existing
+`raw_value` feature identifies exact text-node string ranges for guarded edits.
 
 ---
 
@@ -114,19 +131,18 @@ No sub-view takes terminal ownership or runs a separate event loop.
 `App` is the central state struct. It owns everything:
 ```
 App
-  ├── storage: Storage                    // file I/O, encryption, templates
+  ├── storage: Storage                    // file I/O, guarded saves, templates
   ├── keybinds: Keybinds                  // <config-dir>/keybinds/<preset>.toml
   ├── notes: Vec<NoteSummary>             // filtered/sorted note list
   ├── editor: NoteEditor                  // title TextArea + EditorDocument body
   ├── mode: ViewMode                      // current active view
-  ├── command_palette: Option<CommandPalette>  // Ctrl+P popup
+  ├── command_palette: Option<CommandPalette>  // shared contextual palette; configurable Ctrl+Space/F6
   ├── popups: PopupManager                // confirm, folder, tag, template, theme popups
   ├── app_theme: AppThemeColors           // derived colors from theme config
   ├── return_mode: Option<ViewMode>       // where to return after overlay exit
   ├── graph_plugin: Option<GrafPlugin>         // clin adapter over upstream graf
-  ├── draw_state: Option<DrawAppState>         // freehand drawing overlay
+  ├── draw_state: Option<DrawPlugin>         // freehand drawing overlay
   ├── canvas_state: Option<PinstarPlugin>      // clin adapter over upstream pinstar
-  ├── backup_state: Option<BackupState>        // git backup dashboard overlay
   ├── outline_state: Option<OutlineState>  // header-based outline overlay
   └── ...status helpers, config, caches
 ```
@@ -147,7 +163,7 @@ App::new(storage)
     ├── App::autosave()
     │     └─ storage.save_note() → writes to disk
     │
-    └── Overlay state (graph_plugin, draw_state, canvas_state, backup_state, outline_state)
+    └── Overlay state (graph_plugin, draw_state, canvas_state, bases_state, outline_state)
           └─ Owned by App as Option<X>. Created on view transition via mode change.
              Dropped (set to None) on overlay exit. No separate event loop.
 ```
@@ -168,7 +184,6 @@ lib.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
             ├─ Graph → graph_plugin.overlay_render(frame, area, theme, config, status)
             ├─ Draw  → draw_state.overlay_render(frame, area, theme, config, status)
             ├─ Canvas→ canvas_state.overlay_render(frame, area, theme, config, status)
-            ├─ Backup→ backup_state.overlay_render(frame, area, theme, config, status)
             ├─ Outline → outline_state.overlay_render(frame, area, theme, config, status)
             └─ Setup → draw_setup()
        │
@@ -200,7 +215,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 
 **Help view layout:**
 ```
-┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Backup · Templates · About) ─┐
+┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Templates · About) ─┐
 │                                                              │
 │  Keybind index       │ Tab description + popup accordion     │
 │  (paginated)         ├───────────────────────────────────────┤
@@ -244,7 +259,7 @@ src/
 ├── setup.rs              — First-run setup wizard constants and state
 ├── session.rs            — Terminal bootstrap and teardown orchestration
 ├── statusline.rs         — Statusline/header/footer template rendering
-├── storage.rs            — Note persistence, encryption, vault management
+├── storage.rs            — Note persistence, recovery, vault management
 ├── todo.rs               — todo.txt parsing and rendering
 ├── app/                  — App logic: catalog, edit panes, folder preview, etc.
 │   ├── catalog.rs        — Background note catalog worker
@@ -287,10 +302,6 @@ src/
 │   └── help_meta.rs      — Action metadata for help UI
 ├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
 │   ├── mod.rs            — Central UI dispatcher, shared helpers
-│   ├── canvas_grid.rs    — Adaptive grid state/rendering for local Draw
-│   ├── canvas_menu.rs    — Context menu for canvas/draw
-│   ├── canvas_overlay.rs — Shared canvas drawing overlays (marquee, grid)
-│   ├── canvas_selection.rs — Multi-select node/edge state
 │   ├── list_view.rs      — Main list/grid view rendering
 │   ├── edit_view.rs      — Editor body rendering
 │   ├── help.rs           — Full help view
@@ -305,8 +316,6 @@ src/
 │   └── braille.rs        — Braille sub-pixel dot and line drawing
 ├── actions/              — Action trait ecosystem and ACTIONS registry
 │   ├── mod.rs            — Action trait, macros, ACTIONS LazyLock
-│   ├── decrypt.rs        — Decrypt .clin to .md
-│   ├── encrypt.rs        — Encrypt .md to .clin
 │   ├── import.rs         — Import from external sources (File/CSV/JSON/URL/Clipboard)
 │   ├── info.rs           — Show note/folder metrics popup
 │   ├── insert_date.rs    — Insert current date/time at cursor
@@ -327,21 +336,10 @@ src/
 ├── image_render/         — Native image rendering
 │   ├── cache.rs          — LRU image cache
 │   └── worker.rs         — Background decode worker
-├── backup/               — Git backup dashboard
-│   ├── app.rs            — BackupState, OverlayView implementation
-│   ├── git_ops.rs        — GitOps safe wrappers
-│   ├── input.rs          — Keyboard/mouse event handling
-│   ├── render.rs         — Dashboard rendering
-│   ├── state.rs          — BackupState, BackupSection, BackupInputMode
-│   └── worker.rs         — Background auto-backup worker
 ├── graf_adapter.rs       — GrafPlugin: host preview/search/config/status, note I/O
 ├── pinstar_adapter.rs    — PinstarPlugin: host keybinds/status/clipboard/images
 ├── snapshot.rs           — Canvas and Draw preview snapshots
-├── draw/                 — Freehand drawing overlay
-│   ├── geometry.rs       — Affine transform and bounding box math
-│   ├── input.rs          — Mouse/keyboard handlers
-│   ├── render.rs         — Canvas + element rendering
-│   └── state.rs          — DrawData, DrawElement, DrawTool
+├── draw_adapter.rs       — DrawPlugin: host IDs/keybinds/status/clipboard over draw-rs
 ├── outline/              — Header outline view
 │   ├── app.rs            — OutlineState, OverlayView implementation
 │   ├── input.rs          — Keyboard/mouse handlers
@@ -397,7 +395,7 @@ Graph construction, physics, spatial indexing, viewport, and node rendering live
 
 ---
 
-Other background work includes catalog enumeration, search, folder previews, image decoding, and auto-backup. Worker results are installed by the host loop; Editor deliberately defers generic queues until it exits. Feature flags gate worker startup (images/backup changes require restart).
+Other background work includes catalog enumeration, search, folder previews, image decoding, and recovery persistence. Worker results are installed by the host loop; Editor deliberately defers generic queues until it exits. Feature flags gate worker startup (image worker changes require restart).
 
 ## Key Patterns
 
@@ -414,12 +412,19 @@ pub trait Action: Send + Sync {
 }
 ```
 
-Actions are registered in a `LazyLock<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides a searchable popup. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
+Actions are registered in a `LazyLock<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides one searchable popup across all nine views. `actions/context.rs` owns explicit view/target eligibility, used for listing and execution. `app/command_palette.rs` owns modal opening, binding-aware global shortcut availability, matcher cleanup, and shared activation. Both dispatchers route palette input before background copy/force-quit. Overlay palette requests are applied after `put_back`. `app/navigation.rs` tracks bounded session history at both dispatcher boundaries and prepares saved destinations before releasing owners. Command usage is shared by palette launches and direct bindings, persisted through the existing local state with coordinated updates.
+
+Palette top-level navigation in `app/views.rs` guards writes, saves active/suspended editors and document owners, prepares destinations, then commits cleanup. Help/Setup retain their caller's existing return metadata; explicit Notes navigation terminates at List. Shared settings synchronize retained owner copies; Setup previews remain pending until Finish/Cancel. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
 
 ### Theme System
 
 `UiConfig` from `[ui]` in config.toml → `AppThemeColors` derived at load time. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details.
 
-### Storage / Encryption
 
-`Storage` handles all file I/O, key management, and ChaCha20-Poly1305 encryption for `.clin` files. See [ENCRYPTION.md](ENCRYPTION.md) for details.
+## Persistence ownership
+
+A loaded `Note` carries an immutable raw-source `DocumentSnapshot`. Ordinary note saves reuse guarded public document storage for baseline validation, read-only checks, permission-preserving atomic publication, and native write coordination. New notes publish without replacing an existing file. Ordinary saves keep filenames stable.
+
+`storage::drafts::DraftWorker` coalesces latest recovery sources off the input thread. Save/session boundaries flush it before recovery cleanup. `storage::document_recovery` stores version-2 plaintext drafts and transaction journals under private Unix permissions; old encrypted journals remain separate and untouched.
+
+There is no backup worker, Git dashboard, encryption action, or key lifecycle. Native terminal clipboard transport and shell stdin ingestion are documented with their limitations.

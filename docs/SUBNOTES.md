@@ -2,7 +2,7 @@
 
 ## Overview
 
-Subnotes are virtual notes attached to a physical parent note. Subnotes saved under `.clin` parents use encryption; plaintext-parent subnotes do not. They are browsable via a grid tab and a virtual tree folder in the notes list, with a radial braille graph and a manager popup.
+Subnotes are virtual notes attached to a physical parent note. Subnotes under plaintext parents remain supported. Legacy encrypted subnotes are retained but cannot be read or changed here; use the previous release to recover them first. They are browsable via a grid tab and a virtual tree folder in the notes list, with a radial braille graph and a manager popup.
 
 **Source:** `src/storage.rs` (storage layer), `src/popups.rs` (popup state), `src/ui/popups.rs` (popup rendering), `src/events/mod.rs` (popup input), `src/ui/list_view.rs` (grid tab + radial graph), `src/app/loading.rs` (virtual folder)
 
@@ -11,16 +11,15 @@ Subnotes are virtual notes attached to a physical parent note. Subnotes saved un
 `SubNote` and `SubNotePayload` are defined in `src/storage.rs`. `<vault>/.clin/subnotes.bin` stores an XOR-obfuscated, bincode-encoded `HashMap<String, SubNotePayload>`:
 
 - `Plain(Vec<SubNote>)` for plaintext parents.
-- `Encrypted(Vec<u8>)` for subnotes saved under parent IDs ending in `.clin`; the payload uses ChaCha20-Poly1305 and the application key.
+- `LegacyEncrypted(Vec<u8>)` preserves the historical enum slot and opaque bytes. This release cannot read, edit, or re-key those payloads.
 
-**XOR obfuscation is not encryption.** A key existing on disk does not encrypt every subnote. Unix database writes use mode `0600`.
+**XOR obfuscation is not encryption.** This release does not use encryption keys. Existing keys and opaque legacy payloads are preserved for migration. Unix database writes use mode `0600`.
 
 Key methods:
 
 | Method | Purpose |
 |---|---|
 | `get_subnotes` | Retrieve subnotes for a parent |
-| `set_subnotes` | Save subnotes, selecting plain/encrypted payload by parent ID |
 | `migrate_subnotes_parent` | Re-key the database entry when a parent ID changes |
 | `get_notes_with_subnotes` | List parent notes that have subnotes |
 | `get_all_subnotes` | Enumerate all subnotes across all parents |
@@ -61,10 +60,9 @@ The notes search popup supports the `sn:` prefix to exclusively search subnotes 
 | `ListAction::ManageSubnotes` | `Alt+s` | List view |
 | `EditAction::ManageSubnotes` | `Alt+s` | Editor view |
 
-Command-palette action `manage_subnotes_list` in `src/actions/mod.rs` opens the subnotes manager.
+Command-palette action `manage_subnotes_list` in `src/actions/mod.rs` opens the original manager popup, with the list, title and content panes. It does not use palette workflow steps.
 
 ## Connections
 
-- [ENCRYPTION.md](ENCRYPTION.md) — encryption layer for subnote storage
 - [LIST_VIEW.md](LIST_VIEW.md) — grid tab and virtual folder integration
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `manage_subnotes_list` action

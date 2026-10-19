@@ -1,14 +1,23 @@
 use crate::actions::{Action, ActionCategory};
 use crate::toggle_action;
 
+crate::simple_action!(
+    FeaturesAction,
+    "settings.features",
+    "Features",
+    "Choose features to enable or disable",
+    ActionCategory::Settings,
+    crate::ui::icons::SETTINGS.pair(),
+    begin_feature_selection
+);
+
 toggle_action!(
     TogglePreviewPaneAction,
     "settings.preview_pane",
     "Toggle Preview Pane",
     "Show or hide the preview pane in the notes list",
     ActionCategory::Settings,
-    "\u{f0db}",
-    "\u{1f4cb}",
+    crate::ui::icons::COLUMNS.pair(),
     toggle_preview,
     app,
     if app.list.preview_enabled {
@@ -24,8 +33,7 @@ toggle_action!(
     "Toggle Word Wrap",
     "Toggle word wrap for both editor and preview",
     ActionCategory::Settings,
-    "\u{f036}",
-    "\u{1f4c4}",
+    crate::ui::icons::WRAP.pair(),
     toggle_wrap,
     app,
     if match app.mode {
@@ -44,8 +52,7 @@ toggle_action!(
     "Toggle Zen Mode",
     "Hide header/footer bars and pad the editor text",
     ActionCategory::Settings,
-    "\u{f186}",
-    "\u{1f319}",
+    crate::ui::icons::ZEN.pair(),
     toggle_zen_mode,
     app,
     if app.zen_mode { "On" } else { "Off" }
@@ -57,8 +64,7 @@ toggle_action!(
     "Toggle Widget Pane",
     "Show or hide the widget pane in the notes list",
     ActionCategory::Settings,
-    "\u{f073}",
-    "\u{1f4c5}",
+    crate::ui::icons::CALENDAR.pair(),
     toggle_calendar,
     app,
     if app.list.calendar_enabled {
@@ -74,8 +80,7 @@ toggle_action!(
     "Toggle Line Numbers",
     "Show or hide line numbers in the note editor",
     ActionCategory::Settings,
-    "\u{f03a}",
-    "\u{0023}\u{20e3}",
+    crate::ui::icons::NUMBER.pair(),
     toggle_show_line_numbers,
     app,
     if app.editor.show_line_numbers {
@@ -91,8 +96,7 @@ toggle_action!(
     "Toggle Delete Confirmation",
     "Ask for confirmation before moving notes to trash",
     ActionCategory::Settings,
-    "\u{f1f8}",
-    "\u{1f5d1}",
+    crate::ui::icons::TRASH.pair(),
     toggle_confirm_on_delete,
     app,
     if app.confirm_on_delete { "On" } else { "Off" }
@@ -104,8 +108,7 @@ toggle_action!(
     "Toggle Pinned on Top",
     "Keep pinned notes above others in the list",
     ActionCategory::Settings,
-    "\u{f08d}",
-    "\u{1f4cc}",
+    crate::ui::icons::PIN.pair(),
     toggle_pinned_on_top,
     app,
     if app.pinned_on_top { "On" } else { "Off" }
@@ -117,11 +120,11 @@ toggle_action!(
     "Toggle Quit Confirmation",
     "Ask for confirmation before quitting clin",
     ActionCategory::Settings,
-    "\u{f08b}",
-    "\u{1f6aa}",
+    crate::ui::icons::QUIT.pair(),
     toggle_confirm_on_quit,
     app,
-    if app.confirm_on_quit { "On" } else { "Off" }
+    if app.confirm_on_quit { "On" } else { "Off" },
+    fallible
 );
 
 toggle_action!(
@@ -130,24 +133,10 @@ toggle_action!(
     "Toggle Inline Info",
     "Show or hide inline metadata (tags, dates, sizes, folder counts) in the notes list",
     ActionCategory::Settings,
-    "\u{f0b0}",
-    "\u{2699}",
+    crate::ui::icons::INFO.pair(),
     toggle_inline_info,
     app,
     if app.list.inline_info { "On" } else { "Off" }
-);
-
-toggle_action!(
-    TogglePreviewEncryptionAction,
-    "settings.preview_encryption",
-    "Toggle Encrypted Note Preview",
-    "Show or hide previews of encrypted (.clin) notes",
-    ActionCategory::Settings,
-    "\u{f06e}",
-    "\u{1f441}",
-    toggle_preview_encryption,
-    app,
-    if app.preview_encryption { "On" } else { "Off" }
 );
 
 toggle_action!(
@@ -156,8 +145,7 @@ toggle_action!(
     "Select Sort Order",
     "Select the notes sort field and order from a list",
     ActionCategory::Settings,
-    "\u{f0dc}",
-    "\u{1f4cb}",
+    crate::ui::icons::SORT.pair(),
     begin_sort_selection,
     app,
     {
@@ -177,8 +165,7 @@ toggle_action!(
     "Show Hidden Files",
     "Show files and directories starting with '.' in the notes list",
     ActionCategory::Settings,
-    "\u{f06e}",
-    "\u{1f441}",
+    crate::ui::icons::VIEWS.pair(),
     toggle_show_hidden_files,
     app,
     if app.list.show_hidden_files {
@@ -194,8 +181,7 @@ toggle_action!(
     "Show All Files",
     "Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas)",
     ActionCategory::Settings,
-    "\u{f07c}",
-    "\u{1f4c2}",
+    crate::ui::icons::OPEN_FOLDER.pair(),
     toggle_show_all_files,
     app,
     if app.list.show_all_files { "On" } else { "Off" }
@@ -207,15 +193,15 @@ toggle_action!(
     "Tab Icons Only",
     "Show only Nerd Font icons (no text) on tab bars",
     ActionCategory::Settings,
-    "\u{f26c}",
-    "\u{1f5a5}",
+    crate::ui::icons::ICONS.pair(),
     toggle_tab_icons_only,
     app,
     if app.config.ui.tab_icons_only {
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -224,8 +210,7 @@ toggle_action!(
     "Set Daily Word Goal",
     "Set target number of words to write daily",
     ActionCategory::Settings,
-    "\u{f044}",
-    "\u{1f3af}",
+    crate::ui::icons::GOAL.pair(),
     begin_set_word_goal,
     app,
     app.config.goals.word_goal
@@ -237,8 +222,7 @@ toggle_action!(
     "Set Daily Note Goal",
     "Set target number of notes to edit daily",
     ActionCategory::Settings,
-    "\u{f044}",
-    "\u{1f3af}",
+    crate::ui::icons::GOAL.pair(),
     begin_set_note_goal,
     app,
     app.config.goals.note_goal
@@ -250,8 +234,7 @@ toggle_action!(
     "Toggle Layout Edit Mode",
     "Resize and reposition notes-view panes with the mouse (Hyprland-style)",
     ActionCategory::Settings,
-    "\u{f0b0}",
-    "\u{1f39b}",
+    crate::ui::icons::LAYOUT.pair(),
     toggle_layout_edit,
     app,
     if app.layout_edit { "On" } else { "Off" }
@@ -263,8 +246,7 @@ toggle_action!(
     "Select Icon Mode",
     "Choose between Nerd Font, Unicode, or no icons",
     ActionCategory::Settings,
-    "\u{f013}",
-    "\u{1f5a8}",
+    crate::ui::icons::ICONS.pair(),
     begin_icon_mode_selection,
     app,
     match app.config.ui.icon_mode {
@@ -280,8 +262,7 @@ toggle_action!(
     "Select Hint Bar Style",
     "Choose how hint bars and popup footers are styled",
     ActionCategory::Settings,
-    "\u{f0db}",
-    "\u{1f4cb}",
+    crate::ui::icons::COLUMNS.pair(),
     begin_hint_bar_style_selection,
     app,
     app.config.ui.hint_bar_style.name()
@@ -293,8 +274,7 @@ toggle_action!(
     "Toggle Folders First",
     "Show subfolders before files in the notes list (Tree and Grid layouts)",
     ActionCategory::Settings,
-    "\u{f07c}",
-    "\u{1f4c1}",
+    crate::ui::icons::OPEN_FOLDER.pair(),
     toggle_folders_first,
     app,
     if app.list.folders_first { "On" } else { "Off" }
@@ -306,8 +286,7 @@ toggle_action!(
     "Toggle Smart Folders",
     "Show or hide smart virtual folders in the notes list",
     ActionCategory::Settings,
-    "\u{f0e7}",
-    "\u{26a1}",
+    crate::ui::icons::FILTER.pair(),
     toggle_smart_folders,
     app,
     if app.config.features.smart_folders.is_enabled() {
@@ -323,8 +302,7 @@ toggle_action!(
     "Toggle Edit Mode Highlight",
     "Show or hide edit mode highlighting in the note editor",
     ActionCategory::Settings,
-    "\u{f044}",
-    "\u{1f4dd}",
+    crate::ui::icons::EDIT.pair(),
     toggle_edit_mode_highlight,
     app,
     if app.config.editor.edit_mode_highlight {
@@ -340,8 +318,7 @@ toggle_action!(
     "Toggle Ghost Syntax",
     "Show or hide ghost syntax highlighting in the note editor",
     ActionCategory::Settings,
-    "\u{f0db}",
-    "\u{1f4dd}",
+    crate::ui::icons::CODE.pair(),
     toggle_ghost_syntax,
     app,
     if app.config.editor.ghost_syntax {
@@ -357,8 +334,7 @@ toggle_action!(
     "Toggle Extended Markdown",
     "Enable or disable extended markdown features in the editor",
     ActionCategory::Settings,
-    "\u{f15b}",
-    "\u{1f4d6}",
+    crate::ui::icons::MARKDOWN.pair(),
     toggle_extended_markdown,
     app,
     if app.config.editor.extended_markdown_features {
@@ -374,15 +350,15 @@ toggle_action!(
     "Toggle Scrollbars",
     "Show or hide mouse-draggable scrollbars on scrollable regions",
     ActionCategory::Settings,
-    "\u{f0db}",
-    "\u{1f4cb}",
+    crate::ui::icons::SCROLL.pair(),
     toggle_scrollbars,
     app,
     if app.config.ui.scrollbars {
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -391,15 +367,15 @@ toggle_action!(
     "Toggle Scrollbar Pan Mode",
     "Scrollbar pans the viewport instead of moving selection; any key snaps back",
     ActionCategory::Settings,
-    "\u{f878}",
-    "\u{1f4d7}",
+    crate::ui::icons::SCROLL.pair(),
     toggle_scrollbar_pan_mode,
     app,
     if app.config.ui.scrollbar_pan_mode {
         "On"
     } else {
         "Off"
-    }
+    },
+    fallible
 );
 
 toggle_action!(
@@ -408,8 +384,7 @@ toggle_action!(
     "Toggle Syntax Highlighting",
     "Enable or disable syntax highlighting in code blocks",
     ActionCategory::Settings,
-    "\u{f121}",
-    "\u{1f4d6}",
+    crate::ui::icons::CODE.pair(),
     toggle_syntax_highlighting,
     app,
     if app.config.core.syntax_highlighting {
@@ -425,8 +400,7 @@ toggle_action!(
     "Toggle Code Line Numbers",
     "Show or hide line numbers in code blocks",
     ActionCategory::Settings,
-    "\u{f03a}",
-    "\u{0023}\u{20e3}",
+    crate::ui::icons::NUMBER.pair(),
     toggle_code_line_numbers,
     app,
     if app.config.core.code_line_numbers {
@@ -442,8 +416,7 @@ toggle_action!(
     "Toggle Show File Size",
     "Show or hide file sizes in the notes list",
     ActionCategory::Settings,
-    "\u{f15c}",
-    "\u{1f4c4}",
+    crate::ui::icons::FILE.pair(),
     toggle_show_file_size,
     app,
     if app.list.show_file_size { "On" } else { "Off" }
@@ -455,8 +428,7 @@ toggle_action!(
     "Cycle List Density",
     "Switch between compact and comfortable list spacing",
     ActionCategory::Settings,
-    "\u{f00a}",
-    "\u{1f4cb}",
+    crate::ui::icons::LIST.pair(),
     cycle_list_density,
     app,
     if app.list.list_density == crate::config::ListDensity::Compact {
@@ -472,8 +444,7 @@ toggle_action!(
     "Cycle Week Start",
     "Switch between Sunday and Monday as the first day of the week",
     ActionCategory::Settings,
-    "\u{f073}",
-    "\u{1f4c5}",
+    crate::ui::icons::CALENDAR.pair(),
     cycle_week_start,
     app,
     if app.list.week_start == crate::config::WeekStart::Sunday {
@@ -489,8 +460,7 @@ toggle_action!(
     "Toggle Goals",
     "Show or hide daily goals in the notes list",
     ActionCategory::Settings,
-    "\u{f1e5}",
-    "\u{1f3af}",
+    crate::ui::icons::GOAL.pair(),
     toggle_goals,
     app,
     if app.config.features.goals.is_enabled() {
@@ -506,8 +476,7 @@ toggle_action!(
     "Toggle Graph View",
     "Enable or disable the Graph view",
     ActionCategory::Settings,
-    "\u{f0e8}",
-    "\u{1f5fa}",
+    crate::ui::icons::GRAPH.pair(),
     toggle_graph_view,
     app,
     if app.config.features.graph_view.is_enabled() {
@@ -523,8 +492,7 @@ toggle_action!(
     "Toggle Canvas View",
     "Enable or disable the Canvas view",
     ActionCategory::Settings,
-    "\u{f005}",
-    "\u{1f58c}",
+    crate::ui::icons::CANVAS.pair(),
     toggle_canvas_view,
     app,
     if app.config.features.canvas_view.is_enabled() {
@@ -540,8 +508,7 @@ toggle_action!(
     "Toggle Draw View",
     "Enable or disable the Draw view",
     ActionCategory::Settings,
-    "\u{f1fc}",
-    "\u{270f}",
+    crate::ui::icons::DRAW.pair(),
     toggle_draw_view,
     app,
     if app.config.features.draw_view.is_enabled() {
@@ -557,8 +524,7 @@ toggle_action!(
     "Toggle Outline View",
     "Enable or disable the Outline view",
     ActionCategory::Settings,
-    "\u{f1c0}",
-    "\u{1f332}",
+    crate::ui::icons::OUTLINE.pair(),
     toggle_outline_view,
     app,
     if app.config.features.outline_view.is_enabled() {
@@ -574,8 +540,7 @@ toggle_action!(
     "Toggle Help View",
     "Enable or disable the Help view",
     ActionCategory::Settings,
-    "\u{f059}",
-    "\u{2753}",
+    crate::ui::icons::HELP.pair(),
     toggle_help_view,
     app,
     if app.config.features.help_view.is_enabled() {
@@ -591,8 +556,7 @@ toggle_action!(
     "Toggle Tags",
     "Enable or disable tags",
     ActionCategory::Settings,
-    "\u{f02b}",
-    "\u{1f3f7}",
+    crate::ui::icons::TAG.pair(),
     toggle_tags,
     app,
     if app.config.features.tags.is_enabled() {
@@ -608,8 +572,7 @@ toggle_action!(
     "Toggle Trash",
     "Enable or disable the trash view",
     ActionCategory::Settings,
-    "\u{f1f8}",
-    "\u{1f5d1}",
+    crate::ui::icons::TRASH.pair(),
     toggle_trash,
     app,
     if app.config.features.trash.is_enabled() {
@@ -625,8 +588,7 @@ toggle_action!(
     "Toggle Subnotes",
     "Enable or disable subnotes",
     ActionCategory::Settings,
-    "\u{f02c}",
-    "\u{1f4dd}",
+    crate::ui::icons::SUBNOTES.pair(),
     toggle_subnotes,
     app,
     if app.config.features.subnotes.is_enabled() {
@@ -642,8 +604,7 @@ toggle_action!(
     "Toggle Templates",
     "Enable or disable note templates",
     ActionCategory::Settings,
-    "\u{f15b}",
-    "\u{1f4c4}",
+    crate::ui::icons::TEMPLATE.pair(),
     toggle_templates,
     app,
     if app.config.features.templates.is_enabled() {
@@ -659,28 +620,10 @@ toggle_action!(
     "Toggle Import",
     "Enable or disable import and OCR paste",
     ActionCategory::Settings,
-    "\u{f019}",
-    "\u{2b07}",
+    crate::ui::icons::IMPORT.pair(),
     toggle_import,
     app,
     if app.config.features.import.is_enabled() {
-        "On"
-    } else {
-        "Off"
-    }
-);
-
-toggle_action!(
-    ToggleEncryptionAction,
-    "settings.toggle_encryption",
-    "Toggle Encryption",
-    "Enable or disable encrypt/decrypt actions",
-    ActionCategory::Settings,
-    "\u{f023}",
-    "\u{1f512}",
-    toggle_encryption,
-    app,
-    if app.config.features.encryption.is_enabled() {
         "On"
     } else {
         "Off"
@@ -693,8 +636,7 @@ toggle_action!(
     "Toggle Folder Graph Preview",
     "Show or hide the graph preview in the notes list",
     ActionCategory::Settings,
-    "\u{f0c0}",
-    "\u{1f578}",
+    crate::ui::icons::GRAPH.pair(),
     toggle_folder_graph_preview,
     app,
     if app.config.list.folder_graph_preview {
@@ -710,8 +652,7 @@ toggle_action!(
     "Toggle Graph Legend",
     "Show or hide the legend in the graph overlay",
     ActionCategory::Settings,
-    "\u{f02e}",
-    "\u{1f4cb}",
+    crate::ui::icons::LIST.pair(),
     toggle_graph_show_legend,
     app,
     if app.config.graf.visual.show_legend {
@@ -727,8 +668,7 @@ toggle_action!(
     "Toggle Graph Minimap",
     "Show or hide the minimap in the graph overlay",
     ActionCategory::Settings,
-    "\u{f279}",
-    "\u{1f5fa}",
+    crate::ui::icons::MAP.pair(),
     toggle_graph_show_minimap,
     app,
     if app.config.graf.visual.show_minimap {
@@ -744,8 +684,7 @@ toggle_action!(
     "Toggle Orphan Nodes",
     "Show or hide orphan nodes in the graph overlay",
     ActionCategory::Settings,
-    "\u{f0c1}",
-    "\u{1f4e1}",
+    crate::ui::icons::UNLINK.pair(),
     toggle_graph_show_orphan,
     app,
     if app.config.graf.filter.show_orphan {
@@ -770,7 +709,7 @@ impl Action for ConfigureSmartFoldersAction {
         ActionCategory::Settings
     }
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f0db}", "\u{1f4cb}")
+        crate::ui::icons::FILTER.pair()
     }
     fn execute(&self, app: &mut crate::app::App, _ctx: Option<&str>) -> anyhow::Result<()> {
         let path = crate::config::ClinConfig::config_path()?;
@@ -786,8 +725,7 @@ toggle_action!(
     "Cycle Text Alignment",
     "Cycle text alignment between left, center, right, and justified",
     ActionCategory::Settings,
-    "\u{f036}",
-    "\u{2261}",
+    crate::ui::icons::ALIGN.pair(),
     cycle_text_alignment,
     app,
     app.editor.text_align.status_label()

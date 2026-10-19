@@ -8,6 +8,9 @@ use crate::list_view::ListMode;
 use super::contains_cell;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    if app.base_embed_event(&crossterm::event::Event::Key(key), Rect::default()) {
+        return true;
+    }
     // Snap-only: first key after scrollbar pan snaps viewport back to
     // selection and is consumed.
     if app.list.list_viewport_offset.take().is_some() {
@@ -88,10 +91,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
-    match app
+    let outcome = app
         .keybinds
-        .resolve_list(&mut app.seq_matcher, key, seq, counts)
+        .resolve_list(&mut app.seq_matcher, key, seq, counts);
+    if let crate::keybinds::MatchOutcome::Matched(action, _) = outcome
+        && let Some(id) = action.palette_action_id()
     {
+        app.record_command_usage(id);
+    }
+    match outcome {
         crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             ListAction::CycleFocus => {
                 if app.list.notes_layout == crate::config::NotesLayout::Grid {
@@ -275,14 +283,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::OpenCommandPalette => {
-                if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-                    app.list.visual_list.get(app.list.visual_index)
-                {
-                    let id = app.notes[*summary_idx].id.clone();
-                    app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-                } else {
-                    app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-                }
+                app.open_command_palette(None);
                 return false;
             }
             ListAction::Duplicate => {
@@ -499,9 +500,59 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     false
 }
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
+    if app.base_embed_event(&crossterm::event::Event::Mouse(mouse_event), terminal_area) {
+        return;
+    }
     if app.layout_edit {
         handle_layout_edit_mouse(app, mouse_event, terminal_area);
         return;
+    }
+
+    // Check strip section clicks (Draw→open draw, Graf→open graph)
+    if app.list.calendar_enabled && mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+        let (_list_area, _preview_area, calendar_area) = crate::ui::list_view_layout(
+            terminal_area,
+            app.list.preview_enabled,
+            app.preview_position,
+            app.list.calendar_enabled,
+            app.preview_fullscreen,
+            app.list.preview_width_ratio,
+            app.list.calendar_height,
+            app.config.list.calendar_position,
+        );
+        if let Some(cal_rect) = calendar_area {
+            let active = app.active_strip_sections_for(cal_rect.width);
+            let sec_rects = crate::ui::section_rects(cal_rect, &active);
+            for (sec, r) in active.iter().zip(sec_rects.iter().copied()) {
+                if mouse_event.column >= r.x
+                    && mouse_event.column < r.right()
+                    && mouse_event.row >= r.y
+                    && mouse_event.row < r.bottom()
+                {
+                    match sec {
+                        crate::config::NotesSection::Draw => {
+                            if let Some(id) = app
+                                .draw_preview
+                                .as_ref()
+                                .map(|(id, _)| id.clone())
+                                .filter(|id| !id.is_empty())
+                            {
+                                if let Err(error) = app.open_draw_document(&id) {
+                                    app.set_temporary_status(&format!("{error:#}"));
+                                }
+                            } else {
+                                app.begin_create_draw();
+                            }
+                        }
+                        crate::config::NotesSection::Graf => {
+                            app.open_graph_view();
+                        }
+                        _ => {}
+                    }
+                    return;
+                }
+            }
+        }
     }
 
     let vertical_chunks = Layout::default()
@@ -822,39 +873,23 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 let mut tabs = vec![
                     (
                         "Vault",
-                        Some(crate::ui::get_icon(
-                            "\u{f07b}",
-                            "\u{1f4c1}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
                     ),
                     (
                         "Pinned",
-                        Some(crate::ui::get_icon(
-                            "\u{f4cc}",
-                            "\u{1f4cc}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
                     ),
                 ];
                 if app.config.features.smart_folders.is_enabled() {
                     tabs.push((
                         "Smart",
-                        Some(crate::ui::get_icon(
-                            "\u{f0e7}",
-                            "\u{26a1}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
                     ));
                 }
                 if app.config.features.subnotes.is_enabled() {
                     tabs.push((
                         "Subnotes",
-                        Some(crate::ui::get_icon(
-                            "\u{f02c}",
-                            "\u{1f3f7}",
-                            app.config.ui.icon_mode,
-                        )),
+                        Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
                     ));
                 }
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
@@ -982,14 +1017,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     break;
                 }
             }
-            if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-                app.list.visual_list.get(app.list.visual_index)
-            {
-                let id = app.notes[*summary_idx].id.clone();
-                app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-            } else {
-                app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-            }
+            app.open_command_palette(None);
             return;
         }
         return; // grid never uses the row-based mapping below
@@ -1012,14 +1040,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         app.list.list_viewport_offset = None;
         app.list.visual_index = clicked_visual_index;
         app.request_preview_update();
-        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let id = app.notes[*summary_idx].id.clone();
-            app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-        } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-        }
+        app.open_command_palette(None);
         return;
     }
 
@@ -1062,40 +1083,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         } else {
             app.list.visual_index = clicked_visual_index;
             app.request_preview_update();
-        }
-        // Check strip section clicks (Draw→open draw, Graf→open graph)
-        if app.list.calendar_enabled {
-            let (_list_area, _preview_area, calendar_area) = crate::ui::list_view_layout(
-                terminal_area,
-                app.list.preview_enabled,
-                app.preview_position,
-                app.list.calendar_enabled,
-                app.preview_fullscreen,
-                app.list.preview_width_ratio,
-                app.list.calendar_height,
-                app.config.list.calendar_position,
-            );
-            if let Some(cal_rect) = calendar_area {
-                let active = app.active_strip_sections_for(cal_rect.width);
-                let sec_rects = crate::ui::section_rects(cal_rect, &active);
-                for (sec, r) in active.iter().zip(sec_rects.iter().copied()) {
-                    if mouse_event.column >= r.x
-                        && mouse_event.column < r.right()
-                        && mouse_event.row >= r.y
-                        && mouse_event.row < r.bottom()
-                    {
-                        match sec {
-                            crate::config::NotesSection::Draw => {
-                                app.open_draw_view();
-                            }
-                            crate::config::NotesSection::Graf => {
-                                app.open_graph_view();
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
         }
     }
     if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {

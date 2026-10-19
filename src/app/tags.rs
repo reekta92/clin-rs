@@ -135,7 +135,6 @@ impl App {
                     if let Ok(mut note) = self.storage.load_note(note_id) {
                         note.tags = tags.clone();
                         if self.storage.save_note(note_id, &note).is_ok() {
-                            self.enqueue_backup(format!("auto: {}", note.title));
                             count += 1;
                         } else {
                             failed += 1;
@@ -179,7 +178,6 @@ impl App {
                         crate::app::messages::MessageSeverity::Warning,
                     );
                 } else {
-                    self.enqueue_backup(format!("auto: {}", note.title));
                     self.refresh_note_single(None, &popup.note_id);
                     self.set_temporary_status_static("Tags updated");
                 }
@@ -324,7 +322,6 @@ impl App {
                 {
                     note.tags.retain(|t| t != &tag);
                     if self.storage.save_note(&note_id, &note).is_ok() {
-                        self.enqueue_backup(format!("auto: {}", note.title));
                     } else {
                         failed += 1;
                     }
@@ -451,7 +448,6 @@ impl App {
             if let Ok(mut note) = self.storage.load_note(note_id) {
                 note.tags.retain(|t| !selected_tags.contains(t));
                 if self.storage.save_note(note_id, &note).is_ok() {
-                    self.enqueue_backup(format!("auto: {}", note.title));
                 } else {
                     failed += 1;
                 }
@@ -510,7 +506,6 @@ impl App {
             if let Ok(mut note) = self.storage.load_note(note_id) {
                 note.tags.clear();
                 if self.storage.save_note(note_id, &note).is_ok() {
-                    self.enqueue_backup(format!("auto: {}", note.title));
                 } else {
                     failed += 1;
                 }

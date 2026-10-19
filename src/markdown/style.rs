@@ -20,6 +20,7 @@ pub(crate) struct RenderLine {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderedDocument {
     pub(crate) lines: Vec<RenderLine>,
+    pub(crate) base_slots: Vec<crate::bases::embedding::Slot>,
     content_empty: bool,
     last_non_blank_line: Option<usize>,
     estimated_bytes: usize,
@@ -51,14 +52,62 @@ impl RenderedDocument {
 
         Self {
             lines,
+            base_slots: Vec::new(),
             content_empty,
             last_non_blank_line,
             estimated_bytes,
         }
     }
 
+    pub(crate) fn with_base_slots(mut self, slots: Vec<crate::bases::embedding::Slot>) -> Self {
+        if !slots.is_empty() {
+            self.content_empty = false;
+            self.last_non_blank_line = self
+                .last_non_blank_line
+                .into_iter()
+                .chain(slots.iter().map(|slot| slot.rows.end.saturating_sub(1)))
+                .max();
+        }
+        self.estimated_bytes += slots
+            .iter()
+            .map(|slot| match &slot.definition {
+                crate::bases::embedding::Definition::File { target, view } => {
+                    target.len() + view.as_ref().map_or(0, String::len)
+                }
+                crate::bases::embedding::Definition::Inline { source, .. } => source.len(),
+            })
+            .sum::<usize>();
+        self.base_slots = slots;
+        self
+    }
+
     pub(crate) fn lines(&self) -> &[RenderLine] {
         &self.lines
+    }
+
+    pub(crate) fn resize_base_slots(&mut self, heights: &[usize]) {
+        let mut lines = Vec::new();
+        let mut slots = self.base_slots.clone();
+        let mut end = 0;
+        for (slot, &height) in slots.iter_mut().zip(heights) {
+            lines.extend_from_slice(&self.lines[end..slot.rows.start]);
+            let start = lines.len();
+            lines.push(self.lines[slot.rows.start].clone());
+            lines.extend(std::iter::repeat_n(
+                RenderLine {
+                    spans: Vec::new(),
+                    visual_width: 0,
+                    is_blank: true,
+                    image_url: None,
+                    source_line: slot.source_line,
+                },
+                height.max(1) - 1,
+            ));
+            end = slot.rows.end;
+            slot.rows = start..lines.len();
+        }
+        lines.extend_from_slice(&self.lines[end..]);
+        *self = Self::new(lines).with_base_slots(slots);
     }
 
     pub(crate) fn lines_mut(&mut self) -> &mut Vec<RenderLine> {

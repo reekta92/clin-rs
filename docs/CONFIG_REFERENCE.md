@@ -39,7 +39,6 @@ The default vault is `<Documents>/clin Vault`. Documents resolves through platfo
 |---|---|
 | Active config | `clin config show`; Linux: `$XDG_CONFIG_HOME/clin/config.toml` or `~/.config/clin/config.toml`; macOS: `~/.config/clin/config.toml`; Windows: platform `ProjectDirs` config directory |
 | Keybinds / custom themes | `<active-config-dir>/keybinds/<preset>.toml` / `<active-config-dir>/themes/*.toml` |
-| Encryption key / local UI state | `<application-data-local-dir>/key.bin` / `state.json` |
 | Note-summary cache | `<application-cache-dir>/vaults/<vault-digest>/note_cache.bin`; `clin cache reset` removes current vault's cache and legacy caches |
 | Templates / subnotes / editor draft | `<vault>/.clin/templates/` / `subnotes.bin` / `editor_draft.bin` |
 | Image attachments | `<vault>/<image.attachments_subdir>/` |
@@ -48,25 +47,23 @@ Application data/cache paths come from `directories::ProjectDirs::from("com", "c
 
 ### `[features]`
 
-Master feature toggles. Supported values: `true` / `"enabled"`, `false` / `"disabled"`, and `"deleted"`. Setting a flag to `false` / `"disabled"` skips the feature's startup work and hides its entry points (keybinds, palette actions, help tabs, statusline tokens). Setting it to `"deleted"` also clears its keybinds, making them available for custom mappings. Changes to `images` and `backup` require a restart (they control background worker threads); all others apply at runtime via the command palette's `settings.toggle_*` actions.
+Master feature toggles. Supported values: `true` / `"enabled"`, `false` / `"disabled"`, and `"deleted"`. Setting a flag to `false` / `"disabled"` skips the feature's startup work and hides its entry points (keybinds, palette actions, help tabs, statusline tokens). Setting it to `"deleted"` also clears its keybinds, making them available for custom mappings. Changes to `images` require a restart (it controls a background worker); all others apply at runtime via the command palette's `settings.toggle_*` actions.
 
-Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enabled`, `[list] calendar_enabled`, `[list] smart_folders_enabled`) are migrated into this table automatically on first launch; those old keys are then ignored.
+Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar_enabled`, `[list] smart_folders_enabled`) are migrated into this table automatically on first launch; those old keys are then ignored.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `graph_view` | `enum` | `true` | Enable the force-directed Graph view |
 | `canvas_view` | `enum` | `true` | Enable the `.canvas` view |
+| `bases_view` | `enum` | `true` | Enable native `.base` views, authoring and live public embeds/sidebar |
 | `draw_view` | `enum` | `true` | Enable the `.draw` view |
 | `outline_view` | `enum` | `true` | Enable the Outline view (overlay + editor sidebar) |
 | `help_view` | `enum` | `true` | Enable the in-app Help view |
 | `tags` | `enum` | `true` | Enable the tag manager and tag UI surfaces |
 | `trash` | `enum` | `true` | Enable the trash view/restore UI (deletes still go to trash) |
-| `subnotes` | `enum` | `true` | Enable virtual subnotes (encrypted only under encrypted parents) |
 | `templates` | `enum` | `true` | Enable note templates |
 | `import` | `enum` | `true` | Enable import (File/CSV/JSON/URL/Clipboard) and OCR paste |
-| `encryption` | `enum` | `true` | Enable encrypt/decrypt actions (`.clin` files stay readable) |
 | `images` | `enum` | `true` | Enable native pixel image rendering (restart required) |
-| `backup` | `enum` | `true` | Enable git backup worker and dashboard (restart required) |
 | `goals` | `enum` | `true` | Enable the daily word/note goals system |
 | `calendar` | `enum` | `true` | Show rolling-week note activity in the notes list |
 | `smart_folders` | `enum` | `true` | Enable virtual smart folders (Today, This Week, Untagged) |
@@ -100,7 +97,6 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 |---|---|---|---|
 | `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
 | `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
-| `preview_encryption` | `bool` | `false` | Show previews of encrypted notes |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
 | `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
@@ -131,6 +127,7 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `external_enabled` | `bool` | `false` | Enable external editor mode |
 | `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
+| `frontmatter_mode` | `enum` | `"properties"` | F7 presentation: `"properties"` or `"raw_yaml"`; region remains hidden initially |
 | `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
 | `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
 | `copy_on_select` | `bool` | `true` | Copy to clipboard immediately when a mouse drag selects text; `false` keeps the selection for the copy keybind |
@@ -144,6 +141,28 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `zen_focus_dimming` | `bool` | `false` | Dim content outside the active neighborhood in zen mode |
 | `zen_focus_unit` | `enum` | `"paragraph"` | Unit for focus neighborhood (`"paragraph"`, `"line"`) |
 | `zen_focus_context` | `usize` | `3` | Number of units above the cursor to keep bright |
+### `[notes.frontmatter]`
+
+Automatic note-output policy. Existing body-only saves do not add absent managed fields. Disabled fields retain their existing bytes; explicit Title/property/YAML/tag/pin/alignment edits still save. New notes use enabled output. Generated links are unique in first-seen order. Filenames never follow title changes automatically.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `title` | `bool` | `true` | Automatic initial title output |
+| `tags` | `bool` | `true` | Automatic initial tags output |
+| `pinned` | `bool` | `true` | Automatic initial pin output; explicit pin actions always persist |
+| `links` | `bool` | `true` | Generated body wikilinks |
+| `text_align` | `bool` | `true` | Automatic alignment output where produced; explicit alignment always persists |
+| `updated_at` | `enum` | `"unix"` | `"unix"`, `"iso8601"` (UTC RFC 3339), or `"none"` |
+| `original_ext` | `bool` | `true` | Accepted compatibility no-op; there is no automatic extension producer |
+
+```toml
+[notes.frontmatter]
+links = false
+updated_at = "iso8601"
+```
+
+Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Disabled or uninterpretable fields are preserved. To maintain a field manually, disable its automatic output; changing the policy does not delete any existing value. The retired `notes.rename_on_title_change` option remains retired. Nested policy settings and comments survive config cleanup.
+
 ### `[ui]`
 
 
@@ -152,8 +171,8 @@ Legacy per-section flags (`[image] enabled`, `[backup] enabled`, `[goals] enable
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 19 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
 | `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
-| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
-| `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
+| `tab_icons_only` | `bool` | `false` | Show only icons on tab bars; text labels remain in `"none"` mode |
+| `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"none"`: text labels without decorative icons. Unicode/None use portable bar separators |
 | `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
 | `scrollbar_pan_mode` | `bool` | `false` | Notes list scrollbar pans without moving selection |
 | `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blurred"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |
@@ -186,7 +205,6 @@ You can also customize these per-view by adding nested overrides:
 - `[statusline.graph]` — overrides for the graph view
 - `[statusline.draw]` — overrides for the drawing view
 - `[statusline.canvas]` — overrides for the canvas view
-- `[statusline.backup]` — overrides for the backup view
 - `[statusline.outline]` — overrides for the outline view
 
 Each override sub-table accepts: `header_left`, `header_right`, `footer_left`, and `footer_right` fields.
@@ -244,6 +262,15 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{tag_filter}`, `{folder_filter}`: Active query filter parameters
 - `{pinned_count}`: Total pinned notes
 - `{pinned_on_top}`, `{folders_first}`, `{list_preview}`, `{calendar}`, `{layout_edit}`: Config and view states (`on`/`off`)
+
+##### Bases View
+
+Bases uses the global statusline templates. `{bases_rows}` is the displayed public
+row count; `{bases_matched}` counts matches before the limit; `{bases_selected}`
+counts checked rows. `{bases_view}` and `{bases_property}` identify the selected
+saved view and displayed property. In Bases, `{visual_total}`, `{note_count}` and
+`{selected_count}` resolve to these public query counts. `{visual_index}` is the
+1-based result row, or zero on a group heading. Encrypted Notes context is absent.
 
 ##### Note Context (List + Edit views)
 - `{note_title}`: Title of the selected/edited note
@@ -315,19 +342,6 @@ header_right = "{word_count_display}w {char_count_display}c {cursor_line}:{curso
 - `{outline_heading}`: Title text of the selected heading
 - `{outline_note}`: Title of parent note
 - `{outline_error}`: Load error text or empty
-
-##### Backup View (`Backup` view)
-- `{branch}`: Active git branch name
-- `{ahead}`, `{behind}`: Commit difference from remote tracking branch
-- `{staged}`, `{unstaged}`, `{untracked}`: File category modification counts
-- `{commit_count}`: Total commit log history entries
-- `{last_commit}`: Short 7-character commit hash of HEAD
-- `{last_commit_msg}`, `{last_commit_author}`, `{last_commit_time}`: Message, author name, and relative date of last commit
-- `{remote}`, `{remote_url}`: Configured remote repository name and URL
-- `{backup_section}`: Active section panel (`status` or `history`)
-- `{input_mode}`: Input mode (`normal`, `edit_commit`, `edit_settings`, `edit_settings_field`)
-- `{auto_push}`, `{repo_dirty}`: Auto push status and repository clean/dirty flags (`on`/`off`)
-- `{modified_text}`: Text string (`modified` or `clean`)
 
 ##### Composites
 These inject pre-styled groups of cells (e.g., from tab/status systems) and remain opaque to powerline text splitting:
@@ -431,22 +445,10 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 |---|---|---|---|
 | `max_results` | `usize` | `20` | Maximum search results |
 | `max_visible` | `usize` | `10` | Maximum visible results at once |
-### `[backup]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `backup_on_save` | `bool` | `false` | Stored settings toggle; currently does not gate save-triggered backups. See [BACKUP.md](BACKUP.md) |
-| `backup_on_quit` | `bool` | `false` | Perform a backup commit when the app exits |
-| `auto_backup_interval` | `u64` | — | Interval in minutes for automatic background backups |
-| `auto_push` | `bool` | `false` | Automatically push commits to remote |
-| `remote_url` | `String` | — | Remote git repository URL |
-| `remote_name` | `String` | — (`"origin"` at runtime) | Name of the git remote |
-
 ### `[notes]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `rename_on_title_change` | `bool` | `true` | Sync the note's filename to its `title:` frontmatter on every save. Set to `false` to keep filenames stable (e.g. when the vault is shared with Obsidian, where filenames are the `[[wikilink]]` targets) |
 
 ### `[goals]`
 
@@ -461,7 +463,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 ```toml
 [features]
 calendar = true
-backup = false
 goals = true
 images = true
 smart_folders = true
@@ -475,7 +476,6 @@ confirm_on_delete = true
 [list]
 preview_enabled = true
 preview_position = "right"
-preview_encryption = false
 show_file_size = false
 date_format = "%Y-%m-%d"
 density = "comfortable"
@@ -489,14 +489,6 @@ external_command = "nvim"
 external_enabled = false
 preview_enabled = true
 show_line_numbers = true
-
-[backup]
-backup_on_save = false
-backup_on_quit = false
-auto_backup_interval = 30
-auto_push = false
-remote_url = "https://github.com/user/my-notes.git"
-remote_name = "origin"
 
 [goals]
 word_goal = 500
@@ -765,34 +757,6 @@ These global handlers take precedence over per-view bindings.
 | `confirm_resize` | `Enter` | Resize confirm |
 | `cancel_resize` | `Esc` | Resize cancel |
 | `editor_unfocus` | `Esc` | Exit editor focus |
-
-### Backup Actions (`[backup]`)
-
-| Action | Default Keys | Description |
-|---|---|---|
-| `back` | `Esc`, `q` | Back to list |
-| `move_down` | `j`, `Down` | Move down |
-| `move_up` | `k`, `Up` | Move up |
-| `scroll_diff_down` | `Ctrl+d`, `PageDown` | Scroll diff down |
-| `scroll_diff_up` | `Ctrl+u`, `PageUp` | Scroll diff up |
-| `refresh` | `r` | Refresh status |
-| `enter_commit` | `c` | Enter commit |
-| `push` | `p` | Push to remote |
-| `open_settings` | `,` | Open settings |
-| `cycle_section` | `Tab`, `BackTab` | Cycle sections |
-| `help` | `?` | Show help |
-| `pull` | `Shift+P` | Pull from remote |
-| `stage_file` | `Space`, `s` | Stage file |
-| `unstage_file` | `u` | Unstage file |
-| `stage_all` | `Shift+S` | Stage all changes |
-| `cancel_commit` | `Esc` | Cancel commit |
-| `confirm_commit` | `Enter` | Confirm commit |
-| `close_settings` | `Esc`, `q` | Close settings |
-| `next_field` | `j`, `Down` | Next field |
-| `prev_field` | `k`, `Up` | Previous field |
-| `activate_field` | `Enter` | Activate field |
-| `cancel_edit_field` | `Esc` | Cancel edit field |
-| `confirm_edit_field` | `Enter` | Confirm edit field |
 
 ### Outline Actions (`[outline]`)
 

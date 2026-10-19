@@ -29,9 +29,9 @@ A terminal note-taking app with `inline code`, **bold**, and _italics_.
 
 - Markdown rendering
 - Tags and folders
-- Encryption & backups
+- Coalesced recovery drafts
 
-> Encrypt individual notes from the command palette.
+> Recovery drafts are plaintext with private Unix permissions, not encryption.
 
 ```rust
 fn main() {
@@ -216,9 +216,9 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         } else {
             vec![
                 Span::styled(format!("{:<10} ", label), base),
-                Span::styled("◀ ", arrow),
+                Span::styled("◂ ", arrow),
                 Span::styled(truncated_value, base),
-                Span::styled(" ▶", arrow),
+                Span::styled(" ▸", arrow),
                 Span::styled("       ", arrow),
             ]
         };
@@ -378,7 +378,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             // Grid: exactly the notes-view grid — same tile geometry and the
             // same tile renderer, plus the vault breadcrumb it shows on top.
             let buf = frame.buffer_mut();
-            let vault_icon = crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", icon_mode);
+            let vault_icon = crate::ui::icons::FOLDER.get(icon_mode);
             buf.set_string(
                 inner.x,
                 inner.y + 1,
@@ -388,8 +388,8 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             );
 
-            let folder = crate::ui::get_char('\u{f07b}', '\u{1f4c1}', icon_mode);
-            let note = crate::ui::get_char('\u{f15c}', '\u{1f4c4}', icon_mode);
+            let folder = crate::ui::icons::FOLDER.char(icon_mode);
+            let (note, _, _) = crate::ui::note_file_glyph("example.md", theme, icon_mode);
             let samples = [
                 GridTileSpec {
                     icon_char: folder,
@@ -402,7 +402,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: true,
+                    is_pinned: true,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -415,7 +415,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: true,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -428,7 +428,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -441,7 +441,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -454,7 +454,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -467,7 +467,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
             ];
 
@@ -495,8 +495,8 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                 let text = if icon_mode == crate::config::IconMode::None {
                     format!("{name} ({count})")
                 } else {
-                    let caret = crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode);
-                    let glyph = crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", icon_mode);
+                    let caret = crate::ui::icons::EXPANDED.get(icon_mode);
+                    let glyph = crate::ui::icons::FOLDER.get(icon_mode);
                     format!("{caret} {glyph} {name} ({count})")
                 };
                 Line::from(Span::styled(
@@ -514,13 +514,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                 tag: Option<&str>,
             ) -> Line<'static> {
                 let mut spans = vec![Span::raw("  ")]; // depth-0 note indent
-                let icon = crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode);
-                if !icon.is_empty() {
-                    spans.push(Span::styled(
-                        format!("{icon} "),
-                        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-                    ));
-                }
+                spans.extend(crate::ui::note_file_icon(title, theme, icon_mode));
                 spans.push(Span::raw(title.to_string()));
                 if let Some(tag) = tag {
                     spans.push(Span::raw(" "));
@@ -541,7 +535,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                 theme: &AppThemeColors,
                 icon_mode: crate::config::IconMode,
             ) -> Line<'static> {
-                let icon = crate::ui::get_icon("\u{f067}", "\u{2795}", icon_mode);
+                let icon = crate::ui::icons::ADD.get(icon_mode);
                 let text = if icon.is_empty() {
                     "Create new...".to_string()
                 } else {
@@ -622,7 +616,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let mut lines: Vec<Line> = Vec::new();
         if !is_custom {
             let desc = match state.feature_preset {
-                1 => "Most features, no graph/canvas/draw/backup",
+                1 => "Most features, no graph/canvas/draw",
                 2 => "Core features only",
                 _ => "All features enabled",
             };
@@ -709,6 +703,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             syntax_hl: true,
             wrap: true,
             render_mermaid: true,
+            render_bases: false,
             icon_mode,
             code_theme: crate::markdown::default_code_theme().to_string(),
             code_line_numbers: true,
@@ -835,17 +830,16 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             ))
             .padding(Padding::new(1, 1, 1, 0));
-        let pairs: [((&str, &str), &'static str, Color); 5] = [
-            (("\u{f07b}", "\u{1f4c1}"), "Folder", theme.folder),
-            (("\u{f15c}", "\u{1f4c4}"), "Note", theme.text),
-            (("\u{f4cc}", "\u{1f4cc}"), "Pinned", theme.heading),
-            (("\u{f02b}", "\u{1f3f7}"), "Tagged", theme.tag),
-            (("\u{f023}", "\u{1f512}"), "Encrypted", theme.warning),
+        let pairs: [(crate::ui::icons::Icon, &'static str, Color); 4] = [
+            (crate::ui::icons::FOLDER, "Folder", theme.folder),
+            (crate::ui::icons::FILE, "Note", theme.text),
+            (crate::ui::icons::PIN, "Pinned", theme.heading),
+            (crate::ui::icons::TAG, "Tagged", theme.tag),
         ];
         let lines: Vec<Line> = pairs
             .iter()
-            .map(|((nerd, unicode), label, color)| {
-                let icon = crate::ui::get_icon(nerd, unicode, icon_mode);
+            .map(|(icon, label, color)| {
+                let icon = icon.get(icon_mode);
                 Line::from(vec![
                     Span::styled(format!("  {}  ", icon), Style::default().fg(*color)),
                     Span::styled(*label, Style::default().fg(theme.text)),
@@ -865,7 +859,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title(Span::styled(
-                " Keybind Preview ",
+                " Navigation Keys ",
                 Style::default()
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
@@ -1113,9 +1107,8 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = crate::app::App::new(storage).unwrap();
         app.setup_state = Some(crate::setup::SetupState::from_config(

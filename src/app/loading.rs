@@ -533,7 +533,7 @@ impl App {
                     let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
                     let note = pidx.and_then(|i| self.notes.get(i));
                     let name = note
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| parent_id.clone());
                     let parent_expanded = self
                         .list
@@ -716,7 +716,7 @@ impl App {
                     let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
                     let name = pidx
                         .and_then(|i| self.notes.get(i))
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| parent_id.clone());
                     visual.push(VisualItem::Folder {
                         path: format!("subnotes:{parent_id}"),
@@ -897,6 +897,48 @@ impl App {
     /// the editor's input-to-draw path.
     pub(crate) fn poll_editor_renderers(&mut self) -> bool {
         let mut updated = false;
+        let host_revision = self.editor.live_note_revision();
+        let needs_source = [
+            &self.editor.md_preview_renderer,
+            &self.editor.bases_sidebar_renderer,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|renderer| {
+            renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(revision, _)| *revision != host_revision)
+        });
+        let host_source = needs_source
+            .then(|| self.editor.live_note_source())
+            .flatten()
+            .map(std::sync::Arc::<str>::from);
+        if self.editor.sidebar == crate::editor::EditSidebar::Bases
+            && let Some(renderer) = &mut self.editor.bases_sidebar_renderer
+        {
+            let revision = host_revision;
+            if renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(old, _)| *old != revision)
+            {
+                renderer.base_host_source = host_source.clone().map(|source| (revision, source));
+                renderer.base_body_only = false;
+                updated = true;
+            }
+            updated |= renderer.poll();
+        }
+        if let Some(renderer) = &mut self.editor.md_preview_renderer
+            && renderer
+                .base_host_source
+                .as_ref()
+                .is_none_or(|(old, _)| *old != host_revision)
+        {
+            renderer.base_host_source = host_source.map(|source| (host_revision, source));
+            renderer.base_body_only = false;
+            updated = true;
+        }
         if let Some((_, instant)) = self.editor.pending_markdown_resize
             && instant.elapsed() >= Duration::from_millis(50)
         {
@@ -1165,7 +1207,7 @@ impl App {
                 .map(|(_, n)| n)
                 .filter(|n| n.pinned)
                 .map(|n| FolderGraphNode {
-                    label: n.title.clone(),
+                    label: n.file_stem().to_owned(),
                     is_note: true,
                     x: 0.0,
                     y: 0.0,
@@ -1189,7 +1231,7 @@ impl App {
                     .iter()
                     .filter_map(|&i| self.notes.get(i))
                     .map(|n| FolderGraphNode {
-                        label: n.title.clone(),
+                        label: n.file_stem().to_owned(),
                         is_note: true,
                         x: 0.0,
                         y: 0.0,
@@ -1231,7 +1273,7 @@ impl App {
             .map(|(_, n)| n)
             .filter(|n| n.folder == focused_path)
             .map(|n| FolderGraphNode {
-                label: n.title.clone(),
+                label: n.file_stem().to_owned(),
                 is_note: true,
                 x: 0.0,
                 y: 0.0,
@@ -1282,7 +1324,6 @@ impl App {
                 let is_draw = *is_draw;
                 let is_canvas = *is_canvas;
                 let id = &self.notes[summary_idx].id;
-                let is_clin = id.ends_with(".clin");
                 if !self.config.features.file_view_enabled(id) {
                     self.list.preview_content = None;
                     self.list.preview_content_width = None;
@@ -1292,11 +1333,6 @@ impl App {
                     self.list.preview_content_offset_y = None;
                     self.list.preview_content_index = Some(self.list.visual_index);
                     self.list.pending_markdown_resize = None;
-                    return;
-                }
-                if self.preview_encryption && is_clin {
-                    self.list.preview_content = None;
-                    self.list.preview_content_index = Some(self.list.visual_index);
                     return;
                 }
 
@@ -1326,40 +1362,37 @@ impl App {
                         self.list.preview_content_index = Some(self.list.visual_index);
                         return;
                     }
-                    let path = self.storage.note_path(id);
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) => {
-                            match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
-                                Ok(data) => {
-                                    let width = self.desired_list_preview_width();
-                                    let height = self.desired_list_preview_height();
-                                    let scale = self.list.preview_scale;
-                                    let offset_x = self.list.preview_offset_x;
-                                    let offset_y = self.list.preview_offset_y;
-                                    let grid = crate::snapshot::render_draw_snapshot_with_size(
-                                        &data,
-                                        &self.app_theme,
-                                        self.config.ui.icon_mode,
-                                        width,
-                                        height,
-                                        scale,
-                                        offset_x,
-                                        offset_y,
-                                    );
-                                    self.list.preview_content = Some(PreviewContent::DrawGrid {
-                                        data: Box::new(data),
-                                        grid,
-                                    });
-                                    self.set_list_preview_geometry(width, height);
-                                }
-                                Err(e) => {
-                                    self.list.preview_content = None;
-                                    self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
-                                }
-                            }
+                    match self
+                        .storage
+                        .document_path(id)
+                        .and_then(|path| ::draw::DrawState::load(&path))
+                    {
+                        Ok(state) => {
+                            let data = state.data;
+                            let width = self.desired_list_preview_width();
+                            let height = self.desired_list_preview_height();
+                            let scale = self.list.preview_scale;
+                            let offset_x = self.list.preview_offset_x;
+                            let offset_y = self.list.preview_offset_y;
+                            let grid = crate::snapshot::render_draw_snapshot_with_size(
+                                &data,
+                                &self.app_theme,
+                                self.config.ui.icon_mode,
+                                width,
+                                height,
+                                scale,
+                                offset_x,
+                                offset_y,
+                            );
+                            self.list.preview_content = Some(PreviewContent::DrawGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
+                            self.set_list_preview_geometry(width, height);
                         }
-                        Err(_) => {
+                        Err(error) => {
                             self.list.preview_content = None;
+                            self.status = Cow::Owned(format!("Failed to load draw: {error:#}"));
                         }
                     }
                     self.list.preview_content_index = Some(self.list.visual_index);
@@ -1453,6 +1486,7 @@ impl App {
                         Some(PreviewContent::Markdown(r)) => *r,
                         _ => MarkdownRenderer::new(),
                     };
+                    renderer.base_host = Some(id.clone());
                     let opts = crate::markdown::MdRenderOpts::from_config(&self.config, Some(id));
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
@@ -1461,8 +1495,12 @@ impl App {
                         height: height as usize,
                     };
 
-                    let content_changed =
-                        renderer.is_changed(&note.content, &self.app_theme, &opts);
+                    let content = if id.ends_with(".base") {
+                        format!("![[{id}]]")
+                    } else {
+                        note.content
+                    };
+                    let content_changed = renderer.is_changed(&content, &self.app_theme, &opts);
                     let mut should_render = false;
                     if content_changed || renderer.document().is_none() {
                         should_render = true;
@@ -1484,13 +1522,7 @@ impl App {
                     }
 
                     if should_render {
-                        renderer.render_with(
-                            &note.content,
-                            width,
-                            &self.app_theme,
-                            &opts,
-                            viewport,
-                        );
+                        renderer.render_with(&content, width, &self.app_theme, &opts, viewport);
                         self.list.preview_content_width = Some(width);
                         self.list.pending_markdown_resize = None;
                     }
@@ -1599,7 +1631,7 @@ impl App {
                         note.folder == folder_path
                     };
                     if matches {
-                        notes.push(note.title.clone());
+                        notes.push(note.file_stem().to_owned());
                     }
                 }
                 notes.sort();
@@ -1621,12 +1653,22 @@ impl App {
                     name.clone()
                 };
 
+                let preview_icon = |icon: crate::ui::icons::Icon| {
+                    let glyph = icon.get(self.config.ui.icon_mode);
+                    if glyph.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{glyph} ")
+                    }
+                };
+                let folder_icon = preview_icon(crate::ui::icons::FOLDER);
+                let note_icon = preview_icon(crate::ui::icons::FILE);
                 let mut md = format!("# {display_title}\n\n");
 
                 if !subfolders.is_empty() {
                     md.push_str("## Folders\n");
                     for sub in &subfolders {
-                        md.push_str(&format!("- \u{f07b} {sub}\n"));
+                        md.push_str(&format!("- {}{sub}\n", folder_icon));
                     }
                     md.push('\n');
                 }
@@ -1634,7 +1676,7 @@ impl App {
                 if !notes.is_empty() {
                     md.push_str("## Notes\n");
                     for note in &notes {
-                        md.push_str(&format!("- \u{f15c} {note}\n"));
+                        md.push_str(&format!("- {}{note}\n", note_icon));
                     }
                 } else if subfolders.is_empty() {
                     md.push_str("*This folder is empty.*\n");
@@ -1645,6 +1687,7 @@ impl App {
                     Some(PreviewContent::Markdown(r)) => *r,
                     _ => MarkdownRenderer::new(),
                 };
+                renderer.base_host = None;
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
@@ -1694,9 +1737,11 @@ impl App {
                         .notes
                         .iter()
                         .find(|n| n.id == *pid)
-                        .map(|n| n.title.clone())
+                        .map(|n| n.file_stem().to_owned())
                         .unwrap_or_else(|| pid.clone());
-                    md.push_str(&format!("- \u{f02c} {title} ({})\n", subs.len()));
+                    let icon = crate::ui::icons::SUBNOTES.get(self.config.ui.icon_mode);
+                    let gap = if icon.is_empty() { "" } else { " " };
+                    md.push_str(&format!("- {icon}{gap}{title} ({})\n", subs.len()));
                 }
                 if self.subnotes_view_cache.is_empty() {
                     md.push_str("*No subnotes.*\n");
@@ -1706,6 +1751,7 @@ impl App {
                     Some(PreviewContent::Markdown(r)) => *r,
                     _ => MarkdownRenderer::new(),
                 };
+                renderer.base_host = None;
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
@@ -1769,8 +1815,10 @@ impl App {
                         Some(PreviewContent::Markdown(r)) => *r,
                         _ => MarkdownRenderer::new(),
                     };
-                    let opts =
+                    renderer.base_host = Some(".virtual/subnote.clin".into());
+                    let mut opts =
                         crate::markdown::MdRenderOpts::from_config(&self.config, Some(parent_id));
+                    opts.render_bases = false;
                     let md = format!("# {}\n\n{}", sub.title, sub.content);
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
@@ -1886,6 +1934,15 @@ impl App {
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
+        if self
+            .editor
+            .public_document
+            .as_ref()
+            .is_some_and(|document| !document.id().ends_with(".md"))
+        {
+            self.editor.md_preview_renderer = None;
+            return;
+        }
         if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }
@@ -1893,6 +1950,12 @@ impl App {
         let content = self.editor.body.snapshot();
         let width = self.desired_editor_preview_width();
         let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
+        renderer.base_host.clone_from(&self.editor.editing_id);
+        renderer.base_host_source = self
+            .editor
+            .live_note_source()
+            .map(|source| (self.editor.live_note_revision(), source.into()));
+        renderer.base_body_only = false;
         let mut opts = crate::markdown::MdRenderOpts::from_config(
             &self.config,
             self.editor.editing_id.as_deref(),
@@ -1966,11 +2029,92 @@ mod tests {
             config_dir,
             notes_dir,
             templates_dir,
-            key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (temp_dir, App::new(storage).unwrap())
+    }
+
+    #[test]
+    fn folder_and_subnote_previews_follow_live_icon_mode() {
+        use crate::config::IconMode;
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_td, mut app) = make_app();
+        std::fs::create_dir_all(app.storage.notes_dir.join("docs/sub")).unwrap();
+        std::fs::write(app.storage.notes_dir.join("docs/note.md"), "# Note\n").unwrap();
+        let load = crate::app::catalog::load_notes_blocking(
+            &app.storage,
+            &app.notes_worker_pool,
+            false,
+            false,
+        )
+        .unwrap();
+        app.notes = load.summaries;
+        app.catalog_folders = load.folders;
+        app.subnotes_view_cache = vec![("docs/note.md".into(), Vec::new())];
+        app.list.preview_enabled = true;
+        app.config.list.folder_graph_preview = false;
+        app.list.visual_index = 0;
+        for (path, icon) in [
+            ("docs", crate::ui::icons::FOLDER),
+            (
+                crate::app::VIRTUAL_SUBNOTES_PATH,
+                crate::ui::icons::SUBNOTES,
+            ),
+        ] {
+            app.list.visual_list = vec![VisualItem::Folder {
+                path: path.into(),
+                name: "Preview".into(),
+                depth: 0,
+                is_expanded: true,
+                note_count: 1,
+                recursive_count: 1,
+                stale: false,
+                is_pinned: false,
+            }];
+            for (selected, mode) in [
+                (0, IconMode::Nerd),
+                (1, IconMode::Unicode),
+                (2, IconMode::None),
+            ] {
+                app.apply_icon_selection(selected).unwrap();
+                assert_eq!(app.app_theme.icon_mode, mode);
+                let Some(PreviewContent::Markdown(renderer)) = &mut app.list.preview_content else {
+                    panic!("expected generated Markdown preview");
+                };
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while renderer.is_pending() {
+                    renderer.poll();
+                    assert!(Instant::now() < deadline, "preview did not finish");
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                let text = renderer
+                    .document()
+                    .unwrap()
+                    .lines()
+                    .iter()
+                    .map(|line| {
+                        line.spans
+                            .iter()
+                            .map(|span| span.text.as_str())
+                            .collect::<String>()
+                    })
+                    .collect::<String>();
+                if path == "docs" {
+                    assert!(text.contains("sub"), "{mode:?}: {text}");
+                }
+                assert!(text.contains("note"), "{mode:?}: {text}");
+                if mode != IconMode::None {
+                    assert!(text.contains(icon.get(mode)), "{mode:?}: {text}");
+                }
+                if mode != IconMode::Nerd {
+                    assert!(
+                        !text.chars().any(|c| ('\u{e000}'..='\u{f8ff}').contains(&c)),
+                        "{mode:?}: {text}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

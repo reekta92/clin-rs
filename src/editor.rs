@@ -1,3 +1,4 @@
+pub(crate) mod frontmatter;
 use crate::editor_document::EditorDocument;
 use crate::markdown::MarkdownRenderer;
 use ratatui_textarea::TextArea;
@@ -9,6 +10,7 @@ pub enum EditFocus {
     Title,
     Body,
     Sidebar,
+    Frontmatter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -17,6 +19,7 @@ pub enum EditSidebar {
     None,
     Outline,
     Links,
+    Bases,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,12 +128,18 @@ pub enum AutosaveStatus {
 }
 
 pub struct NoteEditor {
+    pub(crate) frontmatter: Option<frontmatter::FrontmatterEditor>,
     pub autosave_status: AutosaveStatus,
     pub autosave_timer: Option<Instant>,
     pub last_saved_time: Option<Instant>,
     pub editing_id: Option<String>,
+    pub public_document: Option<crate::storage::documents::DocumentSnapshot>,
+    pub(crate) public_document_body_only: bool,
+    pub(crate) public_document_title: Option<String>,
+    pub note_baseline: Option<crate::storage::documents::DocumentSnapshot>,
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
+    pub(crate) template_source: Option<String>,
     pub title_editor: TextArea<'static>,
     pub(crate) body: EditorDocument,
     pub external_editor_enabled: bool,
@@ -160,6 +169,7 @@ pub struct NoteEditor {
     pub image_picker: Option<ratatui_image::picker::Picker>,
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub sidebar: EditSidebar,
+    pub(crate) bases_sidebar_renderer: Option<MarkdownRenderer>,
     pub sidebar_scroll_offset: usize,
     pub sidebar_list_rect: ratatui::layout::Rect,
     pub sidebar_selected: usize,
@@ -183,14 +193,9 @@ pub struct NoteEditor {
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<i32>,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
-    /// Cache of per-line highlight styles, one entry per source line, rebuilt when the doc changes.
-    pub md_highlight_cache: Vec<std::rc::Rc<[ratatui::style::Style]>>,
-    /// `Instant` of the last editor change when cache was built.
-    pub md_highlight_change: Option<std::time::Instant>,
-    /// Number of lines in the document when cache was built.
-    pub md_highlight_lines: usize,
-    /// Bounded visible-line style memo, keyed by content and fence role.
-    pub md_highlight_memo: lru::LruCache<(u64, bool), std::rc::Rc<[ratatui::style::Style]>>,
+    /// Bounded visible-line styles, keyed by exact content, fence role, and todo mode.
+    pub md_highlight_memo:
+        lru::LruCache<(String, bool, bool), std::rc::Rc<[ratatui::style::Style]>>,
     pub(crate) visual_row_cache: EditorVisualRowCache,
     /// TTL cache for {modified} statusline token (500ms bounded).
     pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
@@ -200,12 +205,18 @@ pub struct NoteEditor {
 impl Default for NoteEditor {
     fn default() -> Self {
         Self {
+            frontmatter: None,
             autosave_status: AutosaveStatus::default(),
             autosave_timer: None,
             last_saved_time: None,
             editing_id: None,
+            public_document: None,
+            public_document_body_only: false,
+            public_document_title: None,
+            note_baseline: None,
             initial_word_count: 0,
             template_edit_path: None,
+            template_source: None,
             title_editor: TextArea::default(),
             body: EditorDocument::default(),
             external_editor_enabled: false,
@@ -235,6 +246,7 @@ impl Default for NoteEditor {
             image_picker: None,
             image_decode_tx: None,
             sidebar: EditSidebar::None,
+            bases_sidebar_renderer: None,
             sidebar_scroll_offset: 0,
             sidebar_list_rect: ratatui::layout::Rect::default(),
             sidebar_selected: 0,
@@ -256,9 +268,6 @@ impl Default for NoteEditor {
             body_viewport_col: 0,
             title_viewport_row: 0,
             title_viewport_col: 0,
-            md_highlight_cache: Vec::new(),
-            md_highlight_change: None,
-            md_highlight_lines: 0,
             md_highlight_memo: lru::LruCache::new(std::num::NonZeroUsize::MIN),
             visual_row_cache: EditorVisualRowCache::default(),
             modified_status_cache: std::cell::RefCell::new(None),
@@ -270,6 +279,152 @@ impl Default for NoteEditor {
 }
 
 impl NoteEditor {
+    pub fn public_document_source(&self) -> Option<String> {
+        let baseline = self.public_document.as_ref()?;
+        let body = self.body.text();
+        if self.public_document_body_only {
+            let mut source = self.note_working_source().ok()?;
+            let title = crate::events::get_title_text(&self.title_editor);
+            let original = self
+                .frontmatter
+                .as_ref()
+                .map(|state| state.loaded_title.as_str())
+                .or(self.public_document_title.as_deref());
+            if original.is_some_and(|original| title.as_ref() != original) {
+                let before =
+                    crate::frontmatter::properties::PropertyDocument::parse(baseline.source())
+                        .ok()?;
+                let after =
+                    crate::frontmatter::properties::PropertyDocument::parse(&source).ok()?;
+                if before.properties.get("title") != after.properties.get("title")
+                    && after
+                        .properties
+                        .get("title")
+                        .and_then(serde_yaml_ng::Value::as_str)
+                        != Some(title.as_ref())
+                {
+                    return None;
+                }
+                source = crate::frontmatter::properties::edit_properties(
+                    &source,
+                    &[(
+                        "title".into(),
+                        Some(serde_yaml_ng::Value::String(title.into_owned())),
+                    )],
+                )
+                .ok()?;
+            }
+            return Some(source);
+        }
+        let content = body;
+        let mut source = if baseline.source().replace("\r\n", "\n") == content {
+            baseline.source().to_owned()
+        } else if baseline.source().contains("\r\n") {
+            content.replace('\n', "\r\n")
+        } else {
+            content
+        };
+        if let Some(original) = &self.public_document_title {
+            let title = crate::events::get_title_text(&self.title_editor);
+            if title.as_ref() != original {
+                source = crate::frontmatter::properties::edit_properties(
+                    &source,
+                    &[(
+                        "title".into(),
+                        Some(serde_yaml_ng::Value::String(title.into_owned())),
+                    )],
+                )
+                .ok()?;
+            }
+        }
+        Some(source)
+    }
+    pub(crate) fn synchronize_public_snapshot(
+        &mut self,
+        before: &crate::storage::documents::DocumentSnapshot,
+        after: &crate::storage::documents::DocumentSnapshot,
+    ) -> bool {
+        if self.editing_id.as_deref() != Some(after.id()) || self.public_document.is_none() {
+            return false;
+        }
+        let Some(current) = self.public_document_source() else {
+            return false;
+        };
+        let current_matches = current == before.source();
+        let bodies = if self.public_document_body_only {
+            crate::frontmatter::properties::PropertyDocument::parse(before.source())
+                .ok()
+                .zip(crate::frontmatter::properties::PropertyDocument::parse(after.source()).ok())
+        } else {
+            None
+        };
+        let can_rebase = !self.header_pending()
+            && bodies
+                .as_ref()
+                .is_some_and(|(before, after)| before.body == after.body)
+            && self
+                .public_document
+                .as_ref()
+                .is_some_and(|baseline| baseline.source() == before.source());
+        if !current_matches
+            && bodies.as_ref().is_some_and(|(before, after)| {
+                before.properties.get("title") != after.properties.get("title")
+            })
+            && self.public_document_title.as_deref()
+                != Some(crate::events::get_title_text(&self.title_editor).as_ref())
+        {
+            return false;
+        }
+        if !current_matches && !can_rebase {
+            return false;
+        }
+        if current_matches {
+            let body = bodies
+                .as_ref()
+                .map_or(after.source(), |(_, after)| after.body);
+            let cursor = self.body.cursor();
+            if self.body.text() != body.replace("\r\n", "\n") {
+                self.body.select_all();
+                self.body.insert_str(body.replace("\r\n", "\n"));
+                self.pending_editor_preview_update = true;
+                self.preview_scheduler
+                    .schedule(self.body.revision(), Instant::now());
+            }
+            self.body.move_cursor(ratatui_textarea::CursorMove::Jump(
+                cursor.row as u16,
+                cursor.col as u16,
+            ));
+        }
+        if self.public_document_body_only
+            && let Some((before, after)) = bodies
+        {
+            let old = before.properties.get("title");
+            let new = after.properties.get("title");
+            if old != new
+                && self.public_document_title.as_deref()
+                    == Some(crate::events::get_title_text(&self.title_editor).as_ref())
+            {
+                let title = new
+                    .and_then(serde_yaml_ng::Value::as_str)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| {
+                        std::path::Path::new(self.editing_id.as_deref().unwrap_or(""))
+                            .file_stem()
+                            .and_then(|stem| stem.to_str())
+                            .unwrap_or("")
+                            .to_owned()
+                    });
+                self.title_editor.select_all();
+                self.title_editor.insert_str(&title);
+                self.public_document_title = Some(title);
+            }
+        }
+        if self.adopt_frontmatter(after.source()).is_err() {
+            return false;
+        }
+        self.public_document = Some(after.clone());
+        true
+    }
     pub fn new() -> Self {
         Self::default()
     }

@@ -107,6 +107,7 @@ pub(crate) fn render_layout(
         source_lines: content.split('\n').collect(),
         lines: Vec::new(),
         image_slots: Vec::new(),
+        base_slots: Vec::new(),
         cols: cols as usize,
         theme,
         opts,
@@ -148,7 +149,7 @@ pub(crate) fn render_layout(
         .collect();
 
     Some(LayoutResult {
-        document: RenderedDocument::new(lines),
+        document: RenderedDocument::new(lines).with_base_slots(ctx.base_slots),
         code_blocks: ctx.code_blocks,
     })
 }
@@ -262,6 +263,7 @@ pub(crate) fn render_code_patch(
         source_lines: Vec::new(),
         lines: Vec::new(),
         image_slots: Vec::new(),
+        base_slots: Vec::new(),
         cols: cols as usize,
         theme,
         opts,
@@ -326,6 +328,7 @@ struct Ctx<'src, 'render> {
     source_lines: Vec<&'src str>,
     lines: Vec<LineBuilder>,
     image_slots: Vec<(usize, String)>,
+    base_slots: Vec<crate::bases::embedding::Slot>,
     cols: usize,
     theme: &'render MarkdownTheme,
     opts: &'render MdRenderOpts,
@@ -775,16 +778,7 @@ fn heading_style(ctx: &Ctx<'_, '_>, level: u8) -> Style {
 
 fn heading_marker(level: u8, mode: crate::config::IconMode) -> &'static str {
     match mode {
-        crate::config::IconMode::Nerd => match level {
-            1 => "\u{f0ca1}",
-            2 => "\u{f0ca3}",
-            3 => "\u{f0ca5}",
-            4 => "\u{f0ca7}",
-            5 => "\u{f0ca9}",
-            6 => "\u{f0cab}",
-            _ => unreachable!("heading level must be 1-6"),
-        },
-        crate::config::IconMode::Unicode => match level {
+        crate::config::IconMode::Nerd | crate::config::IconMode::Unicode => match level {
             1 => "①",
             2 => "②",
             3 => "③",
@@ -951,6 +945,16 @@ fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtIt
 
 fn render_paragraph<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     let margin = block_margin(depth);
+    let source_line = node.data.borrow().sourcepos.start.line;
+    if ctx.opts.render_bases
+        && node.data.borrow().sourcepos.end.line == source_line
+        && let Some(definition) = ctx
+            .source_line(source_line)
+            .and_then(crate::bases::embedding::Definition::reference)
+    {
+        reserve_base(ctx, source_line, definition, margin);
+        return;
+    }
 
     if ctx.opts.is_todo_txt {
         let mut raw = String::new();
@@ -1094,26 +1098,15 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
 
 /// `(nerd_font_codepoint, unicode_glyph)` for a code-fence language, if known.
 fn lang_icon(lang: &str) -> Option<(&'static str, &'static str)> {
-    let l = lang.to_ascii_lowercase();
-    Some(match l.as_str() {
-        "rust" | "rs" => ("\u{e7a8}", "🦀"),
-        "python" | "py" | "python3" => ("\u{e73c}", "🐍"),
-        "javascript" | "js" => ("\u{e74e}", "📜"),
-        "typescript" | "ts" => ("\u{e628}", "🔷"),
-        "go" | "golang" => ("\u{e627}", "🐹"),
-        "java" => ("\u{e256}", "☕"),
-        "php" => ("\u{e608}", "🐘"),
-        "ruby" | "rb" => ("\u{e739}", "💎"),
-        "c" => ("\u{e61e}", "🅒"),
-        "cpp" | "c++" => ("\u{e61d}", "🅒"),
-        "html" => ("\u{e736}", "🌐"),
-        "css" => ("\u{e749}", "🎨"),
-        "json" | "yaml" | "yml" | "toml" => ("\u{e60b}", "📋"),
-        "sql" => ("\u{e7c4}", "🗄"),
-        "sh" | "bash" | "shell" | "zsh" => ("\u{e795}", "🖥"),
-        "dockerfile" | "docker" | "dockercompose" => ("\u{f308}", "🐳"),
-        "lua" => ("\u{e626}", "🌙"),
-        "diff" | "patch" => ("\u{e728}", "Δ"),
+    use crate::ui::icons;
+    Some(match lang.to_ascii_lowercase().as_str() {
+        "rust" | "rs" | "python" | "py" | "python3" | "javascript" | "js" | "typescript" | "ts"
+        | "go" | "golang" | "java" | "php" | "ruby" | "rb" | "c" | "cpp" | "c++" | "html"
+        | "css" | "json" | "yaml" | "yml" | "toml" | "lua" => icons::CODE.pair(),
+        "sql" => icons::BASES.pair(),
+        "sh" | "bash" | "shell" | "zsh" => icons::TERMINAL.pair(),
+        "dockerfile" | "docker" | "dockercompose" => icons::LAYOUT.pair(),
+        "diff" | "patch" => icons::EDIT.pair(),
         _ => return None,
     })
 }
@@ -1152,6 +1145,33 @@ fn render_code_rows(
     start_line..ctx.lines.len()
 }
 
+fn reserve_base(
+    ctx: &mut Ctx<'_, '_>,
+    source_line: usize,
+    definition: crate::bases::embedding::Definition,
+    margin: usize,
+) {
+    ctx.ensure_source_line(source_line, margin);
+    if ctx.base_slots.len() >= 32 {
+        ctx.push_str(
+            "Bases: at most 32 live definitions per document",
+            ctx.theme.blockquote,
+            margin,
+        );
+        return;
+    }
+    let start = ctx.lines.len().saturating_sub(1);
+    ctx.push_str("Loading Bases…", ctx.theme.blockquote, margin);
+    for _ in 1..crate::bases::embedding::SLOT_HEIGHT {
+        ctx.push_line(source_line, margin);
+    }
+    ctx.base_slots.push(crate::bases::embedding::Slot {
+        rows: start..ctx.lines.len(),
+        source_line,
+        definition,
+    });
+}
+
 fn render_code_block(
     ctx: &mut Ctx<'_, '_>,
     cb: &NodeCodeBlock,
@@ -1170,6 +1190,21 @@ fn render_code_block(
     } else {
         String::new()
     };
+
+    if ctx.opts.render_bases && is_fenced && lang == "base" {
+        reserve_base(
+            ctx,
+            src_line,
+            crate::bases::embedding::Definition::Inline {
+                source: Arc::from(cb.literal.as_str()),
+                lines: src_line..end_line.saturating_sub(1),
+            },
+            margin,
+        );
+        ctx.current_source_line = end_line;
+        ctx.quote_depth = saved_q_depth;
+        return;
+    }
 
     if ctx.opts.render_mermaid && is_fenced && lang.eq_ignore_ascii_case("mermaid") {
         let columns = u16::try_from(ctx.cols.saturating_sub(margin)).unwrap_or(u16::MAX);
@@ -1566,25 +1601,35 @@ fn link_icon(url: &str, icon_mode: crate::config::IconMode) -> &'static str {
     if matches!(icon_mode, crate::config::IconMode::None) {
         return "";
     }
-    let url_lower = url.to_ascii_lowercase();
-    if url_lower.contains("github.com") {
-        crate::ui::get_icon("\u{f09b}", "\u{1f4e6}", icon_mode) // nerd:  / unicode: 📦
-    } else if url_lower.contains("gitlab.com") {
-        crate::ui::get_icon("\u{f296}", "\u{1f4e6}", icon_mode) // nerd:  / unicode: 📦
-    } else if url_lower.contains("stackoverflow.com") || url_lower.contains("stackexchange.com") {
-        crate::ui::get_icon("\u{f16c}", "\u{2753}", icon_mode) // nerd:  / unicode: ❓
-    } else if url_lower.contains("youtube.com") || url_lower.contains("youtu.be") {
-        crate::ui::get_icon("\u{f167}", "\u{25b6}", icon_mode) // nerd:  / unicode: ▶
-    } else if url_lower.contains("reddit.com") {
-        crate::ui::get_icon("\u{f281}", "\u{1f4ac}", icon_mode) // nerd:  / unicode: 💬
-    } else if url_lower.contains("twitter.com") || url_lower.contains("x.com") {
-        crate::ui::get_icon("\u{f099}", "\u{1f426}", icon_mode) // nerd:  / unicode: 🐦
-    } else if url_lower.contains("wikipedia.org") {
-        crate::ui::get_icon("\u{f266}", "\u{1f4d6}", icon_mode) // nerd:  / unicode: 📖
-    } else if url_lower.starts_with("mailto:") {
-        crate::ui::get_icon("\u{f0e0}", "\u{2709}", icon_mode) // nerd:  / unicode: ✉
+    let parsed = reqwest::Url::parse(url).ok();
+    let host = parsed
+        .as_ref()
+        .and_then(reqwest::Url::host_str)
+        .unwrap_or("");
+    let site = |domain: &str| {
+        host == domain
+            || host
+                .strip_suffix(domain)
+                .is_some_and(|prefix| prefix.ends_with('.'))
+    };
+    if site("github.com") || site("gitlab.com") {
+        // GitHub code host: Font Awesome code / Unicode lambda.
+        // GitLab code host: Font Awesome code / Unicode lambda.
+        crate::ui::icons::CODE.get(icon_mode)
+    } else if site("stackoverflow.com") || site("stackexchange.com") {
+        crate::ui::icons::HELP.get(icon_mode) // questions: Font Awesome help / Unicode question mark
+    } else if site("youtube.com") || site("youtu.be") {
+        crate::ui::icons::PLAY.get(icon_mode) // video: Font Awesome play / Unicode play
+    } else if site("reddit.com") || site("twitter.com") || site("x.com") {
+        // Discussion: Font Awesome comment / Unicode quote.
+        // Social: Font Awesome comment / Unicode quote.
+        crate::ui::icons::CHAT.get(icon_mode)
+    } else if site("wikipedia.org") {
+        crate::ui::icons::MARKDOWN.get(icon_mode) // reference: Font Awesome book / Unicode paragraph
+    } else if parsed.as_ref().is_some_and(|url| url.scheme() == "mailto") {
+        crate::ui::icons::MAIL.get(icon_mode) // email: Font Awesome envelope / Unicode envelope
     } else {
-        crate::ui::get_icon("\u{f0c1}", "\u{1f517}", icon_mode) // nerd:  / unicode: 🔗
+        crate::ui::icons::LINK.get(icon_mode) // link: Font Awesome chain / Unicode connected loops
     }
 }
 
@@ -1613,10 +1658,53 @@ fn render_inline<'a>(
 ) {
     let data = node.data.borrow();
     match &data.value {
-        NodeValue::Text(t) => {
-            // `t` is &Cow<str> — access as &str via deref coercion
-            ctx.push_str(t, base_style, margin);
+        NodeValue::Text(t) if ctx.opts.render_bases => {
+            let source_line = data.sourcepos.start.line;
+            let raw = ctx.source_line(source_line).unwrap_or("").to_owned();
+            let mut raw_cursor = data.sourcepos.start.column.saturating_sub(1).min(raw.len());
+            let mut cursor = 0;
+            for (start, _) in t.match_indices("![[") {
+                if start < cursor {
+                    continue;
+                }
+                let Some(end) = t[start..].find("]]").map(|end| start + end + 2) else {
+                    break;
+                };
+                let reference = &t[start..end];
+                let Some(definition) = crate::bases::embedding::Definition::reference(reference)
+                else {
+                    continue;
+                };
+                let Some(raw_start) = raw
+                    .get(raw_cursor..)
+                    .and_then(|source| source.find(reference))
+                    .map(|start| raw_cursor + start)
+                else {
+                    continue;
+                };
+                raw_cursor = raw_start + reference.len();
+                // Comrak folds escaped text; check the original source before creating a live region.
+                if raw[..raw_start]
+                    .bytes()
+                    .rev()
+                    .take_while(|byte| *byte == b'\\')
+                    .count()
+                    % 2
+                    == 1
+                {
+                    continue;
+                }
+                ctx.push_str(&t[cursor..start], base_style, margin);
+                if ctx.col > margin {
+                    ctx.push_line(source_line, margin);
+                }
+                reserve_base(ctx, source_line, definition, margin);
+                ctx.push_line(source_line, margin);
+                cursor = end;
+            }
+            ctx.push_str(&t[cursor..], base_style, margin);
         }
+        NodeValue::Text(t) => ctx.push_str(t, base_style, margin),
         NodeValue::Code(c) => {
             ctx.push(' ', ctx.theme.code_inline, margin);
             ctx.push_str(&c.literal, ctx.theme.code_inline, margin);
@@ -1678,7 +1766,7 @@ fn render_inline<'a>(
             }
         }
         NodeValue::Image(img) => {
-            let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", ctx.opts.icon_mode);
+            let icon = crate::ui::icons::IMAGE.get(ctx.opts.icon_mode);
             if !icon.is_empty() {
                 ctx.push_str(icon, ctx.theme.blockquote, margin);
                 ctx.push(' ', ctx.theme.blockquote, margin);
@@ -1842,6 +1930,7 @@ mod tests {
             syntax_hl: true,
             wrap: true,
             render_mermaid: true,
+            render_bases: true,
             icon_mode,
             code_theme: default_code_theme().to_string(),
             code_line_numbers: false,
@@ -2554,6 +2643,27 @@ mod tests {
     }
 
     #[test]
+    fn link_icons_follow_the_actual_host_and_icon_mode() {
+        use crate::{config::IconMode, ui::icons};
+        for (url, icon) in [
+            ("https://github.com/user/repo", icons::CODE),
+            ("https://gitlab.com/user/repo", icons::CODE),
+            ("https://www.youtube.com/watch?v=test", icons::PLAY),
+            ("https://x.com/post", icons::CHAT),
+            ("https://en.wikipedia.org/wiki/Notes", icons::MARKDOWN),
+            ("mailto:person@example.com", icons::MAIL),
+            ("https://example.com/github.com", icons::LINK),
+            ("https://github.com.example.org", icons::LINK),
+            ("https://example.com/?next=x.com", icons::LINK),
+            ("../local.md", icons::LINK),
+        ] {
+            for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
+                assert_eq!(link_icon(url, mode), icon.get(mode), "{url}: {mode:?}");
+            }
+        }
+    }
+
+    #[test]
     fn link_shows_github_icon() {
         let theme_colors = AppThemeColors::default();
         let theme = MarkdownTheme::from_app_theme(&theme_colors);
@@ -2571,7 +2681,7 @@ mod tests {
         .to_vec();
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(
-            text.contains("📦 repo"),
+            text.contains("λ repo"),
             "should contain github unicode icon"
         );
 
@@ -2592,7 +2702,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            !text_none.contains("📦"),
+            !text_none.contains("λ"),
             "should not contain github unicode icon"
         );
     }
@@ -2614,7 +2724,7 @@ mod tests {
         .lines()
         .to_vec();
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
-        assert!(text.contains("🖼 alt"), "should contain image unicode icon");
+        assert!(text.contains("▧ alt"), "should contain image unicode icon");
 
         let lines_none = render_layout(
             "![alt](url.png)",
@@ -2633,7 +2743,7 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            !text_none.contains("🖼"),
+            !text_none.contains("▧"),
             "should not contain image unicode icon"
         );
     }
@@ -2670,7 +2780,7 @@ mod tests {
         .to_vec();
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
-            text.iter().any(|l| l.contains('🦀')),
+            text.iter().any(|l| l.contains('λ')),
             "rust unicode icon in pill"
         );
     }
@@ -3189,7 +3299,7 @@ let very_long_variable_name_value = 42;
             .lines()
             .to_vec();
         let t_nerd = line_text(&lines_nerd[0]);
-        assert!(t_nerd.contains("\u{f0ca3}"));
+        assert!(t_nerd.contains("②"));
 
         // Unicode mode
         let opts_uni = mk_opts(crate::config::IconMode::Unicode);

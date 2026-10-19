@@ -33,9 +33,20 @@ where
 
         dirty |= app.messages.tick_expirations();
         dirty |= app.tick_status();
+        if app.base_embeds.has_visible() {
+            crate::process_watcher_events(app);
+            dirty |= app.poll_bases();
+        }
         dirty |= app.poll_editor_renderers();
         dirty |= app.poll_editor_image_results();
         dirty |= app.tick_autosave();
+        dirty |= app.poll_draft_errors();
+        if app.poll_import() {
+            dirty = true;
+            if let Some(change) = app.editor.body.take_change() {
+                synchronize_source_highlight(app, change);
+            }
+        }
 
         if dirty {
             if !(pre_draw_hook)(app) {
@@ -46,12 +57,14 @@ where
             dirty = false;
         }
 
-        let editor_pending = app
-            .editor
-            .md_preview_renderer
-            .as_ref()
-            .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
-            || app.editor.pending_editor_preview_update;
+        let editor_pending = app.import_task.is_some()
+            || app
+                .editor
+                .md_preview_renderer
+                .as_ref()
+                .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
+            || app.editor.pending_editor_preview_update
+            || app.base_embeds.is_loading();
         let timeout = if editor_pending {
             std::time::Duration::from_millis(16)
         } else if let Some(timer) = app.editor.autosave_timer {
@@ -71,31 +84,69 @@ where
             pending.push(events.read()?);
         }
         for event in coalesce_editor_events(pending) {
+            let frontmatter_visible = app
+                .editor
+                .frontmatter
+                .as_ref()
+                .is_some_and(|state| state.visible);
+            let header_before = app.editor.frontmatter_mutation();
             let body_rev_before = app.editor.body.revision();
             let title_before = crate::events::get_title_text(&app.editor.title_editor).into_owned();
 
             dirty |= dispatch_editor_event(terminal, app, event, &mut focus, &mut mouse_selection)?;
 
+            let frontmatter_now_visible = app
+                .editor
+                .frontmatter
+                .as_ref()
+                .is_some_and(|state| state.visible);
+            if frontmatter_now_visible && !frontmatter_visible {
+                focus = EditFocus::Frontmatter;
+            } else if !frontmatter_now_visible && focus == EditFocus::Frontmatter {
+                focus = EditFocus::Body;
+            }
             let body_rev_after = app.editor.body.revision();
             let title_after = crate::events::get_title_text(&app.editor.title_editor).into_owned();
 
-            if body_rev_before != body_rev_after || title_before != title_after {
+            if body_rev_before != body_rev_after
+                || title_before != title_after
+                || header_before != app.editor.frontmatter_mutation()
+            {
                 if body_rev_before != body_rev_after
                     && let Some(change) = app.editor.body.take_change()
                 {
                     synchronize_source_highlight(app, change);
                 }
+                app.write_draft();
                 app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
                 app.editor.autosave_timer =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
                 dirty = true;
             }
             if app.mode != ViewMode::Edit || app.should_quit {
-                break;
+                if finish_editor_transition(app) {
+                    break;
+                }
+                dirty = true;
             }
         }
     }
     Ok(())
+}
+
+/// Global quit and view actions obey the same save contract as Escape.
+fn finish_editor_transition(app: &mut App) -> bool {
+    if (app.editor.editing_id.is_some()
+        || app.editor.public_document.is_some()
+        || app.editor.template_edit_path.is_some())
+        && let Err(error) = app.autosave()
+    {
+        app.mode = ViewMode::Edit;
+        app.should_quit = false;
+        app.set_temporary_status(&error);
+        return false;
+    }
+    true
 }
 
 fn coalesce_editor_events(events: Vec<Event>) -> Vec<Event> {
@@ -117,7 +168,11 @@ fn coalesce_editor_events(events: Vec<Event>) -> Vec<Event> {
     }
     batch
 }
-fn synchronize_source_highlight(app: &mut App, change: crate::editor_document::DocumentChange) {
+pub(crate) fn synchronize_source_highlight(
+    app: &mut App,
+    change: crate::editor_document::DocumentChange,
+) {
+    crate::ui::apply_editor_visual_change(&mut app.editor, &change);
     let theme = app.app_theme.clone();
     let ghost_syntax = app.config.editor.ghost_syntax;
     let extended_features = app.config.editor.extended_markdown_features;
@@ -127,7 +182,7 @@ fn synchronize_source_highlight(app: &mut App, change: crate::editor_document::D
     highlighter.apply_change(&app.editor.body, change);
 }
 
-fn dispatch_editor_event<B: ratatui::backend::Backend>(
+pub(crate) fn dispatch_editor_event<B: ratatui::backend::Backend>(
     terminal: &mut ratatui::Terminal<B>,
     app: &mut App,
     event: Event,
@@ -137,8 +192,49 @@ fn dispatch_editor_event<B: ratatui::backend::Backend>(
 where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
+    app.observe_navigation();
+    let result = dispatch_editor_event_inner(terminal, app, event, focus, mouse_selection);
+    app.observe_navigation();
+    result
+}
+
+fn dispatch_editor_event_inner<B: ratatui::backend::Backend>(
+    terminal: &mut ratatui::Terminal<B>,
+    app: &mut App,
+    event: Event,
+    focus: &mut EditFocus,
+    mouse_selection: &mut MouseTextSelection,
+) -> Result<bool>
+where
+    B::Error: std::error::Error + Send + Sync + 'static,
+{
+    if app.import_event(&event) {
+        return Ok(true);
+    }
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
+    if crate::events::handle_open_palette_event(app, &event, area) {
+        return Ok(true);
+    }
+    if app.base_embed_event(&event, area) {
+        return Ok(true);
+    }
+    if let Event::Key(key) = &event
+        && key.kind == KeyEventKind::Press
+        && !mouse_selection.active
+        && app.palette_input_available()
+    {
+        match app.resolve_palette_shortcut(*key, app.mode) {
+            crate::keybinds::MatchOutcome::Matched(_, _) => {
+                app.open_command_palette(Some(*focus));
+                return Ok(true);
+            }
+            crate::keybinds::MatchOutcome::Pending => return Ok(true),
+            crate::keybinds::MatchOutcome::NoMatch => {}
+        }
+    } else {
+        app.palette_matcher.clear();
+    }
     match event {
         // All-keys keyboard mode reports bare modifier presses and text-less
         // IME events (key code 0); drop them before any handler sees them.
@@ -154,15 +250,28 @@ where
                 && key.code == KeyCode::Char('c')
                 && key.modifiers == KeyModifiers::CONTROL =>
         {
-            // Ctrl+C copies when a text selection is active; otherwise it
-            // force-quits (terminals always deliver the plain key).
+            // Ctrl+C is copy in text inputs, never an implicit emergency exit.
             let has_selection = match *focus {
                 EditFocus::Title => app.editor.title_editor.has_selection(),
                 EditFocus::Body => app.editor.body.has_selection(),
+                EditFocus::Frontmatter => app.editor.frontmatter.as_ref().is_some_and(|state| {
+                    state.raw.has_selection()
+                        || state.input.as_ref().is_some_and(|input| {
+                            input.name.has_selection() || input.value.has_selection()
+                        })
+                }),
                 EditFocus::Sidebar => false,
             };
             if has_selection {
-                let notice = if *focus == EditFocus::Title {
+                let notice = if *focus == EditFocus::Frontmatter {
+                    let raw = app.config.editor.frontmatter_mode
+                        == crate::config::FrontmatterMode::RawYaml;
+                    app.editor
+                        .frontmatter
+                        .as_mut()
+                        .and_then(|state| state.input_mut(raw))
+                        .and_then(copy_mouse_selection)
+                } else if *focus == EditFocus::Title {
                     copy_mouse_selection(&mut app.editor.title_editor)
                 } else {
                     copy_mouse_selection(&mut app.editor.body)
@@ -172,8 +281,8 @@ where
                 }
                 Ok(true)
             } else {
-                let _ = app.autosave();
-                crate::force_quit()
+                app.set_temporary_status_static("Nothing selected to copy");
+                Ok(true)
             }
         }
         Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -213,6 +322,9 @@ where
 }
 
 #[cfg(test)]
+mod safety_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crossterm::event::{KeyEvent, KeyModifiers};
@@ -228,9 +340,8 @@ mod tests {
             config_dir: dir.path().join("config"),
             notes_dir: dir.path().join("notes"),
             templates_dir: dir.path().join("templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         for path in [
             &storage.data_dir,

@@ -31,6 +31,8 @@ pub(crate) struct EditEffect {
 pub(crate) struct EditorDocument {
     textarea: TextArea<'static>,
     revision: u64,
+    identity: uuid::Uuid,
+    counts: std::cell::Cell<Option<(usize, usize)>>,
     snapshot: Option<Arc<str>>,
     change: Option<DocumentChange>,
 }
@@ -47,6 +49,21 @@ impl EditorDocument {
         Self {
             textarea: TextArea::from(normalized.lines().map(String::from).collect::<Vec<_>>()),
             revision: 0,
+            identity: uuid::Uuid::new_v4(),
+            counts: std::cell::Cell::new(None),
+            snapshot: Some(Arc::from(normalized)),
+            change: Some(DocumentChange::Full),
+        }
+    }
+
+    /// Public source editing retains trailing empty lines; normal note serialization stays unchanged.
+    pub(crate) fn from_source(content: &str) -> Self {
+        let normalized = content.replace("\r\n", "\n");
+        Self {
+            textarea: TextArea::from(normalized.split('\n').map(String::from).collect::<Vec<_>>()),
+            revision: 0,
+            identity: uuid::Uuid::new_v4(),
+            counts: std::cell::Cell::new(None),
             snapshot: Some(Arc::from(normalized)),
             change: Some(DocumentChange::Full),
         }
@@ -58,11 +75,16 @@ impl EditorDocument {
         Self {
             textarea,
             revision: 0,
+            identity: uuid::Uuid::new_v4(),
+            counts: std::cell::Cell::new(None),
             snapshot: None,
             change: Some(DocumentChange::Full),
         }
     }
 
+    pub(crate) fn identity(&self) -> uuid::Uuid {
+        self.identity
+    }
     pub(crate) fn revision(&self) -> u64 {
         self.revision
     }
@@ -82,6 +104,25 @@ impl EditorDocument {
 
     pub(crate) fn lines(&self) -> &[String] {
         self.textarea.lines()
+    }
+
+    pub(crate) fn counts(&self) -> (usize, usize) {
+        if let Some(counts) = self.counts.get() {
+            return counts;
+        }
+        let (words, chars) = Self::line_counts(self.lines());
+        let counts = (words, chars + self.line_count().saturating_sub(1));
+        self.counts.set(Some(counts));
+        counts
+    }
+
+    fn line_counts(lines: &[String]) -> (usize, usize) {
+        lines.iter().fold((0, 0), |(words, chars), line| {
+            (
+                words + crate::goals::count_words(line),
+                chars + line.chars().count(),
+            )
+        })
     }
 
     pub(crate) fn line_count(&self) -> usize {
@@ -112,7 +153,17 @@ impl EditorDocument {
     }
 
     pub(crate) fn input(&mut self, input: Input) -> EditEffect {
-        self.mutate(|textarea| textarea.input(input))
+        // Native control/alt commands may replay history or edit a distant region.
+        let opaque = input.ctrl || input.alt;
+        if opaque {
+            self.counts.set(None);
+        }
+        let effect = self.mutate(|textarea| textarea.input(input));
+        if opaque && effect.content_changed {
+            self.change = Some(DocumentChange::Full);
+            self.counts.set(None);
+        }
+        effect
     }
 
     pub(crate) fn insert_str(&mut self, text: impl AsRef<str>) -> EditEffect {
@@ -133,11 +184,23 @@ impl EditorDocument {
     }
 
     pub(crate) fn undo(&mut self) -> EditEffect {
-        self.mutate(TextArea::undo)
+        self.counts.set(None);
+        let effect = self.mutate(TextArea::undo);
+        if effect.content_changed {
+            self.change = Some(DocumentChange::Full);
+            self.counts.set(None);
+        }
+        effect
     }
 
     pub(crate) fn redo(&mut self) -> EditEffect {
-        self.mutate(TextArea::redo)
+        self.counts.set(None);
+        let effect = self.mutate(TextArea::redo);
+        if effect.content_changed {
+            self.change = Some(DocumentChange::Full);
+            self.counts.set(None);
+        }
+        effect
     }
 
     pub(crate) fn move_cursor(&mut self, movement: CursorMove) -> EditEffect {
@@ -236,19 +299,43 @@ impl EditorDocument {
         let before_cursor = self.textarea.cursor();
         let before_selection = self.textarea.selection_range();
         let before_line_count = self.line_count();
+        let (start, old_end) = before_selection
+            .map(|(start, end)| (start.0, end.0.saturating_add(1)))
+            .unwrap_or((before_cursor.0, before_cursor.0.saturating_add(1)));
+        let start = start.saturating_sub(1);
+        let old_end = old_end.saturating_add(1).min(before_line_count);
+        let previous_counts = self
+            .counts
+            .get()
+            .map(|total| (total, Self::line_counts(&self.lines()[start..old_end])));
         let content_changed = f(&mut self.textarea);
         let cursor_changed = self.textarea.cursor() != before_cursor;
         if content_changed {
-            let (start, old_end) = before_selection
-                .map(|(start, end)| (start.0, end.0.saturating_add(1)))
-                .unwrap_or((before_cursor.0, before_cursor.0.saturating_add(1)));
+            // Boundary deletes can merge the preceding or following source line.
             let removed_lines = old_end.saturating_sub(start);
             let preserved_lines = before_line_count.saturating_sub(removed_lines);
             let added_lines = self.line_count().saturating_sub(preserved_lines);
-            self.record_change(DocumentChange::Lines {
-                old: start..old_end,
-                new: start..start.saturating_add(added_lines),
-            });
+            self.record_change(
+                if self.line_count() < preserved_lines || start > self.line_count() {
+                    DocumentChange::Full
+                } else {
+                    DocumentChange::Lines {
+                        old: start..old_end,
+                        new: start..start.saturating_add(added_lines),
+                    }
+                },
+            );
+            if let Some(((words, chars), (old_words, old_chars))) = previous_counts
+                && self.line_count() >= preserved_lines
+                && start <= self.line_count()
+            {
+                let (new_words, new_chars) =
+                    Self::line_counts(&self.lines()[start..start + added_lines]);
+                self.counts.set(Some((
+                    words - old_words + new_words,
+                    chars - old_chars + new_chars + self.line_count() - before_line_count,
+                )));
+            }
         }
         EditEffect {
             content_changed,
@@ -259,6 +346,7 @@ impl EditorDocument {
     fn record_change(&mut self, change: DocumentChange) {
         self.revision = self.revision.wrapping_add(1);
         self.snapshot = None;
+        self.counts.set(None);
         self.change = Some(compose_change(self.change.take(), change));
     }
 }
@@ -274,15 +362,84 @@ fn compose_change(previous: Option<DocumentChange>, next: DocumentChange) -> Doc
     match (previous, next) {
         (None, next) => next,
         (Some(DocumentChange::Full), _) | (_, DocumentChange::Full) => DocumentChange::Full,
-        (Some(DocumentChange::Lines { old, .. }), DocumentChange::Lines { new, .. }) => {
-            DocumentChange::Lines { old, new }
-        }
+        // Multiple unsynchronized edits can touch disjoint ranges.
+        (Some(DocumentChange::Lines { .. }), DocumentChange::Lines { .. }) => DocumentChange::Full,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn public_source_retains_trailing_lines_during_edits_and_undo() {
+        for source in [
+            "",
+            "Body",
+            "Body\n",
+            "Body\n\n",
+            "---\r\nscore: 2\r\n---\r\nBody\r\n\r\n",
+        ] {
+            let normalized = source.replace("\r\n", "\n");
+            let mut doc = super::EditorDocument::from_source(source);
+            assert_eq!(doc.text(), normalized);
+            assert_eq!(doc.snapshot().as_ref(), normalized);
+            doc.insert_str("New ");
+            assert_eq!(doc.text(), format!("New {normalized}"));
+            doc.undo();
+            assert_eq!(doc.text(), normalized);
+        }
+    }
+
     use super::*;
+
+    fn assert_counts(document: &EditorDocument) {
+        let text = document.text();
+        let expected = (crate::goals::count_words(&text), text.chars().count());
+        assert_eq!(document.counts(), expected, "{text:?}");
+        assert_eq!(document.counts(), expected, "cached: {text:?}");
+    }
+
+    #[test]
+    fn counts_follow_unicode_multiline_selection_history_and_boundary_edits() {
+        for content in ["", "αβγ e\u{301} 界 🚀\nsecond word\nlast", "one\n\ntwo"] {
+            let mut document = EditorDocument::from_text(content);
+            assert_counts(&document);
+            document.insert_str("new 🚀\nwords\n");
+            assert_counts(&document);
+            document.move_cursor(CursorMove::Head);
+            document.input(Input {
+                key: ratatui_textarea::Key::Backspace,
+                ..Input::default()
+            });
+            assert_counts(&document);
+            document.move_cursor(CursorMove::End);
+            document.input(Input {
+                key: ratatui_textarea::Key::Delete,
+                ..Input::default()
+            });
+            assert_counts(&document);
+            document.select_all();
+            document.cut();
+            assert_counts(&document);
+            document.paste();
+            assert_counts(&document);
+            document.move_cursor(CursorMove::Top);
+            document.start_selection();
+            document.move_cursor(CursorMove::Bottom);
+            document.cut();
+            assert_counts(&document);
+            document.undo();
+            assert_counts(&document);
+            document.redo();
+            assert_counts(&document);
+            document.undo();
+            document.input(Input {
+                key: ratatui_textarea::Key::Char('z'),
+                ctrl: true,
+                ..Input::default()
+            });
+            assert_counts(&document);
+        }
+    }
 
     fn assert_parity(document: &EditorDocument, textarea: &TextArea<'static>) {
         assert_eq!(document.text(), textarea.lines().join("\n"));

@@ -52,8 +52,14 @@ A custom theme with the same name as a built-in overrides it.
 ### Switcher
 
 The theme switcher (Ctrl+P → "Switch Theme") lists built-in themes first, then
-appends any custom theme names found in the themes directory. Selecting a custom
-name applies it immediately.
+appends custom theme names found in the themes directory. A custom override of a
+built-in name appears once, labeled custom. The palette keeps the custom/built-in
+label visible for the current theme too. Selecting a custom name applies it immediately.
+
+Three sample themes are included in [`examples/themes/`](../examples/themes/):
+`test_aurora` (cool dark), `test_ember` (warm dark), and `test_paper` (light).
+Copy their TOML files into `themes/` beside your active `config.toml`, then reopen
+the switcher. Turn Background On with Alt+B to see each sample's background.
 
 ### No-Recompile Path
 
@@ -89,7 +95,7 @@ Used everywhere in rendering (app_theme field on App)
     ├── draw_list_view() — selection, tags, folder colors
     ├── draw_edit_view() — title bar, editor, status bar
     ├── draw_help_view() — tab bar, content
-    ├── draw_canvas() / draw_graph_view() — panel colors
+    ├── draw_adapter::theme_colors() / draw_graph_view() — panel colors
     └── popups — all popup rendering
 ```
 
@@ -267,7 +273,7 @@ Only needed if the theme should be bundled into the binary and available without
 
 ## Theme Switcher
 
-The `SwitchThemeAction` (via command palette, Ctrl+P) opens a theme popup. Users can cycle through themes live — the change applies immediately and saves to `config.toml`.
+The **Switch Theme** command lists themes with four color swatches in the command palette body. Its input filters themes. The category bar has clickable accent-colored general/Graph background indicators, with Alt+B / Alt+G hints in the footer (On = solid, Off = transparent); Setup only offers general background. Selecting a theme applies it immediately and keeps the selector open; leaving saves to `config.toml`. Esc returns to the original command search. Direct theme shortcuts retain the original popup. In Setup, changes remain pending until Finish.
 
 See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 
@@ -284,3 +290,7 @@ Custom statusline text (configured via `[statusline]` in `config.toml`) uses the
 - [ARCHITECTURE.md](ARCHITECTURE.md) — how `AppThemeColors` flows through the rendering pipeline
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — graf theme palettes
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `SwitchThemeAction`
+
+Draw maps the current `AppThemeColors` into upstream `draw::ThemeColors` at each render.
+The engine keeps no cached clin theme. Popup hints come from the retained host keymap;
+changing themes/keybindings does not reset drawing history, selection or viewport.

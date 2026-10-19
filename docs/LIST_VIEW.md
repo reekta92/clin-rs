@@ -25,7 +25,8 @@ The Grid layout displays notes as cards. It is optimized for visual recognition 
 The Tree layout provides a hierarchical view of your folders and notes, similar to a traditional file explorer. It is ideal for navigating complex vault structures.
 - **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, and one folder per *Tag*. Control with `[features] smart_folders = true` (enabled by default). *This Week* means updated within the last seven days, not the calendar week. Custom rules live in `[list] custom_smart_folders`.
 - **Folder Pinning**: Pin folders to the top of the list for quick access by selecting a folder and pressing the pin key (`p`).
-- **Inline Rename**: Rename notes and folders directly in the tree list by pressing the rename key (`r`). Press `Enter` to commit, or `Esc` to cancel.
+- **Filenames**: Notes use their actual filenames without extensions, including suffixes such as `test (2)`. New-note prompts preview the filename that will be used, including a numbered suffix when the name already exists in that folder.
+- **Inline Rename**: Rename files and folders by pressing the rename key (`r`). The file prompt previews the resulting filename. Press `Enter` to commit, or `Esc` to cancel. File renames preserve contents and move attached subnotes; incoming links are not updated. To change a Markdown/text note's frontmatter title, edit Title in the editor.
 - **Drag-to-Move**: Click and drag notes onto folders to move them. Alternatively, use the default `U` keyboard shortcut (`g u` in Helix/Vim presets) to move the selected note to its parent directory.
 ---
 
@@ -36,7 +37,6 @@ The List view features a configurable preview pane that renders the contents of 
 - **Canvas Snapshots**: Shows a static preview of `.canvas` files.
 - **Draw Snapshots**: Shows a static preview of `.draw` files.
 - **Images**: Shows supported image files through terminal graphics when `[features] images` is enabled.
-- **Encrypted notes**: Content previews require `[list] preview_encryption = true`; metadata remains visible.
 
 ### Preview Configuration
 The preview pane can be toggled on/off and positioned on the left or right in configuration.

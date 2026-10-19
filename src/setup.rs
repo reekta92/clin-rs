@@ -50,7 +50,7 @@ pub enum FeaturePreset {
     Custom,
 }
 
-/// Display names for the 16 [`crate::config::FeaturesConfig`] fields, in field
+/// Display names for the 14 [`crate::config::FeaturesConfig`] fields, in field
 /// order. `get_feature`/`set_feature` index into this list.
 pub const FEATURE_NAMES: &[&str] = &[
     "Graph View",
@@ -63,9 +63,7 @@ pub const FEATURE_NAMES: &[&str] = &[
     "Subnotes",
     "Templates",
     "Import",
-    "Encryption",
     "Images",
-    "Backup",
     "Goals",
     "Calendar",
     "Smart Folders",
@@ -137,8 +135,6 @@ pub fn features_for_preset(preset: FeaturePreset) -> crate::config::FeaturesConf
                 &mut f.trash,
                 &mut f.subnotes,
                 &mut f.import,
-                &mut f.encryption,
-                &mut f.backup,
                 &mut f.goals,
                 &mut f.calendar,
                 &mut f.smart_folders,
@@ -150,7 +146,6 @@ pub fn features_for_preset(preset: FeaturePreset) -> crate::config::FeaturesConf
             f.graph_view = Disabled;
             f.canvas_view = Disabled;
             f.draw_view = Disabled;
-            f.backup = Disabled;
         }
         FeaturePreset::Custom => {}
     }
@@ -170,7 +165,7 @@ pub fn detect_preset(features: &crate::config::FeaturesConfig) -> FeaturePreset 
     }
 }
 
-/// Feature at `idx` in [`FEATURE_NAMES`] order. `idx >= 16` yields `None`.
+/// Feature at `idx` in [`FEATURE_NAMES`] order. `idx >= 14` yields `None`.
 pub fn get_feature(
     f: &crate::config::FeaturesConfig,
     idx: usize,
@@ -186,12 +181,10 @@ pub fn get_feature(
         7 => f.subnotes,
         8 => f.templates,
         9 => f.import,
-        10 => f.encryption,
-        11 => f.images,
-        12 => f.backup,
-        13 => f.goals,
-        14 => f.calendar,
-        15 => f.smart_folders,
+        10 => f.images,
+        11 => f.goals,
+        12 => f.calendar,
+        13 => f.smart_folders,
         _ => return None,
     })
 }
@@ -213,12 +206,10 @@ pub fn set_feature(
         7 => f.subnotes = state,
         8 => f.templates = state,
         9 => f.import = state,
-        10 => f.encryption = state,
-        11 => f.images = state,
-        12 => f.backup = state,
-        13 => f.goals = state,
-        14 => f.calendar = state,
-        15 => f.smart_folders = state,
+        10 => f.images = state,
+        11 => f.goals = state,
+        12 => f.calendar = state,
+        13 => f.smart_folders = state,
         _ => {}
     }
 }
@@ -231,14 +222,11 @@ pub fn feature_visible_rows(inner_h: u16) -> usize {
 }
 
 /// Build the full theme list for the setup wizard: built-in baseline ordered by
-/// `SETUP_THEMES`, then custom themes from `~/.config/clin/themes/`. Returns
-/// `(themes, is_custom)` where `is_custom[i]` is true for user-installed themes.
+/// `SETUP_THEMES`, then custom themes from the active config directory. Returns
+/// `(themes, is_custom)` where `is_custom[i]` is true for user-installed themes,
+/// including overrides of built-in names.
 pub fn build_theme_list() -> (Vec<String>, Vec<bool>) {
-    let builtin_count = SETUP_THEMES.len();
-    let mut themes: Vec<String> = SETUP_THEMES.iter().map(|s| s.to_string()).collect();
-    themes.extend(crate::config::custom_themes::list_custom_themes());
-    let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
-    (themes, is_custom)
+    crate::config::custom_themes::theme_choices(SETUP_THEMES)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -484,7 +472,7 @@ impl SetupState {
             4 => "Icons",
             5 => "Layout",
             6 => "Features",
-            7 => "Keybinds",
+            7 => "Navigation keys",
             _ => "",
         }
     }
@@ -718,19 +706,16 @@ mod tests {
             assert!(enabled.is_enabled());
         }
         assert!(!minimal.graph_view.is_enabled());
-        assert!(!minimal.backup.is_enabled());
 
         let expanded = features_for_preset(FeaturePreset::Expanded);
         for disabled in [
             expanded.graph_view,
             expanded.canvas_view,
             expanded.draw_view,
-            expanded.backup,
         ] {
             assert!(!disabled.is_enabled());
         }
         assert!(expanded.outline_view.is_enabled());
-        assert!(expanded.encryption.is_enabled());
 
         // A Deleted state never roundtrips to a preset.
         let custom = crate::config::FeaturesConfig {
@@ -747,11 +732,14 @@ mod tests {
         assert_eq!(get_feature(&f, 0), Some(FeatureState::Enabled));
         set_feature(&mut f, 0, FeatureState::Disabled);
         assert!(!f.graph_view.is_enabled());
-        assert_eq!(get_feature(&f, 15), Some(FeatureState::Enabled));
-        set_feature(&mut f, 15, FeatureState::Disabled);
+        assert_eq!(
+            get_feature(&f, FEATURE_NAMES.len() - 1),
+            Some(FeatureState::Enabled)
+        );
+        set_feature(&mut f, FEATURE_NAMES.len() - 1, FeatureState::Disabled);
         assert!(!f.smart_folders.is_enabled());
-        assert_eq!(get_feature(&f, 16), None);
-        set_feature(&mut f, 16, FeatureState::Enabled); // out-of-range no-op
+        assert_eq!(get_feature(&f, FEATURE_NAMES.len()), None);
+        set_feature(&mut f, FEATURE_NAMES.len(), FeatureState::Enabled); // out-of-range no-op
         assert!(f.help_view.is_enabled());
     }
 }

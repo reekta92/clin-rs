@@ -22,7 +22,7 @@ impl Action for OpenOutlineAction {
     }
 
     fn glyph(&self) -> (&'static str, &'static str) {
-        ("\u{f1bb}", "\u{1f333}")
+        crate::ui::icons::OUTLINE.pair()
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {

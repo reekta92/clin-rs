@@ -4,6 +4,185 @@ use crate::popups::*;
 use std::borrow::Cow;
 
 impl App {
+    fn palette_source(&self) -> ViewMode {
+        if matches!(self.mode, ViewMode::Help | ViewMode::Setup) {
+            self.return_mode.unwrap_or(ViewMode::List)
+        } else {
+            self.mode
+        }
+    }
+
+    fn guard_palette_departure(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.base_embeds.has_writes()
+                && !self
+                    .bases_state
+                    .as_ref()
+                    .is_some_and(|state| state.is_writing()),
+            "Write in progress; wait before leaving Bases"
+        );
+        Ok(())
+    }
+
+    /// Save owners without committing their return routes or dropping workers.
+    pub(crate) fn save_before_session_replace(&mut self) -> anyhow::Result<()> {
+        self.guard_palette_departure()?;
+        let source = self.palette_source();
+        let host = if source == ViewMode::Bases {
+            self.bases_state
+                .as_ref()
+                .map_or(source, |s| s.previous_mode)
+        } else {
+            source
+        };
+        if source == ViewMode::Bases {
+            anyhow::ensure!(
+                self.bases_state
+                    .as_ref()
+                    .is_some_and(|s| s.palette_input_available()),
+                "Finish the Bases interaction before leaving"
+            );
+        }
+        match host {
+            ViewMode::Draw => {
+                let state = self
+                    .draw_state
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Draw view unavailable"))?;
+                state.save_for_navigation()?;
+            }
+            ViewMode::Canvas => self
+                .canvas_state
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("Canvas view unavailable"))?
+                .save_for_navigation()?,
+            ViewMode::Graph => {
+                self.config.save()?;
+            }
+            _ => {}
+        }
+        let editor_live = host == ViewMode::Edit
+            || (matches!(host, ViewMode::Graph | ViewMode::Outline)
+                && (self.return_mode == Some(ViewMode::Edit)
+                    || self.visit_return_mode == Some(ViewMode::Edit)));
+        if editor_live
+            && (self.editor.editing_id.is_some() || self.editor.template_edit_path.is_some())
+        {
+            self.save_editor_before_navigation()?;
+        }
+        if let Some(editor) = self.embedded_host_editor.take() {
+            let active = std::mem::replace(&mut self.editor, *editor);
+            let result = self.save_editor_before_navigation();
+            self.embedded_host_editor = Some(Box::new(std::mem::replace(&mut self.editor, active)));
+            result?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn save_editor_before_navigation(&mut self) -> anyhow::Result<()> {
+        if let Err(error) = self.autosave() {
+            self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+            self.editor.autosave_timer = None;
+            self.write_draft();
+            anyhow::bail!(error);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn navigate_from_palette(&mut self, destination: &str) -> anyhow::Result<()> {
+        use anyhow::ensure;
+        match destination {
+            "setup.finish" => {
+                ensure!(self.mode == ViewMode::Setup, "Setup is not active");
+                self.finish_setup();
+                return Ok(());
+            }
+            "setup.cancel" => {
+                ensure!(self.mode == ViewMode::Setup, "Setup is not active");
+                if let Some(state) = &mut self.setup_state {
+                    state.confirm_exit = true;
+                }
+                return Ok(());
+            }
+            _ => ensure!(self.mode != ViewMode::Setup, "Finish or cancel Setup first"),
+        }
+        self.guard_palette_departure()?;
+        if destination == "help.open" {
+            ensure!(self.config.features.help_view.is_enabled(), "Help disabled");
+            self.open_help_page_with_tab(self.mode.help_tab().unwrap_or(HelpTab::Notes));
+            return Ok(());
+        }
+        if destination == "setup_wizard" {
+            self.open_setup_view();
+            return Ok(());
+        }
+        ensure!(
+            matches!(destination, "notes.open" | "graph.open"),
+            "Unknown destination"
+        );
+        ensure!(
+            destination != "graph.open" || self.config.features.graph_view.is_enabled(),
+            "Graph disabled"
+        );
+        self.save_before_session_replace()?;
+        #[cfg(test)]
+        ensure!(
+            !std::mem::take(&mut self.palette_destination_failure),
+            "Destination preparation failed"
+        );
+        let graph = if destination == "graph.open" && self.graph_plugin.is_none() {
+            Some(crate::graf_adapter::GrafPlugin::new(
+                &self.config,
+                self.storage.clone(),
+                self.notes.clone(),
+                self.config_errors.clone(),
+                self.keybinds.clone(),
+                crate::keybinds::KeyMatcher::default(),
+            )?)
+        } else {
+            None
+        };
+        let retained_graph = if destination == "graph.open" {
+            self.graph_plugin.take()
+        } else {
+            None
+        };
+        self.release_navigation_owners();
+        if destination == "graph.open" {
+            self.graph_plugin = graph.or(retained_graph);
+            self.mode = ViewMode::Graph;
+            self.return_mode = Some(ViewMode::List);
+        }
+        self.sync_retained_view_settings();
+        Ok(())
+    }
+
+    /// Commit departure only after saving and preparing the destination.
+    pub(crate) fn release_navigation_owners(&mut self) {
+        if self.mode == ViewMode::Help {
+            self.close_help_page();
+        }
+        if self.mode == ViewMode::Bases {
+            crate::finish_overlay_event(
+                self,
+                crate::overlay::ViewKind::Bases,
+                crate::overlay::OverlayResult::Exit,
+            );
+        }
+        self.graph_plugin = None;
+        self.draw_state = None;
+        self.canvas_state = None;
+        self.outline_state = None;
+        self.bases_state = None;
+        self.embedded_host_editor = None;
+        if let Some(worker) = &mut self.bases_worker {
+            worker.cancel();
+        }
+        self.base_embeds = crate::bases::embedding::Embeds::default();
+        self.return_mode = None;
+        self.visit_return_mode = None;
+        self.back_to_list(None, None);
+    }
     pub fn open_help_page(&mut self) {
         self.open_help_page_with_tab(HelpTab::Notes);
     }
@@ -17,6 +196,7 @@ impl App {
             return;
         }
         if self.mode != ViewMode::Help {
+            self.visit_return_mode = self.return_mode;
             self.return_mode = Some(self.mode);
         }
         self.mode = ViewMode::Help;
@@ -33,6 +213,7 @@ impl App {
 
     pub fn close_help_page(&mut self) {
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
+        self.return_mode = self.visit_return_mode.take();
         self.help_page = 0;
         self.help_tab_page.clear();
         self.list.help_text_cache = None;
@@ -41,7 +222,11 @@ impl App {
     }
 
     pub fn open_setup_view(&mut self) {
+        if self.mode == ViewMode::Help {
+            self.close_help_page();
+        }
         if self.mode != ViewMode::Setup {
+            self.visit_return_mode = self.return_mode;
             self.return_mode = Some(self.mode);
         }
         self.mode = ViewMode::Setup;
@@ -57,6 +242,194 @@ impl App {
         ));
         self.status = Cow::Borrowed("");
         self.status_until = None;
+    }
+
+    pub fn open_bases_view(&mut self, id: &str, named_view: Option<String>) {
+        if self.feature_disabled(
+            self.config.features.bases_view.is_enabled(),
+            "Bases",
+            "bases_view",
+        ) {
+            return;
+        }
+        if !self.ensure_bases_worker() {
+            return;
+        }
+        let mut state = crate::bases::state::BasesState::new(id.to_owned(), named_view);
+        state.previous_mode = if self.mode == ViewMode::Bases {
+            self.bases_state
+                .as_ref()
+                .map_or(ViewMode::List, |current| current.previous_mode)
+        } else {
+            self.mode
+        };
+        state.refresh(self, false);
+        self.bases_state = Some(state);
+        if self.mode != ViewMode::Bases {
+            self.return_mode = Some(self.mode);
+        }
+        self.mode = ViewMode::Bases;
+        self.set_default_status();
+    }
+
+    pub(crate) fn ensure_bases_worker(&mut self) -> bool {
+        if self.bases_worker.is_none() {
+            match crate::bases::worker::BasesWorker::new(self.storage.clone()) {
+                Ok(worker) => self.bases_worker = Some(worker),
+                Err(error) => {
+                    self.set_temporary_status(&format!("Failed to start Bases worker: {error}"));
+                    return false;
+                }
+            }
+        }
+        true
+    }
+    pub fn begin_create_base(&mut self) {
+        let folder = if self.mode == ViewMode::Bases {
+            let Some(state) = &self.bases_state else {
+                return;
+            };
+            std::path::Path::new(&state.id)
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(""))
+                .to_string_lossy()
+                .into_owned()
+        } else if self.mode == ViewMode::List
+            && self.list.notes_layout == crate::config::NotesLayout::Grid
+        {
+            self.list.grid_folder.clone()
+        } else if self.mode == ViewMode::List {
+            self.get_current_folder_context()
+        } else {
+            return;
+        };
+        self.begin_create_base_in_folder(folder);
+    }
+    pub fn begin_create_base_in_folder(&mut self, folder: String) {
+        if self.feature_disabled(
+            self.config.features.bases_view.is_enabled(),
+            "Bases",
+            "bases_view",
+        ) {
+            return;
+        }
+        let folder = if Self::is_virtual_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Bases File Name - Esc to cancel, Enter to create"),
+        );
+        self.present_action_popup(crate::popups::ActivePopup::CreateNote(
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Base,
+        ));
+    }
+    pub(crate) fn create_base(&mut self, folder: String, title: String) {
+        if self.feature_disabled(
+            self.config.features.bases_view.is_enabled(),
+            "Bases",
+            "bases_view",
+        ) || !self.ensure_bases_worker()
+        {
+            return;
+        }
+        let name = if title.is_empty() {
+            "Untitled.base".to_owned()
+        } else if title.ends_with(".base") {
+            title
+        } else {
+            format!("{title}.base")
+        };
+        let id = if folder.is_empty() {
+            name
+        } else {
+            format!("{folder}/{name}")
+        };
+        if let Err(error) = self.storage.document_path(&id) {
+            self.set_temporary_status(&format!("Cannot create Bases document: {error:#}"));
+            return;
+        }
+        let previous_mode = if self.mode == ViewMode::Bases {
+            self.bases_state
+                .as_ref()
+                .map_or(ViewMode::List, |state| state.previous_mode)
+        } else {
+            self.mode
+        };
+        if let Some(worker) = &mut self.bases_worker {
+            worker.cancel();
+        }
+        let state = crate::bases::state::BasesState::for_creation(
+            id,
+            previous_mode,
+            self.storage.clone(),
+            &self.notes_worker_pool,
+        );
+        self.bases_state = Some(state);
+        self.mode = ViewMode::Bases;
+        self.set_default_status();
+    }
+    pub(crate) fn invalidate_bases(&mut self) {
+        self.base_embeds.invalidate();
+        if let Some(worker) = &mut self.bases_worker {
+            worker.invalidate();
+        }
+        self.bases_refresh_requested = true;
+    }
+
+    pub fn poll_bases(&mut self) -> bool {
+        let creation_dirty = self.poll_palette_base_creation();
+        let mut dirty = false;
+        if let Some(canvas) = &mut self.canvas_state {
+            match canvas.poll_base_renderers() {
+                Ok(changed) => dirty |= changed,
+                Err(error) => {
+                    self.set_temporary_status(&format!("Canvas host reload failed: {error:#}"))
+                }
+            }
+        }
+        if self.bases_refresh_requested
+            && self.mode == ViewMode::Bases
+            && let Some(mut state) = self.bases_state.take()
+        {
+            state.refresh(self, false);
+            self.bases_state = Some(state);
+            dirty = true;
+        }
+        if let Some((key, loaded)) = self
+            .bases_worker
+            .as_mut()
+            .and_then(|worker| worker.poll_completed())
+        {
+            if let Some(key) = key
+                && !self.bases_state.as_ref().is_some_and(|state| {
+                    state
+                        .embedded_request
+                        .as_ref()
+                        .is_some_and(|request| request.key == key)
+                })
+            {
+                self.base_embeds.install(key, loaded);
+            } else if let Some(state) = &mut self.bases_state {
+                if let Ok(loaded) = &loaded {
+                    self.base_embeds.observe_revision(loaded.public_revision);
+                }
+                state.install(loaded);
+            }
+            dirty = true;
+        }
+        if let Some(mut state) = self.bases_state.take() {
+            dirty |= state.poll_media(self);
+            dirty |= state.poll_write(self);
+            self.bases_state = Some(state);
+        }
+        creation_dirty | dirty | self.poll_base_embeds()
     }
 
     pub fn open_graph_view(&mut self) {
@@ -135,29 +508,6 @@ impl App {
         }
     }
 
-    pub fn open_backup_view(&mut self) {
-        if self.feature_disabled(self.config.features.backup.is_enabled(), "Backup", "backup") {
-            return;
-        }
-        let vault_path = crate::config::vault_path_or_dot(&self.config);
-        let config = &self.config;
-
-        self.backup_state = Some(crate::backup::state::BackupState::new(
-            vault_path,
-            config.features.backup.is_enabled(),
-            &config.backup,
-            self.app_theme.clone(),
-            self.keybinds.clone(),
-            config.ui.tab_icons_only,
-            self.git_lock.clone(),
-            self.seq_matcher.clone(),
-        ));
-        if self.mode != ViewMode::Backup {
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Backup;
-        }
-    }
-
     pub fn open_draw_view(&mut self) {
         if self.feature_disabled(
             self.config.features.draw_view.is_enabled(),
@@ -166,19 +516,46 @@ impl App {
         ) {
             return;
         }
-        let note_id = self.get_selected_note_id();
-        let state = crate::draw::app::DrawAppState::new(
-            self.storage.clone(),
-            note_id,
-            self.app_theme.clone(),
+        if let Some(id) = self
+            .get_selected_note_id()
+            .filter(|id| id.ends_with(".draw"))
+        {
+            if let Err(error) = self.open_draw_document(&id) {
+                self.set_temporary_status(&format!("{error:#}"));
+            }
+        } else {
+            self.begin_create_draw();
+        }
+    }
+
+    pub(crate) fn open_draw_document(&mut self, id: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(self.config.features.draw_view.is_enabled(), "Draw disabled");
+        if self.palette_source() == ViewMode::Draw
+            && self
+                .draw_state
+                .as_ref()
+                .is_some_and(|draw| draw.current_file == id)
+        {
+            if self.mode != ViewMode::Draw {
+                self.save_before_session_replace()?;
+                self.return_mode = Some(self.mode);
+                self.mode = ViewMode::Draw;
+            }
+            return Ok(());
+        }
+        self.save_before_session_replace()?;
+        let plugin = crate::draw_adapter::DrawPlugin::load(
+            &self.storage,
+            id,
             self.keybinds.clone(),
             self.seq_matcher.clone(),
-        );
-        self.draw_state = Some(state);
+        )?;
+        self.draw_state = Some(plugin);
         if self.mode != ViewMode::Draw {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Draw;
         }
+        Ok(())
     }
 
     pub fn close_draw_view(&mut self) {
@@ -221,13 +598,13 @@ impl App {
                 );
             }
 
-            match crate::pinstar_adapter::PinstarPlugin::new(
+            match crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                 &path,
                 &self.config,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
                 self.image_picker.clone(),
-                &self.storage.data_dir,
+                &self.storage,
             ) {
                 Ok(plugin) => {
                     self.canvas_state = Some(plugin);
@@ -304,7 +681,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Drawing Name - Esc to cancel, Enter to create"),
         );
-        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+        self.present_action_popup(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Draw,
         ));
@@ -339,7 +716,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Canvas Name - Esc to cancel, Enter to create"),
         );
-        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+        self.present_action_popup(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Canvas,
         ));
@@ -381,9 +758,8 @@ mod tests {
             config_dir: dir.to_path_buf(),
             notes_dir: dir.to_path_buf(),
             templates_dir: dir.to_path_buf(),
-            key: core::array::from_fn(|_| 1),
             skip_dir_patterns: vec![],
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
     }
 

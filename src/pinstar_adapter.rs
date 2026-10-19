@@ -94,9 +94,37 @@ pub struct PinstarPlugin {
     pub seq_matcher: KeyMatcher,
     image_rx: Option<std::sync::mpsc::Receiver<anyhow::Result<DecodedImage>>>,
     pub last_area: Rect,
+    base_host_raw: String,
+    base_renderers: std::collections::HashMap<String, crate::markdown::MarkdownRenderer>,
 }
 
 impl PinstarPlugin {
+    pub(crate) fn palette_input_available(&self) -> bool {
+        let s = &self.state;
+        s.context_menu.is_none()
+            && s.rename_popup.is_none()
+            && s.floating_editor.is_none()
+            && !s.editor_focus
+            && s.connection_source_id.is_none()
+            && s.deleting_connection_source_id.is_none()
+            && s.resizing_node_id.is_none()
+            && !s.is_dragging_resize_handle
+            && s.drag_start_pos.is_none()
+            && !s.is_panning
+            && !s.mouse_selecting
+            && s.select_rect_start.is_none()
+            && s.right_down_screen.is_none()
+    }
+
+    pub(crate) fn save_for_navigation(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.palette_input_available(),
+            "Finish the Canvas interaction before leaving"
+        );
+        self.state.save()?;
+        self.base_host_raw = self.state.raw_editor.lines().join("\n");
+        Ok(())
+    }
     pub fn new(
         path: &std::path::Path,
         config: &crate::config::ClinConfig,
@@ -105,7 +133,46 @@ impl PinstarPlugin {
         picker: Option<ratatui_image::picker::Picker>,
         storage_data_dir: &std::path::Path,
     ) -> anyhow::Result<Self> {
-        let mut state = PinstarState::load(path)?;
+        let storage = crate::storage::Storage {
+            notes_dir: path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .to_owned(),
+            data_dir: storage_data_dir.to_owned(),
+            config_dir: std::path::PathBuf::new(),
+            templates_dir: std::path::PathBuf::new(),
+            skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
+        };
+        Self::new_in_storage(path, config, keybinds, seq_matcher, picker, &storage)
+    }
+
+    pub(crate) fn new_in_storage(
+        path: &std::path::Path,
+        config: &crate::config::ClinConfig,
+        keybinds: Keybinds,
+        seq_matcher: KeyMatcher,
+        picker: Option<ratatui_image::picker::Picker>,
+        storage: &crate::storage::Storage,
+    ) -> anyhow::Result<Self> {
+        let root = storage.notes_dir.canonicalize()?;
+        let path = path.canonicalize()?;
+        let target = path
+            .strip_prefix(root)?
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("invalid Canvas path"))?
+            .replace('\\', "/");
+        let expected_path = storage.document_path(&target)?;
+        let mut state = PinstarState::load(&expected_path)?;
+        let writer = storage.clone();
+        state.set_save_handler(move |path, before, after| {
+            anyhow::ensure!(
+                path == expected_path,
+                "Canvas path changed; reopen before saving"
+            );
+            writer.replace_document(&target, before, after)
+        });
         state.settings = Settings {
             enable_image_nodes: true,
             image_cache_size: config.image.cache_size,
@@ -121,7 +188,7 @@ impl PinstarPlugin {
         };
 
         // Load per-vault orthogonal preference.
-        if let Ok(vault_id) = crate::local_state::vault_identity_path(storage_data_dir) {
+        if let Ok(vault_id) = crate::local_state::vault_identity_path(&storage.data_dir) {
             let vault_key = vault_id.to_string_lossy().into_owned();
             if let Ok(paths) = crate::paths::AppPaths::discover(
                 crate::config::ClinConfig::config_path().unwrap_or_default(),
@@ -133,11 +200,13 @@ impl PinstarPlugin {
         }
 
         Ok(Self {
+            base_host_raw: state.raw_editor.lines().join("\n"),
             state,
             keybinds,
             seq_matcher,
             image_rx,
             last_area: Rect::default(),
+            base_renderers: std::collections::HashMap::new(),
         })
     }
 
@@ -150,6 +219,138 @@ impl PinstarPlugin {
                 self.state.image_cache.install_decoded(img, picker);
             }
         }
+    }
+
+    fn draw_base_embeds(&mut self, frame: &mut Frame, area: Rect, app: &App) {
+        if self.state.context_menu.is_some()
+            || self.state.rename_popup.is_some()
+            || self.state.floating_editor.is_some()
+        {
+            return;
+        }
+        let area = if self.state.show_editor_pane {
+            ratatui::layout::Layout::horizontal([
+                ratatui::layout::Constraint::Percentage(30),
+                ratatui::layout::Constraint::Percentage(70),
+            ])
+            .split(area)[1]
+        } else {
+            area
+        };
+        let host = self
+            .state
+            .path
+            .strip_prefix(&app.storage.notes_dir)
+            .ok()
+            .and_then(std::path::Path::to_str)
+            .map(str::to_owned);
+        let mut visible = std::collections::HashSet::new();
+        for node in &self.state.data.nodes {
+            let content = match node {
+                pinstar::data::CanvasNode::Text(node)
+                    if node.text.contains(".base]]")
+                        || node.text.contains(".base#")
+                        || node.text.contains("```base") =>
+                {
+                    node.text.clone()
+                }
+                pinstar::data::CanvasNode::File(node) if node.file.ends_with(".base") => format!(
+                    "![[{}{}]]",
+                    node.file,
+                    node.subpath.as_deref().unwrap_or("")
+                ),
+                _ => continue,
+            };
+            let (x, y) = node.pos();
+            let (width, height) = node.size();
+            let z = self.state.zoom;
+            let x =
+                (x - self.state.viewport_x) * z + f64::from(area.x) + f64::from(area.width) / 2.0;
+            let y =
+                (y - self.state.viewport_y) * z + f64::from(area.y) + f64::from(area.height) / 2.0;
+            let left = x.max(f64::from(area.x));
+            let top = y.max(f64::from(area.y));
+            let right = (x + width * z).min(f64::from(area.right()));
+            let bottom = (y + height * z).min(f64::from(area.bottom().saturating_sub(1)));
+            if right <= left + 2.0 || bottom <= top + 2.0 {
+                continue;
+            }
+            if visible.len() >= 32 {
+                frame.render_widget(
+                    ratatui::widgets::Paragraph::new("Bases: at most 32 live Canvas regions"),
+                    Rect::new(
+                        left as u16 + 1,
+                        top as u16 + 1,
+                        (right - left) as u16 - 2,
+                        1,
+                    ),
+                );
+                continue;
+            }
+            visible.insert(node.id().to_owned());
+            let rect = Rect::new(
+                left as u16 + 1,
+                top as u16 + 1,
+                (right - left) as u16 - 2,
+                (bottom - top) as u16 - 2,
+            );
+            let renderer = self.base_renderers.entry(node.id().to_owned()).or_default();
+            renderer.base_host.clone_from(&host);
+            renderer.base_canvas_node =
+                matches!(node, pinstar::data::CanvasNode::Text(_)).then(|| node.id().to_owned());
+            renderer.base_body_only = false;
+            let opts = crate::markdown::MdRenderOpts::from_config(&app.config, host.as_deref());
+            renderer.render_with(
+                &content,
+                rect.width,
+                &app.app_theme,
+                &opts,
+                crate::markdown::RenderViewport {
+                    start: 0,
+                    height: usize::from(rect.height),
+                },
+            );
+            renderer.poll();
+            app.base_embeds
+                .draw(frame, rect, renderer, 0..usize::from(rect.height), app);
+        }
+        self.base_renderers.retain(|id, _| visible.contains(id));
+    }
+
+    pub(crate) fn base_host_has_pending_changes(&self) -> bool {
+        self.state.last_save_failed()
+            || self.state.editor_focus
+            || self.state.floating_editor.is_some()
+            || self.state.rename_popup.is_some()
+            || self.state.drag_start_pos.is_some()
+            || self.state.resizing_node_id.is_some()
+            || self.state.raw_editor.lines().join("\n") != self.base_host_raw
+    }
+    pub(crate) fn reload_base_host(&mut self) -> anyhow::Result<()> {
+        self.state.reload()?;
+        self.base_host_raw = self.state.raw_editor.lines().join("\n");
+        // Canvas snapshots predate the guarded host write; Bases owns its checked undo/redo.
+        self.state.undo_stack.clear();
+        self.state.redo_stack.clear();
+        Ok(())
+    }
+    pub(crate) fn poll_base_renderers(&mut self) -> anyhow::Result<bool> {
+        let mut dirty = self
+            .base_renderers
+            .values_mut()
+            .fold(false, |dirty, renderer| renderer.poll() | dirty);
+        if self.state.format == pinstar::formats::SupportedFormat::Canvas
+            && !self.base_host_has_pending_changes()
+            && std::fs::metadata(&self.state.path)
+                .and_then(|metadata| metadata.modified())
+                .is_ok_and(|modified| modified != self.state.last_modified)
+            && serde_json::from_str::<serde_json::Value>(&self.state.raw_editor.lines().join("\n"))
+                .is_ok()
+        {
+            self.reload_base_host()?;
+            dirty = true;
+        }
+        Ok(dirty)
     }
 
     /// Persist the orthogonal-connections preference per vault.
@@ -191,9 +392,17 @@ impl PinstarPlugin {
         }
 
         match outcome.host_action {
-            Some(PinstarAction::Quit) => OverlayResult::Exit,
+            Some(PinstarAction::Quit) => match self.save_for_navigation() {
+                Ok(()) => OverlayResult::Exit,
+                Err(error) => {
+                    app.set_temporary_status(&format!("Canvas save failed: {error:#}"));
+                    OverlayResult::Continue
+                }
+            },
             Some(PinstarAction::Save) => {
-                let _ = self.state.save();
+                if let Err(error) = self.state.save() {
+                    app.set_temporary_status(&format!("Canvas save failed: {error:#}"));
+                }
                 OverlayResult::Continue
             }
             Some(PinstarAction::Help) => OverlayResult::OpenHelp(HelpTab::Canvas),
@@ -231,6 +440,8 @@ impl OverlayView for PinstarPlugin {
             area,
             mouse_pos,
         );
+
+        self.draw_base_embeds(frame, area, app);
 
         // ── host-owned footer (painted over the lib's reserved bottom row) ──
         let hint_area = Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1);
@@ -332,7 +543,8 @@ impl OverlayView for PinstarPlugin {
         } else {
             term_area
         };
-        match event {
+        let modified = self.state.last_modified;
+        let outcome = match event {
             Event::Key(key) => {
                 let result = self.handle_key(key, app, area);
                 sync_mode_status(app, &self.state);
@@ -342,9 +554,11 @@ impl OverlayView for PinstarPlugin {
                 self.state.mouse_pos = Some((mouse.column, mouse.row));
                 let outcome = handle_pinstar_mouse(&mut self.state, mouse, area);
                 if let Some(clipboard) = outcome.clipboard {
-                    crate::text_edit::write_system_clipboard(&clipboard);
-                }
-                if let Some(notice) = outcome.notice {
+                    let notice = crate::text_edit::clipboard_notice(
+                        crate::text_edit::write_system_clipboard(&clipboard),
+                    );
+                    app.set_temporary_status(notice);
+                } else if let Some(notice) = outcome.notice {
                     app.set_temporary_status(notice);
                 }
                 if self.state.trigger_image_picker {
@@ -362,7 +576,14 @@ impl OverlayView for PinstarPlugin {
                 Ok(OverlayResult::Continue)
             }
             _ => Ok(OverlayResult::Continue),
+        };
+        if self.state.last_modified != modified {
+            self.base_host_raw = self.state.raw_editor.lines().join("\n");
         }
+        if let Some(error) = self.state.take_save_error() {
+            app.set_temporary_status(&format!("Canvas save failed; edits retained: {error}"));
+        }
+        outcome
     }
 }
 
@@ -542,6 +763,9 @@ impl PinstarPlugin {
                 } else {
                     action
                 };
+                if let Some(id) = action.palette_action_id() {
+                    app.record_command_usage(id);
+                }
                 self.dispatch_action(action, n, app)
             }
             MatchOutcome::Pending => OverlayResult::Continue,

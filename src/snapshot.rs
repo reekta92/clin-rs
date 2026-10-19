@@ -1,8 +1,6 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::prelude::*;
-use ratatui::symbols::Marker;
-use ratatui::widgets::canvas::Canvas;
 use ratatui::widgets::*;
 
 use crate::app_theme::AppThemeColors;
@@ -148,7 +146,7 @@ pub fn render_canvas_snapshot(
             let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
 
             if is_image {
-                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let icon = crate::ui::icons::IMAGE.get(icon_mode);
                 let filled_block = Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(node_color))
@@ -265,7 +263,7 @@ pub fn render_canvas_snapshot(
             let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
 
             if is_image {
-                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let icon = crate::ui::icons::IMAGE.get(icon_mode);
                 let filled_block = Block::default()
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(node_color))
@@ -353,45 +351,12 @@ pub fn render_draw_snapshot_with_bg(
         return empty_grid(width, height);
     }
 
-    let (min_x, min_y, max_x, max_y) = draw_bounds(data);
-    let padding = 20.0;
-    let cx = (min_x + max_x) / 2.0;
-    let cy = (min_y + max_y) / 2.0;
-    let hw = ((max_x - min_x) / 2.0 + padding).max(10.0) / scale;
-    let hh = ((max_y - min_y) / 2.0 + padding).max(10.0) / scale;
-    let ratio_x = (2.0 * hw) / width as f64;
-    let ratio_y = (2.0 * hh) / height as f64;
-    let cx_shifted = cx - offset_x * ratio_x;
-    let cy_shifted = cy + offset_y * ratio_y;
-    let x_bounds = [cx_shifted - hw, cx_shifted + hw];
-    let y_bounds = [cy_shifted - hh, cy_shifted + hh];
-
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
-
     let _ = terminal.draw(|frame| {
         let area = frame.area();
         fill_buf_bg(frame.buffer_mut(), area, bg_opt);
-        let bg_color = bg_opt.unwrap_or(Color::Reset);
-        let canvas = Canvas::default()
-            .block(Block::default().style(Style::default().bg(bg_color)))
-            .background_color(bg_color)
-            .marker(Marker::Braille)
-            .x_bounds(x_bounds)
-            .y_bounds(y_bounds)
-            .paint(|ctx| {
-                for item in data.elements.iter().filter(|item| {
-                    !matches!(&item.element, crate::draw::state::DrawElement::Text(_))
-                }) {
-                    crate::draw::render::draw_item(ctx, item);
-                }
-                for item in data.elements.iter().filter(|item| {
-                    matches!(&item.element, crate::draw::state::DrawElement::Text(_))
-                }) {
-                    crate::draw::render::draw_item(ctx, item);
-                }
-            });
-        frame.render_widget(canvas, frame.area());
+        ::draw::draw_snapshot(frame, area, data, scale, offset_x, offset_y, bg_opt);
     });
 
     extract_grid(terminal, width, height)
@@ -524,26 +489,6 @@ fn canvas_bounds(data: &CanvasData) -> (f64, f64, f64, f64) {
         min_y = min_y.min(y);
         max_x = max_x.max(x + w);
         max_y = max_y.max(y + h);
-    }
-    if min_x == f64::MAX {
-        (0.0, 0.0, 100.0, 100.0)
-    } else {
-        (min_x, min_y, max_x, max_y)
-    }
-}
-
-fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
-    let mut min_x = f64::MAX;
-    let mut min_y = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut max_y = f64::MIN;
-    for item in &data.elements {
-        if let Some(bounds) = crate::draw::geometry::transformed_bounds(item) {
-            min_x = min_x.min(bounds.min_x);
-            min_y = min_y.min(bounds.min_y);
-            max_x = max_x.max(bounds.max_x);
-            max_y = max_y.max(bounds.max_y);
-        }
     }
     if min_x == f64::MAX {
         (0.0, 0.0, 100.0, 100.0)

@@ -65,6 +65,9 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
         HelpTab::Editor => {
             "Write and edit the selected note's title and body. Switch focus between the title field and the markdown body, toggle a live markdown preview, dock outline and links sidebars, undo/redo edits, and hand off to an external editor like vim or nano. Changes auto-save when you return to the notes list."
         }
+        HelpTab::Bases => {
+            "Query public vault files through Obsidian-compatible .base documents. Switch saved Table, List, Cards and Kanban views, edit typed Markdown properties, author filters and formulas, and export visible results. Encrypted notes and virtual subnotes are excluded; file metadata and formulas are read-only. Writes check original bytes and preserve unrelated properties and note bodies."
+        }
         HelpTab::Graph => {
             "Visualize your notes as a force-directed graph of wikilinks and shared tags. Pan and zoom the canvas, search for nodes, open notes directly from the graph, and toggle a minimap, legend, grid, and preview to navigate large vaults visually."
         }
@@ -74,9 +77,7 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
         HelpTab::Canvas => {
             "An infinite pinstar canvas for connecting notes and drawings spatially. Move and zoom freely, open notes inline, connect nodes with edges, and manage everything through a context menu. Toggle the editor pane and grid to suit your workflow."
         }
-        HelpTab::Backup => {
-            "Git-backed vault backup dashboard. Stage and unstage file changes, review diffs, write commit messages, push to or pull from a remote, and toggle auto-backup settings inline — all without leaving the app."
-        }
+
         HelpTab::Templates => {
             "Create reusable TOML note templates with variable substitution. Pick a template from the notes view, search by name, and auto-fill date tokens when generating a new note. Add .toml files to the active storage templates directory."
         }
@@ -87,10 +88,50 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
 }
 
 /// Curated suggestion pool per tab (min 5 entries; most have 6–7 for variety).
+const BASES_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip(
+        "Saved views",
+        "Use {bases:NextView} and {bases:PreviousView} to switch saved views; {bases:Refresh} reloads public metadata.",
+    ),
+    tip(
+        "Find and fold",
+        "Use {bases:Search} to search displayed public properties. Enter keeps search and focuses a result; Esc restores previous search. {bases:ToggleGroup} or Enter on a grouped Table/List/Cards header collapses or expands its section.",
+    ),
+    tip(
+        "Typed edits",
+        "Select a property with {bases:PreviousProperty}/{bases:NextProperty} and press {bases:Edit}. {bases:ToggleSelect} marks rows for bulk editing. File metadata and formula columns cannot be edited. {bases:OpenCover} previews the configured Cards/Kanban cover.",
+    ),
+    tip(
+        "Safe history",
+        "Use {bases:Undo} and {bases:Redo} for this session's document transactions. External changes reject replay rather than overwrite newer data.",
+    ),
+    tip(
+        "Authoring",
+        "Use {bases:Configure} to edit layout, filters, grouping, sorts, formulas and summaries, or add/hide/reorder columns. {bases:CommandPalette} opens the shared command palette with public Bases commands, shared settings, and guarded navigation. Drag writable Kanban cards between columns. {bases:NewNote} creates in focused column. Invalid or stale edits retain original data.",
+    ),
+    tip(
+        "Public exports",
+        "Use {bases:Export} for CSV or Markdown exports of visible results. Exports never overwrite existing files.",
+    ),
+];
+const BASES_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Search",
+        body: "Press {bases:Search} for the Notes-style Find bar. Type literal text; arrows choose public results. Enter retains search, Esc restores previous search and focus. Clear input and Enter to show all query results again.",
+    },
+    PopupHelp {
+        name: "Configuration",
+        body: "Press {bases:Configure}; choose a field with arrows and Enter. Enter YAML where requested. Enter applies changes; Shift+Enter inserts a newline; Esc cancels.",
+    },
+    PopupHelp {
+        name: "Property editor",
+        body: "Press {bases:Edit} for typed property input. Enter applies to selected rows; Shift+Enter inserts a newline; Esc cancels. Stale source and invalid types reject writes.",
+    },
+];
 const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Command palette",
-        "Press {list:OpenCommandPalette} to open the **Command Palette** and execute any action by typing its name.",
+        "Press {global:CommandPalette} in any view, or {list:OpenCommandPalette} in Notes, to open the **Command Palette** and run an applicable command by typing its name.",
     ),
     tip(
         "Select mode",
@@ -193,11 +234,15 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
     tip(
         "Auto-save & Recovery",
-        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Editor changes also attempt to write an encrypted recovery draft. Recovery is best effort, not a substitute for backups.",
+        "Your note is **automatically saved** when you press {edit:Back} to leave the editor. Editor changes queue private plaintext recovery drafts off the input thread. Failed records are retained and reported. Recovery is best effort, not a substitute for independent backups.",
     ),
     tip(
         "External editor workflow",
         "For heavy editing tasks, mark a note to open in your external `` $EDITOR `` via the list's {list:ToggleExternalEditor} action.",
+    ),
+    tip(
+        "Frontmatter",
+        "Press {edit:ToggleFrontmatter} to show properties above Body. Arrows select; a adds, Enter edits, Del removes, Ctrl+Enter applies. Set editor.frontmatter_mode to raw_yaml for raw text.",
     ),
     tip(
         "Outline pane",
@@ -354,60 +399,7 @@ const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
         "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane.",
     ),
 ];
-const BACKUP_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip(
-        "Stage changes",
-        "Press {backup:StageFile} to stage the currently highlighted git file modification.",
-    ),
-    tip(
-        "Unstage changes",
-        "Press {backup:UnstageFile} to unstage the highlighted file from the next commit.",
-    ),
-    tip(
-        "Stage all files",
-        "Press {backup:StageAll} to stage all modified and untracked files in the repository.",
-    ),
-    tip(
-        "Enter commit mode",
-        "Press {backup:EnterCommit} to focus the commit message field and prepare to commit staged files.",
-    ),
-    tip(
-        "Confirm commit",
-        "Press {backup:ConfirmCommit} to confirm the typed commit message and record the changes.",
-    ),
-    tip(
-        "Cancel commit",
-        "Press {backup:CancelCommit} to discard the typed commit message and exit commit mode.",
-    ),
-    tip(
-        "Push commits",
-        "Use {backup:Push} to push all your local commits to the configured remote repository.",
-    ),
-    tip(
-        "Pull changes",
-        "Use {backup:Pull} to pull the latest changes from your remote repository.",
-    ),
-    tip(
-        "Git status refresh",
-        "Press {backup:Refresh} to run a fresh git status and update the modifications pane.",
-    ),
-    tip(
-        "Cycle sections",
-        "Press {backup:CycleSection} to quickly jump between **Staged**, **Unstaged**, and **Untracked** sections.",
-    ),
-    tip(
-        "Open settings",
-        "Press {backup:OpenSettings} to configure git author name, email, and remote URL from within the app.",
-    ),
-    tip(
-        "Settings fields",
-        "Use {backup:NextField} or {backup:PrevField} to navigate between git settings fields in the settings popup.",
-    ),
-    tip(
-        "Close settings",
-        "Press {backup:CloseSettings} to dismiss the settings popup and return to the backup view.",
-    ),
-];
+
 const TEMPLATES_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Note templates",
@@ -519,8 +511,8 @@ pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
         HelpTab::Editor => EDITOR_SUGGESTIONS,
         HelpTab::Graph => GRAPH_SUGGESTIONS,
         HelpTab::Draw => DRAW_SUGGESTIONS,
+        HelpTab::Bases => BASES_SUGGESTIONS,
         HelpTab::Canvas => CANVAS_SUGGESTIONS,
-        HelpTab::Backup => BACKUP_SUGGESTIONS,
         HelpTab::Templates => TEMPLATES_SUGGESTIONS,
         HelpTab::About => ABOUT_SUGGESTIONS,
     }
@@ -548,8 +540,8 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
         HelpTab::Editor => EDITOR_POPUPS,
         HelpTab::Graph => GRAPH_POPUPS,
         HelpTab::Draw => DRAW_POPUPS,
+        HelpTab::Bases => BASES_POPUPS,
         HelpTab::Canvas => CANVAS_POPUPS,
-        HelpTab::Backup => BACKUP_POPUPS,
         HelpTab::Templates => TEMPLATES_POPUPS,
         HelpTab::About => &[],
     }
@@ -566,7 +558,7 @@ const NOTES_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Subnotes",
-        body: "Press {list:ManageSubnotes} for **Subnotes**. Arrows move, ``n`` adds, ``d`` removes, ``Enter`` edits. ``Tab`` cycles focus, ``Ctrl+e`` opens external editor. Auto-saves on close. Parents show ⧉.",
+        body: "Press {list:ManageSubnotes} for **Subnotes**. Arrows move, ``n`` adds, ``d`` removes, ``Enter`` edits. ``Tab`` cycles focus, ``Ctrl+e`` opens external editor. Auto-saves on close. Parents show a subnotes badge.",
     },
     PopupHelp {
         name: "Search",
@@ -636,17 +628,6 @@ const CANVAS_POPUPS: &[PopupHelp] = &[
     },
 ];
 
-const BACKUP_POPUPS: &[PopupHelp] = &[
-    PopupHelp {
-        name: "Commit Message",
-        body: "Press {backup:EnterCommit} for **commit editor**. Type message, ``Enter`` commits. ``Esc`` cancels.",
-    },
-    PopupHelp {
-        name: "Settings",
-        body: "Press {backup:OpenSettings} for **backup settings**. ``Tab`` moves, ``Enter`` toggles/edits. Save to persist, ``Esc`` discards.",
-    },
-];
-
 const TEMPLATES_POPUPS: &[PopupHelp] = &[PopupHelp {
     name: "Template Picker",
     body: "Press {list:NewFromTemplate} for **template picker**. Type to search, ``Tab`` switches focus. Arrows move, ``Enter`` creates note. In results: ``Space`` edits, ``d`` deletes, ``n`` creates template.",
@@ -663,7 +644,6 @@ mod tests {
             HelpTab::Graph,
             HelpTab::Draw,
             HelpTab::Canvas,
-            HelpTab::Backup,
             HelpTab::Templates,
             HelpTab::About,
         ];
@@ -727,7 +707,6 @@ mod tests {
             HelpTab::Graph,
             HelpTab::Draw,
             HelpTab::Canvas,
-            HelpTab::Backup,
             HelpTab::Templates,
             HelpTab::About,
         ];
@@ -823,8 +802,8 @@ mod tests {
                 HelpTab::Editor => 5,
                 HelpTab::Graph => 1,
                 HelpTab::Draw => 2,
+                HelpTab::Bases => 2,
                 HelpTab::Canvas => 3,
-                HelpTab::Backup => 2,
                 HelpTab::Templates => 1,
                 HelpTab::About => 0,
             }
@@ -836,7 +815,6 @@ mod tests {
             HelpTab::Graph,
             HelpTab::Draw,
             HelpTab::Canvas,
-            HelpTab::Backup,
             HelpTab::Templates,
             HelpTab::About,
         ];

@@ -6,6 +6,7 @@ on:
     paths:
       - '*.md'
       - 'docs/**'
+      - 'assets/icon.svg'
       - '.github/scripts/sync_wiki.py'
       - '.github/scripts/test_sync_wiki.py'
       - '.github/workflows/wiki.yml'
@@ -13,6 +14,7 @@ on:
     paths:
       - '*.md'
       - 'docs/**'
+      - 'assets/icon.svg'
       - '.github/scripts/sync_wiki.py'
       - '.github/scripts/test_sync_wiki.py'
       - '.github/workflows/wiki.yml'

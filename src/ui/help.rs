@@ -14,35 +14,35 @@ use strum::IntoEnumIterator;
 
 ///
 /// Help-view tab (label, glyph) pairs, in `HelpTab` order.
-/// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
+/// Mirrors list grid tabs. Glyphs are (nerd_font, unicode).
 pub fn help_tabs(
     icon_mode: crate::config::IconMode,
     features: &crate::config::FeaturesConfig,
 ) -> Vec<(HelpTab, &'static str, Option<&'static str>)> {
     let pairs = [
-        (HelpTab::Notes, "Notes", "\u{f02d}", "\u{1f4d8}"),
-        (HelpTab::Editor, "Editor", "\u{f03eb}", "\u{270f}"),
-        (HelpTab::Graph, "Graph", "\u{f1e0}", "\u{1f5c2}"),
-        (HelpTab::Draw, "Draw", "\u{f1fc}", "\u{1f3a8}"),
-        (HelpTab::Canvas, "Canvas", "\u{f0b2}", "\u{1f4cc}"),
-        (HelpTab::Backup, "Backup", "\u{f1d3}", "\u{1f4be}"),
-        (HelpTab::Templates, "Templates", "\u{f15b}", "\u{1f4c4}"),
-        (HelpTab::About, "About", "\u{f05a}", "\u{2139}"),
+        (HelpTab::Notes, "Notes", crate::ui::icons::MARKDOWN),
+        (HelpTab::Editor, "Editor", crate::ui::icons::EDIT),
+        (HelpTab::Graph, "Graph", crate::ui::icons::GRAPH),
+        (HelpTab::Draw, "Draw", crate::ui::icons::DRAW),
+        (HelpTab::Canvas, "Canvas", crate::ui::icons::CANVAS),
+        (HelpTab::Templates, "Templates", crate::ui::icons::TEMPLATE),
+        (HelpTab::About, "About", crate::ui::icons::INFO),
+        (HelpTab::Bases, "Bases", crate::ui::icons::BASES),
     ];
     pairs
         .into_iter()
-        .filter(|(t, _, _, _)| help_tab_enabled(*t, features))
-        .map(|(t, label, nerd, uni)| (t, label, Some(crate::ui::get_icon(nerd, uni, icon_mode))))
+        .filter(|(t, _, _)| help_tab_enabled(*t, features))
+        .map(|(t, label, icon)| (t, label, Some(icon.get(icon_mode))))
         .collect()
 }
 
 /// Whether a help tab's feature is enabled. Notes/Editor/About are always on.
 pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool {
     match tab {
+        HelpTab::Bases => f.bases_view.is_enabled(),
         HelpTab::Graph => f.graph_view.is_enabled(),
         HelpTab::Draw => f.draw_view.is_enabled(),
         HelpTab::Canvas => f.canvas_view.is_enabled(),
-        HelpTab::Backup => f.backup.is_enabled(),
         HelpTab::Templates => f.templates.is_enabled(),
         HelpTab::Notes | HelpTab::Editor | HelpTab::About => true,
     }
@@ -50,10 +50,10 @@ pub fn help_tab_enabled(tab: HelpTab, f: &crate::config::FeaturesConfig) -> bool
 
 fn help_tab_flag(tab: HelpTab) -> &'static str {
     match tab {
+        HelpTab::Bases => "bases_view",
         HelpTab::Graph => "graph_view",
         HelpTab::Draw => "draw_view",
         HelpTab::Canvas => "canvas_view",
-        HelpTab::Backup => "backup",
         HelpTab::Templates => "templates",
         _ => "",
     }
@@ -372,6 +372,10 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ),
         ("F2".to_string(), "keybinds"),
     ];
+    let palette_keys = app.palette_keys_display(ViewMode::Help);
+    if !palette_keys.is_empty() {
+        hints_items.push((palette_keys, "commands"));
+    }
     if !crate::ui::help_content::tab_popup_descriptions(app.help_tab).is_empty() {
         hints_items.push(("n/N".to_string(), "cycle popup"));
     }
@@ -432,8 +436,15 @@ pub fn help_text_for_tab(
         HelpTab::Editor => editor_help_text(keybinds, theme),
         HelpTab::Graph => graph_help_text(keybinds, theme),
         HelpTab::Draw => draw_help_text(keybinds, theme),
+        HelpTab::Bases => generate_scope_help(
+            keybinds,
+            theme,
+            tab,
+            help_meta::bases_group_order(),
+            help_meta::bases_action_meta,
+            |kb, a| kb.bases_keys_display(a),
+        ),
         HelpTab::Canvas => canvas_help_text(keybinds, theme),
-        HelpTab::Backup => backup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme, tab, storage),
         HelpTab::About => about_help_text(keybinds, theme, config, tab, storage),
     }
@@ -565,16 +576,6 @@ fn canvas_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
         help_meta::canvas_group_order(),
         help_meta::canvas_action_meta,
         |kb, a| kb.canvas_keys_display(a),
-    )
-}
-fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
-    generate_scope_help(
-        keybinds,
-        theme,
-        HelpTab::Backup,
-        help_meta::backup_group_order(),
-        help_meta::backup_action_meta,
-        |kb, a| kb.backup_keys_display(a),
     )
 }
 
@@ -1031,7 +1032,7 @@ fn split_lock_spans(
     }
 
     let mut last = 0;
-    let lock_char = crate::ui::get_char('\u{f023}', '\u{1f512}', icon_mode);
+    let lock_char = crate::ui::icons::LOCK.char(icon_mode);
     for (i, c) in text.char_indices() {
         if c == '\u{f023}' || c == '\u{1f512}' {
             if i > last {
@@ -1201,7 +1202,7 @@ fn draw_help_info_pane(
         let mut chevron_spans = Vec::new();
         for i in 0..popups.len() {
             let is_active = i == active;
-            let marker = if is_active { "▼" } else { "›" };
+            let marker = if is_active { "▾" } else { "›" };
             let style = if is_active {
                 Style::default()
                     .fg(theme.success)
@@ -1246,8 +1247,8 @@ fn tab_display_name(tab: HelpTab) -> &'static str {
         HelpTab::Editor => "Editor",
         HelpTab::Graph => "Graph",
         HelpTab::Draw => "Draw",
+        HelpTab::Bases => "Bases",
         HelpTab::Canvas => "Canvas",
-        HelpTab::Backup => "Backup",
         HelpTab::Templates => "Templates",
         HelpTab::About => "About",
     }
@@ -1310,7 +1311,7 @@ fn draw_help_tips_pane(
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(render_tip_body(
-        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context.",
+        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context. {global:CommandPalette} opens the command palette in every view; view bindings take priority.",
         keybinds,
         theme,
     )));
@@ -1443,6 +1444,14 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
     };
 
     match scope {
+        "global" if action == "CommandPalette" => kb
+            .global
+            .get(&GlobalAction::CommandPalette)
+            .into_iter()
+            .flatten()
+            .map(KeyCombo::to_display_string)
+            .collect::<Vec<_>>()
+            .join("/"),
         "list" => match action {
             "ToggleSelectMode" => kb.list_keys_display(ListAction::ToggleSelectMode),
             "ToggleSelectItem" => kb.list_keys_display(ListAction::ToggleSelectItem),
@@ -1481,6 +1490,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Find" => kb.edit_keys_display(EditAction::Find),
             "InsertDate" => kb.edit_keys_display(EditAction::InsertDate),
             "ToggleWrap" => kb.edit_keys_display(EditAction::ToggleWrap),
+            "ToggleFrontmatter" => kb.edit_keys_display(EditAction::ToggleFrontmatter),
             "ToggleOutline" => kb.edit_keys_display(EditAction::ToggleOutline),
             "ToggleLinks" => kb.edit_keys_display(EditAction::ToggleLinks),
             "PreviewLink" => kb.edit_keys_display(EditAction::PreviewLink),
@@ -1510,6 +1520,9 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Quit" => kb.graph_keys_display(GraphAction::Quit),
             _ => format!("[ERR:{}]", token),
         },
+        "bases" => crate::keybinds::BasesAction::iter()
+            .find(|a| format!("{a:?}") == action)
+            .map_or_else(String::new, |a| kb.bases_keys_display(a)),
         "draw" => match action {
             "Quit" => kb.draw_keys_display(DrawAction::Quit),
             "Help" => kb.draw_keys_display(DrawAction::Help),
@@ -1556,23 +1569,6 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "EditorUnfocus" => kb.canvas_keys_display(CanvasAction::EditorUnfocus),
             _ => format!("[ERR:{}]", token),
         },
-        "backup" => match action {
-            "StageFile" => kb.backup_keys_display(BackupAction::StageFile),
-            "UnstageFile" => kb.backup_keys_display(BackupAction::UnstageFile),
-            "StageAll" => kb.backup_keys_display(BackupAction::StageAll),
-            "EnterCommit" => kb.backup_keys_display(BackupAction::EnterCommit),
-            "ConfirmCommit" => kb.backup_keys_display(BackupAction::ConfirmCommit),
-            "CancelCommit" => kb.backup_keys_display(BackupAction::CancelCommit),
-            "Push" => kb.backup_keys_display(BackupAction::Push),
-            "Pull" => kb.backup_keys_display(BackupAction::Pull),
-            "Refresh" => kb.backup_keys_display(BackupAction::Refresh),
-            "CycleSection" => kb.backup_keys_display(BackupAction::CycleSection),
-            "OpenSettings" => kb.backup_keys_display(BackupAction::OpenSettings),
-            "CloseSettings" => kb.backup_keys_display(BackupAction::CloseSettings),
-            "NextField" => kb.backup_keys_display(BackupAction::NextField),
-            "PrevField" => kb.backup_keys_display(BackupAction::PrevField),
-            _ => format!("[ERR:{}]", token),
-        },
         "outline" => match action {
             "Open" => kb.outline_keys_display(OutlineAction::Open),
             "MoveUp" => kb.outline_keys_display(OutlineAction::MoveUp),
@@ -1603,7 +1599,7 @@ mod tests {
             .find(|(t, _, _)| *t == HelpTab::Editor)
             .unwrap();
         assert_eq!(editor_tab.1, "Editor");
-        assert_eq!(editor_tab.2, Some("\u{f03eb}"));
+        assert_eq!(editor_tab.2, Some("\u{f040}"));
     }
 
     #[test]
@@ -1657,6 +1653,29 @@ mod tests {
                 "no ERR in any span"
             );
         }
+    }
+
+    #[test]
+    fn bases_help_covers_actions_feature_gate_and_tab_navigation() {
+        let keybinds = crate::keybinds::Keybinds::default();
+        for action in crate::keybinds::BasesAction::iter() {
+            let token = format!("bases:{action:?}");
+            let display = keybinds.bases_keys_display(action);
+            assert!(!display.is_empty(), "{token}");
+            assert_eq!(resolve_tip_key(&token, &keybinds), display);
+            assert_ne!(help_meta::bases_action_meta(action).description, "");
+        }
+        let mut features = crate::config::FeaturesConfig::default();
+        assert!(help_tab_enabled(HelpTab::Bases, &features));
+        features.bases_view = crate::config::FeatureState::Disabled;
+        assert!(!help_tab_enabled(HelpTab::Bases, &features));
+        assert_eq!(HelpTab::from_index(HelpTab::Bases.index()), HelpTab::Bases);
+        assert_eq!(HelpTab::Bases.next().prev(), HelpTab::Bases);
+        assert_eq!(HelpTab::Bases.prev().next(), HelpTab::Bases);
+        assert!(crate::ui::help_content::tab_suggestions(HelpTab::Bases).len() >= 5);
+        let popups = crate::ui::help_content::tab_popup_descriptions(HelpTab::Bases);
+        assert_eq!(popups.len(), 3);
+        assert!(popups.iter().any(|popup| popup.name == "Search"));
     }
 
     #[test]
@@ -1714,9 +1733,8 @@ mod tests {
             config_dir: std::path::PathBuf::from("/test/config"),
             notes_dir: std::path::PathBuf::from("/test/data/notes"),
             templates_dir: std::path::PathBuf::from("/test/data/templates"),
-            key: [0; 32],
             skip_dir_patterns: Vec::new(),
-            rename_on_title_change: true,
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let rows = about_help_text(&keybinds, &theme, &config, HelpTab::About, &storage);
         let displays: Vec<&str> = rows.iter().map(|row| row.display.as_str()).collect();
