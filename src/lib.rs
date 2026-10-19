@@ -1421,6 +1421,10 @@ where
             app.should_quit = true;
             break;
         }
+        if app.poll_import() {
+            list_dirty = true;
+            graph_dirty = true;
+        }
         if app.mode == ViewMode::Edit {
             crate::editor_session::run_editor_session(terminal, app, events, &mut |_| false)?;
             prev_mode = app.mode;
@@ -1567,7 +1571,11 @@ where
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
-        } else if active_catalog || active_search || app.base_embeds.is_loading() {
+        } else if active_catalog
+            || active_search
+            || app.base_embeds.is_loading()
+            || app.import_task.is_some()
+        {
             Duration::from_millis(32)
         } else if matches!(
             app.list.preview_content,
@@ -1683,6 +1691,9 @@ fn dispatch_event_inner<B: ratatui::backend::Backend>(
 where
     <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
 {
+    if app.import_event(&ev) {
+        return Ok(());
+    }
     let size = terminal.size().context("failed to get terminal size")?;
     if crate::events::handle_open_palette_event(app, &ev, Rect::new(0, 0, size.width, size.height))
     {

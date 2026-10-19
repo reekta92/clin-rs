@@ -393,6 +393,7 @@ pub struct App {
     pub popups: crate::popups::PopupManager,
     pub storage: Storage,
     pub(crate) drafts: Option<crate::storage::drafts::DraftWorker>,
+    pub(crate) import_task: Option<import_ops::ImportTask>,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub(crate) palette_matcher: crate::keybinds::KeyMatcher,
@@ -663,6 +664,7 @@ impl App {
         let mut app = Self {
             storage: storage.clone(),
             drafts: None,
+            import_task: None,
             notes_worker_pool: notes_worker_pool.clone(),
             keybinds,
             seq_matcher: crate::keybinds::KeyMatcher::new(),
@@ -944,6 +946,7 @@ impl App {
         let mut app = Self {
             storage: storage.clone(),
             drafts: None,
+            import_task: None,
             keybinds,
             seq_matcher: crate::keybinds::KeyMatcher::new(),
             palette_matcher: crate::keybinds::KeyMatcher::new(),
@@ -2128,7 +2131,11 @@ impl App {
     }
 
     pub fn default_status_text(&self) -> Cow<'static, str> {
-        Cow::Borrowed("")
+        Cow::Borrowed(if self.import_task.is_some() {
+            "Importing… Esc cancels"
+        } else {
+            ""
+        })
     }
 
     pub fn set_default_status(&mut self) {

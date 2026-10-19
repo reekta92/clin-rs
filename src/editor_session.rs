@@ -41,6 +41,12 @@ where
         dirty |= app.poll_editor_image_results();
         dirty |= app.tick_autosave();
         dirty |= app.poll_draft_errors();
+        if app.poll_import() {
+            dirty = true;
+            if let Some(change) = app.editor.body.take_change() {
+                synchronize_source_highlight(app, change);
+            }
+        }
 
         if dirty {
             if !(pre_draw_hook)(app) {
@@ -51,11 +57,12 @@ where
             dirty = false;
         }
 
-        let editor_pending = app
-            .editor
-            .md_preview_renderer
-            .as_ref()
-            .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
+        let editor_pending = app.import_task.is_some()
+            || app
+                .editor
+                .md_preview_renderer
+                .as_ref()
+                .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
             || app.editor.pending_editor_preview_update
             || app.base_embeds.is_loading();
         let timeout = if editor_pending {
@@ -201,6 +208,9 @@ fn dispatch_editor_event_inner<B: ratatui::backend::Backend>(
 where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
+    if app.import_event(&event) {
+        return Ok(true);
+    }
     let size = terminal.size().context("editor terminal size failed")?;
     let area = Rect::new(0, 0, size.width, size.height);
     if crate::events::handle_open_palette_event(app, &event, area) {

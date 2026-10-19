@@ -1352,6 +1352,28 @@ impl App {
             }
             ImportTarget::AppendCurrent => {
                 let id = note_id.context("No note selected")?;
+                anyhow::ensure!(
+                    matches!(
+                        std::path::Path::new(id)
+                            .extension()
+                            .and_then(|ext| ext.to_str()),
+                        Some("md" | "txt")
+                    ),
+                    "Only Markdown and text notes accept appended content"
+                );
+                if self.editor.editing_id.as_deref() == Some(id) {
+                    self.editor
+                        .body
+                        .move_cursor(ratatui_textarea::CursorMove::Bottom);
+                    self.editor
+                        .body
+                        .move_cursor(ratatui_textarea::CursorMove::End);
+                    self.editor.body.insert_str(format!("\n\n{content}"));
+                    self.write_draft();
+                    self.autosave().map_err(anyhow::Error::msg)?;
+                    self.set_temporary_status_static("Content appended");
+                    return Ok(());
+                }
                 let mut note = self.storage.load_note(id)?;
                 note.content.push_str("\n\n");
                 note.content.push_str(&content);

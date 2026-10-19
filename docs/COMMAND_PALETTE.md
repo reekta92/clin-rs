@@ -18,6 +18,8 @@ Notes keeps its preset-specific palette shortcuts and right-click targeting. Bas
 ## Overview
 
 The command palette provides a searchable list of actions. Users can invoke applicable registered actions without navigating menus. The palette opens over the current view and owns input. Actions that need a choice or value continue inside its frame; immediate actions close it after execution.
+
+File, CSV, JSON, and URL imports run in the background. While an import is running, Escape cancels it; other editing actions wait. Downloads and converted content have a 16 MiB limit, and external commands have deadlines. URL imports fetch once, then convert that response. A new imported note is saved before opening it.
 **Source:** `src/actions/mod.rs` (registry and dispatch), `src/actions/context.rs` (eligibility), `src/app/command_palette.rs` (opening and activation), `src/palette.rs` (search and tabs).
 
 ---
