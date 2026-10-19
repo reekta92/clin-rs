@@ -2,6 +2,52 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.14.0-beta.1] - 2026-10-19
+
+### Added
+
+- Group feature toggles in one selector
+- Distinguish note file types with unique icons
+- Show note file icons in search results
+- Add guarded view history, save, and quit actions
+- Persist frequency and recency across command entry points
+- Add configurable Ctrl+Space across views
+
+### Changed
+
+- Standardize contextual single-cell glyphs
+- Consume extracted engine through a clin adapter
+- Separate document loading from editor activation
+
+### Fixed
+
+- Rename note files and preview duplicate filenames
+- Show actual note filenames in notes views
+- Persist inline rename titles without moving files
+- Route all Drawing and Canvas saves through guarded storage
+- Keep import scratch data private and clean up subprocess handles
+- Preserve subnotes through startup format migration
+- Make imports bounded cancellable and fetch URLs once
+- Migrate complete vaults without dropping private records
+- Leave live recovery records with their current owners
+- Preserve vault boundaries and subnotes during folder operations
+- Validate document formats before pinning and migration
+- Size embedded preview views to content
+- Render inline embeds without header and footer
+- Use shared themed footer and statusline
+- Repaint decoded card and kanban covers
+- Refresh icons from updated SVG
+
+### Testing
+
+- Cover search file icons across result and icon modes
+- Cover safe targeting modal routing and dispatch recovery
+- Isolate usage and cover retained documents and shortcut replay
+
+### Build
+
+- Include the standalone modifier fix in the upstream pin
+- Pin the published independent drawing library
 ## [0.14.0-beta.0] - 2026-10-18
 
 ### Added
@@ -120,6 +166,10 @@ All notable changes to clin are documented in this file.
 
 - Integrate trustworthy note persistence into Bases
 - Integrate main template variables with guarded Bases workflows
+
+### Release
+
+- V0.14.0-beta.0
 ## [0.13.2] - 2026-10-02
 
 ### Fixed
