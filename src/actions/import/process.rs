@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, bail, ensure};
 use std::{
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
@@ -17,12 +17,38 @@ unsafe extern "C" {
 
 struct RunningChild(Child);
 
+pub(super) struct ImportDirectory {
+    pub(super) path: PathBuf,
+}
+
+impl ImportDirectory {
+    pub(super) fn new() -> Result<Self> {
+        let path = std::env::temp_dir().join(format!("clin-import-{}", uuid::Uuid::new_v4()));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            fs::DirBuilder::new().mode(0o700).create(&path)?;
+        }
+        #[cfg(not(unix))]
+        fs::create_dir(&path)?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for ImportDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
 impl Drop for RunningChild {
     fn drop(&mut self) {
         if self.0.try_wait().ok().flatten().is_none() {
             // The child owns its process group; cancellation also stops converter subprocesses.
             #[cfg(unix)]
-            if let Ok(pid) = std::ffi::c_int::try_from(self.0.id()) {
+            if let Ok(pid) = std::ffi::c_int::try_from(self.0.id())
+                && pid > 1
+            {
                 // SAFETY: process_group(0) gives this unreaped child its own group.
                 let _ = unsafe { kill(-pid, signal_hook::consts::SIGKILL) };
             }
@@ -66,18 +92,20 @@ pub(super) fn run(
     timeout: Duration,
 ) -> Result<Output> {
     ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
-    let stdout = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("stdout"));
-    let stderr = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path("stderr"));
+    let directory = ImportDirectory::new()?;
+    let stdout = directory.path.join("stdout");
+    let stderr = directory.path.join("stderr");
     command
         .stdin(Stdio::null())
-        .stdout(output_file(stdout.path())?)
-        .stderr(output_file(stderr.path())?);
+        .stdout(output_file(&stdout)?)
+        .stderr(output_file(&stderr)?);
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
     let mut child = RunningChild(command.spawn().context("Failed to start import command")?);
+    drop(command);
     let deadline = Instant::now() + timeout;
     let status = loop {
         ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
@@ -85,8 +113,8 @@ pub(super) fn run(
             bail!("Import command timed out");
         }
         ensure!(
-            stdout.path().metadata()?.len() <= super::MAX_IMPORT_BYTES as u64
-                && stderr.path().metadata()?.len() <= STDERR_LIMIT,
+            stdout.metadata()?.len() <= super::MAX_IMPORT_BYTES as u64
+                && stderr.metadata()?.len() <= STDERR_LIMIT,
             "import command output exceeds safety limit"
         );
         if let Some(status) = child.0.try_wait()? {
@@ -96,8 +124,8 @@ pub(super) fn run(
     };
     Ok(Output {
         status,
-        stdout: read_output(stdout.path(), super::MAX_IMPORT_BYTES as u64)?,
-        stderr: read_output(stderr.path(), STDERR_LIMIT)?,
+        stdout: read_output(&stdout, super::MAX_IMPORT_BYTES as u64)?,
+        stderr: read_output(&stderr, STDERR_LIMIT)?,
     })
 }
 
@@ -107,6 +135,16 @@ mod tests {
 
     #[test]
     fn import_commands_are_bounded_cancellable_and_reaped() -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = ImportDirectory::new()?;
+        assert_eq!(
+            directory.path.metadata()?.permissions().mode() & 0o777,
+            0o700
+        );
+        let scratch = directory.path.clone();
+        fs::write(scratch.join("private"), "content")?;
+        drop(directory);
+        assert!(!scratch.exists());
         let mut command = Command::new("sh");
         command.args(["-c", "printf body; printf warning >&2"]);
         let output = run(command, &AtomicBool::new(false), Duration::from_secs(2))?;

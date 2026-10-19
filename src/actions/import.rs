@@ -417,11 +417,9 @@ fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(Stri
         .and_then(|ext| ext.to_str())
         .filter(|ext| ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
         .unwrap_or("html");
-    let temp_file = crate::fsutil::TempFileGuard::new(crate::fsutil::unique_temp_path(ext));
-    let temp_path = temp_file
-        .path()
-        .to_str()
-        .context("temp path is not UTF-8")?;
+    let directory = process::ImportDirectory::new()?;
+    let downloaded = directory.path.join(format!("download.{ext}"));
+    let temp_path = downloaded.to_str().context("temp path is not UTF-8")?;
     let mut command = Command::new("curl");
     command.args([
         "--fail",
@@ -453,7 +451,7 @@ fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(Stri
         .ok()
         .and_then(extract_html_title)
         .unwrap_or_else(|| url_fallback_title(source));
-    crate::fsutil::atomic_write_with_mode(temp_file.path(), &output.stdout, 0o600)?;
+    crate::fsutil::atomic_write_with_mode(&downloaded, &output.stdout, 0o600)?;
     drop(output);
     // Convert the downloaded bytes once; title and body come from the same response.
     let (_, content) = convert_file_cancellable(temp_path, cancelled)?;

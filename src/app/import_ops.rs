@@ -226,7 +226,10 @@ mod tests {
         ));
         assert!(app.import_event(&escape));
         assert!(!app.poll_import());
-        assert!(app.storage.list_note_ids(false, false)?.is_empty());
+        assert_eq!(
+            app.storage.list_note_ids(false, false)?,
+            Vec::<String>::new()
+        );
         app.apply_import(
             ImportSource::Csv,
             ImportTarget::NewNote,
