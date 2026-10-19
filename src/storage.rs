@@ -288,7 +288,9 @@ impl Storage {
         };
         storage.migrate_native_subnotes_metadata()?;
         storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
-        storage.migrate_extensions();
+        if let Err(error) = storage.migrate_extensions() {
+            warnings.push(format!("Format migration incomplete: {error:#}"));
+        }
         for legacy in [
             storage.data_dir.join(".clin/editor_draft.bin"),
             storage.data_dir.join(".clin/document-recovery"),
@@ -494,58 +496,45 @@ impl Storage {
         Ok(scan.files.into_iter().map(|file| file.id).collect())
     }
 
-    fn migrate_extensions(&self) {
-        let mut dirs_to_visit = vec![self.notes_dir.clone()];
-
-        while let Some(dir) = dirs_to_visit.pop() {
-            if let Ok(entries) = fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    let Ok(kind) = entry.file_type() else {
+    fn migrate_extensions(&self) -> Result<()> {
+        let _guard = self.write_guard()?;
+        let scan = self.scan_vault_with_policy(VaultScanPolicy::PublicFiles)?;
+        anyhow::ensure!(
+            scan.complete,
+            "vault scan incomplete: {}",
+            scan.warnings.join("; ")
+        );
+        for entry in scan.files {
+            let path = self.document_path(&entry.id)?;
+            let extension = match path.extension().and_then(|ext| ext.to_str()) {
+                Some("pinstar") => "canvas",
+                Some("canvas") => {
+                    let Ok(content) = documents::read_bounded_text(&path, 16 * 1024 * 1024) else {
                         continue;
                     };
-                    if kind.is_symlink() {
+                    let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else {
+                        continue;
+                    };
+                    if !value
+                        .get("elements")
+                        .is_some_and(serde_json::Value::is_array)
+                        || value.get("nodes").is_some()
+                        || value.get("edges").is_some()
+                        || serde_json::from_value::<::draw::state::DrawData>(value).is_err()
+                    {
                         continue;
                     }
-                    if kind.is_dir() {
-                        if !matches!(entry.file_name().to_str(), Some(".git" | ".clin")) {
-                            dirs_to_visit.push(path);
-                        }
-                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        match ext {
-                            "pinstar" => {
-                                let new_path = path.with_extension("canvas");
-                                if !new_path.exists() {
-                                    let _ = fs::rename(&path, &new_path);
-                                }
-                            }
-                            "canvas" => {
-                                if let Ok(content) =
-                                    documents::read_bounded_text(&path, 16 * 1024 * 1024)
-                                    && let Ok(value) =
-                                        serde_json::from_str::<serde_json::Value>(&content)
-                                    && value
-                                        .get("elements")
-                                        .is_some_and(serde_json::Value::is_array)
-                                    && value.get("nodes").is_none()
-                                    && value.get("edges").is_none()
-                                {
-                                    if serde_json::from_value::<::draw::state::DrawData>(value)
-                                        .is_ok()
-                                    {
-                                        let new_path = path.with_extension("draw");
-                                        if !new_path.exists() {
-                                            let _ = fs::rename(&path, &new_path);
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                    "draw"
                 }
+                _ => continue,
+            };
+            let target = Path::new(&entry.id).with_extension(extension);
+            let target = target.to_str().context("invalid migrated filename")?;
+            if !self.document_path(target)?.exists() {
+                self.relocate_note_locked(&entry.id, target)?;
             }
         }
+        Ok(())
     }
     pub(crate) fn scan_vault(
         &self,
@@ -1212,29 +1201,14 @@ impl Storage {
     }
 
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
-        if Path::new(id)
+        let ext = Path::new(id)
             .extension()
             .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("base"))
-        {
-            anyhow::bail!("Bases files cannot contain clin pin metadata");
-        }
-        let path = self.note_path(id);
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            .unwrap_or("");
         anyhow::ensure!(
             matches!(ext, "md" | "txt"),
             "Only Markdown and text notes support pin metadata"
         );
-        if crate::storage::is_image_ext(ext) {
-            anyhow::bail!("Cannot pin image files");
-        }
-
-        if ext.eq_ignore_ascii_case("clin") {
-            anyhow::bail!(
-                "Legacy encrypted notes are unsupported; use the previous release to decrypt them. Files and keys are retained."
-            );
-        }
-
         let baseline = self.load_document(id)?;
         let (fm, _) = frontmatter::parse(baseline.source());
         let new_pinned = !fm.pinned;

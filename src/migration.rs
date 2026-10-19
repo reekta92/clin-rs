@@ -125,13 +125,15 @@ fn migrate_tree(
                     target.display()
                 ),
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                    let mut builder = fs::DirBuilder::new();
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-                        builder.mode(entry.metadata()?.permissions().mode());
+                        fs::DirBuilder::new()
+                            .mode(entry.metadata()?.permissions().mode())
+                            .create(&target)?;
                     }
-                    builder.create(&target)?;
+                    #[cfg(not(unix))]
+                    fs::create_dir(&target)?;
                 }
                 Err(error) => return Err(error.into()),
             }

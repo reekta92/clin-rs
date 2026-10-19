@@ -27,7 +27,7 @@ fn pinning_rejects_structured_documents_without_changing_bytes() -> Result<()> {
 #[test]
 fn extension_migration_requires_drawing_structure() -> Result<()> {
     let root = tempfile::tempdir()?;
-    let storage = fixture(root.path());
+    let mut storage = fixture(root.path());
     let canvas = r#"{"nodes":[{"text":"version"}],"edges":[]}"#;
     for (id, source) in [
         ("board.canvas", canvas),
@@ -36,10 +36,29 @@ fn extension_migration_requires_drawing_structure() -> Result<()> {
         ("legacy.canvas", "{\"elements\":[]}"),
         ("current.canvas", "{\"version\":2,\"elements\":[]}"),
         ("future.canvas", "{\"version\":255,\"elements\":[]}"),
+        ("collision.canvas", "{\"elements\":[]}"),
+        ("collision.draw", "existing"),
     ] {
         fs::write(root.path().join(id), source)?;
     }
-    storage.migrate_extensions();
+    let children = vec![SubNote {
+        id: "child".into(),
+        title: "Child".into(),
+        content: "keep".into(),
+        updated_at: 1,
+    }];
+    storage.set_subnotes("legacy.canvas", &children)?;
+    storage.migrate_extensions()?;
+    assert_eq!(storage.get_subnotes("legacy.draw")?, children);
+    assert_eq!(
+        storage.get_subnotes("legacy.canvas")?,
+        Vec::<SubNote>::new()
+    );
+    assert_eq!(
+        fs::read_to_string(root.path().join("collision.draw"))?,
+        "existing"
+    );
+    assert!(root.path().join("collision.canvas").exists());
     assert_eq!(
         fs::read_to_string(root.path().join("board.canvas"))?,
         canvas
@@ -75,7 +94,10 @@ fn folder_moves_preserve_subnotes_and_reject_record_collisions() -> Result<()> {
     storage.set_subnotes("new/nested/note.md", &[])?;
     storage.rename_folder("old", "new")?;
     assert_eq!(storage.get_subnotes("new/nested/note.md")?, notes);
-    assert!(storage.get_subnotes("old/nested/note.md")?.is_empty());
+    assert_eq!(
+        storage.get_subnotes("old/nested/note.md")?,
+        Vec::<SubNote>::new()
+    );
     assert_eq!(
         fs::read_to_string(root.path().join("new/nested/note.md"))?,
         "body"
@@ -372,7 +394,7 @@ fn format_migration_never_touches_git_history_or_private_legacy_records() -> Res
         fs::create_dir_all(root.path().join(directory))?;
         fs::write(root.path().join(directory).join("legacy.pinstar"), "opaque")?;
     }
-    storage.migrate_extensions();
+    storage.migrate_extensions()?;
     for directory in [".git/refs/heads", ".clin/document-recovery"] {
         assert_eq!(
             fs::read_to_string(root.path().join(directory).join("legacy.pinstar"))?,

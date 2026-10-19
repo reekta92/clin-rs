@@ -24,10 +24,10 @@ fn recovery_waits_until_all_live_workers_release_the_vault() -> Result<()> {
     first.flush()?;
     assert!(storage.editor_drafts()?.is_empty());
     drop(first);
-    assert!(storage.recover_documents()?.is_empty());
+    assert_eq!(storage.recover_documents()?, Vec::<String>::new());
     assert_eq!(fs::read_to_string(root.path().join("note.md"))?, "before");
     drop(second);
-    assert!(storage.recover_documents()?.is_empty());
+    assert_eq!(storage.recover_documents()?, Vec::<String>::new());
     assert_eq!(fs::read_to_string(root.path().join("note.md"))?, "after");
     Ok(())
 }
