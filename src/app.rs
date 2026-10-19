@@ -1332,64 +1332,13 @@ impl App {
 
                 if *is_clin {
                     text_style = text_style.fg(self.app_theme.muted);
-                    let icon =
-                        crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
-                    if !icon.is_empty() {
-                        spans.push(Span::styled(
-                            format!("{icon} "),
-                            Style::default()
-                                .fg(self.app_theme.destructive)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-                    }
                 }
-
-                if *is_draw {
-                    let icon =
-                        crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
-                    if !icon.is_empty() {
-                        spans.push(Span::styled(
-                            format!("{icon} "),
-                            Style::default()
-                                .fg(self.app_theme.success)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-                    }
-                }
-
-                if *is_canvas {
-                    let icon =
-                        crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
-                    if !icon.is_empty() {
-                        spans.push(Span::styled(
-                            format!("{icon} "),
-                            Style::default()
-                                .fg(self.app_theme.accent)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-                    }
-                }
-                if !summary.pinned && !*is_clin && !*is_draw && !*is_canvas {
-                    let ext = std::path::Path::new(&summary.id)
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("");
-                    let is_unknown =
-                        ext != "md" && ext != "txt" && !crate::storage::is_image_ext(ext);
-                    let (nerd, unicode) = if is_unknown {
-                        ("\u{3f}", "\u{3f}")
-                    } else {
-                        ("\u{f15c}", "\u{1f4c4}")
-                    };
-                    let icon = crate::ui::get_icon(nerd, unicode, self.config.ui.icon_mode);
-                    if !icon.is_empty() {
-                        spans.push(Span::styled(
-                            format!("{icon} "),
-                            Style::default()
-                                .fg(self.app_theme.text)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-                    }
+                if !summary.pinned || *is_clin || *is_draw || *is_canvas {
+                    spans.extend(crate::ui::note_file_icon(
+                        &summary.id,
+                        &self.app_theme,
+                        self.config.ui.icon_mode,
+                    ));
                 }
 
                 let sanitized_title =

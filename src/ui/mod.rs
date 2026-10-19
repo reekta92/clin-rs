@@ -56,6 +56,33 @@ pub fn get_char(nerd: char, unicode: char, mode: IconMode) -> char {
     }
 }
 
+pub(crate) fn note_file_icon(
+    note_id: &str,
+    theme: &AppThemeColors,
+    mode: IconMode,
+) -> Option<Span<'static>> {
+    let ext = Path::new(note_id)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("");
+    let (nerd, unicode, color) = match ext {
+        "clin" => ("\u{f023}", "\u{1f512}", theme.destructive),
+        "draw" => ("\u{f1fc}", "\u{270f}", theme.success),
+        "canvas" => ("\u{f005}", "\u{2b50}", theme.accent),
+        ext if matches!(ext, "md" | "txt") || crate::storage::is_image_ext(ext) => {
+            ("\u{f15c}", "\u{1f4c4}", theme.text)
+        }
+        _ => ("?", "?", theme.text),
+    };
+    let icon = get_icon(nerd, unicode, mode);
+    (!icon.is_empty()).then(|| {
+        Span::styled(
+            format!("{icon} "),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        )
+    })
+}
+
 pub fn tab_vec_from_array<'a>(arr: &[(&'a str, &'a str)]) -> Vec<(&'a str, Option<&'a str>)> {
     arr.iter().map(|&(l, g)| (l, Some(g))).collect()
 }
@@ -1321,11 +1348,19 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             };
                             let header_text =
                                 format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
-                            ListItem::new(crate::ui::styled_result_line(
+                            let mut line = crate::ui::styled_result_line(
                                 &header_text,
                                 &app.app_theme,
                                 app.config.ui.icon_mode,
-                            ))
+                            );
+                            if let Some(icon) = note_file_icon(
+                                &hit.note_id,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                            ) {
+                                line.spans.insert(0, icon);
+                            }
+                            ListItem::new(line)
                         } else {
                             let line_idx = r - base - 1;
                             let line_hit = &hit.lines[line_idx];
@@ -1342,12 +1377,18 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         } else if has_subnote {
             (offset..end)
                 .map(|idx| {
-                    let label = &popup.subnote_results[idx].label;
-                    ListItem::new(crate::ui::styled_result_line(
-                        label,
+                    let hit = &popup.subnote_results[idx];
+                    let mut line = crate::ui::styled_result_line(
+                        &hit.label,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ))
+                    );
+                    if let Some(icon) =
+                        note_file_icon(&hit.parent_id, &app.app_theme, app.config.ui.icon_mode)
+                    {
+                        line.spans.insert(0, icon);
+                    }
+                    ListItem::new(line)
                 })
                 .collect()
         } else if has_title {
@@ -1362,11 +1403,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     } else {
                         format!("{folder}/{title}")
                     };
-                    ListItem::new(crate::ui::styled_result_line(
+                    let mut line = crate::ui::styled_result_line(
                         &label,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ))
+                    );
+                    if let Some(icon) =
+                        note_file_icon(id_arc, &app.app_theme, app.config.ui.icon_mode)
+                    {
+                        line.spans.insert(0, icon);
+                    }
+                    ListItem::new(line)
                 })
                 .collect()
         } else {
