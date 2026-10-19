@@ -389,7 +389,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             );
 
             let folder = crate::ui::get_char('\u{f07b}', '\u{1f4c1}', icon_mode);
-            let note = crate::ui::get_char('\u{f15c}', '\u{1f4c4}', icon_mode);
+            let (note, _, _) = crate::ui::note_file_glyph("example.md", theme, icon_mode);
             let samples = [
                 GridTileSpec {
                     icon_char: folder,
@@ -402,7 +402,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: true,
+                    is_pinned: true,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -415,7 +415,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: true,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -428,7 +428,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -441,7 +441,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -454,7 +454,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
                 GridTileSpec {
                     icon_char: note,
@@ -467,7 +467,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                     in_selection: false,
                     is_hovered: false,
                     has_tags: false,
-                    is_pinned_folder: false,
+                    is_pinned: false,
                 },
             ];
 
@@ -514,13 +514,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
                 tag: Option<&str>,
             ) -> Line<'static> {
                 let mut spans = vec![Span::raw("  ")]; // depth-0 note indent
-                let icon = crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode);
-                if !icon.is_empty() {
-                    spans.push(Span::styled(
-                        format!("{icon} "),
-                        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-                    ));
-                }
+                spans.extend(crate::ui::note_file_icon(title, theme, icon_mode));
                 spans.push(Span::raw(title.to_string()));
                 if let Some(tag) = tag {
                     spans.push(Span::raw(" "));

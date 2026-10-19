@@ -1303,8 +1303,6 @@ impl App {
                 summary_idx,
                 depth,
                 is_clin,
-                is_draw,
-                is_canvas,
                 in_virtual_pinned_folder,
                 ..
             } => {
@@ -1333,13 +1331,11 @@ impl App {
                 if *is_clin {
                     text_style = text_style.fg(self.app_theme.muted);
                 }
-                if !summary.pinned || *is_clin || *is_draw || *is_canvas {
-                    spans.extend(crate::ui::note_file_icon(
-                        &summary.id,
-                        &self.app_theme,
-                        self.config.ui.icon_mode,
-                    ));
-                }
+                spans.extend(crate::ui::note_file_icon(
+                    &summary.id,
+                    &self.app_theme,
+                    self.config.ui.icon_mode,
+                ));
 
                 let sanitized_title =
                     crate::fsutil::sanitize_for_terminal(summary.file_stem()).into_owned();

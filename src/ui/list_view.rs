@@ -28,7 +28,7 @@ pub(crate) struct GridTileSpec<'a> {
     pub is_hovered: bool,
     pub has_tags: bool,
     pub has_local_template: bool,
-    pub is_pinned_folder: bool,
+    pub is_pinned: bool,
     pub is_muted: bool,
 }
 
@@ -71,7 +71,7 @@ pub(crate) fn render_grid_tile(
         is_hovered,
         has_tags,
         has_local_template,
-        is_pinned_folder,
+        is_pinned,
         is_muted,
     } = spec;
 
@@ -144,7 +144,7 @@ pub(crate) fn render_grid_tile(
             theme.tag,
         ),
         (
-            is_pinned_folder,
+            is_pinned,
             crate::ui::get_char('\u{f435}', '\u{1f4cc}', icon_mode),
             theme.pinned,
         ),
@@ -155,11 +155,19 @@ pub(crate) fn render_grid_tile(
         ),
     ];
     let mut badge_right = inner.right();
+    let mut badge_y = inner.y;
+    let icon_width = unicode_width::UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
+    let icon_right = inner.x + (inner.width.saturating_sub(icon_width) / 2) + icon_width;
     for (enabled, glyph, color) in badges {
         if !enabled || glyph == ' ' {
             continue;
         }
         let width = unicode_width::UnicodeWidthChar::width(glyph).unwrap_or(1) as u16;
+        // Tagged, pinned notes can fill the corner; keep badges clear of the file glyph.
+        if badge_y == inner.y && badge_right.saturating_sub(width) < icon_right {
+            badge_right = inner.right();
+            badge_y += 1;
+        }
         if width > badge_right.saturating_sub(inner.x) {
             break;
         }
@@ -175,7 +183,7 @@ pub(crate) fn render_grid_tile(
             } else {
                 Modifier::empty()
             });
-        buf.set_string(x, inner.y, glyph.to_string(), style);
+        buf.set_string(x, badge_y, glyph.to_string(), style);
         badge_right = x;
     }
 
@@ -1152,7 +1160,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .mouse_pos
                     .is_some_and(|(col, row)| crate::events::contains_cell(tile_rect, col, row));
 
-                // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
                 let (icon_char, text_label, glyph_color, raw_name) = match item {
                     crate::app::VisualItem::Folder {
@@ -1257,69 +1264,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         };
                         (ic, text_label, app.app_theme.smart, label.clone())
                     }
-                    crate::app::VisualItem::Note {
-                        summary_idx,
-                        is_clin,
-                        is_draw,
-                        is_canvas,
-                        ..
-                    } => {
+                    crate::app::VisualItem::Note { summary_idx, .. } => {
                         let s = &app.notes[*summary_idx];
-                        let is_image = std::path::Path::new(&s.id)
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .is_some_and(crate::storage::is_image_ext);
-                        let is_unknown = {
-                            let ext = std::path::Path::new(&s.id)
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .unwrap_or("");
-                            !*is_clin
-                                && !*is_draw
-                                && !*is_canvas
-                                && !is_image
-                                && ext != "md"
-                                && ext != "txt"
-                        };
-                        let col = if s.pinned {
-                            app.app_theme.pinned
-                        } else if *is_clin {
-                            app.app_theme.destructive
-                        } else if *is_draw {
-                            app.app_theme.success
-                        } else if *is_canvas {
-                            app.app_theme.accent
-                        } else if is_image {
-                            app.app_theme.warning
-                        } else {
-                            app.app_theme.text
-                        };
-                        let ic = if s.pinned {
-                            crate::ui::get_char('\u{f435}', '\u{1f4cc}', app.config.ui.icon_mode)
-                        } else if *is_clin {
-                            crate::ui::get_char('\u{f023}', '\u{1f512}', app.config.ui.icon_mode)
-                        } else if *is_draw {
-                            crate::ui::get_char('\u{f1fc}', '\u{270f}', app.config.ui.icon_mode)
-                        } else if *is_canvas {
-                            crate::ui::get_char('\u{f005}', '\u{2b50}', app.config.ui.icon_mode)
-                        } else if is_image {
-                            crate::ui::get_char('\u{f1c5}', '\u{1f5bc}', app.config.ui.icon_mode)
-                        } else if is_unknown {
-                            '?'
-                        } else {
-                            crate::ui::get_char('\u{f15c}', '\u{1f4c4}', app.config.ui.icon_mode)
-                        };
-                        let label = if *is_clin {
-                            "CX"
-                        } else if *is_draw {
-                            "D"
-                        } else if *is_canvas {
-                            "C"
-                        } else if is_unknown {
-                            "?"
-                        } else {
-                            "MD"
-                        };
+                        let (ic, label, col) = crate::ui::note_file_glyph(
+                            &s.id,
+                            &app.app_theme,
+                            app.config.ui.icon_mode,
+                        );
                         (ic, label, col, s.file_stem().to_owned())
                     }
                     crate::app::VisualItem::TemplateConfig { .. } => (
@@ -1362,13 +1313,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
                     _ => false,
                 };
-                let is_pinned_folder = matches!(
-                    item,
-                    crate::app::VisualItem::Folder {
-                        is_pinned: true,
-                        ..
+                let is_pinned = match item {
+                    crate::app::VisualItem::Folder { is_pinned, .. } => *is_pinned,
+                    crate::app::VisualItem::Note { summary_idx, .. } => {
+                        app.notes[*summary_idx].pinned
                     }
-                );
+                    _ => false,
+                };
                 render_grid_tile(
                     buf,
                     tile_rect,
@@ -1384,7 +1335,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         in_selection,
                         is_hovered,
                         has_tags,
-                        is_pinned_folder,
+                        is_pinned,
                     },
                     &app.app_theme,
                     app.config.ui.icon_mode,
@@ -2586,7 +2537,23 @@ mod tests {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (_temp_dir, mut app) = grid_test_app(0);
         app.mode = ViewMode::List;
-        let ids = ["folder/test.md", "folder/test.draw", "folder/test.canvas"];
+        let ids = [
+            "folder/test.md",
+            "folder/test.txt",
+            "folder/test.draw",
+            "folder/test.canvas",
+            "folder/test.base",
+            "folder/test.clin",
+            "folder/test.png",
+            "folder/test.jpg",
+            "folder/test.gif",
+            "folder/test.webp",
+            "folder/test.jpeg",
+            "folder/test.bin",
+        ];
+        let labels = [
+            "MD", "TXT", "D", "C", "BASE", "CX", "PNG", "JPEG", "GIF", "WEBP", "JPEG", "?",
+        ];
         app.notes = ids
             .iter()
             .map(|id| crate::storage::NoteSummary {
@@ -2606,22 +2573,45 @@ mod tests {
             .map(|(summary_idx, id)| crate::list_view::VisualItem::Note {
                 summary_idx,
                 depth: 0,
-                is_clin: false,
+                is_clin: id.ends_with(".clin"),
                 is_draw: id.ends_with(".draw"),
                 is_canvas: id.ends_with(".canvas"),
                 in_virtual_pinned_folder: false,
             })
             .collect();
         app.list.inline_info = false;
-        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+        app.list.list_density = crate::config::ListDensity::Compact;
+        let mut terminal = Terminal::new(TestBackend::new(100, 60)).unwrap();
 
         for (mode, icons) in [
-            (IconMode::Nerd, ["\u{f15c}", "\u{f1fc}", "\u{f005}"]),
-            (IconMode::Unicode, ["\u{1f4c4}", "\u{270f}", "\u{2b50}"]),
-            (IconMode::None, ["", "", ""]),
+            (
+                IconMode::Nerd,
+                [
+                    "\u{f48a}", "\u{f15c}", "\u{f1fc}", "\u{f005}", "\u{f1c0}", "\u{f023}",
+                    "\u{f1c5}", "\u{f03e}", "\u{f008}", "\u{f0ac}", "\u{f03e}", "?",
+                ],
+            ),
+            (
+                IconMode::Unicode,
+                [
+                    "\u{1f4dd}",
+                    "\u{1f4c4}",
+                    "\u{270f}",
+                    "\u{2b50}",
+                    "\u{1f5c3}",
+                    "\u{1f512}",
+                    "\u{1f5bc}",
+                    "\u{1f4f7}",
+                    "\u{1f39e}",
+                    "\u{1f310}",
+                    "\u{1f4f7}",
+                    "?",
+                ],
+            ),
+            (IconMode::None, [""; 12]),
         ] {
             app.config.ui.icon_mode = mode;
-            let list_area = Rect::new(0, 0, 100, 3);
+            let list_area = Rect::new(0, 0, 100, ids.len() as u16);
             let mut list_buffer = Buffer::empty(list_area);
             Widget::render(
                 List::new((0..ids.len()).map(|i| app.format_visual_item(i))),
@@ -2702,6 +2692,51 @@ mod tests {
                     assert!(text.contains("L7: needle"));
                 }
             }
+
+            app.popups.active = None;
+            for pinned in [false, true] {
+                for note in &mut app.notes {
+                    note.pinned = pinned;
+                    note.tags = vec!["tag".into()];
+                }
+                Widget::render(
+                    List::new((0..ids.len()).map(|i| app.format_visual_item(i))),
+                    list_area,
+                    &mut list_buffer,
+                );
+                draw_grid(&mut terminal, &mut app);
+                assert_eq!(app.list.grid_tiles.len(), ids.len());
+                for (i, tile) in app.list.grid_tiles.iter().enumerate() {
+                    let row: String = list_buffer.content[i * 100..(i + 1) * 100]
+                        .iter()
+                        .map(|cell| cell.symbol())
+                        .collect();
+                    let buffer = terminal.backend().buffer();
+                    let tile_text: String = (tile.rect.y..tile.rect.bottom())
+                        .flat_map(|y| {
+                            (tile.rect.x..tile.rect.right())
+                                .map(move |x| buffer.cell((x, y)).unwrap().symbol())
+                        })
+                        .collect();
+                    if mode == IconMode::None {
+                        assert!(tile_text.contains(labels[i]), "{}: {tile_text}", ids[i]);
+                        assert!(row.trim_start().starts_with("test"));
+                    } else {
+                        assert!(row.contains(icons[i]), "{}: {row}", ids[i]);
+                        assert!(tile_text.contains(icons[i]), "{}: {tile_text}", ids[i]);
+                        if pinned {
+                            let pin = crate::ui::get_icon("\u{f435}", "\u{1f4cc}", mode);
+                            assert!(tile_text.contains(pin), "{}: {tile_text}", ids[i]);
+                        }
+                        let tag = crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", mode);
+                        assert!(tile_text.contains(tag), "{}: {tile_text}", ids[i]);
+                    }
+                }
+            }
+            for note in &mut app.notes {
+                note.pinned = false;
+                note.tags.clear();
+            }
         }
     }
 
@@ -2730,7 +2765,7 @@ mod tests {
                         is_hovered: false,
                         has_tags: false,
                         has_local_template: template,
-                        is_pinned_folder: pin,
+                        is_pinned: pin,
                         is_muted: false,
                     },
                     &app.app_theme,

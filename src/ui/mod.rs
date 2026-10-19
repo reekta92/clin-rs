@@ -56,26 +56,38 @@ pub fn get_char(nerd: char, unicode: char, mode: IconMode) -> char {
     }
 }
 
+pub(crate) fn note_file_glyph(
+    note_id: &str,
+    theme: &AppThemeColors,
+    mode: IconMode,
+) -> (char, &'static str, Color) {
+    let ext = Path::new(note_id)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("");
+    let (nerd, unicode, label, color) = match ext {
+        "md" => ('\u{f48a}', '\u{1f4dd}', "MD", theme.text),
+        "txt" => ('\u{f15c}', '\u{1f4c4}', "TXT", theme.text),
+        "clin" => ('\u{f023}', '\u{1f512}', "CX", theme.destructive),
+        "draw" => ('\u{f1fc}', '\u{270f}', "D", theme.success),
+        "canvas" => ('\u{f005}', '\u{2b50}', "C", theme.accent),
+        "base" => ('\u{f1c0}', '\u{1f5c3}', "BASE", theme.accent),
+        "png" => ('\u{f1c5}', '\u{1f5bc}', "PNG", theme.warning),
+        "jpg" | "jpeg" => ('\u{f03e}', '\u{1f4f7}', "JPEG", theme.warning),
+        "gif" => ('\u{f008}', '\u{1f39e}', "GIF", theme.warning),
+        "webp" => ('\u{f0ac}', '\u{1f310}', "WEBP", theme.warning),
+        _ => ('?', '?', "?", theme.text),
+    };
+    (get_char(nerd, unicode, mode), label, color)
+}
+
 pub(crate) fn note_file_icon(
     note_id: &str,
     theme: &AppThemeColors,
     mode: IconMode,
 ) -> Option<Span<'static>> {
-    let ext = Path::new(note_id)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("");
-    let (nerd, unicode, color) = match ext {
-        "clin" => ("\u{f023}", "\u{1f512}", theme.destructive),
-        "draw" => ("\u{f1fc}", "\u{270f}", theme.success),
-        "canvas" => ("\u{f005}", "\u{2b50}", theme.accent),
-        ext if matches!(ext, "md" | "txt") || crate::storage::is_image_ext(ext) => {
-            ("\u{f15c}", "\u{1f4c4}", theme.text)
-        }
-        _ => ("?", "?", theme.text),
-    };
-    let icon = get_icon(nerd, unicode, mode);
-    (!icon.is_empty()).then(|| {
+    let (icon, _, color) = note_file_glyph(note_id, theme, mode);
+    (mode != IconMode::None).then(|| {
         Span::styled(
             format!("{icon} "),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
