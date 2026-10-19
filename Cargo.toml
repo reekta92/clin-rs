@@ -110,7 +110,8 @@ graf = { package = "graf-rs", version = "1.1.0", git = "https://github.com/reekt
 pinstar = { version = "1.0.0", git = "https://github.com/reekta92/pinstar", rev = "5ce3dbc94165", features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml_ng = "0.10"
+# Keep existing imports while using YAML Organization's maintained backend.
+serde_yaml_ng = { package = "yaml_serde", version = "=0.10.7" }
 signal-hook = "0.4"
 parking_lot = "0.12"
 toml = "1.1"
@@ -133,6 +134,10 @@ strum = { version = "0.28", features = ["derive"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+[patch.crates-io]
+# Preserve Mermaid 0.6 APIs and Rust 1.90 with a maintained YAML backend.
+merman-core = { git = "https://github.com/reekta92/merman", rev = "ba16ce6a43a5f0d2d070bd40cf91b958fd7e22e0" }
 
 [profile.release]
 lto = "thin"
