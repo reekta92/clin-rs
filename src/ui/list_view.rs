@@ -2460,6 +2460,125 @@ mod tests {
     }
 
     #[test]
+    fn filename_popups_preview_creation_and_rename_collisions() {
+        use crate::popups::{ActivePopup, NoteFormat};
+
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.mode = ViewMode::List;
+        app.editor.external_editor_enabled = false;
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        let source = "---\ntitle: test\n---\nkeep body";
+        for folder in ["", "nested"] {
+            std::fs::create_dir_all(app.storage.notes_dir.join(folder)).unwrap();
+            for (format, ext, default) in [
+                (NoteFormat::Markdown, "md", "Untitled note"),
+                (NoteFormat::PlainText, "txt", "Untitled text"),
+            ] {
+                let prefix = if folder.is_empty() {
+                    String::new()
+                } else {
+                    format!("{folder}/")
+                };
+                for name in ["test", "test (2)", "other"] {
+                    std::fs::write(
+                        app.storage.note_path(&format!("{prefix}{name}.{ext}")),
+                        source,
+                    )
+                    .unwrap();
+                }
+                if format == NoteFormat::Markdown {
+                    app.begin_create_note_in_folder(folder.into());
+                } else {
+                    app.begin_create_text_in_folder(folder.into());
+                }
+                terminal
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+                    .unwrap();
+                let text: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(|cell| cell.symbol())
+                    .collect();
+                assert!(text.contains(&format!("Will create: {prefix}{default}.{ext}")));
+                let Some(ActivePopup::CreateNote(popup, _)) = &mut app.popups.active else {
+                    panic!("create popup missing");
+                };
+                popup.input.insert_str(" test ");
+                terminal
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+                    .unwrap();
+                let text: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(|cell| cell.symbol())
+                    .collect();
+                let created = format!("{prefix}test (3).{ext}");
+                assert!(text.contains(&format!("Will create: {created}")));
+                app.confirm_create_note();
+                app.editor.body.insert_str("new body");
+                app.autosave().unwrap();
+                assert_eq!(app.editor.editing_id.as_deref(), Some(created.as_str()));
+                assert_eq!(app.storage.load_note(&created).unwrap().content, "new body");
+                app.mode = ViewMode::List;
+
+                let other = format!("{prefix}other.{ext}");
+                app.notes = vec![app.storage.load_note_summary(&other).unwrap()];
+                app.refresh_visual_list();
+                app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+                    summary_idx: 0,
+                    depth: 0,
+                    is_clin: false,
+                    is_draw: false,
+                    is_canvas: false,
+                    in_virtual_pinned_folder: false,
+                }];
+                app.list.visual_index = 0;
+                app.begin_rename_note();
+                let Some(ActivePopup::NoteRename(popup)) = &mut app.popups.active else {
+                    panic!("rename popup missing");
+                };
+                assert_eq!(popup.input.lines().join(""), "other");
+                popup.input.select_all();
+                popup.input.insert_str("test");
+                terminal
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+                    .unwrap();
+                let text: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(|cell| cell.symbol())
+                    .collect();
+                let renamed = format!("{prefix}test (4).{ext}");
+                assert!(text.contains(&format!("Will rename to: {renamed}")));
+                assert!(text.contains("Links are not updated"));
+                app.confirm_rename_note();
+                assert!(!app.storage.note_path(&other).exists());
+                for name in ["test", "test (2)", "test (4)"] {
+                    assert_eq!(
+                        std::fs::read_to_string(
+                            app.storage.note_path(&format!("{prefix}{name}.{ext}"))
+                        )
+                        .unwrap(),
+                        source
+                    );
+                }
+                // Accepting the current name must preserve its generated suffix.
+                assert_eq!(
+                    app.storage.rename_note(&renamed, "test (4)").unwrap(),
+                    renamed
+                );
+            }
+        }
+    }
+
+    #[test]
     fn search_popup_file_icons_match_note_list_in_all_icon_modes() {
         use crate::config::IconMode;
         use crate::popups::{ActivePopup, SearchLineHit, SearchNoteHit, SubnoteHit};

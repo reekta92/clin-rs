@@ -57,7 +57,7 @@ fn key(app: &mut App, focus: &mut EditFocus, code: KeyCode, modifiers: KeyModifi
 }
 
 #[test]
-fn list_rename_updates_note_title_without_changing_filename() {
+fn list_rename_changes_filename_and_preserves_note_source_and_subnotes() {
     let (_guard, _root, mut app) = fixture();
     app.keybinds = crate::keybinds::Keybinds::default();
     for ext in ["md", "txt"] {
@@ -90,32 +90,29 @@ fn list_rename_updates_note_title_without_changing_filename() {
             let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active else {
                 panic!("r should open the note rename popup");
             };
+            assert_eq!(popup.input.lines().join(""), "stable");
+            let name = format!("New name {pinned}");
             popup.input.select_all();
-            popup.input.insert_str("New title");
+            popup.input.insert_str(&name);
             assert!(crate::events::handle_global_popups_and_palette(
                 &mut app,
                 crossterm::event::Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
                 ratatui::layout::Rect::default(),
             ));
-            let saved = fs::read_to_string(app.storage.notes_dir.join(&id)).unwrap();
+            let renamed = format!("{name}.{ext}");
             assert_eq!(
-                crate::frontmatter::parse(&saved).0.title.as_deref(),
-                Some("New title")
+                fs::read_to_string(app.storage.note_path(&renamed)).unwrap(),
+                source
             );
-            assert!(saved.contains("# keep header\r\n"));
-            assert!(saved.contains("# keep comment\r\n"));
-            assert!(saved.contains("custom: [a, b]\r\n"));
-            assert!(saved.ends_with("---\r\nbody [[stable]]\r\n"));
-            assert!(
-                !app.storage
-                    .notes_dir
-                    .join(format!("New title.{ext}"))
-                    .exists()
+            assert!(!app.storage.note_path(&id).exists());
+            assert_eq!(app.storage.get_subnotes(&renamed).unwrap(), subnotes);
+            assert_eq!(
+                app.storage.get_subnotes(&id).unwrap(),
+                Vec::<crate::storage::SubNote>::new()
             );
-            assert_eq!(app.storage.get_subnotes(&id).unwrap(), subnotes);
             assert_eq!(app.notes.len(), 1);
-            assert_eq!(app.notes[0].id, id);
-            assert_eq!(app.notes[0].title, "New title");
+            assert_eq!(app.notes[0].id, renamed);
+            assert_eq!(app.notes[0].title, "Old title");
             assert_eq!(app.notes[0].pinned, pinned);
         }
     }

@@ -1454,22 +1454,12 @@ impl App {
             let id = self.notes[*summary_idx].id.clone();
             let note = &self.notes[*summary_idx];
             let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
-            input.insert_str(&note.title);
-            let title = if matches!(
-                std::path::Path::new(&id)
-                    .extension()
-                    .and_then(|e| e.to_str()),
-                Some("md" | "txt")
-            ) {
-                "Rename note - Esc cancel, Enter save"
-            } else {
-                "Rename file: links are NOT updated - Esc cancel, Enter confirm"
-            };
+            input.insert_str(note.file_stem());
             input.set_block(
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
                     .borders(ratatui::widgets::Borders::ALL)
-                    .title(title),
+                    .title("Rename file: links are NOT updated - Esc cancel, Enter confirm"),
             );
             self.popups.active = Some(crate::popups::ActivePopup::NoteRename(NoteRenamePopup {
                 note_id: id,
@@ -1488,25 +1478,12 @@ impl App {
                 self.set_temporary_status_static("Title cannot be empty");
                 return;
             }
-            let result = if matches!(
-                std::path::Path::new(&popup.note_id)
-                    .extension()
-                    .and_then(|e| e.to_str()),
-                Some("md" | "txt")
-            ) {
-                self.storage.load_note(&popup.note_id).and_then(|mut note| {
-                    note.title = new_title.to_owned();
-                    note.updated_at = crate::ui::now_unix_secs();
-                    self.storage.save_note(&popup.note_id, &note)
-                })
-            } else {
-                self.storage.rename_note(&popup.note_id, new_title)
-            };
+            let result = self.storage.rename_note(&popup.note_id, new_title);
             match result {
                 Ok(id) => {
                     self.refresh_note_single(Some(&popup.note_id), &id);
                     self.request_notes_reconcile();
-                    self.set_temporary_status_static("Note renamed");
+                    self.set_temporary_status(&format!("Renamed to {id}"));
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to rename: {e}"));

@@ -998,13 +998,27 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Note rename popup
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        draw_text_prompt_popup(
+        let title = popup.input.lines().join("");
+        let stem = app.storage.note_file_stem_from_title(&title);
+        let ext = Path::new(&popup.note_id)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("");
+        let target = app.storage.unique_note_id(&stem, ext, &popup.note_id);
+        let preview = if title.trim().is_empty() {
+            "Name cannot be empty".to_owned()
+        } else {
+            format!(
+                "Will rename to: {}",
+                crate::fsutil::sanitize_for_terminal(&target)
+            )
+        };
+        draw_filename_prompt_popup(
             frame,
-            "RENAME",
-            PopupSize::Prompt,
-            PopupHints::Keybinds(&text_input_hints("rename")),
+            "RENAME FILE",
             &mut popup.input,
-            Style::default().fg(app.app_theme.heading),
+            &preview,
+            PopupHints::Text("Enter rename · Esc cancel · Links are not updated"),
             &app.app_theme,
         );
     }
@@ -1060,15 +1074,49 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
             crate::popups::NoteFormat::Base => "NEW BASES FILE",
         };
-        draw_text_prompt_popup(
-            frame,
-            title,
-            PopupSize::Prompt,
-            PopupHints::Keybinds(&text_input_hints("create")),
-            &mut popup.input,
-            Style::default().fg(app.app_theme.heading),
-            &app.app_theme,
-        );
+        if matches!(
+            format,
+            crate::popups::NoteFormat::Markdown | crate::popups::NoteFormat::PlainText
+        ) {
+            let (ext, default) = if *format == crate::popups::NoteFormat::PlainText {
+                ("txt", "Untitled text")
+            } else {
+                ("md", "Untitled note")
+            };
+            let name = popup.input.lines().join("");
+            let name = if name.trim().is_empty() {
+                default
+            } else {
+                name.trim()
+            };
+            let stem = app.storage.note_file_stem_from_title(name);
+            let initial = Path::new(&popup.folder).join(app.storage.new_note_id());
+            let target = app
+                .storage
+                .unique_note_id(&stem, ext, &initial.to_string_lossy());
+            let preview = format!(
+                "Will create: {}",
+                crate::fsutil::sanitize_for_terminal(&target)
+            );
+            draw_filename_prompt_popup(
+                frame,
+                title,
+                &mut popup.input,
+                &preview,
+                PopupHints::Keybinds(&text_input_hints("create")),
+                &app.app_theme,
+            );
+        } else {
+            draw_text_prompt_popup(
+                frame,
+                title,
+                PopupSize::Prompt,
+                PopupHints::Keybinds(&text_input_hints("create")),
+                &mut popup.input,
+                Style::default().fg(app.app_theme.heading),
+                &app.app_theme,
+            );
+        }
     }
 
     // Import popup
@@ -1586,6 +1634,28 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.mouse_pos,
         );
     }
+}
+
+fn draw_filename_prompt_popup(
+    frame: &mut Frame,
+    title: &str,
+    input: &mut TextArea,
+    preview: &str,
+    hints: PopupHints<'_>,
+    theme: &AppThemeColors,
+) {
+    let content = draw_popup_frame(frame, frame.area(), title, PopupSize::Prompt, hints, theme);
+    input.set_block(
+        Block::default()
+            .style(theme.bg_style())
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.heading))
+            .title_bottom(Line::from(Span::styled(
+                format!(" {preview} "),
+                Style::default().fg(theme.muted),
+            ))),
+    );
+    frame.render_widget(&*input, content);
 }
 
 fn draw_text_prompt_popup(

@@ -31,6 +31,8 @@ Drawing and Canvas engines use the same guarded storage path for eager saves and
 
 Ordinary title/body saves retain the existing filename. New notes still derive an initial filename from their title. Explicit file rename is separate and warns that incoming links are not rewritten. Existing `rename_on_title_change` settings are retired.
 
+The notes list shows filenames without their extensions, including numbered suffixes such as `test (2)`. Creation and rename prompts preview the resulting filename. Rename in the notes list changes the filename; edit Title in the editor to change the frontmatter title.
+
 ## Frontmatter editing and recovery
 
 F7 opens a hidden-by-default properties region above Body for Markdown/text notes. Set `[editor] frontmatter_mode = "raw_yaml"` for raw editing in the same region. `[notes.frontmatter]` controls automatic managed output; disabled fields are retained and explicit edits/removals win for that save. `original_ext` is accepted as a compatibility no-op and existing extension metadata is preserved.
