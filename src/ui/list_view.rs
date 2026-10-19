@@ -2363,6 +2363,133 @@ mod tests {
     }
 
     #[test]
+    fn search_popup_file_icons_match_note_list_in_all_icon_modes() {
+        use crate::config::IconMode;
+        use crate::popups::{ActivePopup, SearchLineHit, SearchNoteHit, SubnoteHit};
+
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.mode = ViewMode::List;
+        let ids = ["folder/test.md", "folder/test.draw", "folder/test.canvas"];
+        app.notes = ids
+            .iter()
+            .map(|id| crate::storage::NoteSummary {
+                id: (*id).into(),
+                title: "test".into(),
+                updated_at: 0,
+                folder: "folder".into(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            })
+            .collect();
+        app.list.visual_list = ids
+            .iter()
+            .enumerate()
+            .map(|(summary_idx, id)| crate::list_view::VisualItem::Note {
+                summary_idx,
+                depth: 0,
+                is_clin: false,
+                is_draw: id.ends_with(".draw"),
+                is_canvas: id.ends_with(".canvas"),
+                in_virtual_pinned_folder: false,
+            })
+            .collect();
+        app.list.inline_info = false;
+        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+
+        for (mode, icons) in [
+            (IconMode::Nerd, ["\u{f15c}", "\u{f1fc}", "\u{f005}"]),
+            (IconMode::Unicode, ["\u{1f4c4}", "\u{270f}", "\u{2b50}"]),
+            (IconMode::None, ["", "", ""]),
+        ] {
+            app.config.ui.icon_mode = mode;
+            let list_area = Rect::new(0, 0, 100, 3);
+            let mut list_buffer = Buffer::empty(list_area);
+            Widget::render(
+                List::new((0..ids.len()).map(|i| app.format_visual_item(i))),
+                list_area,
+                &mut list_buffer,
+            );
+
+            for query in ["test", "g:needle", "sn:test"] {
+                app.begin_search();
+                let Some(ActivePopup::Search(popup)) = &mut app.popups.active else {
+                    panic!("search popup missing");
+                };
+                popup.input.insert_str(query);
+                popup.title_result_ids = ids.iter().map(|id| (*id).into()).collect();
+                popup.grep_results = ids
+                    .iter()
+                    .map(|id| SearchNoteHit {
+                        note_id: (*id).into(),
+                        match_count: 1,
+                        lines: vec![SearchLineHit {
+                            line_number: 7,
+                            snippet: "needle".into(),
+                        }],
+                        truncated: false,
+                    })
+                    .collect();
+                popup.grep_expanded.insert(ids[0].into());
+                popup.rebuild_grep_offsets();
+                if query.starts_with("sn:") {
+                    popup.subnote_results = ids
+                        .iter()
+                        .map(|id| SubnoteHit {
+                            parent_id: (*id).into(),
+                            subnote_idx: 0,
+                            label: "folder/test / child".into(),
+                        })
+                        .collect();
+                }
+
+                terminal
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                let result_rows: Vec<_> = buffer
+                    .content
+                    .chunks(100)
+                    .filter(|row| {
+                        row.iter()
+                            .map(|cell| cell.symbol())
+                            .collect::<String>()
+                            .contains("folder/test")
+                    })
+                    .collect();
+                assert_eq!(result_rows.len(), ids.len(), "{mode:?}: {query}");
+                for (i, icon) in icons.iter().enumerate() {
+                    let list_row = &list_buffer.content[i * 100..(i + 1) * 100];
+                    if icon.is_empty() {
+                        let text: String =
+                            result_rows[i].iter().map(|cell| cell.symbol()).collect();
+                        assert!(
+                            text.trim_start_matches([' ', '│', '▶', '▼'])
+                                .starts_with("folder/test")
+                        );
+                    } else {
+                        let list_icon =
+                            list_row.iter().find(|cell| cell.symbol() == *icon).unwrap();
+                        let result_icon = result_rows[i]
+                            .iter()
+                            .find(|cell| cell.symbol() == *icon)
+                            .unwrap_or_else(|| {
+                                panic!("missing icon for {}: {mode:?}, {query}", ids[i])
+                            });
+                        assert_eq!(result_icon.fg, list_icon.fg);
+                    }
+                }
+                if query.starts_with("g:") {
+                    let text: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
+                    assert!(text.contains("L7: needle"));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn grid_folder_badges_keep_main_icon_on_original_row_in_all_icon_modes() {
         use crate::config::IconMode;
         use unicode_width::UnicodeWidthChar;
