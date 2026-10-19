@@ -607,7 +607,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             if notes_src.exists() && notes_src.is_dir() {
                 fs::create_dir_all(&notes_dst)?;
                 let (m, s, action) = if source_is_vault {
-                    // Vault-mode source: only copy note files, skip hidden/clin dirs
+                    // Vault-mode source: retain public files and durable private metadata.
                     migration::migrate_note_files_with_conflict(
                         &notes_src,
                         &notes_dst,
@@ -626,7 +626,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             }
 
             // Migrate templates
-            if templates_src.exists() && templates_src.is_dir() {
+            if !source_is_vault && templates_src.exists() && templates_src.is_dir() {
                 fs::create_dir_all(&templates_dst)?;
                 let (m, s, _) = migration::migrate_directory_with_conflict(
                     &templates_src,
@@ -664,7 +664,9 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             println!("Your old data remains at: {}", console::path(&from));
             println!(
                 "{}",
-                console::dim("You may delete it manually after verifying everything works.")
+                console::dim(
+                    "Keep the source until files, subnotes, recovery records, and any external legacy keys are verified."
+                )
             );
 
             Ok(())

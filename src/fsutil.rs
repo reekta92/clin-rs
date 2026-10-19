@@ -90,7 +90,15 @@ pub fn atomic_copy(source: &Path, destination: &Path, replace: bool) -> Result<(
     #[cfg(unix)]
     let mode = {
         use std::os::unix::fs::PermissionsExt;
-        Some(source.metadata()?.permissions().mode())
+        let mut mode = source.metadata()?.permissions().mode();
+        if replace {
+            match fs::metadata(destination) {
+                Ok(metadata) => mode &= metadata.permissions().mode(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Some(mode)
     };
     #[cfg(not(unix))]
     let mode = None;
@@ -345,6 +353,16 @@ mod tests {
         assert_eq!(fs::read(&destination)?, b"original");
         atomic_copy(&source, &destination, true)?;
         assert_eq!(fs::read(&destination)?, b"new");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o644))?;
+            atomic_copy(&source, &destination, true)?;
+            assert_eq!(
+                fs::metadata(&destination)?.permissions().mode() & 0o777,
+                0o600
+            );
+        }
         Ok(())
     }
 
