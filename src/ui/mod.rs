@@ -810,6 +810,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 hints.push(("Alt+G".to_string(), "graph"));
             }
         }
+        if matches!(
+            palette.workflow,
+            Some(crate::palette::workflows::Workflow::Features)
+        ) {
+            hints[0].1 = "toggle";
+        }
         let content = draw_popup_frame(
             frame,
             area,

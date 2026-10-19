@@ -1,6 +1,17 @@
 use crate::actions::{Action, ActionCategory};
 use crate::toggle_action;
 
+crate::simple_action!(
+    FeaturesAction,
+    "settings.features",
+    "Features",
+    "Choose features to enable or disable",
+    ActionCategory::Settings,
+    "\u{f1de}",
+    "\u{2699}",
+    begin_feature_selection
+);
+
 toggle_action!(
     TogglePreviewPaneAction,
     "settings.preview_pane",

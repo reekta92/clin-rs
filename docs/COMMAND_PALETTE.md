@@ -148,6 +148,7 @@ When launched from the palette, these workflows keep the same frame:
 | Workflow | Body / input |
 | --- | --- |
 | Theme | Filterable built-in/custom themes, current-theme marker, general/Graph background controls |
+| Features | Filterable feature toggles with On/Off state; Enter toggles without leaving the list |
 | Navigation preset, icon mode, hint-bar style, sort order | Filterable existing options |
 | Word/note goals | Current numeric value in the input field |
 | Drawing, Canvas, Bases creation | Name input; collisions retain input and never overwrite a file |

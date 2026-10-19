@@ -11,6 +11,7 @@ use ratatui_textarea::TextArea;
 
 pub(crate) enum Workflow {
     Theme(Box<ThemePopup>, Vec<[ratatui::style::Color; 4]>),
+    Features,
     Bases(Box<crate::bases::palette::Page>),
     Goal(GoalsPopupMode),
     Options(OptionKind),
@@ -106,6 +107,7 @@ impl CommandPalette {
     pub(crate) fn workflow_title(&self) -> &str {
         match &self.workflow {
             Some(Workflow::Theme(..)) => "COMMANDS › Switch Theme",
+            Some(Workflow::Features) => "COMMANDS › Features",
             Some(Workflow::Goal(GoalsPopupMode::WordGoal)) => "COMMANDS › Daily Word Goal",
             Some(Workflow::Goal(GoalsPopupMode::NoteGoal)) => "COMMANDS › Daily Note Goal",
             Some(Workflow::Options(OptionKind::Sort)) => "COMMANDS › Sort Order",
@@ -173,6 +175,13 @@ impl CommandPalette {
 
     pub(crate) fn refresh_workflow(&mut self, app: &App) {
         let mut rows = self.manager_rows(app);
+        if matches!(self.workflow, Some(Workflow::Features)) {
+            rows = crate::actions::get_action_infos_in_context(app, &self.context)
+                .into_iter()
+                .filter(|action| crate::actions::feature_toggle_state(&action.id, app).is_some())
+                .map(|action| (action.id, action.name, action.description))
+                .collect();
+        }
         if let Some(Workflow::Bases(page)) = &self.workflow {
             rows = page.rows();
         }
@@ -281,6 +290,17 @@ impl CommandPalette {
 }
 
 impl App {
+    pub(crate) fn begin_feature_selection(&mut self) {
+        let mut palette = self
+            .command_palette
+            .take()
+            .unwrap_or_else(|| CommandPalette::new(None, self));
+        palette.workflow_action = Some("settings.features".into());
+        let input = crate::ui::make_popup_textarea(&self.app_theme, "Search features...");
+        palette.push_workflow(Workflow::Features, input, self);
+        self.command_palette = Some(palette);
+    }
+
     /// Only explicit palette action launches opt into an integrated continuation.
     pub(crate) fn present_action_popup(&mut self, popup: ActivePopup) {
         let Some(mut palette) = self.command_palette.take() else {
@@ -434,6 +454,16 @@ impl App {
                 &palette.context,
             )?;
             match palette.workflow.as_mut().expect("workflow") {
+                Workflow::Features => {
+                    if let Some(item) = palette.items.get(selected) {
+                        crate::actions::execute_action_in_context(
+                            &item.id,
+                            self,
+                            &palette.context,
+                        )?;
+                    }
+                    Ok(false)
+                }
                 Workflow::Theme(popup, _) => {
                     let Some(item) = palette.items.get(selected) else {
                         return Ok(false);

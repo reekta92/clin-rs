@@ -207,6 +207,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         "info.show" => Info,
         "bases.create" => CreateBase,
         "settings.wrap"
+        | "settings.features"
         | "settings.word_goal"
         | "settings.note_goal"
         | "settings.goals"

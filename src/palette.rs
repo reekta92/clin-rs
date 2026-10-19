@@ -191,7 +191,10 @@ impl CommandPalette {
             .selected()
             .and_then(|i| self.items.get(i))
             .map(|item| item.id.clone());
-        let actions = crate::actions::get_action_infos_in_context(app, &self.context);
+        let actions: Vec<_> = crate::actions::get_action_infos_in_context(app, &self.context)
+            .into_iter()
+            .filter(|action| crate::actions::feature_toggle_state(&action.id, app).is_none())
+            .collect();
         let mut matched = Vec::with_capacity(actions.len());
         self.tabs = tabs_for_actions(app, &actions);
         let tabs = &self.tabs;

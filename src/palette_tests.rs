@@ -205,6 +205,102 @@ fn visible(app: &App, id: &str) -> bool {
 }
 
 #[test]
+fn palette_features_groups_toggles_and_preserves_search_and_selection() {
+    let mut f = Fixture::new();
+    drive(&mut f.app, key(KeyCode::F(6)));
+    let feature_ids = [
+        "settings.calendar",
+        "settings.smart_folders",
+        "settings.goals",
+        "settings.toggle_graph_view",
+        "settings.toggle_canvas_view",
+        "settings.toggle_draw_view",
+        "settings.toggle_outline_view",
+        "settings.toggle_help_view",
+        "settings.toggle_tags",
+        "settings.toggle_trash",
+        "settings.toggle_subnotes",
+        "settings.toggle_templates",
+        "settings.toggle_import",
+    ];
+    assert!(visible(&f.app, "settings.features"));
+    assert!(feature_ids.iter().all(|id| !visible(&f.app, id)));
+    assert!(visible(&f.app, "settings.preview_pane"));
+    drive(&mut f.app, Event::Paste("Features".into()));
+    activate(&mut f.app, "settings.features");
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.workflow_title(), "COMMANDS › Features");
+    assert_eq!(palette.items.len(), feature_ids.len());
+    assert!(feature_ids.iter().all(|id| visible(&f.app, id)));
+    drive(&mut f.app, Event::Paste("Tags".into()));
+    activate(&mut f.app, "settings.toggle_tags");
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.input.lines(), ["Tags"]);
+    assert_eq!(palette.state.selected(), Some(0));
+    assert_eq!(palette.items[0].name, "Toggle Tags [Off]");
+    assert!(!f.app.config.features.tags.is_enabled());
+    assert!(
+        !crate::config::ClinConfig::load()
+            .0
+            .unwrap()
+            .features
+            .tags
+            .is_enabled()
+    );
+    drive(&mut f.app, key(KeyCode::Enter));
+    assert!(f.app.config.features.tags.is_enabled());
+    assert!(
+        crate::config::ClinConfig::load()
+            .0
+            .unwrap()
+            .features
+            .tags
+            .is_enabled()
+    );
+    assert_eq!(f.app.command_usage["settings.toggle_tags"].count, 2);
+    drive(&mut f.app, key(KeyCode::Esc));
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert!(palette.workflow.is_none());
+    assert_eq!(palette.input.lines(), ["Features"]);
+    assert_eq!(
+        palette.items[palette.state.selected().unwrap()].id,
+        "settings.features"
+    );
+}
+
+#[test]
+fn palette_features_preserves_context_and_deleted_feature_guards() {
+    let mut f = Fixture::new();
+    f.app.config.features.tags = FeatureState::Deleted;
+    f.app.config.features.graph_view = FeatureState::Disabled;
+    activate(&mut f.app, "settings.features");
+    assert!(!visible(&f.app, "settings.toggle_tags"));
+    assert!(visible(&f.app, "settings.toggle_graph_view"));
+    activate(&mut f.app, "settings.toggle_graph_view");
+    assert!(f.app.config.features.graph_view.is_enabled());
+    let palette = f.app.command_palette.take().unwrap();
+    let selected = palette
+        .items
+        .iter()
+        .position(|item| item.id == "settings.toggle_trash")
+        .unwrap();
+    f.app.config.features.trash = FeatureState::Deleted;
+    f.app.activate_palette(palette, selected);
+    assert_eq!(f.app.config.features.trash, FeatureState::Deleted);
+    assert!(f.app.command_palette.as_ref().unwrap().error.is_some());
+    f.app.dismiss_command_palette();
+    f.enter(ViewMode::Edit);
+    activate(&mut f.app, "settings.features");
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(palette.items.len(), 1);
+    assert_eq!(palette.items[0].id, "settings.goals");
+    f.app.dismiss_command_palette();
+    f.enter(ViewMode::Setup);
+    drive(&mut f.app, key(KeyCode::F(6)));
+    assert!(!visible(&f.app, "settings.features"));
+}
+
+#[test]
 fn palette_global_shortcuts_open_all_nine_views_under_every_shipped_preset() {
     for mode in MODES {
         let mut f = Fixture::new();

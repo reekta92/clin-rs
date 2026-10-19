@@ -264,6 +264,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(ToggleExternalEditorAction),
         Box::new(ToggleLayoutAction),
         Box::new(settings::ToggleLayoutEditModeAction),
+        Box::new(settings::FeaturesAction),
         Box::new(settings::TogglePreviewPaneAction),
         Box::new(settings::ToggleWrapAction),
         Box::new(settings::ToggleZenModeAction),
@@ -398,9 +399,32 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     actions
 });
 
+pub(crate) fn feature_toggle_state(id: &str, app: &App) -> Option<crate::config::FeatureState> {
+    let features = &app.config.features;
+    Some(match id {
+        "settings.toggle_graph_view" => features.graph_view,
+        "settings.toggle_canvas_view" => features.canvas_view,
+        "settings.toggle_draw_view" => features.draw_view,
+        "settings.toggle_outline_view" => features.outline_view,
+        "settings.toggle_help_view" => features.help_view,
+        "settings.toggle_tags" => features.tags,
+        "settings.toggle_trash" => features.trash,
+        "settings.toggle_subnotes" => features.subnotes,
+        "settings.toggle_templates" => features.templates,
+        "settings.toggle_import" => features.import,
+        "settings.goals" => features.goals,
+        "settings.calendar" => features.calendar,
+        "settings.smart_folders" => features.smart_folders,
+        _ => return None,
+    })
+}
+
 /// Whether a palette action is available given the current feature toggles.
 /// `true` for every action not explicitly tied to a feature.
 fn action_feature_enabled(id: &str, app: &App) -> bool {
+    if let Some(state) = feature_toggle_state(id, app) {
+        return !state.is_deleted();
+    }
     if id.starts_with("bases.") && id != "bases.create" {
         return app.mode == crate::app::ViewMode::Bases
             && app.config.features.bases_view.is_enabled();
@@ -421,19 +445,6 @@ fn action_feature_enabled(id: &str, app: &App) -> bool {
             app.config.features.import.is_enabled()
         }
         id if id.starts_with("insert.") => app.config.features.import.is_enabled(),
-        "settings.toggle_graph_view" => !app.config.features.graph_view.is_deleted(),
-        "settings.toggle_canvas_view" => !app.config.features.canvas_view.is_deleted(),
-        "settings.toggle_draw_view" => !app.config.features.draw_view.is_deleted(),
-        "settings.toggle_outline_view" => !app.config.features.outline_view.is_deleted(),
-        "settings.toggle_help_view" => !app.config.features.help_view.is_deleted(),
-        "settings.toggle_tags" => !app.config.features.tags.is_deleted(),
-        "settings.toggle_trash" => !app.config.features.trash.is_deleted(),
-        "settings.toggle_subnotes" => !app.config.features.subnotes.is_deleted(),
-        "settings.toggle_templates" => !app.config.features.templates.is_deleted(),
-        "settings.toggle_import" => !app.config.features.import.is_deleted(),
-        "settings.goals" => !app.config.features.goals.is_deleted(),
-        "settings.calendar" => !app.config.features.calendar.is_deleted(),
-        "settings.smart_folders" => !app.config.features.smart_folders.is_deleted(),
         _ => true,
     }
 }
