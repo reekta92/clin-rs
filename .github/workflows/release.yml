@@ -80,7 +80,7 @@ jobs:
   release:
     permissions:
       contents: write
-    uses: reekta92/.github/.github/workflows/rust-release.yml@746b77673ec0db7978ee464ba012cb601fcec4ef
+    uses: reekta92/.github/.github/workflows/rust-release.yml@5e59e5d8bf01bfd33bffda49215b44bfe527b8e0
     with:
       release_kind: application
       apt_deps: "libssl-dev pkg-config"
