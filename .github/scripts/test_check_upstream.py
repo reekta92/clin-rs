@@ -37,7 +37,7 @@ class UpstreamCheckTests(unittest.TestCase):
 
     def fixture(self, package='pinstar', version='1.0.0', source='pub fn value() -> u32 { 42 }\n'):
         upstream = self.root / 'released engine'
-        self.candidate = self.root / 'candidate engine'
+        self.candidate = self.root / 'candidate engine 🖊'
         for directory, body, number in [(upstream, 'pub fn value() -> u32 { 7 }\n', '1.0.0'),
                                          (self.candidate, source, version)]:
             (directory / 'src').mkdir(parents=True)

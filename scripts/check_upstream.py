@@ -35,7 +35,7 @@ def check(library):
             raise ValueError(f'Clin must have a direct Git dependency on {package}')
         override = consumer / 'upstream.toml'
         override.write_text(f'[patch.{json.dumps(dependency["git"])}]\n'
-                            f'{json.dumps(package)} = {{ path = {json.dumps(str(library))} }}\n')
+                            f'{json.dumps(package)} = {{ path = {json.dumps(str(library), ensure_ascii=False)} }}\n')
         cargo = ['cargo', '+stable', '--config', str(override)]
         print(f'Checking {package} from {library} against Clin {revision}', flush=True)
         subprocess.run([*cargo, 'update', '-p', package], cwd=consumer, env=env, check=True)
