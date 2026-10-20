@@ -40,7 +40,7 @@ malformed frontmatter, opaque tagged values, aliases, LF/CRLF, comments, body
 preservation, Base authoring, legacy opaque-data preservation, and native Mermaid
 previews. New recovery records use version 2; legacy encrypted formats remain untouched.
 
-Run `development/scripts/check.sh` for the complete clin gates. `cargo tree -i
+Run `scripts/check.sh` for the complete clin gates. `cargo tree -i
 yaml_serde` should show the shared maintained backend; `unsafe-libyaml`,
 `serde_yaml`, and `serde_yaml_ng` packages must be absent from `Cargo.lock`.
 

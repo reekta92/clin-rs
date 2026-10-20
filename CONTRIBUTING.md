@@ -46,13 +46,46 @@ archives so the AUR package can install the same desktop launcher and icons.
 
 ## Development
 
-- **Local CI runner**: `development/scripts/check.sh` runs fmt, check, clippy, test, dependency, and MSRV gates; use `development/scripts/check.sh clippy test` for a subset
+- **Local CI runner**: `scripts/check.sh` runs formatting, Clippy, tests, dependency policy, and the declared minimum Rust check with the shared CI flags. Install stable Rust with rustfmt/Clippy, the toolchain declared by `rust-version`, cargo-deny, and Python 3.11+. Missing tools fail the check. Use `scripts/check.sh clippy test` for a subset; `scripts/check.sh check` is an optional separate stable build check.
 - **Code style**: Run `cargo fmt --all` before committing
 - **Linting**: Run `cargo clippy --locked --all-targets -- -D warnings` and fix all warnings
 - **Testing**: Run `cargo test --locked`; ignored performance tests are opt-in
 - **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases.
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
+
+### Checking upstream libraries
+
+Run an existing adapter contract against a candidate library checkout:
+
+```sh
+python3 scripts/check_upstream.py ../pinstar
+python3 scripts/check_upstream.py ../graf
+python3 scripts/check_upstream.py ../draw-rs
+```
+
+This requires Python 3.12+ and stable Rust. The script archives the current
+committed Clin revision into a temporary directory, patches the dependency's
+actual Git source, and resolves the candidate there. It verifies that Cargo
+selected the candidate as Clin's direct dependency before running the matching
+`*_plugin_e2e` tests with `--locked`. The original manifest and lockfile remain
+untouched. Build artifacts reuse `target/`, or `CARGO_TARGET_DIR` when set.
+Commit paired Clin changes before running this command; uncommitted Clin edits
+are not included. Candidate library edits are read from its working tree.
+
+Library CI uses the same command through the shared `clin-compat.yml` workflow
+and pins the supported Clin commit to a full SHA. For a coordinated API change,
+link the library PR and the paired Clin PR, test that committed Clin revision,
+then release the compatible library and update Clin's dependency pin in a linked
+PR. An incompatible candidate version fails instead of silently testing the old
+Git dependency. See [dependency compatibility patches](docs/DEPENDENCY_PATCHES.md)
+for the Mermaid root patch required by the current consumer.
+
+Test the development tools without building Clin:
+
+```sh
+python3 -m unittest discover -s .github/scripts -p 'test_check_*.py' -v
+```
 
 ## Documentation and Wiki
 

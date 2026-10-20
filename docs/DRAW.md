@@ -209,9 +209,10 @@ exist. It uses default Draw bindings, local help and a textarea-local text
 clipboard, without vault discovery or clin configuration. See the upstream README
 for library embedding and terminal restoration behavior.
 
-For paired development, temporarily replace the Git dependency with
-`draw = { package = "draw-rs", path = "../draw-rs" }`. Restore the immutable Git
-revision and regenerate `Cargo.lock` before committing the final integration.
+For paired development, run `python3 scripts/check_upstream.py ../draw-rs` from
+the Clin root. It tests the candidate against committed Clin without changing
+the original manifest or lockfile. See
+[checking upstream libraries](../CONTRIBUTING.md#checking-upstream-libraries).
 The package is GPL-3.0-only and preserves clin source attribution.
 
 ## API migration

@@ -79,7 +79,7 @@ to remote servers as described in [BASES.md](BASES.md).
 ## Reproducible checks
 
 ```sh
-development/scripts/check.sh --strict
+scripts/check.sh
 cargo test --locked bases:: --lib
 cargo test --locked storage::metadata --lib
 cargo test --locked --release bases::workflow_tests::acceptance::native_5000_note_acceptance --lib -- --ignored --nocapture
@@ -93,6 +93,12 @@ test command; the complete native release acceptance above passed separately.
 The six required gates are formatting, locked check, all-target Clippy with denied
 warnings, complete tests, dependency policy/advisories, and Rust 1.90 locked check.
 Ignored performance tests run separately; none of the six gates is skipped.
+
+The recorded run included a separate locked stable check. The tracked
+`scripts/check.sh` now follows consolidated CI: stable Clippy checks all targets,
+and the declared minimum Rust version checks all targets separately. Its five
+default gates fail on missing tools; `scripts/check.sh check` remains available
+for an additional stable check.
 
 Actual disposable-vault PTY checks used the built clin binary, a 100×30
 `xterm-256color` pseudo-terminal and decoded screen assertions. The native check
