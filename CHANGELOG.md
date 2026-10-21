@@ -2,6 +2,27 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.14.0-beta.2] - 2026-10-21
+
+### CI
+
+- Adopt packaged registry dependency verification
+
+### Fixed
+
+- Preserve image transmission across startup overlays (#216)
+- Use vault IDs for Canvas hosts across platforms
+- Use published engines and enforce release discipline
+- Preserve Unicode paths in upstream Cargo overrides
+
+### Testing
+
+- Create native Windows directories in isolated CLI profile
+- Construct Windows Help paths by component
+
+### Build
+
+- Track CI gates and isolated upstream adapter checks
 ## [0.14.0-beta.1] - 2026-10-19
 
 ### Added
@@ -48,6 +69,10 @@ All notable changes to clin are documented in this file.
 
 - Include the standalone modifier fix in the upstream pin
 - Pin the published independent drawing library
+
+### Release
+
+- V0.14.0-beta.1
 ## [0.14.0-beta.0] - 2026-10-18
 
 ### Added
