@@ -31,10 +31,10 @@ def check(library):
         manifest = tomllib.loads((consumer / 'Cargo.toml').read_text())
         dependency = next((value for alias, value in manifest.get('dependencies', {}).items()
                            if isinstance(value, dict) and value.get('package', alias) == package), None)
-        if dependency is None or 'git' not in dependency:
-            raise ValueError(f'Clin must have a direct Git dependency on {package}')
+        if dependency is None:
+            raise ValueError(f'Clin must have a direct dependency on {package}')
         override = consumer / 'upstream.toml'
-        override.write_text(f'[patch.{json.dumps(dependency["git"])}]\n'
+        override.write_text(f'[patch.{json.dumps(dependency.get("git", "crates-io"))}]\n'
                             f'{json.dumps(package)} = {{ path = {json.dumps(str(library), ensure_ascii=False)} }}\n')
         cargo = ['cargo', '+stable', '--config', str(override)]
         print(f'Checking {package} from {library} against Clin {revision}', flush=True)

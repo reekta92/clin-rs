@@ -18,7 +18,7 @@ Releases are fully automated via **Actions → Release → Run workflow**.
 
 This produces:
 - **Platforms:** Linux x86_64, Linux aarch64, Windows x86_64, macOS aarch64 (Apple Silicon)
-- **Linux packages:** `.deb` (x86_64 + aarch64), `.rpm` (x86_64 + aarch64), AppImage (x86_64), AUR (`clin-rs-bin`)
+- **Linux packages:** `.deb` (x86_64 + aarch64), `.rpm` (x86_64 + aarch64), AppImage (x86_64). The workflow updates PKGBUILD references for downstream AUR maintainers.
 - **Other package managers:** crates.io; Nix consumes the repository flake (no separate release publish step)
 - **Artifacts:** changelog, .tar.xz, .tar.gz, .zip, .dmg
 
@@ -39,14 +39,13 @@ archives so the AUR package can install the same desktop launcher and icons.
 
 | Secret | Source | Used by |
 |---|---|---|
-| `BOT_TOKEN` | Repository bot token with Git write access | Release commits/tags and wiki publication |
+| `BOT_TOKEN` | Repository bot token with Git write access | Wiki publication; optional release authentication |
 | `CARGO_REGISTRY_TOKEN` | [crates.io/settings/tokens](https://crates.io/settings/tokens) — publish scope | crates.io publish |
-| `AUR_SSH_PRIVATE_KEY` | SSH keypair registered at [aur.archlinux.org](https://aur.archlinux.org/account) | AUR package push |
 
 
 ## Development
 
-- **Local CI runner**: `scripts/check.sh` runs formatting, Clippy, tests, dependency policy, and the declared minimum Rust check with the shared CI flags. Install stable Rust with rustfmt/Clippy, the toolchain declared by `rust-version`, cargo-deny, and Python 3.11+. Missing tools fail the check. Use `scripts/check.sh clippy test` for a subset; `scripts/check.sh check` is an optional separate stable build check.
+- **Local CI runner**: `scripts/check.sh` runs formatting, Clippy, tests, dependency policy, and the declared minimum Rust check locally. CI additionally runs Windows/macOS tests and verifies the extracted registry package; `cargo package --locked` reproduces package compilation. Install stable Rust with rustfmt/Clippy, the toolchain declared by `rust-version`, cargo-deny, and Python 3.11+. Missing tools fail the check. Use `scripts/check.sh clippy test` for a subset; `scripts/check.sh check` is an optional separate stable build check.
 - **Code style**: Run `cargo fmt --all` before committing
 - **Linting**: Run `cargo clippy --locked --all-targets -- -D warnings` and fix all warnings
 - **Testing**: Run `cargo test --locked`; ignored performance tests are opt-in
@@ -66,7 +65,7 @@ python3 scripts/check_upstream.py ../draw-rs
 
 This requires Python 3.12+ and stable Rust. The script archives the current
 committed Clin revision into a temporary directory, patches the dependency's
-actual Git source, and resolves the candidate there. It verifies that Cargo
+actual registry or Git source, and resolves the candidate there. It verifies that Cargo
 selected the candidate as Clin's direct dependency before running the matching
 `*_plugin_e2e` tests with `--locked`. The original manifest and lockfile remain
 untouched. Build artifacts reuse `target/`, or `CARGO_TARGET_DIR` when set.
@@ -78,8 +77,8 @@ and pins the supported Clin commit to a full SHA. For a coordinated API change,
 link the library PR and the paired Clin PR, test that committed Clin revision,
 then release the compatible library and update Clin's dependency pin in a linked
 PR. An incompatible candidate version fails instead of silently testing the old
-Git dependency. See [dependency compatibility patches](docs/DEPENDENCY_PATCHES.md)
-for the Mermaid root patch required by the current consumer.
+dependency. See [dependency compatibility](docs/DEPENDENCY_PATCHES.md)
+for the published Mermaid backend; consumers need no root Cargo patch.
 
 Test the development tools without building Clin:
 
@@ -110,6 +109,9 @@ git -C /tmp/clin-wiki diff
 ```
 
 ## Pull Requests
+
+See [the shared development process](docs/DEVELOPMENT.md) for repository roles,
+workspace setup, coordinated changes and [release acceptance](docs/RELEASE_CHECKLIST.md).
 
 1. Create a feature branch from `main`
 2. Make your changes with clear, descriptive commits

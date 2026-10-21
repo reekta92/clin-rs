@@ -1,5 +1,19 @@
 # Roadmap
 
+## Next release: 0.14 stable readiness
+
+The next release is a stabilization release. Track blockers in the
+[Release readiness milestone](https://github.com/reekta92/clin-rs/milestone/1),
+including [interactive acceptance #214](https://github.com/reekta92/clin-rs/issues/214),
+and [release checklist](docs/RELEASE_CHECKLIST.md).
+
+- [ ] Verify required native CI, the published dependency chain and minimum Rust.
+- [x] Prove the protected workflow: [Pinstar 1.1.2 release](https://github.com/reekta92/pinstar/actions/runs/39573233561).
+- [ ] Complete interactive terminal acceptance on Linux, Windows and macOS.
+
+The ideas below are an uncommitted backlog. New views and repository extractions
+need a separate scoped proposal after release blockers close.
+
 ## Main Goal for v1.0.0
 Make the `clin-rs` project a modular platform that only provides main functionalities like notes view(including every popup in notes view), editor view, preview pane and add other features via library logic so they are both easier to manage and open for possible **plugins** along the way. **So all the other views except editor and notes will be a plugin/library that can be enabled/disabled according to how much does the user use it or not. Bigger views like `pinstar`, `graf` -and future ones- will have their own repositories that will be attached to the `clin-rs` as a library. These modularity also will be expanded for command palette actions as well.** Of course this is **just** a plan and might not even happen at all since managing multiple big projects is quite cumbersome.
 
@@ -76,6 +90,8 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Feature toggles** — `[features]` controls views/features; disabled entry points are hidden, deleted features release keybinds, image workers require restart
 - [X] **Selection-aware metrics** — editor header shows selected/total word and character counts via statusline tokens
 - [x] **todo.txt** — todo.txt standardization support
+- [X] **Custom template variables** — folder-local variables and their configuration UI
+- [X] **Bases** — public `.base` queries, four layouts, native editing and live embeds
 
 ## Planned
 
@@ -85,7 +101,6 @@ Make the `clin-rs` project a modular platform that only provides main functional
 
 #### Notes View
 - [ ] **Notebook files** — a text file type where you can embed interactable drawings(via `draw`), schemes(via `pinstar`) etc. At it's core it's a markdown file with a special property, so it will be compatible with other `.md` editors.
-- [ ] **Custom template vars** — allow for creating custom template variables for creating templates
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
@@ -124,9 +139,6 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [ ] **Assigning docs to files** — assign specific sections of a document file or the entire file to 1 or more project files so when any of the project files updates, user is notified that the documentation requires updates too.
 - [ ] **Notifications** — notify users when documents/wiki requires update.
 - [ ] **Context aware search** — a search action that allows user to search a context that shows similar results from the docs/wiki. For example searching "command palette/how" shows the "How" section of the "Command Palette" system.
-
-#### Databases View
-- [ ] **Database view** — database feature similar to Obsidian's databases
 
 #### Configuration
 - [ ] **Plugin support** — a plugin system to allow users create new views, command palette actions, preview pane types for specific filetypes and possibly custom popups

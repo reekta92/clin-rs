@@ -11,7 +11,9 @@ For installation, quickstart, and general project info, see the [README.md](../R
 ## Core Architecture
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture: view state machine, event loop, rendering pipeline, data flow, threading model, module map
-- [DEPENDENCY_PATCHES.md](DEPENDENCY_PATCHES.md) — Pinned compatibility forks, maintained YAML backend, safety evidence, and update policy
+- [DEPENDENCY_PATCHES.md](DEPENDENCY_PATCHES.md) — Published compatibility parser, maintained YAML backend, safety evidence, and update policy
+- [DEVELOPMENT.md](DEVELOPMENT.md) — Repository roles, workspace, CI and coordinated changes
+- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) — Release blockers, automated proof and interactive acceptance
 
 ## Views
 

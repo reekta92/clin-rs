@@ -38,9 +38,3 @@ wildcards = "warn"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-git = [
-    "https://github.com/reekta92/draw-rs",
-    "https://github.com/reekta92/graf",
-    "https://github.com/reekta92/pinstar",
-    "https://github.com/reekta92/merman",
-]

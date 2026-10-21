@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the same required Rust gates as the shared CI workflow.
+# Run local Rust gates; CI also checks native platforms and registry packages.
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."

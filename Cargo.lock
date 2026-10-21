@@ -1018,8 +1018,9 @@ dependencies = [
 
 [[package]]
 name = "draw-rs"
-version = "0.1.0"
-source = "git+https://github.com/reekta92/draw-rs?rev=50120747b061e6be5bb8f0da9f75373c10b2af37#50120747b061e6be5bb8f0da9f75373c10b2af37"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e7eeab8ca154334e39122c9661cead3f9b5831683b964458752dc46d8f338d0"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -1434,7 +1435,8 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 [[package]]
 name = "graf-rs"
 version = "1.1.0"
-source = "git+https://github.com/reekta92/graf?rev=9c32610#9c3261071adb07da6faa4e3654beef9fd9846bac"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9d89765a09ae85e11bee9f3912aa723eaccfb2f7b14146374bc6ddd90fdc01"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1503,11 +1505,11 @@ dependencies = [
 
 [[package]]
 name = "hashlink"
-version = "0.10.0"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
+checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -2243,9 +2245,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "merman-core"
+name = "merman-core-clin"
 version = "0.6.0"
-source = "git+https://github.com/reekta92/merman?rev=ba16ce6a43a5f0d2d070bd40cf91b958fd7e22e0#ba16ce6a43a5f0d2d070bd40cf91b958fd7e22e0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ff880331d67814f557b0d049cea743e087ea71e6cd9bd2159eb814a2b7c1f2"
 dependencies = [
  "chrono",
  "euclid",
@@ -2916,15 +2919,16 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pinstar"
-version = "1.0.1"
-source = "git+https://github.com/reekta92/pinstar?rev=3fe2e49eeff8c841bbd8cf592c83966c42e19688#3fe2e49eeff8c841bbd8cf592c83966c42e19688"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8672cf48a0f362ae7aaf4b1a830ea779bc75fc34f820d42b13f909cb553e35a"
 dependencies = [
  "anyhow",
  "crossterm",
  "htmlize",
  "image",
  "lru",
- "merman-core",
+ "merman-core-clin",
  "ratatui",
  "ratatui-image",
  "ratatui-textarea",
@@ -3757,9 +3761,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -4207,7 +4211,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.5",
  "windows-sys 0.61.2",
@@ -5455,12 +5459,12 @@ dependencies = [
 
 [[package]]
 name = "yaml-rust2"
-version = "0.10.4"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2462ea039c445496d8793d052e13787f2b90e750b833afee748e601c17621ed9"
+checksum = "57e5b818a27a4cd30884ea380857a5e56f7ec3ba24a3990a3cc0b95af3238e18"
 dependencies = [
  "arraydeque",
- "hashlink 0.10.0",
+ "hashlink 0.12.2",
 ]
 
 [[package]]

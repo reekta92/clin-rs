@@ -350,7 +350,7 @@ src/
 
 ---
 
-Graph construction, physics, spatial indexing, viewport, and node rendering live in upstream [`graf`](https://github.com/reekta92/graf-rs), not `src/graf/`. Canvas schema, state, gestures, and rendering live in upstream [`pinstar`](https://github.com/reekta92/pinstar). `Cargo.toml` and `Cargo.lock` pin the library versions; clin adapters own host integration. Draw and Outline remain local overlays.
+Graph construction, physics, spatial indexing, viewport, and rendering live in [`graf`](https://github.com/reekta92/graf). Canvas schema, state, gestures, and rendering live in [`pinstar`](https://github.com/reekta92/pinstar). Drawing state, input, geometry, and rendering live in [`draw-rs`](https://github.com/reekta92/draw-rs). `Cargo.toml` declares supported registry versions and `Cargo.lock` records exact packages. Clin adapters own host integration and guarded document saves. Outline remains local.
 
 ## Threading Model
 

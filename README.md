@@ -26,7 +26,7 @@
 ## About
 `clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a single Rust binary, while keeping the UI approachable.
 
-Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering is supported via `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; controlled by `[features] images = true`). Databases and Obsidian plugins are not supported.
+Open an existing Obsidian vault in `clin` to use public Markdown, Canvas and Bases workflows. Native image rendering uses `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; controlled by `[features] images = true`). See [Bases compatibility](docs/BASES.md) and [upgrade requirements](docs/UPGRADING.md) before migrating a vault. Obsidian plugins are not executed.
 
 ## Screenshots
 
@@ -79,7 +79,7 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 - **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
 - **Subnotes** — virtual notes attached to physical notes, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
 - **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
-- **Command palette** (Ctrl+P) — extensible action system with theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
+- **Command palette** (Ctrl+Space or F6) — contextual actions across all views, including theme switching, OCR paste, canvas/draw creation and navigation. Bindings are configurable. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Custom themes** — drop-in TOML themes in the active configuration directory’s `themes/` subdirectory, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
