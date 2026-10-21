@@ -3,31 +3,44 @@ use crate::app_theme::AppThemeColors;
 
 #[test]
 fn layout_precedes_highlighting() {
-    let content = "# Header\n```rust\nlet x = 1;\n```\n";
-    let theme = AppThemeColors::default();
-    let opts = MdRenderOpts::default();
-    let mut renderer = MarkdownRenderer::new();
-    let viewport = RenderViewport {
-        start: 0,
-        height: 10,
+    use super::{
+        cache::RenderKey,
+        style::MarkdownTheme,
+        worker::{self, RenderEvent, RenderJob},
     };
-    renderer.render_with(content, 80, &theme, &opts, viewport);
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64},
+        mpsc,
+    };
+    use std::time::Duration;
 
-    // First poll should trigger LayoutReady event synchronously or near-synchronously
-    let mut tries = 0;
-    while renderer.document().is_none() && tries < 50 {
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        renderer.poll();
-        tries += 1;
-    }
-    assert!(
-        renderer.document().is_some(),
-        "LayoutReady must arrive first"
-    );
-    assert!(
-        renderer.is_pending(),
-        "Should still be pending highlighting"
-    );
+    let (tx, rx) = mpsc::sync_channel(0);
+    worker::submit(RenderJob {
+        generation: 1,
+        key: RenderKey::new(
+            Arc::from("# Header\n```rust\nlet x = 1;\n```\n"),
+            80,
+            MarkdownTheme::from_app_theme(&AppThemeColors::default()),
+            MdRenderOpts::default(),
+        ),
+        viewport: Arc::new(AtomicU64::new(worker::pack_viewport(0, 10))),
+        cancel: Arc::new(AtomicBool::new(false)),
+        tx,
+    });
+    let timeout = Duration::from_secs(10);
+    assert!(matches!(
+        rx.recv_timeout(timeout).unwrap(),
+        RenderEvent::LayoutReady { .. }
+    ));
+    assert!(matches!(
+        rx.recv_timeout(timeout).unwrap(),
+        RenderEvent::CodeBlockReady { .. }
+    ));
+    assert!(matches!(
+        rx.recv_timeout(timeout).unwrap(),
+        RenderEvent::Complete { .. }
+    ));
 }
 
 #[test]

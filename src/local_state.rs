@@ -437,13 +437,13 @@ mod tests {
         let sub = tmp.path().join("a").join("b");
         std::fs::create_dir_all(&sub).unwrap();
         let id = vault_identity_path(&sub).unwrap();
-        assert!(id.to_string_lossy().ends_with("/a/b"));
+        assert!(id.ends_with(Path::new("a/b")));
         assert!(id.is_absolute());
 
         // Non‑existent suffix is preserved
         let non_existent = tmp.path().join("a").join("nonexistent");
         let id2 = vault_identity_path(&non_existent).unwrap();
-        assert!(id2.to_string_lossy().ends_with("/a/nonexistent"));
+        assert!(id2.ends_with(Path::new("a/nonexistent")));
     }
 
     #[test]

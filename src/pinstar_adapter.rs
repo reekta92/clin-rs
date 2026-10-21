@@ -90,6 +90,7 @@ fn to_lib_action(action: CanvasAction) -> PinstarAction {
 
 pub struct PinstarPlugin {
     pub state: PinstarState,
+    pub(crate) current_file: String,
     pub keybinds: Keybinds,
     pub seq_matcher: KeyMatcher,
     image_rx: Option<std::sync::mpsc::Receiver<anyhow::Result<DecodedImage>>>,
@@ -165,6 +166,7 @@ impl PinstarPlugin {
             .replace('\\', "/");
         let expected_path = storage.document_path(&target)?;
         let mut state = PinstarState::load(&expected_path)?;
+        let current_file = target.clone();
         let writer = storage.clone();
         state.set_save_handler(move |path, before, after| {
             anyhow::ensure!(
@@ -200,6 +202,7 @@ impl PinstarPlugin {
         }
 
         Ok(Self {
+            current_file,
             base_host_raw: state.raw_editor.lines().join("\n"),
             state,
             keybinds,
@@ -237,13 +240,7 @@ impl PinstarPlugin {
         } else {
             area
         };
-        let host = self
-            .state
-            .path
-            .strip_prefix(&app.storage.notes_dir)
-            .ok()
-            .and_then(std::path::Path::to_str)
-            .map(str::to_owned);
+        let host = Some(self.current_file.clone());
         let mut visible = std::collections::HashSet::new();
         for node in &self.state.data.nodes {
             let content = match node {
