@@ -120,16 +120,7 @@ pub fn run() -> Result<()> {
     // Panic hook: restore terminal before abort
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        disable_raw_mode().ok();
-        #[cfg(not(windows))]
-        let _ = execute!(io::stderr(), PopKeyboardEnhancementFlags);
-        let _ = execute!(
-            io::stderr(),
-            LeaveAlternateScreen,
-            DisableMouseCapture,
-            DisableBracketedPaste,
-            crossterm::cursor::Show,
-        );
+        restore_terminal(io::stderr()).ok();
         prev(panic_info);
     }));
 
@@ -1096,6 +1087,21 @@ pub(crate) fn keyboard_enhancement_flags(mouse_enabled: bool) -> KeyboardEnhance
 
 struct TerminalGuard;
 
+fn restore_terminal(mut output: impl io::Write) -> io::Result<()> {
+    #[cfg(not(windows))]
+    let _ = execute!(output, PopKeyboardEnhancementFlags);
+    let reset = execute!(
+        output,
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        crossterm::cursor::Show,
+    );
+    // Windows mouse cleanup restores the input mode captured after raw mode began.
+    let raw = disable_raw_mode();
+    reset.and(raw)
+}
+
 impl TerminalGuard {
     fn enter(mouse_enabled: bool) -> Result<Self> {
         enable_raw_mode().context("failed to enable raw mode")?;
@@ -1129,15 +1135,7 @@ impl TerminalGuard {
             )
         };
         if let Err(e) = entered {
-            #[cfg(not(windows))]
-            let _ = execute!(stdout, PopKeyboardEnhancementFlags);
-            let _ = execute!(
-                stdout,
-                LeaveAlternateScreen,
-                DisableMouseCapture,
-                DisableBracketedPaste
-            );
-            disable_raw_mode().ok(); // guard won't be built; clean up raw mode ourselves
+            restore_terminal(stdout).ok();
             return Err(e).context("failed to enter alternate screen");
         }
         Ok(TerminalGuard)
@@ -1146,35 +1144,14 @@ impl TerminalGuard {
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
-        disable_raw_mode().ok();
-        #[cfg(not(windows))]
-        let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
-        let _ = execute!(
-            io::stdout(),
-            LeaveAlternateScreen,
-            DisableMouseCapture,
-            DisableBracketedPaste,
-            crossterm::cursor::Show,
-        );
+        restore_terminal(io::stdout()).ok();
     }
 }
 
 /// Immediately restore terminal and exit with code 130 (128 + SIGINT).
 /// Bypasses graceful shutdown, saves, and confirm dialogs.
 pub fn force_quit() -> ! {
-    crossterm::terminal::disable_raw_mode().ok();
-    #[cfg(not(windows))]
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::event::PopKeyboardEnhancementFlags
-    );
-    let _ = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture,
-        crossterm::event::DisableBracketedPaste,
-        crossterm::cursor::Show,
-    );
+    restore_terminal(io::stdout()).ok();
     std::process::exit(130);
 }
 
@@ -1887,6 +1864,43 @@ pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_terminal_cleanup_restores_input() {
+        const CHILD: &str = "CLIN_TEST_TERMINAL_CLEANUP_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::windows_terminal_cleanup_restores_input",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert!(
+                status.success(),
+                "console regression child failed: {status}"
+            );
+            return;
+        }
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn FreeConsole() -> i32;
+            fn AllocConsole() -> i32;
+        }
+        // Keep console-mode mutations out of the parallel test runner's console.
+        unsafe {
+            FreeConsole();
+            assert_ne!(AllocConsole(), 0);
+        }
+        assert!(!crossterm::terminal::is_raw_mode_enabled().unwrap());
+        let guard = TerminalGuard::enter(true).unwrap();
+        assert!(crossterm::terminal::is_raw_mode_enabled().unwrap());
+        drop(guard);
+        assert!(!crossterm::terminal::is_raw_mode_enabled().unwrap());
+    }
 
     #[cfg(not(windows))]
     #[test]
