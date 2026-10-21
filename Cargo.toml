@@ -95,7 +95,7 @@ assets = [
 ]
 
 [dependencies]
-draw = { package = "draw-rs", version = "0.1.0", git = "https://github.com/reekta92/draw-rs", rev = "50120747b061e6be5bb8f0da9f75373c10b2af37" }
+draw = { package = "draw-rs", version = "0.1.2" }
 anyhow = "1.0"
 base64 = "0.22"
 arboard = "3.6.1"
@@ -113,8 +113,8 @@ reqwest = { version = "0.12.28", default-features = false, features = ["rustls-t
 tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = "0.30"
-graf = { package = "graf-rs", version = "1.1.0", git = "https://github.com/reekta92/graf", rev = "9c32610" }
-pinstar = { version = "1.0.0", git = "https://github.com/reekta92/pinstar", rev = "3fe2e49eeff8c841bbd8cf592c83966c42e19688", features = ["images", "mermaid-preview"] }
+graf = { package = "graf-rs", version = "1.1.0" }
+pinstar = { version = "1.1.2", features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 # Keep existing imports while using YAML Organization's maintained backend.
@@ -146,10 +146,6 @@ tempfile = "3.27.0"
 
 [build-dependencies]
 winresource = "0.1.34"
-
-[patch.crates-io]
-# Preserve Mermaid 0.6 APIs/MSRV while replacing its archived YAML dependency.
-merman-core = { git = "https://github.com/reekta92/merman", rev = "ba16ce6a43a5f0d2d070bd40cf91b958fd7e22e0" }
 
 [profile.release]
 lto = "thin"

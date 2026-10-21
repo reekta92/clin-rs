@@ -43,7 +43,6 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoLock = {
     lockFile = "${finalAttrs.src}/Cargo.lock";
-    allowBuiltinFetchGit = true;
   };
 
   nativeBuildInputs = [

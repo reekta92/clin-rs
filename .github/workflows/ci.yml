@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   development-tools:
@@ -21,4 +22,4 @@ jobs:
   ci:
     permissions:
       contents: read
-    uses: reekta92/.github/.github/workflows/ci.yml@91cb0fbf33f0c10f1ed7fb5005e15882945a89a0
+    uses: reekta92/.github/.github/workflows/ci.yml@0b563c110a6df98c00a85b44593fd3afe6863480

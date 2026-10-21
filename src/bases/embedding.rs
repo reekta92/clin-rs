@@ -624,7 +624,7 @@ impl App {
             }
         }
         if let Some(canvas) = &self.canvas_state
-            && canvas.state.path == self.storage.notes_dir.join(baseline.id())
+            && canvas.current_file == baseline.id()
             && canvas.base_host_has_pending_changes()
         {
             anyhow::bail!(
@@ -687,7 +687,7 @@ impl App {
         }
         self.update_editor_markdown_preview();
         if let Some(canvas) = &mut self.canvas_state
-            && canvas.state.path == self.storage.notes_dir.join(after.id())
+            && canvas.current_file == after.id()
             && let Err(error) = canvas.reload_base_host()
         {
             failure = Some(format!("Canvas source changed; reload failed: {error:#}"));

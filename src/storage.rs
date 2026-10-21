@@ -2232,7 +2232,7 @@ mod tests {
     }
 
     #[test]
-    fn test_load_note_summary_unreadable_file() -> Result<()> {
+    fn test_load_note_summary_respects_platform_permissions() -> Result<()> {
         let temp_dir = tempfile::tempdir()?;
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -2252,12 +2252,11 @@ mod tests {
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
 
-        // Create an unreadable .md file
         let note_path = notes_dir.join("unreadable.md");
         fs::write(&note_path, "some content")?;
 
-        // Make it unreadable
-        let mut perms = note_path.metadata()?.permissions();
+        let original_perms = note_path.metadata()?.permissions();
+        let mut perms = original_perms.clone();
         perms.set_readonly(true);
         // On Unix, remove read permission for owner
         #[cfg(unix)]
@@ -2267,12 +2266,12 @@ mod tests {
         }
         fs::set_permissions(&note_path, perms)?;
 
-        // Should return Err, not silently succeed with empty content
         let result = storage.load_note_summary("unreadable.md");
-        assert!(
-            result.is_err(),
-            "load_note_summary should fail for unreadable file"
-        );
+        fs::set_permissions(&note_path, original_perms)?;
+        #[cfg(unix)]
+        assert!(result.is_err(), "unreadable files must report an error");
+        #[cfg(windows)]
+        assert!(result.is_ok(), "Windows read-only files remain readable");
 
         Ok(())
     }

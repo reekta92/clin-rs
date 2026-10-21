@@ -207,6 +207,7 @@ fn embedded_dialogs_keep_modal_focus_and_custom_palette_expands_without_private_
 fn palette_ctrl_space_and_history_restore_expanded_bases_host_routes() {
     for mode in [ViewMode::List, ViewMode::Edit, ViewMode::Canvas] {
         let (_root, mut app) = fixture();
+        app.storage.notes_dir = app.storage.notes_dir.join("..").join("vault");
         app.bases_state = None;
         app.mode = ViewMode::List;
         if mode == ViewMode::Edit {
@@ -452,6 +453,7 @@ fn real_editor_preview_and_active_file_sidebar_keep_unsaved_host_and_native_focu
 fn canvas_file_and_inline_text_nodes_use_live_native_regions_and_exact_json_splices() {
     use crate::overlay::OverlayView;
     let (_root, mut app) = fixture();
+    app.storage.notes_dir = app.storage.notes_dir.join("..").join("vault");
     app.bases_state = None;
     let text = "```base\nfilters: file.ext == 'md'\nviews: [{type: list, name: Inline, order: [file.name, score]}]\n```\n";
     let canvas = format!(
@@ -1001,6 +1003,7 @@ fn palette_failed_navigation_restores_taken_boxed_editor_and_expanded_bases_rout
 #[test]
 fn canvas_inline_write_and_history_reload_native_state_and_reject_pending_raw_editor() {
     let (_root, mut app) = fixture();
+    app.storage.notes_dir = app.storage.notes_dir.join("..").join("vault");
     app.bases_state = None;
     let text = "```base\nfilters: file.ext == 'md'\nviews: [{type: list, name: Inline, order: [file.name]}]\n```\n";
     let source = format!(

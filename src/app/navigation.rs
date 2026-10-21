@@ -14,7 +14,7 @@ enum Place {
     Template(PathBuf),
     Graph,
     Draw(Option<String>),
-    Canvas(PathBuf),
+    Canvas(String),
     Bases {
         id: String,
         view: Option<String>,
@@ -34,8 +34,9 @@ impl Place {
             | (Self::Setup, Self::Setup) => true,
             (Self::Note(a), Self::Note(b))
             | (Self::PublicSource(a), Self::PublicSource(b))
+            | (Self::Canvas(a), Self::Canvas(b))
             | (Self::Outline(a), Self::Outline(b)) => a == b,
-            (Self::Template(a), Self::Template(b)) | (Self::Canvas(a), Self::Canvas(b)) => a == b,
+            (Self::Template(a), Self::Template(b)) => a == b,
             (Self::Draw(a), Self::Draw(b)) => a == b,
             (
                 Self::Bases {
@@ -110,7 +111,7 @@ impl Location {
                 Place::Graph
             }
             ViewMode::Draw => Place::Draw(Some(app.draw_state.as_ref()?.current_file.clone())),
-            ViewMode::Canvas => Place::Canvas(app.canvas_state.as_ref()?.state.path.clone()),
+            ViewMode::Canvas => Place::Canvas(app.canvas_state.as_ref()?.current_file.clone()),
             ViewMode::Bases => {
                 let state = app.bases_state.as_ref()?;
                 Place::Bases {
@@ -184,22 +185,17 @@ impl Location {
                 Prepared::overlay(OverlayState::Draw(state))
             }
 
-            Place::Canvas(path) => {
+            Place::Canvas(id) => {
                 ensure!(
                     app.config.features.canvas_view.is_enabled(),
                     "Canvas disabled"
                 );
-                let id = path
-                    .strip_prefix(&app.storage.notes_dir)
-                    .context("Canvas is outside the current vault")?
-                    .to_str()
-                    .context("invalid Canvas path")?;
                 let snapshot = app.storage.load_document(id)?;
                 let _: serde_json::Value =
                     serde_json::from_str(snapshot.source()).context("failed to reopen Canvas")?;
                 Prepared::overlay(OverlayState::Canvas(
                     crate::pinstar_adapter::PinstarPlugin::new_in_storage(
-                        path,
+                        &app.storage.document_path(id)?,
                         &app.config,
                         app.keybinds.clone(),
                         KeyMatcher::default(),

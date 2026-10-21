@@ -14,7 +14,9 @@ impl Vault {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("vault");
         fs::create_dir_all(root.join(".clin/templates")).unwrap();
-        fs::create_dir_all(dir.path().join("home")).unwrap();
+        for directory in ["Roaming", "Local"] {
+            fs::create_dir_all(dir.path().join("home").join("AppData").join(directory)).unwrap();
+        }
         fs::write(
             root.join(".clin/templates/book.toml"),
             r#"name = "Book"
@@ -49,8 +51,14 @@ template = "{book} / {chapter} / {date} / {missing}"
             .args(args)
             .env("HOME", self.dir.path().join("home"))
             .env("USERPROFILE", self.dir.path().join("home"))
-            .env("APPDATA", self.dir.path().join("appdata"))
-            .env("LOCALAPPDATA", self.dir.path().join("local-appdata"))
+            .env(
+                "APPDATA",
+                self.dir.path().join("home").join("AppData").join("Roaming"),
+            )
+            .env(
+                "LOCALAPPDATA",
+                self.dir.path().join("home").join("AppData").join("Local"),
+            )
             .env("XDG_CACHE_HOME", self.dir.path().join("xdg-cache"))
             .env("XDG_CONFIG_HOME", self.dir.path().join("xdg-config"))
             .env("XDG_DATA_HOME", self.dir.path().join("xdg-data"))

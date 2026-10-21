@@ -479,6 +479,7 @@ fn palette_history_roundtrips_views_documents_and_truncates_forward_navigation()
         .filter(|mode| !matches!(mode, ViewMode::List | ViewMode::Setup))
     {
         let mut f = Fixture::new();
+        f.app.storage.notes_dir = f.app.storage.notes_dir.join("..").join("vault");
         f.enter(mode);
         activate(&mut f.app, "notes.open");
         assert_eq!(f.app.mode, ViewMode::List);

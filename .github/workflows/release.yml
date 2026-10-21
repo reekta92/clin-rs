@@ -35,7 +35,7 @@ on:
         type: boolean
         default: false
       skip_gates:
-        description: "Skip fmt/clippy/tests; package verification remains mandatory"
+        description: "Skip preparation checks; real releases still run required CI and package verification"
         required: false
         type: boolean
         default: false
@@ -80,7 +80,9 @@ jobs:
   release:
     permissions:
       contents: write
-    uses: reekta92/.github/.github/workflows/rust-release.yml@5e59e5d8bf01bfd33bffda49215b44bfe527b8e0
+      actions: write
+      statuses: write
+    uses: reekta92/.github/.github/workflows/rust-release.yml@0b563c110a6df98c00a85b44593fd3afe6863480
     with:
       release_kind: application
       apt_deps: "libssl-dev pkg-config"

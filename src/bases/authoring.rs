@@ -653,8 +653,7 @@ impl BasesState {
             }
             Ok(Outcome::Opened(snapshot)) => {
                 if app.canvas_state.as_ref().is_some_and(|canvas| {
-                    canvas.state.path == app.storage.notes_dir.join(snapshot.id())
-                        && canvas.base_host_has_pending_changes()
+                    canvas.current_file == snapshot.id() && canvas.base_host_has_pending_changes()
                 }) {
                     app.set_temporary_status_static(
                         "Finish and save the Canvas edit before opening its source",

@@ -66,7 +66,7 @@ and wrapped sub-row, rather than copying screen row numbers. Diagram height may 
 are recalculated on resizing and wrapping changes; independent preview scrolling
 lasts until the editor anchor moves or preview content is rebuilt.
 
-The native parser is pinned to `merman-core` 0.6.0. Nodes, nested subgraphs,
+The native parser uses `merman-core-clin` 0.6.0 with the upstream 0.6 parser API. Nodes, nested subgraphs,
 directions, edge labels/markers, classes and basic terminal colors are retained.
 Specialized shapes use labelled outlines; HTML/Markdown, icons/images, CSS,
 curves, animation and browser configuration use explicit terminal substitutions.

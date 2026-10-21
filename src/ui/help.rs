@@ -1757,14 +1757,21 @@ mod tests {
             "About page still contains the removed tagline"
         );
         for expected in [
-            "/test/config/config.toml",
-            "/test/config/keybinds/default.toml",
-            "/test/data/templates",
-            "clin --help",
-            "clin config show",
+            storage.config_dir.join("config.toml").display().to_string(),
+            storage
+                .config_dir
+                .join("keybinds")
+                .join("default.toml")
+                .display()
+                .to_string(),
+            storage.templates_dir.display().to_string(),
+            "clin --help".to_owned(),
+            "clin config show".to_owned(),
         ] {
             assert!(
-                search_texts.iter().any(|text| text.contains(expected)),
+                search_texts
+                    .iter()
+                    .any(|text| text.contains(expected.as_str())),
                 "About page is missing {expected:?}"
             );
         }

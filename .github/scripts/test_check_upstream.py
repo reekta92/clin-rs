@@ -1,6 +1,7 @@
 """Exercise candidate selection, real adapter failures, and checkout isolation."""
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,7 +36,7 @@ class UpstreamCheckTests(unittest.TestCase):
         self.git('add', '.', cwd=directory)
         self.git('commit', '-m', 'Fixture', cwd=directory)
 
-    def fixture(self, package='pinstar', version='1.0.0', source='pub fn value() -> u32 { 42 }\n'):
+    def fixture(self, package='pinstar', version='1.0.0', source='pub fn value() -> u32 { 42 }\n', registry=False):
         upstream = self.root / 'released engine'
         self.candidate = self.root / 'candidate engine 🖊'
         for directory, body, number in [(upstream, 'pub fn value() -> u32 { 7 }\n', '1.0.0'),
@@ -56,6 +57,14 @@ class UpstreamCheckTests(unittest.TestCase):
         (self.consumer / f'tests/{TESTS[package]}.rs').write_text(
             '#[test]\nfn candidate_contract() { assert_eq!(consumer::value(), 42); }\n')
         self.run_command('cargo', '+stable', 'generate-lockfile', check=True)
+        if registry:
+            manifest = self.consumer / 'Cargo.toml'
+            manifest.write_text(manifest.read_text().replace(f', git = "{upstream.as_uri()}"', ''))
+            lock = self.consumer / 'Cargo.lock'
+            # The candidate must replace this registry source without fetching it.
+            lock.write_text(re.sub(r'source = "git\+[^\"]+"',
+                                   'source = "registry+https://github.com/rust-lang/crates.io-index"\nchecksum = "' + '0' * 64 + '"',
+                                   lock.read_text()))
         self.commit(self.consumer)
         self.original = {name: (self.consumer / name).read_bytes() for name in ['Cargo.toml', 'Cargo.lock']}
         self.env['CARGO_NET_OFFLINE'] = 'true'
@@ -83,6 +92,16 @@ class UpstreamCheckTests(unittest.TestCase):
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('cannot find function `value`', result.stderr)
+
+    def test_registry_candidate_is_selected_without_changing_manifest_or_lock(self):
+        self.fixture(registry=True)
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('1 passed', result.stdout)
+
+    def test_incompatible_registry_candidate_fails_without_changing_consumer(self):
+        self.fixture(registry=True, version='2.0.0')
+        self.assertNotEqual(self.check().returncode, 0)
 
     def test_incompatible_version_cannot_silently_test_the_old_git_dependency(self):
         self.fixture(version='2.0.0')
