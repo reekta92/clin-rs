@@ -117,6 +117,23 @@ pub struct PreviewHeaderInfo {
     pub next_name: Option<String>,
 }
 
+fn background_images_visible(app: &App) -> bool {
+    // Kitty consumes its first transmission even if a later overlay erases it.
+    app.popups.active.is_none()
+        && app.popups.confirm.is_none()
+        && app.command_palette.is_none()
+        && app.vault_switcher.is_none()
+        && !app.quick_keybinds_open
+        && !app.base_embeds.has_popup()
+        && !app.messages.is_active()
+        && (app.mode != ViewMode::Edit
+            || (app.editor.find_popup.is_none()
+                && app.editor.go_to_line_input.is_none()
+                && !app.editor.link_preview
+                && !app.status.starts_with("Save failed")
+                && !app.status.starts_with("Could not open")))
+}
+
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     app.refresh_command_palette();
     app.base_embeds.begin_frame();
@@ -3034,6 +3051,85 @@ mod markdown_highlight_tests {
             skip_dir_patterns: Vec::new(),
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         }
+    }
+
+    #[test]
+    fn warning_overlay_preserves_first_kitty_image_transmission() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let storage = storage(temp.path());
+        let path = storage.notes_dir.join("checker.png");
+        let image = image::DynamicImage::new_rgb8(64, 64);
+        image.save(&path).expect("image fixture");
+        std::fs::write(
+            storage.notes_dir.join("note.md"),
+            "![checker](checker.png)\n",
+        )
+        .expect("note fixture");
+        let mut app = App::new(storage).expect("app");
+        let mut picker = ratatui_image::picker::Picker::halfblocks();
+        picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
+        let (tx, _rx) = std::sync::mpsc::channel();
+        app.image_picker = Some(picker);
+        app.image_decode_tx = Some(tx);
+        app.editor.editor_preview_enabled = true;
+        app.open_note_at_line("note.md", None);
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("terminal");
+        terminal
+            .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+            .expect("layout");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while app
+            .editor
+            .md_preview_renderer
+            .as_ref()
+            .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "preview worker timed out"
+            );
+            app.poll_editor_renderers();
+            std::thread::yield_now();
+        }
+        terminal
+            .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+            .expect("image request");
+        app.install_image(crate::image_render::worker::DecodedImage { key: path, image });
+        app.messages.push(
+            "A startup warning covering the preview".repeat(5),
+            crate::app::messages::MessageSeverity::Warning,
+        );
+        let mut transmitted = false;
+        terminal
+            .draw(|frame| {
+                draw_ui(frame, &mut app, EditFocus::Body);
+                transmitted = frame
+                    .buffer_mut()
+                    .content()
+                    .iter()
+                    .any(|cell| cell.symbol().contains("\u{1b}_Gq=2,i="));
+            })
+            .expect("covered frame");
+        assert!(
+            !transmitted,
+            "covered graphics must not consume their transmission"
+        );
+        app.messages.messages.clear();
+        terminal
+            .draw(|frame| {
+                draw_ui(frame, &mut app, EditFocus::Body);
+                transmitted = frame
+                    .buffer_mut()
+                    .content()
+                    .iter()
+                    .any(|cell| cell.symbol().contains("\u{1b}_Gq=2,i="));
+            })
+            .expect("uncovered frame");
+        assert!(
+            transmitted,
+            "first visible frame must still transmit the image"
+        );
     }
 
     #[test]

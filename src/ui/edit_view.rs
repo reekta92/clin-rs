@@ -381,8 +381,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .draw(frame, inner, renderer, widget_range.clone(), app);
 
                 // Overlay images continuously
-                if let (Some(_), Some(decode_tx)) =
-                    (&app.editor.image_picker, &app.editor.image_decode_tx)
+                if super::background_images_visible(app)
+                    && let (Some(_), Some(decode_tx)) =
+                        (&app.editor.image_picker, &app.editor.image_decode_tx)
                 {
                     let col_width = inner.width;
                     for (local_line_idx, url) in doc.image_slots(widget_range) {

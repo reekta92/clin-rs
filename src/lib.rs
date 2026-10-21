@@ -1193,6 +1193,8 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             } else {
                 None
             };
+            app.editor.image_picker = app.image_picker.clone();
+            app.editor.image_decode_tx = app.image_decode_tx.clone();
             let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
             let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
             let result = std::panic::catch_unwind(move || {

@@ -1501,8 +1501,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
 
         // Overlay decoded images on the preview text
-        if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
-            &app.list.preview_content
+        if super::background_images_visible(app)
+            && let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
+                &app.list.preview_content
             && let Some(doc) = renderer.document()
             && let (Some(_), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
         {
@@ -1556,6 +1557,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         // Overlay standalone image file on the preview pane
         if (content_is_current || app.list.pending_preview_update)
+            && super::background_images_visible(app)
             && let Some(crate::list_view::PreviewContent::Image(path)) = &app.list.preview_content
             && let (Some(_), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
         {
