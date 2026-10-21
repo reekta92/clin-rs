@@ -37,6 +37,8 @@ The notes list shows filenames without their extensions, including numbered suff
 
 F7 opens a hidden-by-default properties region above Body for Markdown/text notes. Set `[editor] frontmatter_mode = "raw_yaml"` for raw editing in the same region. `[notes.frontmatter]` controls automatic managed output; disabled fields are retained and explicit edits/removals win for that save. `original_ext` is accepted as a compatibility no-op and existing extension metadata is preserved.
 
+Use raw YAML editing in Terminal.app if Ctrl+Enter opens Terminal's menu instead of applying a property edit.
+
 Version-2 transaction/source-draft records remain readable. New repair-only editor records retain invalid YAML, unfinished property inputs, and conflicting Title/YAML input without automatically writing them into a note. Startup opens the newest repair draft; additional repair sessions remain on disk. Repair and save it using the original baseline; external changes still block replacement. The new enum variant is not readable by older releases, which retain unsupported records. Recovery remains private plaintext under the same permissions and size limits.
 
 Keep stable filename-based wikilinks such as `[[CL-01]]`: ordinary body/property/title saves retain `CL-01.md`. Existing broken links are not rewritten or migrated.
