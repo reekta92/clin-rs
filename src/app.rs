@@ -39,25 +39,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 fn suspend_for_external() {
-    if let Err(e) = crossterm::terminal::disable_raw_mode() {
-        eprintln!("Failed to disable raw mode: {e}");
-    }
-    // Pop the kitty enhancement flags `TerminalGuard::enter` pushed so the
-    // external editor sees plain keys; `resume_from_external` re-pushes.
-    // Mirrors `TerminalGuard`'s Drop.
-    #[cfg(not(windows))]
-    if let Err(e) = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::event::PopKeyboardEnhancementFlags
-    ) {
-        eprintln!("Failed to pop keyboard enhancement flags: {e}");
-    }
-    if let Err(e) = crossterm::execute!(
-        std::io::stdout(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture,
-        crossterm::event::DisableBracketedPaste
-    ) {
+    if let Err(e) = crate::restore_terminal(std::io::stdout()) {
         eprintln!("Failed to reset terminal: {e}");
     }
 }
