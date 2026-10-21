@@ -1760,7 +1760,8 @@ mod tests {
             storage.config_dir.join("config.toml").display().to_string(),
             storage
                 .config_dir
-                .join("keybinds/default.toml")
+                .join("keybinds")
+                .join("default.toml")
                 .display()
                 .to_string(),
             storage.templates_dir.display().to_string(),
