@@ -59,7 +59,6 @@ pub fn draw_scrollbar(
     position: usize,
     max_position: usize,
     theme: &AppThemeColors,
-    mouse_pos: Option<(u16, u16)>,
 ) {
     if area.is_empty() || !overflows(content_len, viewport_len) {
         return;
@@ -79,15 +78,13 @@ pub fn draw_scrollbar(
     let mut s = ScrollbarState::new(content_len)
         .viewport_content_length(viewport_len)
         .position(scaled_position);
-    let hovered =
-        mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(track_rect(area), x, y));
     let sb = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .thumb_style(
             Style::default()
-                .fg(if hovered { theme.heading } else { theme.accent })
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         )
-        .track_style(Style::default().fg(if hovered { theme.accent } else { theme.muted }))
+        .track_style(Style::default().fg(theme.muted))
         .begin_symbol(None)
         .end_symbol(None);
     frame.render_stateful_widget(sb, area, &mut s);
@@ -312,7 +309,6 @@ mod tests {
                     90,  // position == max_position (offset convention)
                     90,  // max_position = content_len - viewport_len
                     &AppThemeColors::default(),
-                    None,
                 );
             })
             .unwrap();
@@ -339,7 +335,6 @@ mod tests {
                     99,  // position == content_len - 1 (selection convention)
                     99,  // max_position = content_len - 1
                     &AppThemeColors::default(),
-                    None,
                 );
             })
             .unwrap();
@@ -362,7 +357,6 @@ mod tests {
                     0,   // position
                     90,  // max_position (offset convention)
                     &AppThemeColors::default(),
-                    None,
                 );
             })
             .unwrap();

@@ -1945,6 +1945,12 @@ fn field_for_list_variable(name: &str) -> Option<ListHeaderField> {
 }
 
 fn suppress_list_fields(template: &str, hidden: &[ListHeaderField]) -> String {
+    suppress_variables(template, |name| {
+        field_for_list_variable(name).is_some_and(|field| hidden.contains(&field))
+    })
+}
+
+fn suppress_variables(template: &str, hidden: impl Fn(&str) -> bool) -> String {
     let mut out = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
     while let Some(ch) = chars.next() {
@@ -1973,7 +1979,7 @@ fn suppress_list_fields(template: &str, hidden: &[ListHeaderField]) -> String {
             name.push(next);
         }
         if closed {
-            if field_for_list_variable(&name).is_none_or(|field| !hidden.contains(&field)) {
+            if !hidden(&name) {
                 out.push('{');
                 out.push_str(&name);
                 out.push('}');
@@ -2065,7 +2071,15 @@ pub fn render_footer<'a>(
     let right_segs = render_segments(&tmpl.footer_right, ctx, theme);
 
     let left_line = line_from_segments(&left_segs, theme, false, false);
-    let right_line = line_from_segments(&right_segs, theme, false, true);
+    let mut right_line = line_from_segments(&right_segs, theme, false, true);
+    if ctx
+        .area
+        .is_some_and(|area| left_line.width() + right_line.width() > usize::from(area.width))
+    {
+        let template = suppress_variables(&tmpl.footer_right, |name| name == "version");
+        right_line =
+            line_from_segments(&render_segments(&template, ctx, theme), theme, false, true);
+    }
 
     let right_opt = if right_line.width() > 0 && tmpl.footer_right.trim() != "" {
         Some(right_line)

@@ -126,7 +126,7 @@ The **Select Notes Layout** command opens a searchable list with the current lay
 
 Directory layouts (`grid`, `list`, `multi`) navigate into folders. In List and Multi, Enter or Right opens a folder; Left returns to its parent. Grid keeps its tile-navigation shortcuts. Multi shows the selected folder's children in the right column; clicking a child enters that folder and selects the child. A browser narrower than 24 cells uses one column.
 
-Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Layout editing resizes the preview by one terminal cell per horizontal keypress. Footer bars show at most five primary shortcuts and shorten with an ellipsis when space is tight, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
+Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
 
 ### `[editor]`
 

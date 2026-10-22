@@ -272,6 +272,15 @@ fn primary_scrollbar_uses_preview_divider_and_still_accepts_dragging() {
                 terminal.backend().buffer()[(meta.track.x, meta.track.y)].symbol(),
                 "█"
             );
+            app.mouse_pos = Some((meta.track.x, meta.track.y));
+            terminal
+                .draw(|frame| draw_list_view(frame, &mut app))
+                .unwrap();
+            assert_eq!(
+                terminal.backend().buffer()[(meta.track.x, meta.track.y)].fg,
+                app.app_theme.accent
+            );
+            app.mouse_pos = None;
             crate::events::handle_list_mouse(
                 &mut app,
                 mouse(
@@ -373,7 +382,7 @@ fn help_about_is_last_and_side_content_remains_reachable_at_small_sizes() {
 }
 
 #[test]
-fn editor_sidebar_focus_has_a_full_title_fill_and_full_height_marker() {
+fn editor_sidebar_focus_fills_title_without_adding_another_divider() {
     let _guard = ConfigTestGuard::lock();
     let (_temp, mut app) = fixture();
     app.mode = ViewMode::Edit;
@@ -393,12 +402,10 @@ fn editor_sidebar_focus_has_a_full_title_fill_and_full_height_marker() {
             app.zen_padding(),
         );
         let pane = layout.sidebar.unwrap();
-        for y in pane.y..pane.bottom() {
-            assert_eq!(
-                terminal.backend().buffer()[(pane.x, y)].fg,
-                app.app_theme.accent
-            );
-        }
+        assert!(
+            (pane.y..pane.bottom())
+                .all(|y| terminal.backend().buffer()[(pane.x, y)].symbol() != "┃")
+        );
         assert_eq!(
             terminal.backend().buffer()[(pane.x + 5, pane.y + 1)].bg,
             app.app_theme.accent
@@ -529,24 +536,15 @@ fn rows_tabs_and_clickable_widgets_share_hover_feedback() {
 }
 
 #[test]
-fn scrollbar_hover_and_zero_height_tracks_are_safe() {
+fn scrollbar_colors_ignore_hover_and_zero_height_tracks_are_safe() {
     let theme = AppThemeColors::default();
     let mut terminal = Terminal::new(TestBackend::new(1, 10)).unwrap();
     terminal
         .draw(|frame| {
-            crate::ui::scrollbar::draw_scrollbar(
-                frame,
-                frame.area(),
-                100,
-                10,
-                0,
-                90,
-                &theme,
-                Some((0, 0)),
-            )
+            crate::ui::scrollbar::draw_scrollbar(frame, frame.area(), 100, 10, 0, 90, &theme)
         })
         .unwrap();
-    assert_eq!(terminal.backend().buffer()[(0, 0)].fg, theme.heading);
+    assert_eq!(terminal.backend().buffer()[(0, 0)].fg, theme.accent);
     let mut drag = None;
     assert!(
         crate::ui::scrollbar::handle_scrollbar_mouse(
@@ -561,6 +559,153 @@ fn scrollbar_hover_and_zero_height_tracks_are_safe() {
         )
         .is_none()
     );
+}
+
+#[test]
+fn editor_title_keeps_its_center_when_focus_changes() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Edit;
+    app.config.statusline.header_left = Some("EDIT".into());
+    app.config.statusline.header_right = Some("body statistics".into());
+    for title in ["Stable title", "界界 title", ""] {
+        let displayed_title = if title.is_empty() {
+            "Untitled note"
+        } else {
+            title
+        };
+        let first_symbol = displayed_title.chars().next().unwrap().to_string();
+        app.editor.title_editor = crate::events::make_title_editor(
+            title,
+            app.app_theme.highlight_fg,
+            app.app_theme.highlight_bg,
+        );
+        for status in [
+            crate::editor::AutosaveStatus::Saved,
+            crate::editor::AutosaveStatus::Unsaved,
+        ] {
+            app.editor.autosave_status = status;
+            let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
+            let mut starts = Vec::new();
+            for focus in [EditFocus::Body, EditFocus::Title, EditFocus::Sidebar] {
+                terminal
+                    .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, focus))
+                    .unwrap();
+                let start = (0..100)
+                    .find(|&x| terminal.backend().buffer()[(x, 0)].symbol() == first_symbol)
+                    .unwrap();
+                starts.push(start);
+            }
+            assert!(
+                starts.iter().all(|&start| start == starts[0]),
+                "{title}: {starts:?}"
+            );
+            let title_width = unicode_width::UnicodeWidthStr::width(displayed_title) as u16;
+            assert!(
+                starts[0].abs_diff((100 - title_width) / 2) <= 1,
+                "{title}: {starts:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn clipped_editor_titles_keep_the_same_viewport_without_focus() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Edit;
+    app.config.statusline.header_left = Some("EDIT".into());
+    app.config.statusline.header_right = Some("statistics".into());
+    app.editor.title_editor = crate::events::make_title_editor(
+        "A long title with 界 characters and a visible ending",
+        app.app_theme.highlight_fg,
+        app.app_theme.highlight_bg,
+    );
+    app.editor
+        .title_editor
+        .move_cursor(ratatui_textarea::CursorMove::End);
+    for width in [3, 16, 40, 80] {
+        let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Title))
+            .unwrap();
+        let title_rect = app.editor.header_title_rect;
+        let focused = text_in(terminal.backend().buffer(), title_rect);
+        terminal
+            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+            .unwrap();
+        assert_eq!(app.editor.header_title_rect, title_rect);
+        assert_eq!(
+            text_in(terminal.backend().buffer(), title_rect),
+            focused,
+            "width {width}"
+        );
+    }
+}
+
+#[test]
+fn crowded_footers_drop_version_before_shortcuts_or_status() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.note_index = None;
+    app.config.statusline = crate::config::StatuslineConfig::default();
+    for style in HintBarStyle::ALL {
+        app.app_theme.hint_bar_style = style;
+        for view in [ViewMode::List, ViewMode::Edit, ViewMode::Help] {
+            for (width, watermark) in [(80, false), (180, true)] {
+                let mut ctx = crate::statusline::StatuslineContext::for_view(&app, view);
+                ctx.area = Some(Rect::new(0, 0, width, 1));
+                ctx.hints = Some(vec![Span::raw("Useful shortcuts ".repeat(4))]);
+                let (left, right) = crate::statusline::render_footer(
+                    &ctx,
+                    &app.config.statusline,
+                    view,
+                    &app.app_theme,
+                );
+                let right = right.map(|line| line.to_string()).unwrap_or_default();
+                assert_eq!(
+                    right.contains("clin v"),
+                    watermark,
+                    "{style:?}, {view:?}, {width}: {right}"
+                );
+                assert!(left.to_string().contains("Useful shortcuts"));
+                if view == ViewMode::List {
+                    assert!(right.contains("3 notes"));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn notes_modes_show_their_complete_shortcut_sets() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.app_theme.hint_bar_style = HintBarStyle::Classic;
+    app.config.statusline.footer_right = Some(String::new());
+    let mut terminal = Terminal::new(TestBackend::new(240, 24)).unwrap();
+    app.list.list_mode = crate::list_view::ListMode::Select;
+    terminal
+        .draw(|frame| draw_list_view(frame, &mut app))
+        .unwrap();
+    let footer = text_in(terminal.backend().buffer(), Rect::new(0, 23, 240, 1));
+    for action in ["toggle", "move", "copy", "tag", "untag", "delete", "exit"] {
+        assert!(footer.contains(action), "{action}: {footer}");
+    }
+    app.list.list_mode = crate::list_view::ListMode::Normal;
+    app.layout_edit = true;
+    terminal
+        .draw(|frame| draw_list_view(frame, &mut app))
+        .unwrap();
+    let footer = text_in(terminal.backend().buffer(), Rect::new(0, 23, 240, 1));
+    for key in ["Space", "Ctrl+Space", "Tab", "a", "Esc"] {
+        assert!(footer.contains(key), "{key}: {footer}");
+    }
+    for action in [
+        "resize", "preview", "widgets", "cycle", "swap", "toggle", "done",
+    ] {
+        assert!(footer.contains(action), "{action}: {footer}");
+    }
 }
 
 #[test]

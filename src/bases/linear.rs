@@ -461,7 +461,6 @@ pub(super) fn render(
         state.selected,
         state.items.len().saturating_sub(1),
         theme,
-        app.mouse_pos,
     );
 }
 

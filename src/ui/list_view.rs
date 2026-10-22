@@ -1,6 +1,7 @@
 use super::{
     PreviewHeaderInfo, build_tab_spans, draw_dim_vline, draw_status_bar, draw_view_title_bar,
-    draw_view_title_bar_with_tabs, format_keybind_hints, popup_hint_line, preview_spans,
+    draw_view_title_bar_with_tabs, format_keybind_hints, format_mode_keybind_hints,
+    popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -1680,20 +1681,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let select_items = vec![
             (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
             (kb.display_list(ListAction::MoveNote), "move"),
+            (kb.display_list(ListAction::Duplicate), "copy"),
             (kb.display_list(ListAction::ManageTags), "tag"),
+            (kb.display_list(ListAction::RemoveTagsFromSelected), "untag"),
             (kb.display_list(ListAction::Delete), "delete"),
             (kb.display_list(ListAction::ToggleSelectMode), "exit"),
         ];
-        format_keybind_hints(&app.app_theme, &select_items)
+        format_mode_keybind_hints(&app.app_theme, &select_items)
     } else if app.layout_edit {
         let layout_items = vec![
             ("←→ ↑↓/drag".to_string(), "resize"),
             ("s".to_string(), "preview"),
             ("c".to_string(), "widgets"),
-            ("Space".to_string(), "section"),
+            ("Space/Ctrl+Space".to_string(), "cycle"),
+            ("Tab".to_string(), "swap"),
+            ("a".to_string(), "toggle"),
             ("Esc".to_string(), "done"),
         ];
-        format_keybind_hints(&app.app_theme, &layout_items)
+        format_mode_keybind_hints(&app.app_theme, &layout_items)
     } else {
         default_hints
     };
@@ -1798,7 +1803,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             position,
             max_position,
             &app.app_theme,
-            app.mouse_pos,
         );
     }
 

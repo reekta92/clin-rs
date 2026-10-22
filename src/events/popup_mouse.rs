@@ -180,6 +180,7 @@ pub(crate) fn handle_command_palette_mouse(
     let Some(mut palette) = app.command_palette.take() else {
         return false;
     };
+    app.mouse_pos = Some((mouse.column, mouse.row));
     let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
     let content = Layout::default()
         .direction(Direction::Vertical)

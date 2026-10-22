@@ -206,6 +206,95 @@ fn visible(app: &App, id: &str) -> bool {
 }
 
 #[test]
+fn palette_mouse_motion_highlights_rows_and_tabs_through_each_dispatcher() {
+    for mode in [ViewMode::List, ViewMode::Edit] {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        f.app.config.ui.tab_icons_only = false;
+        drive(&mut f.app, key(KeyCode::F(6)));
+        let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let palette = f.app.command_palette.as_ref().unwrap();
+        let results = palette.last_results_area.unwrap();
+        let selected = palette.state.selected();
+        let target = if selected == Some(palette.state.offset()) {
+            1
+        } else {
+            0
+        };
+        let row = results.y + 1 + target * 2;
+        let column = results.x + 3;
+        drive(
+            &mut f.app,
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        assert_eq!(f.app.mouse_pos, Some((column, row)), "{mode:?}");
+        assert_eq!(
+            f.app.command_palette.as_ref().unwrap().state.selected(),
+            selected
+        );
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(column, row)].bg,
+            f.app.app_theme.hover_style().bg.unwrap(),
+            "{mode:?}"
+        );
+        let palette = f.app.command_palette.as_ref().unwrap();
+        let popup = crate::ui::centered_rect(crate::ui::PopupSize::Large, AREA);
+        let content = Rect::new(popup.x, popup.y, popup.width, popup.height - 1);
+        let chunks = palette.content_areas(content, false);
+        let tabs: Vec<_> = palette
+            .tabs
+            .iter()
+            .map(|(label, glyph, _)| (*label, Some(*glyph)))
+            .collect();
+        let active = palette.active_tab;
+        let tab = (0..tabs.len()).find(|&index| index != active).unwrap();
+        let column = (chunks[1].x..chunks[1].right())
+            .find(|&column| {
+                crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    column,
+                    false,
+                    f.app.config.ui.icon_mode,
+                ) == Some(tab)
+            })
+            .unwrap();
+        let row = chunks[1].y;
+        drive(
+            &mut f.app,
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(column, row)].bg,
+            f.app.app_theme.hover_style().bg.unwrap(),
+            "{mode:?}"
+        );
+        assert_eq!(f.app.command_palette.as_ref().unwrap().active_tab, active);
+    }
+}
+
+#[test]
 fn palette_features_groups_toggles_and_preserves_search_and_selection() {
     let mut f = Fixture::new();
     drive(&mut f.app, key(KeyCode::F(6)));

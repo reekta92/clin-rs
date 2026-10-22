@@ -552,7 +552,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             popup.all_tags_selected,
             popup.all_tags.len().saturating_sub(1),
             &app.app_theme,
-            app.mouse_pos,
         );
     }
 
@@ -668,7 +667,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             popup.cursor,
             popup.tags.len().saturating_sub(1),
             &app.app_theme,
-            app.mouse_pos,
         );
 
         if let Some(confirm) = &popup.confirm {
@@ -804,7 +802,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             picker.selected,
             picker.filtered_folders.len().saturating_sub(1),
             &app.app_theme,
-            app.mouse_pos,
         );
     }
 
@@ -1046,7 +1043,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     pos,
                     content_len.saturating_sub(1),
                     &app.app_theme,
-                    app.mouse_pos,
                 );
             }
         }
@@ -1582,7 +1578,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 selected_idx,
                 total_items.saturating_sub(1),
                 &app.app_theme,
-                app.mouse_pos,
             );
         }
     }
@@ -1680,7 +1675,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             trash.selected,
             trash.items.len().saturating_sub(1),
             &app.app_theme,
-            app.mouse_pos,
         );
     }
 

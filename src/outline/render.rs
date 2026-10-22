@@ -205,7 +205,6 @@ pub fn draw_outline(
                 state.tree_scroll_offset,
                 content_len.saturating_sub(viewport_len),
                 theme,
-                state.mouse_pos,
             );
         }
 

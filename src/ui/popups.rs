@@ -140,7 +140,6 @@ pub fn draw_template_popup(
         popup.selected,
         popup.filtered_templates.len().saturating_sub(1),
         theme,
-        mouse_pos,
     );
 }
 
@@ -398,7 +397,6 @@ pub fn draw_theme_popup(
         popup.selected,
         popup.themes.len().saturating_sub(1),
         theme,
-        mouse_pos,
     );
 
     let gen_label = if popup.general_is_solid {
@@ -990,7 +988,14 @@ pub fn format_keybind_hints<'a>(
     theme: &'a AppThemeColors,
     items: &[(String, &'static str)],
 ) -> Line<'a> {
-    let items = &items[..items.len().min(5)];
+    format_mode_keybind_hints(theme, &items[..items.len().min(5)])
+}
+
+/// Mode-specific controls have no item cap; the footer still fits terminal cells.
+pub fn format_mode_keybind_hints<'a>(
+    theme: &'a AppThemeColors,
+    items: &[(String, &'static str)],
+) -> Line<'a> {
     let build_bg_colors = || {
         let base_colors = [
             theme.accent,
@@ -1485,7 +1490,6 @@ pub fn draw_subnotes_popup(
             popup.selected,
             popup.subnotes.len().saturating_sub(1),
             theme,
-            mouse_pos,
         );
     }
 
