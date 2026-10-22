@@ -475,7 +475,6 @@ impl OverlayView for PinstarPlugin {
                     ),
                     "help",
                 ),
-                ("F2".to_string(), "keybinds"),
             ];
             crate::ui::format_keybind_hints(&theme, &hints_items)
         } else {

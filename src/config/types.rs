@@ -17,6 +17,14 @@ pub enum NotesLayout {
     Tree,
     #[default]
     Grid,
+    List,
+    Multi,
+}
+
+impl NotesLayout {
+    pub fn browses_folders(&self) -> bool {
+        *self != Self::Tree
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -221,6 +229,7 @@ pub enum IconMode {
     Nerd,
     Unicode,
     None,
+    Emoji,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

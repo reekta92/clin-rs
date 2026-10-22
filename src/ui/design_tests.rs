@@ -1,0 +1,1139 @@
+use super::*;
+use crate::app::{EditFocus, EditSidebar, HelpTab};
+use crate::config::{ClinConfig, ConfigTestGuard, HintBarStyle, IconMode, NotesLayout};
+use crate::list_view::VisualItem;
+use crate::ui::{hit_test_tabs, icons, title_bar_tabs_region};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::{Terminal, backend::TestBackend};
+
+fn fixture() -> (tempfile::TempDir, App) {
+    let (temp, mut app) = super::tests::grid_test_app(0);
+    crate::config::set_config_path_override(app.storage.config_dir.join("config.toml"));
+    app.mode = ViewMode::List;
+    app.status = "".into();
+    std::fs::create_dir_all(app.storage.notes_dir.join("docs/nested")).unwrap();
+    app.catalog_folders = vec!["docs".into(), "docs/nested".into()];
+    for id in ["root.md", "docs/child.md", "docs/nested/deep.md"] {
+        std::fs::write(app.storage.note_path(id), "# Body\n").unwrap();
+        app.notes.push(app.storage.load_note_summary(id).unwrap());
+    }
+    (temp, app)
+}
+
+fn select_folder(app: &mut App, folder: &str) {
+    app.list.visual_index = app
+        .list
+        .visual_list
+        .iter()
+        .position(|item| matches!(item, VisualItem::Folder { path, .. } if path == folder))
+        .unwrap();
+    app.request_preview_update();
+}
+
+fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+    MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+fn text_in(buffer: &ratatui::buffer::Buffer, area: Rect) -> String {
+    (area.y..area.bottom())
+        .map(|y| {
+            let mut text = String::new();
+            let mut x = area.x;
+            while x < area.right() {
+                let symbol = buffer[(x, y)].symbol();
+                text.push_str(symbol);
+                x += unicode_width::UnicodeWidthStr::width(symbol).max(1) as u16;
+            }
+            text
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn directory_layouts_navigate_without_expanding_and_keep_actions_scoped() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    for layout in [NotesLayout::List, NotesLayout::Multi] {
+        app.list.notes_layout = layout;
+        app.enter_list_directory(String::new(), 0);
+        assert!(!app.list.visual_list.iter().any(|item| {
+            matches!(item, VisualItem::Note { summary_idx, .. } if app.notes[*summary_idx].folder == "docs")
+        }));
+        select_folder(&mut app, "docs");
+        app.list.selected_indices.insert(app.list.visual_index);
+        app.move_right();
+        assert_eq!(app.list.grid_folder, "docs");
+        app.begin_create_select_format();
+        assert!(
+            matches!(app.popups.active.take(), Some(crate::popups::ActivePopup::CreateFormat(popup)) if popup.folder == "docs")
+        );
+        assert!(app.list.selected_indices.is_empty());
+        assert!(app.list.visual_list.iter().any(|item| {
+            matches!(item, VisualItem::Note { summary_idx, .. } if app.notes[*summary_idx].id == "docs/child.md")
+        }));
+        select_folder(&mut app, "docs/nested");
+        app.open_selected();
+        assert_eq!(app.list.grid_folder, "docs/nested");
+        app.move_left();
+        assert_eq!(app.list.grid_folder, "docs");
+        assert!(
+            matches!(&app.list.visual_list[app.list.visual_index], VisualItem::Folder { path, .. } if path == "docs/nested")
+        );
+        app.move_left();
+        assert_eq!(app.list.grid_folder, "");
+        assert!(!app.list.folder_expanded.contains("docs"));
+        app.cycle_grid_tab();
+        assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_PINNED_PATH);
+        app.move_left();
+        assert_eq!(app.list.grid_folder, "");
+    }
+}
+
+#[test]
+fn multi_preview_shows_folder_children_and_mouse_enters_that_folder() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    let config = app
+        .storage
+        .folder_template_config_path("docs/nested")
+        .unwrap();
+    std::fs::write(config, "[variables]\nchapter = '1'\n").unwrap();
+    app.list.notes_layout = NotesLayout::Multi;
+    app.refresh_visual_list();
+    select_folder(&mut app, "docs");
+    assert!(app.list.template_config_folders.contains("docs/nested"));
+    let area = Rect::new(0, 0, 120, 30);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_list_view(frame, &mut app))
+        .unwrap();
+    let (browser, _, _) = list_view_layout(
+        area,
+        false,
+        app.preview_position,
+        false,
+        false,
+        0.43,
+        9,
+        crate::config::CalendarPosition::Bottom,
+    );
+    let (left, right) = browser_columns(browser, &NotesLayout::Multi);
+    let right = right.unwrap();
+    assert!(left.right() < right.x);
+    assert!(text_in(terminal.backend().buffer(), right).contains("child"));
+    assert!(!text_in(terminal.backend().buffer(), left).contains("child"));
+    let index = app
+        .list
+        .multi_preview
+        .as_ref()
+        .unwrap()
+        .1
+        .iter()
+        .position(|item| matches!(item, VisualItem::Folder { path, .. } if path == "docs/nested"))
+        .unwrap();
+    let original_index = app.list.visual_index;
+    app.preview_fullscreen = true;
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::ScrollDown,
+    ] {
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(kind, right.x + 2, right.y + 1 + index as u16),
+            area,
+        );
+        assert_eq!(app.list.grid_folder, "");
+        assert_eq!(app.list.visual_index, original_index);
+    }
+    app.preview_fullscreen = false;
+    crate::events::handle_list_mouse(
+        &mut app,
+        mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            right.x + 2,
+            right.y + 1 + index as u16,
+        ),
+        area,
+    );
+    assert_eq!(app.list.grid_folder, "docs");
+    assert!(
+        matches!(&app.list.visual_list[app.list.visual_index], VisualItem::Folder { path, .. } if path == "docs/nested")
+    );
+    app.move_right();
+    assert_eq!(app.list.grid_folder, "docs/nested");
+}
+
+#[test]
+fn keyboard_layout_resize_moves_exactly_one_cell() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.layout_edit = true;
+    app.list.preview_enabled = true;
+    for width in [80, 137, 240] {
+        app.list.last_area = Rect::new(0, 0, width, 32);
+        for position in [
+            crate::config::PreviewPosition::Left,
+            crate::config::PreviewPosition::Right,
+        ] {
+            app.preview_position = position;
+            app.list.preview_width_ratio = 0.43;
+            let preview_width = |app: &App| {
+                list_view_layout(
+                    app.list.last_area,
+                    true,
+                    position,
+                    false,
+                    false,
+                    app.list.preview_width_ratio,
+                    9,
+                    crate::config::CalendarPosition::Bottom,
+                )
+                .1
+                .unwrap()
+                .width
+            };
+            let initial = preview_width(&app);
+            crate::events::handle_list_keys(
+                &mut app,
+                KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            );
+            let expected = if position == crate::config::PreviewPosition::Left {
+                initial - 1
+            } else {
+                initial + 1
+            };
+            assert_eq!(preview_width(&app), expected, "{width}, {position:?}");
+            crate::events::handle_list_keys(
+                &mut app,
+                KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            );
+            assert_eq!(preview_width(&app), initial);
+        }
+    }
+}
+
+#[test]
+fn primary_scrollbar_uses_preview_divider_and_still_accepts_dragging() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.list.preview_enabled = true;
+    app.config.list.folder_graph_preview = false;
+    app.list.visual_list = (0..90)
+        .map(|i| VisualItem::CreateNew {
+            path: i.to_string(),
+            depth: 0,
+        })
+        .collect();
+    let area = Rect::new(0, 0, 120, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    for layout in [
+        NotesLayout::Tree,
+        NotesLayout::Grid,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
+        app.list.notes_layout = layout;
+        for position in [
+            crate::config::PreviewPosition::Left,
+            crate::config::PreviewPosition::Right,
+        ] {
+            app.preview_position = position;
+            terminal
+                .draw(|frame| draw_list_view(frame, &mut app))
+                .unwrap();
+            let preview = list_view_layout(
+                area,
+                true,
+                position,
+                false,
+                false,
+                app.list.preview_width_ratio,
+                9,
+                crate::config::CalendarPosition::Bottom,
+            )
+            .1
+            .unwrap();
+            let meta = app.list.last_scroll.unwrap();
+            assert_eq!(
+                meta.track.x,
+                if position == crate::config::PreviewPosition::Left {
+                    preview.right()
+                } else {
+                    preview.x - 1
+                }
+            );
+            assert_eq!(
+                terminal.backend().buffer()[(meta.track.x, meta.track.y)].symbol(),
+                "█"
+            );
+            crate::events::handle_list_mouse(
+                &mut app,
+                mouse(
+                    MouseEventKind::Down(MouseButton::Left),
+                    meta.track.x,
+                    meta.track.bottom() - 1,
+                ),
+                area,
+            );
+            assert!(app.list.visual_index > 0);
+            app.list.scroll_drag = None;
+            app.list.visual_index = 0;
+        }
+    }
+}
+
+#[test]
+fn footer_hints_fit_all_styles_and_preserve_status_cells() {
+    let items = (0..7)
+        .map(|i| (format!("Ctrl+界{i}"), "long action"))
+        .collect::<Vec<_>>();
+    for mode in [
+        IconMode::Nerd,
+        IconMode::Unicode,
+        IconMode::None,
+        IconMode::Emoji,
+    ] {
+        for style in HintBarStyle::ALL {
+            let theme = AppThemeColors {
+                icon_mode: mode,
+                hint_bar_style: style,
+                ..AppThemeColors::default()
+            };
+            let hints = format_keybind_hints(&theme, &items);
+            assert!(!hints.to_string().contains("界5"));
+            for width in 1..100u16 {
+                let fit = crate::ui::fit_footer_line(hints.clone(), width as usize, &theme, false);
+                assert!(
+                    fit.width() <= width as usize,
+                    "{style:?}, {mode:?}, {width}"
+                );
+                let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
+                terminal
+                    .draw(|frame| {
+                        crate::ui::draw_status_bar(
+                            frame,
+                            frame.area(),
+                            &theme,
+                            hints.clone(),
+                            Some(Line::from("STATUS")),
+                        )
+                    })
+                    .unwrap();
+                if width >= 6 {
+                    assert_eq!(
+                        text_in(terminal.backend().buffer(), Rect::new(width - 6, 0, 6, 1)),
+                        "STATUS"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn help_about_is_last_and_side_content_remains_reachable_at_small_sizes() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Help;
+    let tabs = crate::ui::help_tabs(IconMode::Emoji, &app.config.features);
+    assert_eq!(tabs.last().unwrap().0, HelpTab::About);
+    for (index, (tab, _, _)) in tabs.iter().enumerate() {
+        assert_eq!(tab.index(), index);
+        assert_eq!(HelpTab::from_index(index), *tab);
+        assert_eq!(tab.next().prev(), *tab);
+    }
+    for (width, height) in [(80, 24), (104, 24), (120, 32), (160, 48)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        for (tab, _, _) in &tabs {
+            app.help_tab = *tab;
+            app.reroll_help_suggestions();
+            app.help_side_scroll = [u16::MAX; 2];
+            terminal
+                .draw(|frame| crate::ui::draw_help_view(frame, &mut app))
+                .unwrap();
+            let columns = crate::ui::help_body_columns(Rect::new(0, 1, width, height - 2));
+            if columns[4].width > 0 {
+                assert!(
+                    app.help_side_scroll
+                        .iter()
+                        .zip(app.help_side_max_scroll)
+                        .all(|(&scroll, max)| scroll <= max)
+                );
+
+                assert!(text_in(terminal.backend().buffer(), columns[4]).contains("commands."));
+            }
+        }
+    }
+}
+
+#[test]
+fn editor_sidebar_focus_has_a_full_title_fill_and_full_height_marker() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Edit;
+    let area = Rect::new(0, 0, 120, 32);
+    for sidebar in [EditSidebar::Outline, EditSidebar::Links] {
+        app.editor.sidebar = sidebar;
+        let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Sidebar))
+            .unwrap();
+        let layout = crate::events::compute_edit_layout(
+            Rect::new(0, 1, 120, 30),
+            false,
+            false,
+            sidebar,
+            app.preview_position,
+            app.zen_padding(),
+        );
+        let pane = layout.sidebar.unwrap();
+        for y in pane.y..pane.bottom() {
+            assert_eq!(
+                terminal.backend().buffer()[(pane.x, y)].fg,
+                app.app_theme.accent
+            );
+        }
+        assert_eq!(
+            terminal.backend().buffer()[(pane.x + 5, pane.y + 1)].bg,
+            app.app_theme.accent
+        );
+        terminal
+            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+            .unwrap();
+        assert_ne!(
+            terminal.backend().buffer()[(pane.x + 5, pane.y + 1)].bg,
+            app.app_theme.accent
+        );
+    }
+}
+
+#[test]
+fn new_configuration_values_roundtrip_through_setup_and_toml() {
+    for layout in [NotesLayout::List, NotesLayout::Multi] {
+        let config = ClinConfig {
+            list: crate::config::ListConfig {
+                default_view: layout.clone(),
+                ..Default::default()
+            },
+            ui: crate::config::UiConfig {
+                icon_mode: IconMode::Emoji,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let restored: ClinConfig = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored.list.default_view, layout);
+        assert_eq!(restored.ui.icon_mode, IconMode::Emoji);
+        assert_eq!(
+            crate::setup::layout_at(crate::setup::layout_index(&layout)),
+            layout
+        );
+    }
+    assert_eq!(
+        crate::setup::icon_mode_at(crate::setup::icon_mode_index(IconMode::Emoji)),
+        IconMode::Emoji
+    );
+}
+
+#[test]
+fn rows_tabs_and_clickable_widgets_share_hover_feedback() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.list.notes_layout = NotesLayout::List;
+    app.refresh_visual_list();
+    app.list.visual_index = app.list.visual_list.len() - 1;
+    app.config.ui.tab_icons_only = false;
+    let area = Rect::new(0, 0, 120, 32);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    app.mouse_pos = Some((3, 2));
+    terminal
+        .draw(|frame| draw_list_view(frame, &mut app))
+        .unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(3, 2)].bg,
+        app.app_theme.hover_style().bg.unwrap()
+    );
+
+    let tabs = [
+        (
+            "Vault",
+            Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
+        ),
+        (
+            "Pinned",
+            Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
+        ),
+        (
+            "Smart",
+            Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
+        ),
+        (
+            "Subnotes",
+            Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
+        ),
+    ];
+    let region = crate::ui::title_bar_tabs_region(area, "Notes");
+    let x = (0..area.width)
+        .find(|&x| {
+            crate::ui::hit_test_tabs(
+                &tabs,
+                area.x,
+                area.width,
+                region.x,
+                x,
+                false,
+                app.config.ui.icon_mode,
+            ) == Some(1)
+        })
+        .unwrap();
+    app.mouse_pos = Some((x, 0));
+    terminal
+        .draw(|frame| draw_list_view(frame, &mut app))
+        .unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(x, 0)].bg,
+        app.app_theme.hover_style().bg.unwrap(),
+        "x={x}, status={:?}, row={}",
+        app.status,
+        text_in(terminal.backend().buffer(), Rect::new(0, 0, 120, 1))
+    );
+
+    app.list.calendar_enabled = true;
+    app.list.sections = vec![crate::config::NotesSection::Draw];
+    let strip = list_view_layout(
+        area,
+        false,
+        app.preview_position,
+        true,
+        false,
+        0.43,
+        9,
+        crate::config::CalendarPosition::Bottom,
+    )
+    .2
+    .unwrap();
+    app.mouse_pos = Some((strip.x + 2, strip.y + 2));
+    terminal
+        .draw(|frame| draw_list_view(frame, &mut app))
+        .unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(strip.x + 2, strip.y + 2)].bg,
+        app.app_theme.hover_style().bg.unwrap()
+    );
+}
+
+#[test]
+fn scrollbar_hover_and_zero_height_tracks_are_safe() {
+    let theme = AppThemeColors::default();
+    let mut terminal = Terminal::new(TestBackend::new(1, 10)).unwrap();
+    terminal
+        .draw(|frame| {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                frame.area(),
+                100,
+                10,
+                0,
+                90,
+                &theme,
+                Some((0, 0)),
+            )
+        })
+        .unwrap();
+    assert_eq!(terminal.backend().buffer()[(0, 0)].fg, theme.heading);
+    let mut drag = None;
+    assert!(
+        crate::ui::scrollbar::handle_scrollbar_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 0, 0),
+            crate::ui::scrollbar::ScrollbarMeta {
+                track: Rect::ZERO,
+                content_len: 100,
+                viewport_len: 0
+            },
+            0.0,
+            &mut drag,
+        )
+        .is_none()
+    );
+}
+
+#[test]
+fn confirmation_hover_and_clicks_match_only_the_visible_buttons() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    let area = Rect::new(0, 0, 120, 32);
+    app.show_confirm(crate::popups::ConfirmAction::QuitApp);
+    let popup = app.popups.confirm.as_ref().unwrap();
+    let (chunks, buttons) = crate::ui::confirm_popup_layout(area, &popup.confirm_label, true);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| {
+            crate::ui::draw_confirm_popup(
+                frame,
+                popup,
+                area,
+                &app.app_theme,
+                true,
+                Some((buttons[0].x, buttons[0].y)),
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(buttons[0].x, buttons[0].y)].bg,
+        app.app_theme.hover_style().bg.unwrap()
+    );
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            chunks[0].x,
+            chunks[0].y,
+        ),
+        area,
+    );
+    assert!(app.popups.confirm.is_some());
+    assert!(!app.should_quit);
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            buttons[1].x,
+            buttons[1].y,
+        ),
+        area,
+    );
+    assert!(app.popups.confirm.is_none());
+    assert!(!app.should_quit);
+    app.show_confirm(crate::popups::ConfirmAction::QuitApp);
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            buttons[0].x,
+            buttons[0].y,
+        ),
+        area,
+    );
+    assert!(app.should_quit);
+}
+
+#[test]
+fn widget_frames_share_padding_and_only_the_interface_border() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    for width in [12, 25, 60] {
+        let area = Rect::new(2, 2, width, 10);
+        let mut terminal = Terminal::new(TestBackend::new(70, 16)).unwrap();
+        for bottom in [false, true] {
+            for section in [
+                crate::config::NotesSection::Calendar,
+                crate::config::NotesSection::Goals,
+                crate::config::NotesSection::Todo,
+                crate::config::NotesSection::Draw,
+                crate::config::NotesSection::Graf,
+            ] {
+                terminal
+                    .draw(|frame| match section {
+                        crate::config::NotesSection::Calendar => crate::calendar::draw_calendar(
+                            frame,
+                            area,
+                            &app.app_theme,
+                            &std::collections::HashMap::default(),
+                            bottom,
+                            crate::config::WeekStart::default(),
+                            area,
+                        ),
+                        crate::config::NotesSection::Goals => crate::goals::draw_goals_progress(
+                            frame,
+                            area,
+                            &app.app_theme,
+                            &app.goals_progress,
+                            &app.config.goals,
+                            bottom,
+                            area,
+                        ),
+                        crate::config::NotesSection::Todo => crate::todo::draw_todo(
+                            frame,
+                            area,
+                            &app.app_theme,
+                            &app.todo_state,
+                            bottom,
+                            area,
+                        ),
+                        crate::config::NotesSection::Draw => {
+                            draw_strip_draw(frame, area, &app, bottom, area)
+                        }
+                        crate::config::NotesSection::Graf => {
+                            draw_strip_graf(frame, area, &mut app, bottom, area)
+                        }
+                    })
+                    .unwrap();
+                let border_y = if bottom { area.bottom() - 1 } else { area.y };
+                for x in area.x..area.right() {
+                    assert_eq!(
+                        terminal.backend().buffer()[(x, border_y)].symbol(),
+                        "─",
+                        "{section:?}"
+                    );
+                }
+                let opposite_y = if bottom { area.y } else { area.bottom() - 1 };
+                assert_eq!(
+                    terminal.backend().buffer()[(area.x, opposite_y)].symbol(),
+                    " ",
+                    "{section:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn notes_footer_has_no_selected_count_in_either_selection_mode() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.config.statusline = crate::config::StatuslineConfig::default();
+    app.note_index = None;
+    app.list.selected_indices.extend([0, 1]);
+    for mode in [
+        crate::list_view::ListMode::Normal,
+        crate::list_view::ListMode::Select,
+    ] {
+        app.list.list_mode = mode;
+        let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        let (_, right) = crate::statusline::render_footer(
+            &ctx,
+            &app.config.statusline,
+            ViewMode::List,
+            &app.app_theme,
+        );
+        let text = right.unwrap().to_string();
+        assert!(text.contains("3 notes"), "{text}");
+        assert!(!text.contains("selected"), "{text}");
+    }
+}
+
+#[test]
+fn section_tabs_toggle_and_persist_for_every_layout() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    let area = Rect::new(0, 0, 120, 32);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    app.config.ui.tab_icons_only = false;
+    for layout in [
+        NotesLayout::Grid,
+        NotesLayout::Tree,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
+        app.list.notes_layout = layout.clone();
+        app.config.list.section_tabs = true;
+        crate::actions::execute_action("settings.notes_section_tabs", &mut app, None).unwrap();
+        assert!(!app.config.list.section_tabs);
+        assert!(!ClinConfig::load().0.unwrap().list.section_tabs);
+        assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_ROOT_PATH);
+        for path in [
+            "",
+            crate::app::VIRTUAL_PINNED_PATH,
+            crate::app::VIRTUAL_SMART_PATH,
+            crate::app::VIRTUAL_SUBNOTES_PATH,
+        ] {
+            assert!(app.list.visual_list.iter().any(|item| matches!(item, VisualItem::Folder { path: folder, depth: 0, .. } if folder == path)), "{layout:?}: missing {path}");
+        }
+        terminal
+            .draw(|frame| draw_list_view(frame, &mut app))
+            .unwrap();
+        assert!(
+            !text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1))
+                .contains("Pinned")
+        );
+        let original = app.list.grid_folder.clone();
+        app.cycle_grid_tab();
+        assert_eq!(app.list.grid_folder, original);
+        app.list.folder_expanded.remove("");
+        app.refresh_visual_list();
+        select_folder(&mut app, "");
+        app.open_selected();
+        assert!(
+            app.list
+                .visual_list
+                .iter()
+                .any(|item| matches!(item, VisualItem::Folder { path, .. } if path == "docs"))
+        );
+        if layout.browses_folders() {
+            assert_eq!(app.list.grid_folder, "");
+            app.collapse_selected_folder();
+            assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_ROOT_PATH);
+            assert!(
+                matches!(&app.list.visual_list[app.list.visual_index], VisualItem::Folder { path, .. } if path.is_empty())
+            );
+        }
+        crate::actions::execute_action("settings.notes_section_tabs", &mut app, None).unwrap();
+        assert!(app.config.list.section_tabs);
+        assert!(ClinConfig::load().0.unwrap().list.section_tabs);
+        assert_eq!(app.list.grid_folder, "");
+        assert!(!app.list.visual_list.iter().any(|item| matches!(item, VisualItem::Folder { path, .. } if path.is_empty() || App::is_virtual_path(path))));
+        app.status = "".into();
+        terminal
+            .draw(|frame| draw_list_view(frame, &mut app))
+            .unwrap();
+        assert!(
+            text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1)).contains("Pinned")
+        );
+        let tabs = [
+            ("Vault", Some(icons::FOLDER.get(app.config.ui.icon_mode))),
+            ("Pinned", Some(icons::PIN.get(app.config.ui.icon_mode))),
+            ("Smart", Some(icons::FILTER.get(app.config.ui.icon_mode))),
+            (
+                "Subnotes",
+                Some(icons::SUBNOTES.get(app.config.ui.icon_mode)),
+            ),
+        ];
+        let region = title_bar_tabs_region(area, "Notes");
+        let column = (0..area.width)
+            .find(|&column| {
+                hit_test_tabs(
+                    &tabs,
+                    area.x,
+                    area.width,
+                    region.x,
+                    column,
+                    false,
+                    app.config.ui.icon_mode,
+                ) == Some(1)
+            })
+            .unwrap();
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), column, 0),
+            area,
+        );
+        assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_PINNED_PATH);
+        app.cycle_grid_tab();
+        assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_SMART_PATH);
+        app.reverse_cycle_grid_tab();
+        assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_PINNED_PATH);
+    }
+}
+
+#[test]
+fn section_folders_respect_features_and_cannot_be_modified() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.config.list.section_tabs = false;
+    app.config.features.smart_folders = crate::config::FeatureState::Disabled;
+    app.config.features.subnotes = crate::config::FeatureState::Disabled;
+    for layout in [
+        NotesLayout::Grid,
+        NotesLayout::Tree,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
+        app.list.notes_layout = layout;
+        app.enter_list_directory(app.notes_root_directory(), 0);
+        assert!(!app.list.visual_list.iter().any(|item| matches!(item, VisualItem::Folder { path, .. } if path == crate::app::VIRTUAL_SMART_PATH || path == crate::app::VIRTUAL_SUBNOTES_PATH)));
+    }
+    app.config.features.smart_folders = crate::config::FeatureState::Enabled;
+    app.refresh_visual_list();
+    select_folder(&mut app, "");
+    app.begin_move_folder();
+    assert!(app.popups.active.is_none());
+    select_folder(&mut app, crate::app::VIRTUAL_SMART_PATH);
+    app.list.selected_indices.insert(app.list.visual_index);
+    assert_eq!(
+        app.collect_selected_notes_and_folders().1,
+        Vec::<String>::new()
+    );
+    app.begin_move_folder();
+    assert!(app.popups.active.is_none());
+    app.begin_rename_folder();
+    assert!(app.popups.active.is_none());
+    app.begin_delete_selected();
+    assert!(app.popups.confirm.is_none());
+    app.move_right();
+    assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_SMART_PATH);
+    app.move_left();
+    assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_ROOT_PATH);
+}
+
+#[test]
+fn editor_scrollbar_uses_each_splitter_and_keeps_mouse_scrolling() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Edit;
+    let source = "Line\n".repeat(100);
+    app.editor.body = crate::editor_document::EditorDocument::from_source(&source);
+    let area = Rect::new(0, 0, 120, 32);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    for position in [
+        crate::config::PreviewPosition::Left,
+        crate::config::PreviewPosition::Right,
+    ] {
+        app.preview_position = position;
+        for (sidebar, preview) in [
+            (EditSidebar::None, true),
+            (EditSidebar::Outline, false),
+            (EditSidebar::Links, false),
+            (EditSidebar::None, false),
+        ] {
+            app.editor.sidebar = sidebar;
+            app.editor.editor_preview_enabled = preview;
+            app.editor.body_viewport_row = 0;
+            app.editor.scroll_drag = None;
+            terminal
+                .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+                .unwrap();
+            let layout = crate::events::compute_edit_layout(
+                Rect::new(0, 1, 120, 30),
+                false,
+                preview,
+                sidebar,
+                position,
+                app.zen_padding(),
+            );
+            let meta = app.editor.last_scroll.unwrap();
+            assert_eq!(
+                meta.track,
+                crate::ui::scrollbar::pane_track(layout.body, layout.splitter)
+            );
+            assert!(
+                (meta.track.y..meta.track.bottom())
+                    .any(|y| terminal.backend().buffer()[(meta.track.x, y)].fg
+                        == app.app_theme.accent)
+            );
+            let mut focus = EditFocus::Body;
+            let mut selection = crate::text_edit::MouseTextSelection::default();
+            crate::events::handle_edit_mouse(
+                &mut app,
+                mouse(
+                    MouseEventKind::Down(MouseButton::Left),
+                    meta.track.x,
+                    meta.track.bottom() - 1,
+                ),
+                area,
+                &mut focus,
+                &mut selection,
+            );
+            assert!(
+                app.editor.body_viewport_row > 0,
+                "{position:?}, {sidebar:?}"
+            );
+        }
+    }
+    app.preview_fullscreen = true;
+    terminal
+        .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(app.editor.last_scroll.is_none());
+}
+
+#[test]
+fn smart_folder_chevrons_only_render_in_tree_layout() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    let mut terminal = Terminal::new(TestBackend::new(40, 2)).unwrap();
+    for layout in [
+        NotesLayout::Tree,
+        NotesLayout::Grid,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
+        app.list.notes_layout = layout.clone();
+        for mode in [
+            IconMode::Nerd,
+            IconMode::Unicode,
+            IconMode::Emoji,
+            IconMode::None,
+        ] {
+            app.config.ui.icon_mode = mode;
+            for expanded in [false, true] {
+                app.list.visual_list = vec![VisualItem::SmartFolder {
+                    kind: crate::list_view::SmartFolderKind::Today,
+                    label: "Today".to_owned(),
+                    depth: 0,
+                    is_expanded: expanded,
+                    note_count: 3,
+                }];
+                terminal
+                    .draw(|frame| {
+                        frame.render_widget(
+                            ratatui::widgets::List::new(vec![app.format_visual_item(0)]),
+                            frame.area(),
+                        )
+                    })
+                    .unwrap();
+                let text = text_in(terminal.backend().buffer(), Rect::new(0, 0, 40, 1));
+                let glyph = icons::TODAY.get(mode);
+                let arrow = if expanded {
+                    icons::EXPANDED.get(mode)
+                } else {
+                    icons::COLLAPSED.get(mode)
+                };
+                let prefix = if mode == IconMode::None {
+                    "Today".to_owned()
+                } else if layout == NotesLayout::Tree {
+                    format!("{arrow} {glyph} Today")
+                } else {
+                    format!("{glyph} Today")
+                };
+                assert!(text.starts_with(&prefix), "{layout:?}, {mode:?}: {text:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn notes_row_density_keeps_hover_and_mouse_targets_on_the_rendered_rows() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    let area = Rect::new(0, 0, 120, 32);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    for density in [
+        crate::config::ListDensity::Compact,
+        crate::config::ListDensity::Comfortable,
+    ] {
+        app.list.list_density = density;
+        for layout in [NotesLayout::Tree, NotesLayout::List, NotesLayout::Multi] {
+            app.list.notes_layout = layout.clone();
+            app.list.visual_list = vec![
+                VisualItem::TemplateConfig {
+                    folder: "docs".into(),
+                    depth: 0,
+                },
+                VisualItem::SmartFolder {
+                    kind: crate::list_view::SmartFolderKind::Today,
+                    label: "Today".into(),
+                    depth: 0,
+                    is_expanded: false,
+                    note_count: 3,
+                },
+            ];
+            app.list.visual_index = 0;
+            *app.list.list_state.offset_mut() = 0;
+            let row = 2 + app.list.row_height();
+            app.mouse_pos = Some((3, row));
+            terminal
+                .draw(|frame| draw_list_view(frame, &mut app))
+                .unwrap();
+            assert!(
+                text_in(terminal.backend().buffer(), Rect::new(0, row, 45, 1)).contains("Today")
+            );
+            assert_eq!(
+                terminal.backend().buffer()[(3, row)].bg,
+                app.app_theme.hover_style().bg.unwrap()
+            );
+            crate::events::handle_list_mouse(
+                &mut app,
+                mouse(MouseEventKind::Down(MouseButton::Left), 3, row),
+                area,
+            );
+            assert_eq!(app.list.visual_index, 1, "{layout:?}");
+        }
+        app.list.notes_layout = NotesLayout::Multi;
+        app.enter_list_directory(String::new(), 0);
+        select_folder(&mut app, "docs");
+        terminal
+            .draw(|frame| draw_list_view(frame, &mut app))
+            .unwrap();
+        let pane = browser_columns(Rect::new(0, 1, 120, 30), &NotesLayout::Multi)
+            .1
+            .unwrap();
+        let index = app.list.multi_preview.as_ref().unwrap().1.iter().position(|item| matches!(item, VisualItem::Note { summary_idx, .. } if app.notes[*summary_idx].id == "docs/child.md")).unwrap();
+        let row = pane.y + 1 + index as u16 * app.list.row_height();
+        assert!(
+            text_in(
+                terminal.backend().buffer(),
+                Rect::new(pane.x, row, pane.width, 1)
+            )
+            .contains("child")
+        );
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), pane.x + 3, row),
+            area,
+        );
+        assert_eq!(app.list.grid_folder, "docs");
+        assert_eq!(app.list.visual_index, index);
+    }
+}
+
+#[test]
+fn popup_scrollbars_share_borders_and_keep_corners_and_mouse_targets() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    let area = Rect::new(0, 0, 100, 32);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    app.begin_theme_selection();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    let Some(crate::popups::ActivePopup::Theme(popup)) = &app.popups.active else {
+        panic!("theme popup");
+    };
+    let meta = popup.last_scroll.unwrap();
+    assert!(meta.content_len > meta.viewport_len);
+    assert_eq!(
+        terminal.backend().buffer()[(meta.track.x, meta.track.y - 1)].symbol(),
+        "┐"
+    );
+    assert_eq!(
+        terminal.backend().buffer()[(meta.track.x, meta.track.bottom())].symbol(),
+        "┘"
+    );
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            meta.track.x,
+            meta.track.bottom() - 1,
+        ),
+        area,
+    );
+    assert!(
+        matches!(&app.popups.active, Some(crate::popups::ActivePopup::Theme(popup)) if popup.selected > 0)
+    );
+    app.popups.active = None;
+    let subnotes = (0..70)
+        .map(|index| crate::storage::SubNote {
+            id: index.to_string(),
+            title: format!("Subnote {index}"),
+            content: "Body".into(),
+            updated_at: 1,
+        })
+        .collect::<Vec<_>>();
+    app.storage.set_subnotes("root.md", &subnotes).unwrap();
+    app.open_subnotes_popup_for("root.md", None);
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    let Some(crate::popups::ActivePopup::Subnotes(popup)) = &app.popups.active else {
+        panic!("subnotes popup");
+    };
+    let meta = popup.last_scroll.unwrap();
+    assert!(meta.content_len > meta.viewport_len);
+    assert_eq!(
+        terminal.backend().buffer()[(meta.track.x, meta.track.y - 1)].symbol(),
+        "┐"
+    );
+    assert_eq!(
+        terminal.backend().buffer()[(meta.track.x, meta.track.bottom())].symbol(),
+        "┘"
+    );
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            meta.track.x,
+            meta.track.bottom() - 1,
+        ),
+        area,
+    );
+    assert!(
+        matches!(&app.popups.active, Some(crate::popups::ActivePopup::Subnotes(popup)) if popup.selected > 0)
+    );
+}

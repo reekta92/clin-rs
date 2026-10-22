@@ -374,6 +374,57 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             return;
         }
 
+        let layout = crate::setup::layout_at(state.notes_layout);
+        if matches!(
+            layout,
+            crate::config::NotesLayout::List | crate::config::NotesLayout::Multi
+        ) {
+            let (left, right) = crate::ui::browser_columns(inner, &layout);
+            let folder = crate::ui::icons::FOLDER.get(icon_mode);
+            let note = crate::ui::icons::MARKDOWN.get(icon_mode);
+            for (column, names, selected) in [
+                (
+                    Some(left),
+                    vec![
+                        format!("{folder} Documents"),
+                        format!("{note} Ideas"),
+                        format!("{note} Journal"),
+                    ],
+                    true,
+                ),
+                (
+                    right,
+                    vec![format!("{note} Project"), format!("{note} Recipe")],
+                    false,
+                ),
+            ] {
+                if let Some(column) = column {
+                    let rows = names.into_iter().map(ListItem::new).collect::<Vec<_>>();
+                    let mut selection =
+                        ratatui::widgets::ListState::default().with_selected(selected.then_some(0));
+                    frame.render_stateful_widget(
+                        List::new(rows)
+                            .block(Block::default().padding(Padding::new(2, 2, 1, 1)))
+                            .highlight_style(
+                                Style::default()
+                                    .fg(theme.highlight_fg)
+                                    .bg(theme.highlight_bg),
+                            ),
+                        column,
+                        &mut selection,
+                    );
+                }
+            }
+            if let Some(right) = right {
+                crate::ui::draw_dim_vline(
+                    frame,
+                    Rect::new(right.x.saturating_sub(1), right.y, 1, right.height),
+                    theme.border,
+                );
+            }
+            return;
+        }
+
         if state.notes_layout == 0 {
             // Grid: exactly the notes-view grid — same tile geometry and the
             // same tile renderer, plus the vault breadcrumb it shows on top.

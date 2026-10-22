@@ -188,10 +188,27 @@ toggle_action!(
 );
 
 toggle_action!(
+    ToggleNotesSectionTabsAction,
+    "settings.notes_section_tabs",
+    "Toggle Notes Section Tabs",
+    "Show Vault, Pinned, Smart, and Subnotes as tabs or folders in every notes layout",
+    ActionCategory::Settings,
+    crate::ui::icons::FOLDER.pair(),
+    toggle_notes_section_tabs,
+    app,
+    if app.config.list.section_tabs {
+        "On"
+    } else {
+        "Off"
+    },
+    fallible
+);
+
+toggle_action!(
     ToggleTabIconsOnlyAction,
     "settings.tab_icons_only",
     "Tab Icons Only",
-    "Show only Nerd Font icons (no text) on tab bars",
+    "Show only icons (no text labels) on tab bars",
     ActionCategory::Settings,
     crate::ui::icons::ICONS.pair(),
     toggle_tab_icons_only,
@@ -244,7 +261,7 @@ toggle_action!(
     CycleIconModeAction,
     "settings.icon_mode",
     "Select Icon Mode",
-    "Choose between Nerd Font, Unicode, or no icons",
+    "Choose between Nerd Font, Unicode, emoji, or no icons",
     ActionCategory::Settings,
     crate::ui::icons::ICONS.pair(),
     begin_icon_mode_selection,
@@ -253,6 +270,7 @@ toggle_action!(
         crate::config::IconMode::Nerd => "Nerd Font",
         crate::config::IconMode::Unicode => "Unicode",
         crate::config::IconMode::None => "None",
+        crate::config::IconMode::Emoji => "Emoji",
     }
 );
 
@@ -272,7 +290,7 @@ toggle_action!(
     ToggleFoldersFirstAction,
     "settings.folders_first",
     "Toggle Folders First",
-    "Show subfolders before files in the notes list (Tree and Grid layouts)",
+    "Show subfolders before files in every notes layout",
     ActionCategory::Settings,
     crate::ui::icons::OPEN_FOLDER.pair(),
     toggle_folders_first,

@@ -95,12 +95,14 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
                 let len = crate::ui::help_content::tab_popup_descriptions(app.help_tab).len();
                 if len > 0 {
                     app.help_info_active = (app.help_info_active + 1) % len;
+                    app.help_side_scroll[0] = 0;
                 }
             }
             KeyCode::Char('N') => {
                 let len = crate::ui::help_content::tab_popup_descriptions(app.help_tab).len();
                 if len > 0 {
                     app.help_info_active = (app.help_info_active + len - 1) % len;
+                    app.help_side_scroll[0] = 0;
                 }
             }
             _ => {}
@@ -136,6 +138,30 @@ pub fn handle_help_mouse(app: &mut App, mouse_event: MouseEvent, area: Rect) {
             }
         }
         return;
+    }
+
+    let body = Rect::new(
+        area.x,
+        area.y.saturating_add(1),
+        area.width,
+        area.height.saturating_sub(2),
+    );
+    let columns = crate::ui::help_body_columns(body);
+    for (index, pane) in [columns[0], columns[4]].iter().enumerate() {
+        if crate::events::contains_cell(*pane, mouse_event.column, mouse_event.row) {
+            match mouse_event.kind {
+                MouseEventKind::ScrollUp => {
+                    app.help_side_scroll[index] = app.help_side_scroll[index].saturating_sub(1)
+                }
+                MouseEventKind::ScrollDown => {
+                    app.help_side_scroll[index] = app.help_side_scroll[index]
+                        .saturating_add(1)
+                        .min(app.help_side_max_scroll[index])
+                }
+                _ => {}
+            }
+            return;
+        }
     }
 
     let tab_bar_y = area.y;

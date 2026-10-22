@@ -230,16 +230,7 @@ impl OverlayView for DrawPlugin {
                 self.keybinds.display_draw(DrawAction::SelectTextTool),
                 "text",
             ),
-            (
-                self.keybinds.display_draw(DrawAction::SelectEraseTool),
-                "erase",
-            ),
             (self.keybinds.draw_keys_display(DrawAction::Quit), "back"),
-            (
-                format!("F1/{}", self.keybinds.draw_keys_display(DrawAction::Help)),
-                "help",
-            ),
-            ("F2".to_string(), "keybinds"),
         ];
         let hint_line = crate::ui::format_keybind_hints(&app.app_theme, &hints_items);
         let mut ctx =

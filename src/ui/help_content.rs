@@ -60,7 +60,7 @@ const fn tip_req(
 pub fn tab_description(tab: HelpTab) -> &'static str {
     match tab {
         HelpTab::Notes => {
-            "Browse, organize, and manage your notes and folders. This is the landing view — navigate the list, open notes for editing, create folders, pin important items, tag notes, and switch between list, grid, and tree layouts. Use the command palette or search to jump anywhere."
+            "Browse, organize, and manage your notes and folders. This is the landing view — navigate the list, open notes for editing, create folders, pin important items, tag notes, and switch between tree, grid, directory list, and two-pane multi layouts. Use the command palette or search to jump anywhere."
         }
         HelpTab::Editor => {
             "Write and edit the selected note's title and body. Switch focus between the title field and the markdown body, toggle a live markdown preview, dock outline and links sidebars, undo/redo edits, and hand off to an external editor like vim or nano. Changes auto-save when you return to the notes list."

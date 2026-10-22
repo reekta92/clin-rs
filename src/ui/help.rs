@@ -26,8 +26,8 @@ pub fn help_tabs(
         (HelpTab::Draw, "Draw", crate::ui::icons::DRAW),
         (HelpTab::Canvas, "Canvas", crate::ui::icons::CANVAS),
         (HelpTab::Templates, "Templates", crate::ui::icons::TEMPLATE),
-        (HelpTab::About, "About", crate::ui::icons::INFO),
         (HelpTab::Bases, "Bases", crate::ui::icons::BASES),
+        (HelpTab::About, "About", crate::ui::icons::INFO),
     ];
     pairs
         .into_iter()
@@ -254,22 +254,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     );
 
     let body_area = chunks[1];
-    let show_sides = body_area.width >= 100;
-    let (left_area, divider1_area, center_area, divider2_area, right_area) = if show_sides {
-        let panes = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(20),
-                Constraint::Length(1),
-                Constraint::Percentage(60),
-                Constraint::Length(1),
-                Constraint::Percentage(20),
-            ])
-            .split(body_area);
-        (panes[0], panes[1], panes[2], panes[3], panes[4])
-    } else {
-        (Rect::ZERO, Rect::ZERO, body_area, Rect::ZERO, Rect::ZERO)
-    };
+    let [
+        left_area,
+        divider1_area,
+        center_area,
+        divider2_area,
+        right_area,
+    ] = help_body_columns(body_area);
+    let show_sides = left_area.width > 0;
 
     // --- center pane: existing table + pagination, now scoped to center_area ---
     let max_w: u16 = if show_sides { center_area.width } else { 96 };
@@ -332,6 +324,8 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             app.help_tab,
             &app.keybinds,
             app.help_info_active,
+            &mut app.help_side_scroll[0],
+            &mut app.help_side_max_scroll[0],
             theme,
         );
         draw_dim_vline(frame, divider1_area, theme.border);
@@ -342,12 +336,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             &app.help_suggestions,
             &app.keybinds,
             &app.config,
+            &mut app.help_side_scroll[1],
+            &mut app.help_side_max_scroll[1],
             theme,
         )
     }
 
     let kb = &app.keybinds;
-    let mut hints_items = vec![
+    let hints_items = vec![
         (
             format!(
                 "{}/{}",
@@ -370,15 +366,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             format!("F1/{}", kb.help_keys_display(HelpAction::Close)),
             "close",
         ),
-        ("F2".to_string(), "keybinds"),
     ];
-    let palette_keys = app.palette_keys_display(ViewMode::Help);
-    if !palette_keys.is_empty() {
-        hints_items.push((palette_keys, "commands"));
-    }
-    if !crate::ui::help_content::tab_popup_descriptions(app.help_tab).is_empty() {
-        hints_items.push(("n/N".to_string(), "cycle popup"));
-    }
     let hint = format_keybind_hints(&app.app_theme, &hints_items);
     let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Help);
     ctx.area = Some(chunks[2]);
@@ -1167,12 +1155,63 @@ pub fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'stati
         )]
     }
 }
+pub(crate) fn help_body_columns(area: Rect) -> [Rect; 5] {
+    if area.width < 104 {
+        return [Rect::ZERO, Rect::ZERO, area, Rect::ZERO, Rect::ZERO];
+    }
+    let side = area.width.saturating_sub(54).saturating_sub(2) / 2;
+    let columns = Layout::horizontal([
+        Constraint::Length(side.min(34)),
+        Constraint::Length(1),
+        Constraint::Min(54),
+        Constraint::Length(1),
+        Constraint::Length(side.min(34)),
+    ])
+    .split(area);
+    [columns[0], columns[1], columns[2], columns[3], columns[4]]
+}
+
+fn draw_help_side(
+    frame: &mut Frame,
+    area: Rect,
+    lines: Vec<Line<'_>>,
+    scroll: &mut u16,
+    max_scroll: &mut u16,
+    theme: &AppThemeColors,
+) {
+    let block = Block::default()
+        .style(theme.preview_bg_style())
+        .padding(Padding::new(1, 1, 1, 1));
+    let inner = block.inner(area);
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: true });
+    *max_scroll = paragraph
+        .line_count(inner.width)
+        .saturating_sub(inner.height as usize)
+        .min(u16::MAX as usize) as u16;
+    *scroll = (*scroll).min(*max_scroll);
+    frame.render_widget(
+        paragraph
+            .scroll((*scroll, 0))
+            .block(block)
+            .style(theme.preview_bg_style()),
+        area,
+    );
+    if *max_scroll > 0 {
+        frame.render_widget(
+            Paragraph::new("wheel: scroll").style(Style::default().fg(theme.muted)),
+            Rect::new(inner.x, area.bottom().saturating_sub(1), inner.width, 1),
+        );
+    }
+}
+
 fn draw_help_info_pane(
     frame: &mut Frame,
     area: Rect,
     tab: HelpTab,
     keybinds: &Keybinds,
     active: usize,
+    scroll: &mut u16,
+    max_scroll: &mut u16,
     theme: &AppThemeColors,
 ) {
     let title = tab_display_name(tab);
@@ -1229,16 +1268,7 @@ fn draw_help_info_pane(
         lines.push(Line::from(render_tip_body(p.body, keybinds, theme)));
     }
 
-    let block = Block::default()
-        .borders(Borders::NONE)
-        .style(theme.preview_bg_style())
-        .padding(Padding::new(2, 2, 1, 1));
-    let body = Paragraph::new(lines)
-        .wrap(Wrap::default())
-        .style(theme.preview_bg_style())
-        .block(block)
-        .alignment(Alignment::Left);
-    frame.render_widget(body, area);
+    draw_help_side(frame, area, lines, scroll, max_scroll, theme);
 }
 
 fn tab_display_name(tab: HelpTab) -> &'static str {
@@ -1260,13 +1290,10 @@ fn draw_help_tips_pane(
     suggestions: &[crate::ui::HelpSuggestion],
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
+    scroll: &mut u16,
+    max_scroll: &mut u16,
     theme: &AppThemeColors,
 ) {
-    let block = Block::default()
-        .borders(Borders::NONE)
-        .style(theme.preview_bg_style())
-        .padding(Padding::new(2, 2, 1, 1));
-
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(Span::styled(
         "Tips",
@@ -1311,16 +1338,12 @@ fn draw_help_tips_pane(
             .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(render_tip_body(
-        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context. {global:CommandPalette} opens the command palette in every view; view bindings take priority.",
+        "`` F2 `` shows shortcuts. {global:CommandPalette} opens commands.",
         keybinds,
         theme,
     )));
 
-    let p = Paragraph::new(lines)
-        .wrap(Wrap::default())
-        .style(theme.preview_bg_style())
-        .block(block);
-    frame.render_widget(p, area);
+    draw_help_side(frame, area, lines, scroll, max_scroll, theme);
 }
 
 fn render_tip_body(body: &str, kb: &Keybinds, theme: &AppThemeColors) -> Vec<Span<'static>> {

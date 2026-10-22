@@ -392,9 +392,9 @@ impl App {
             }
             VisualItem::Folder { path, .. } => {
                 let p = path.clone();
-                if self.list.notes_layout == crate::config::NotesLayout::Grid {
-                    self.list.grid_folder = p;
-                    self.list.visual_index = 0;
+                if self.list.notes_layout.browses_folders() {
+                    self.enter_list_directory(p, 0);
+                    return;
                 } else if self.list.folder_expanded.contains(&p) {
                     self.list.folder_expanded.remove(&p);
                 } else {
@@ -404,9 +404,9 @@ impl App {
             }
             VisualItem::SmartFolder { kind, .. } => {
                 let p = kind.virtual_path();
-                if self.list.notes_layout == crate::config::NotesLayout::Grid {
-                    self.list.grid_folder = p;
-                    self.list.visual_index = 0;
+                if self.list.notes_layout.browses_folders() {
+                    self.enter_list_directory(p, 0);
+                    return;
                 } else if self.list.folder_expanded.contains(&p) {
                     self.list.folder_expanded.remove(&p);
                 } else {
@@ -1000,7 +1000,7 @@ impl App {
     }
 
     pub fn begin_create_folder(&mut self) {
-        let parent_path = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        let parent_path = if self.list.notes_layout.browses_folders() {
             self.list.grid_folder.clone()
         } else {
             self.get_current_folder_context()
@@ -1134,7 +1134,7 @@ impl App {
     }
 
     pub fn begin_create_select_format(&mut self) {
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        let folder = if self.list.notes_layout.browses_folders() {
             if Self::is_virtual_path(&self.list.grid_folder) {
                 String::new()
             } else {

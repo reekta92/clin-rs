@@ -232,10 +232,18 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             if let Some(icon) = icon_span {
                 spans.push(icon);
             }
+            let title_style = if app
+                .mouse_pos
+                .is_some_and(|(x, y)| crate::events::contains_cell(center_area, x, y))
+            {
+                theme.title_bar_bg_style().patch(theme.hover_style())
+            } else {
+                theme.title_bar_bg_style()
+            };
             let center_paragraph = Paragraph::new(Line::from(spans))
-                .style(theme.title_bar_bg_style())
+                .style(title_style)
                 .alignment(Alignment::Center);
-            frame.render_widget(center_paragraph, outer_chunks[0]);
+            frame.render_widget(center_paragraph, center_area);
 
             // Render left and right bars on top of the centered title
             let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
@@ -287,6 +295,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let splitter_area = layout.splitter;
 
     let editor_container = layout.body;
+    app.editor.last_scroll = None;
 
     app.editor.last_body_width = editor_container.width;
     app.editor.last_body_height = editor_container.height;
@@ -309,22 +318,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             // (src/ui/mod.rs:1516), which derives visible rows from
             // block.inner(area).
             let viewport_len = editor_container.height.saturating_sub(1) as usize;
-            let area = editor_container;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(area),
+                track: crate::ui::scrollbar::pane_track(editor_container, splitter_area),
                 content_len,
                 viewport_len,
             };
             app.editor.last_scroll = Some(meta);
-            crate::ui::scrollbar::draw_scrollbar(
-                frame,
-                area,
-                content_len,
-                viewport_len,
-                app.editor.body_viewport_row as usize,
-                content_len.saturating_sub(viewport_len),
-                &app.app_theme,
-            );
         } else {
             app.editor.last_scroll = None;
         }
@@ -442,17 +441,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let kb = &app.keybinds;
         let hints_items = vec![
             (kb.display_edit(EditAction::CycleFocus), "focus"),
+            (kb.display_edit(EditAction::Find), "find"),
             (
                 kb.display_edit(EditAction::ToggleMarkdownPreview),
                 "preview",
             ),
-            (kb.display_edit(EditAction::ToggleOutline), "outline"),
-            (kb.display_edit(EditAction::ToggleLinks), "links"),
-            (kb.display_edit(EditAction::Find), "find"),
-            (kb.display_edit(EditAction::ToggleWrap), "wrap"),
+            (kb.display_edit(EditAction::Save), "save"),
             (kb.edit_keys_display(EditAction::Back), "back"),
-            ("F1".to_string(), "help"),
-            ("F2".to_string(), "keybinds"),
         ];
         let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
         let hint = default_hints;
@@ -479,7 +474,24 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
     }
     if let Some(splitter_area) = splitter_area {
-        draw_dim_vline(frame, splitter_area, app.app_theme.muted);
+        let color = if matches!(focus, EditFocus::Body | EditFocus::Sidebar) {
+            app.app_theme.accent
+        } else {
+            app.app_theme.muted
+        };
+        draw_dim_vline(frame, splitter_area, color);
+    }
+    if let Some(meta) = app.editor.last_scroll {
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            meta.track,
+            meta.content_len,
+            meta.viewport_len,
+            app.editor.body_viewport_row as usize,
+            meta.content_len.saturating_sub(meta.viewport_len),
+            &app.app_theme,
+            app.mouse_pos,
+        );
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
@@ -572,6 +584,15 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
             app.base_embeds
                 .draw(frame, area, renderer, 0..usize::from(area.height), app);
         }
+        if focus == EditFocus::Sidebar {
+            frame.render_widget(
+                Block::default()
+                    .borders(Borders::LEFT)
+                    .border_type(BorderType::Thick)
+                    .border_style(Style::default().fg(app.app_theme.accent)),
+                area,
+            );
+        }
         return;
     }
     let theme = &app.app_theme;
@@ -592,7 +613,8 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
     // Draw Title
     let title_style = if focus == EditFocus::Sidebar {
         Style::default()
-            .fg(theme.accent)
+            .fg(theme.highlight_fg)
+            .bg(theme.accent)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
@@ -667,11 +689,18 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
         );
 
         let item_count = items.len();
-        let list = List::new(items).block(Block::default()).highlight_style(
-            Style::default()
-                .bg(theme.highlight_bg)
-                .fg(theme.highlight_fg),
-        );
+        let list = List::new(items)
+            .block(Block::default())
+            .highlight_symbol(if focus == EditFocus::Sidebar {
+                "▸ "
+            } else {
+                "  "
+            })
+            .highlight_style(
+                Style::default()
+                    .bg(theme.highlight_bg)
+                    .fg(theme.highlight_fg),
+            );
         frame.render_stateful_widget(list, list_area, &mut state);
         app.editor.sidebar_scroll_offset = state.offset();
         app.editor.sidebar_list_rect = list_area;
@@ -682,6 +711,15 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
             item_count,
             app.mouse_pos,
             theme.hover_style(),
+        );
+    }
+    if focus == EditFocus::Sidebar {
+        frame.render_widget(
+            Block::default()
+                .borders(Borders::LEFT)
+                .border_type(BorderType::Thick)
+                .border_style(Style::default().fg(theme.accent)),
+            area,
         );
     }
 }

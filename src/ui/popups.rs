@@ -123,19 +123,24 @@ pub fn draw_template_popup(
         width: chunks[1].width.saturating_sub(2),
         height: chunks[1].height.saturating_sub(2),
     };
+    let track = crate::ui::scrollbar::pane_track(
+        list_inner,
+        Some(crate::ui::scrollbar::track_rect(chunks[1])),
+    );
     popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-        track: crate::ui::scrollbar::track_rect(list_inner),
+        track,
         content_len: popup.filtered_templates.len(),
         viewport_len: list_inner.height as usize,
     });
     crate::ui::scrollbar::draw_scrollbar(
         frame,
-        list_inner,
+        track,
         popup.filtered_templates.len(),
         list_inner.height as usize,
         popup.selected,
         popup.filtered_templates.len().saturating_sub(1),
         theme,
+        mouse_pos,
     );
 }
 
@@ -376,19 +381,24 @@ pub fn draw_theme_popup(
         width: chunks[0].width.saturating_sub(2),
         height: chunks[0].height.saturating_sub(2),
     };
+    let track = crate::ui::scrollbar::pane_track(
+        theme_inner,
+        Some(crate::ui::scrollbar::track_rect(chunks[0])),
+    );
     popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-        track: crate::ui::scrollbar::track_rect(theme_inner),
+        track,
         content_len: popup.themes.len(),
         viewport_len: theme_inner.height as usize,
     });
     crate::ui::scrollbar::draw_scrollbar(
         frame,
-        theme_inner,
+        track,
         popup.themes.len(),
         theme_inner.height as usize,
         popup.selected,
         popup.themes.len().saturating_sub(1),
         theme,
+        mouse_pos,
     );
 
     let gen_label = if popup.general_is_solid {
@@ -834,6 +844,33 @@ pub fn ext_badge_spans<'a>(
     spans
 }
 
+pub(crate) fn widget_strip_area(
+    frame: &mut Frame,
+    rect: Rect,
+    strip_rect: Rect,
+    bottom_border: bool,
+    theme: &AppThemeColors,
+) -> Rect {
+    let border = if bottom_border {
+        Borders::BOTTOM
+    } else {
+        Borders::TOP
+    };
+    let block = Block::default()
+        .style(theme.bg_style())
+        .borders(border)
+        .border_style(
+            Style::default()
+                .fg(theme.muted)
+                .bg(theme.bg.unwrap_or(Color::Reset)),
+        );
+    let inner = block.inner(strip_rect).intersection(rect);
+    frame.render_widget(block, strip_rect);
+    Block::default()
+        .padding(Padding::horizontal(2))
+        .inner(inner)
+}
+
 pub fn draw_status_bar<'a>(
     frame: &mut Frame,
     area: Rect,
@@ -841,6 +878,14 @@ pub fn draw_status_bar<'a>(
     left: Line<'a>,
     right: Option<Line<'a>>,
 ) {
+    let right = right.map(|line| fit_footer_line(line, area.width as usize, theme, true));
+    let right_width = right.as_ref().map_or(0, Line::width);
+    let left = fit_footer_line(
+        left,
+        (area.width as usize).saturating_sub(right_width),
+        theme,
+        false,
+    );
     if let Some(right_line) = right {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -858,6 +903,63 @@ pub fn draw_status_bar<'a>(
         let para = Paragraph::new(left).style(theme.hint_line_bg_style());
         frame.render_widget(para, area);
     }
+}
+
+/// Fit terminal cells without splitting graphemes or leaving a filled cell open.
+pub(crate) fn fit_footer_line<'a>(
+    line: Line<'a>,
+    width: usize,
+    theme: &AppThemeColors,
+    is_right: bool,
+) -> Line<'a> {
+    use unicode_segmentation::UnicodeSegmentation;
+    use unicode_width::UnicodeWidthStr;
+
+    if line.width() <= width {
+        return line;
+    }
+    if width == 0 {
+        return Line::default();
+    }
+    let style = theme.hint_bar_style;
+    let cap = if is_right {
+        ""
+    } else if style.is_chained() {
+        style.separator(false, theme.icon_mode)
+    } else {
+        style
+            .cell_caps_for_mode(theme.icon_mode)
+            .map_or("", |(_, right)| right)
+    };
+    let cap = if cap.width() < width { cap } else { "" };
+    let budget = width.saturating_sub(1 + cap.width());
+    let mut spans = Vec::new();
+    let mut used = 0;
+    let mut last_style = line.style;
+    'outer: for span in line.spans {
+        let mut text = String::new();
+        for grapheme in span.content.graphemes(true) {
+            if used + grapheme.width() > budget {
+                if !text.is_empty() {
+                    last_style = span.style;
+                    spans.push(Span::styled(text, span.style));
+                }
+                break 'outer;
+            }
+            used += grapheme.width();
+            text.push_str(grapheme);
+        }
+        last_style = span.style;
+        spans.push(Span::styled(text, span.style));
+    }
+    spans.push(Span::styled("…", last_style));
+    if !cap.is_empty() {
+        let cap_style = Style::default()
+            .fg(last_style.bg.unwrap_or(theme.accent))
+            .bg(theme.hint_line_bg().unwrap_or(Color::Reset));
+        spans.push(Span::styled(cap, cap_style));
+    }
+    Line::from(spans).style(line.style)
 }
 
 /// Always renders hints in the classic muted ` · `-joined style, ignoring `hint_bar_style`.
@@ -888,6 +990,7 @@ pub fn format_keybind_hints<'a>(
     theme: &'a AppThemeColors,
     items: &[(String, &'static str)],
 ) -> Line<'a> {
+    let items = &items[..items.len().min(5)];
     let build_bg_colors = || {
         let base_colors = [
             theme.accent,
@@ -1139,14 +1242,50 @@ pub fn draw_confirm_popup_frame(
     inner
 }
 
+pub(crate) fn confirm_popup_layout(
+    area: Rect,
+    label: &str,
+    literal_yes_no: bool,
+) -> ([Rect; 4], [Rect; 2]) {
+    let popup = centered_rect(PopupSize::Confirm, area);
+    let inner = Block::bordered().inner(popup);
+    let chunks = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(2),
+        Constraint::Min(1),
+        Constraint::Length(1),
+    ])
+    .margin(1)
+    .split(inner);
+    let (confirm_key, cancel_key) = if literal_yes_no {
+        ("y", "n")
+    } else {
+        ("Enter", "Esc")
+    };
+    let row = chunks[3];
+    let cancel_width = (format!(" Cancel ({cancel_key}) ").width() as u16).min(row.width);
+    let gap = 3.min(row.width.saturating_sub(cancel_width));
+    let confirm_width = (format!(" {label} ({confirm_key}) ").width() as u16)
+        .min(row.width.saturating_sub(cancel_width + gap));
+    let x = row.x + row.width.saturating_sub(confirm_width + gap + cancel_width) / 2;
+    (
+        [chunks[0], chunks[1], chunks[2], chunks[3]],
+        [
+            Rect::new(x, row.y, confirm_width, row.height),
+            Rect::new(x + confirm_width + gap, row.y, cancel_width, row.height),
+        ],
+    )
+}
+
 pub fn draw_confirm_popup(
     frame: &mut Frame,
     popup: &ConfirmPopup,
     area: Rect,
     theme: &AppThemeColors,
     literal_yes_no: bool,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    let inner = draw_confirm_popup_frame(
+    draw_confirm_popup_frame(
         frame,
         area,
         "CONFIRM",
@@ -1156,16 +1295,7 @@ pub fn draw_confirm_popup(
         theme,
     );
 
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(inner);
+    let (chunks, button_areas) = confirm_popup_layout(area, &popup.confirm_label, literal_yes_no);
 
     let message = Paragraph::new(popup.message.as_str()).alignment(Alignment::Center);
     frame.render_widget(message, chunks[0]);
@@ -1177,7 +1307,7 @@ pub fn draw_confirm_popup(
         frame.render_widget(detail_para, chunks[1]);
     }
 
-    let (confirm_style, cancel_style) = if popup.selected_button == 0 {
+    let (mut confirm_style, mut cancel_style) = if popup.selected_button == 0 {
         let confirm = if popup.is_destructive {
             Style::default()
                 .fg(theme.highlight_fg)
@@ -1211,16 +1341,26 @@ pub fn draw_confirm_popup(
     } else {
         ("Enter", "Esc")
     };
-    let buttons = Line::from(vec![
-        Span::styled(
-            format!(" {} ({confirm_key}) ", popup.confirm_label),
-            confirm_style,
-        ),
-        Span::raw("   "),
-        Span::styled(format!(" Cancel ({cancel_key}) "), cancel_style),
-    ]);
-    let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
-    frame.render_widget(buttons_para, chunks[3]);
+    if let Some((x, y)) = mouse_pos {
+        if popup.selected_button != 0 && crate::events::contains_cell(button_areas[0], x, y) {
+            confirm_style = confirm_style.patch(theme.hover_style());
+        }
+        if popup.selected_button != 1 && crate::events::contains_cell(button_areas[1], x, y) {
+            cancel_style = cancel_style.patch(theme.hover_style());
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(format!(" {} ({confirm_key}) ", popup.confirm_label))
+            .style(confirm_style)
+            .alignment(Alignment::Center),
+        button_areas[0],
+    );
+    frame.render_widget(
+        Paragraph::new(format!(" Cancel ({cancel_key}) "))
+            .style(cancel_style)
+            .alignment(Alignment::Center),
+        button_areas[1],
+    );
 }
 
 pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
@@ -1238,6 +1378,7 @@ pub fn draw_subnotes_popup(
     popup: &mut crate::popups::SubnotesPopup,
     area: Rect,
     theme: &AppThemeColors,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content = draw_popup_frame(
         frame,
@@ -1319,19 +1460,32 @@ pub fn draw_subnotes_popup(
             width: main_chunks[0].width.saturating_sub(2),
             height: main_chunks[0].height.saturating_sub(2),
         };
+        paint_list_hover(
+            frame,
+            sub_list_inner,
+            &list_state,
+            popup.subnotes.len(),
+            mouse_pos,
+            theme.hover_style(),
+        );
+        let track = crate::ui::scrollbar::pane_track(
+            sub_list_inner,
+            Some(crate::ui::scrollbar::track_rect(main_chunks[0])),
+        );
         popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-            track: crate::ui::scrollbar::track_rect(sub_list_inner),
+            track,
             content_len: popup.subnotes.len(),
             viewport_len: sub_list_inner.height as usize,
         });
         crate::ui::scrollbar::draw_scrollbar(
             frame,
-            sub_list_inner,
+            track,
             popup.subnotes.len(),
             sub_list_inner.height as usize,
             popup.selected,
             popup.subnotes.len().saturating_sub(1),
             theme,
+            mouse_pos,
         );
     }
 
@@ -1340,13 +1494,17 @@ pub fn draw_subnotes_popup(
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(main_chunks[1]);
 
-    let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle {
+    let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle
+        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(edit_chunks[0], x, y))
+    {
         Style::default().fg(theme.heading)
     } else {
         Style::default().fg(theme.muted)
     };
 
-    let content_border_style = if popup.focus == crate::popups::SubnotesFocus::EditContent {
+    let content_border_style = if popup.focus == crate::popups::SubnotesFocus::EditContent
+        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(edit_chunks[1], x, y))
+    {
         Style::default().fg(theme.heading)
     } else {
         Style::default().fg(theme.muted)

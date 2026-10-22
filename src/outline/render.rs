@@ -186,26 +186,28 @@ pub fn draw_outline(
         );
         let content_len = visible.len();
         let viewport_len = left_area.height as usize;
+        let track = crate::ui::scrollbar::pane_track(left_area, Some(sep_area));
         state.last_tree_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
-            track: crate::ui::scrollbar::track_rect(left_area),
+            track,
             content_len,
             viewport_len,
         });
+        // Draw vertical separator before the scrollbar that shares its column.
+        crate::ui::draw_dim_vline(frame, sep_area, theme.muted);
         if config.ui.scrollbars {
             // draw_scrollbar now scales offset→selection internally (Step 1),
             // so we pass the raw scroll offset directly.
             crate::ui::scrollbar::draw_scrollbar(
                 frame,
-                left_area,
+                track,
                 content_len,
                 viewport_len,
                 state.tree_scroll_offset,
                 content_len.saturating_sub(viewport_len),
                 theme,
+                state.mouse_pos,
             );
         }
-        // Draw vertical separator
-        crate::ui::draw_dim_vline(frame, sep_area, theme.muted);
 
         // Draw Right Side Pane: Full content of selected node
         if !state.nodes.is_empty() && state.selected < state.nodes.len() {
@@ -262,7 +264,6 @@ pub fn draw_outline(
             format!("F1/{}", keybinds.outline_keys_display(OutlineAction::Help)),
             "help",
         ),
-        ("F2".to_string(), "keybinds"),
     ];
     let hint = crate::ui::format_keybind_hints(theme, &hints_items);
     let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Outline);
@@ -327,5 +328,52 @@ mod tests {
             .find(|row| row.contains("Heading"))
             .expect("selected row contains heading");
         assert!(!selected_row.contains('>'));
+    }
+
+    #[test]
+    fn outline_scrollbar_shares_divider_and_accepts_track_clicks() {
+        let content = "# Heading\n\nText\n\n".repeat(80);
+        let keys = Keybinds::default();
+        let mut state = OutlineState::new(
+            "note.md".into(),
+            "Note",
+            &content,
+            keys.clone(),
+            KeyMatcher::new(),
+        );
+        let mut terminal = ratatui::Terminal::new(TestBackend::new(80, 20)).unwrap();
+        let theme = AppThemeColors::default();
+        let config = crate::config::ClinConfig::default();
+        terminal
+            .draw(|frame| {
+                draw_outline(
+                    frame,
+                    frame.area(),
+                    &mut state,
+                    &theme,
+                    &keys,
+                    &config,
+                    None,
+                )
+            })
+            .unwrap();
+        let meta = state.last_tree_scroll.unwrap();
+        assert_eq!(meta.track.x, state.tree_list_rect.right());
+        assert!(
+            (meta.track.y..meta.track.bottom())
+                .any(|y| terminal.backend().buffer()[(meta.track.x, y)].fg == theme.accent)
+        );
+        crate::outline::input::handle_outline_mouse(
+            &mut state,
+            crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: meta.track.x,
+                row: meta.track.bottom() - 1,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            },
+            Rect::new(0, 0, 80, 20),
+            true,
+        );
+        assert!(state.tree_scroll_offset > 0);
     }
 }

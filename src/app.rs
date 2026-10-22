@@ -71,6 +71,7 @@ fn resume_from_external(mouse_enabled: bool) {
 }
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
+pub const VIRTUAL_ROOT_PATH: &str = "__clin_virtual__/root";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
 pub const VIRTUAL_SMART_PATH: &str = "__clin_virtual__/smart";
 pub const VIRTUAL_SMART_LABEL: &str = "Smart";
@@ -299,22 +300,22 @@ pub enum HelpTab {
     Draw,
     Canvas,
     Templates,
-    About,
     Bases,
+    About,
 }
 
 impl HelpTab {
     #[must_use]
     pub fn prev(self) -> Self {
         match self {
-            HelpTab::Notes => HelpTab::Bases,
-            HelpTab::Bases => HelpTab::About,
+            HelpTab::Notes => HelpTab::About,
+            HelpTab::Bases => HelpTab::Templates,
             HelpTab::Editor => HelpTab::Notes,
             HelpTab::Graph => HelpTab::Editor,
             HelpTab::Draw => HelpTab::Graph,
             HelpTab::Canvas => HelpTab::Draw,
             HelpTab::Templates => HelpTab::Canvas,
-            HelpTab::About => HelpTab::Templates,
+            HelpTab::About => HelpTab::Bases,
         }
     }
 
@@ -326,9 +327,9 @@ impl HelpTab {
             HelpTab::Graph => HelpTab::Draw,
             HelpTab::Draw => HelpTab::Canvas,
             HelpTab::Canvas => HelpTab::Templates,
-            HelpTab::Templates => HelpTab::About,
-            HelpTab::About => HelpTab::Bases,
-            HelpTab::Bases => HelpTab::Notes,
+            HelpTab::Templates => HelpTab::Bases,
+            HelpTab::About => HelpTab::Notes,
+            HelpTab::Bases => HelpTab::About,
         }
     }
 
@@ -340,7 +341,7 @@ impl HelpTab {
             3 => HelpTab::Draw,
             4 => HelpTab::Canvas,
             5 => HelpTab::Templates,
-            7 => HelpTab::Bases,
+            6 => HelpTab::Bases,
             _ => HelpTab::About,
         }
     }
@@ -353,8 +354,8 @@ impl HelpTab {
             HelpTab::Draw => 3,
             HelpTab::Canvas => 4,
             HelpTab::Templates => 5,
-            HelpTab::About => 6,
-            HelpTab::Bases => 7,
+            HelpTab::About => 7,
+            HelpTab::Bases => 6,
         }
     }
 }
@@ -392,6 +393,8 @@ pub struct App {
     pub help_tab_page: HashMap<HelpTab, u16>,
     pub help_search: HelpSearchState,
     pub help_info_active: usize,
+    pub help_side_scroll: [u16; 2],
+    pub help_side_max_scroll: [u16; 2],
     pub help_suggestions: Vec<crate::ui::HelpSuggestion>,
     pub command_palette: Option<crate::palette::CommandPalette>,
     pub(crate) command_usage: std::collections::BTreeMap<String, crate::local_state::CommandUsage>,
@@ -570,6 +573,9 @@ impl App {
         list.preview_enabled = bootstrap_config.list.preview_enabled;
         list.page_size = 10;
         list.notes_layout = bootstrap_config.list.default_view.clone();
+        if !bootstrap_config.list.section_tabs {
+            list.grid_folder = VIRTUAL_ROOT_PATH.to_owned();
+        }
         list.list_density = bootstrap_config.list.density.clone();
         list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
@@ -664,6 +670,8 @@ impl App {
             help_tab_page: HashMap::new(),
             help_search: HelpSearchState::default(),
             help_info_active: 0,
+            help_side_scroll: [0; 2],
+            help_side_max_scroll: [0; 2],
             help_suggestions: Vec::new(),
             command_palette: None,
             command_usage: std::collections::BTreeMap::default(),
@@ -847,6 +855,9 @@ impl App {
             .unwrap_or(SortOrder::Ascending);
         list.preview_enabled = bootstrap_config.list.preview_enabled;
         list.notes_layout = bootstrap_config.list.default_view.clone();
+        if !bootstrap_config.list.section_tabs {
+            list.grid_folder = VIRTUAL_ROOT_PATH.to_owned();
+        }
         list.list_density = bootstrap_config.list.density.clone();
         list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
@@ -946,6 +957,8 @@ impl App {
             help_tab_page: HashMap::new(),
             help_search: HelpSearchState::default(),
             help_info_active: 0,
+            help_side_scroll: [0; 2],
+            help_side_max_scroll: [0; 2],
             help_suggestions: Vec::new(),
             command_palette: None,
             command_usage: std::collections::BTreeMap::default(),
@@ -1091,6 +1104,7 @@ impl App {
         Ok(app)
     }
     pub fn reload_config(&mut self) {
+        let old_section_tabs = self.config.list.section_tabs;
         let old_availability = (
             self.config.features.canvas_view.is_enabled(),
             self.config.features.draw_view.is_enabled(),
@@ -1120,6 +1134,9 @@ impl App {
                 .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
+        if old_section_tabs != self.config.list.section_tabs {
+            self.enter_list_directory(self.notes_root_directory(), 0);
+        }
         let new_availability = (
             self.config.features.canvas_view.is_enabled(),
             self.config.features.draw_view.is_enabled(),
@@ -1157,7 +1174,8 @@ impl App {
     }
 
     pub(crate) fn is_virtual_path(path: &str) -> bool {
-        Self::is_virtual_pinned_path(path)
+        path == VIRTUAL_ROOT_PATH
+            || Self::is_virtual_pinned_path(path)
             || Self::is_virtual_subnotes_path(path)
             || Self::is_subnotes_parent_grid_path(path)
             || path == VIRTUAL_SMART_PATH
@@ -1168,6 +1186,14 @@ impl App {
         let Some(item) = self.list.visual_list.get(vi) else {
             return ListItem::new(Vec::<Line<'static>>::new());
         };
+        self.format_list_item(item, Some(vi))
+    }
+
+    pub(crate) fn format_list_item(
+        &self,
+        item: &VisualItem,
+        vi: Option<usize>,
+    ) -> ListItem<'static> {
         match item {
             VisualItem::Folder {
                 path,
@@ -1184,6 +1210,24 @@ impl App {
                 let is_virtual_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
                 let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
                     String::new()
+                } else if self.list.notes_layout.browses_folders() {
+                    if *path == crate::app::VIRTUAL_SUBNOTES_PATH {
+                        crate::ui::icons::SUBNOTES
+                            .get(self.config.ui.icon_mode)
+                            .to_owned()
+                    } else if *path == crate::app::VIRTUAL_PINNED_PATH {
+                        crate::ui::icons::PIN
+                            .get(self.config.ui.icon_mode)
+                            .to_owned()
+                    } else if name == ".." {
+                        crate::ui::icons::PARENT
+                            .get(self.config.ui.icon_mode)
+                            .to_owned()
+                    } else {
+                        crate::ui::icons::FOLDER
+                            .get(self.config.ui.icon_mode)
+                            .to_owned()
+                    }
                 } else if is_virtual_pinned {
                     if *is_expanded {
                         format!(
@@ -1260,7 +1304,7 @@ impl App {
                 if *stale && !*is_pinned {
                     style = style.add_modifier(Modifier::DIM);
                 }
-                if self.list.drag_hover == Some(vi) {
+                if self.list.drag_hover.is_some() && self.list.drag_hover == vi {
                     style = style.bg(self.app_theme.highlight_bg);
                 }
                 let mut spans = vec![Span::styled(text, style)];
@@ -1393,10 +1437,14 @@ impl App {
                         crate::templates::FOLDER_TEMPLATE_CONFIG
                     )
                 };
-                ListItem::new(Line::from(Span::styled(
+                let mut lines = vec![Line::from(Span::styled(
                     label,
                     Style::default().fg(self.app_theme.muted),
-                )))
+                ))];
+                if self.list.list_density == crate::config::ListDensity::Comfortable {
+                    lines.push(Line::from(""));
+                }
+                ListItem::new(lines)
             }
             VisualItem::CreateNew { depth, .. } => {
                 let indent = "  ".repeat(*depth);
@@ -1440,7 +1488,13 @@ impl App {
                 };
 
                 let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
-                let icon = format!("{arrow} {folder_icon}");
+                let icon = if self.list.notes_layout == crate::config::NotesLayout::Tree
+                    && !folder_icon.is_empty()
+                {
+                    format!("{arrow} {folder_icon}")
+                } else {
+                    folder_icon.to_owned()
+                };
                 let color = self.app_theme.smart;
                 let count_str = format!("{}", note_count);
                 let count_suffix = if self.list.inline_info {
@@ -2227,6 +2281,8 @@ mod tests {
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
 
+        app.list.grid_folder.clear();
+        app.config.list.section_tabs = true;
         // Test Grid layout (visual list is empty -> preview_content_index is None)
         app.list.notes_layout = crate::config::NotesLayout::Grid;
         app.list.preview_content_index = Some(999);
@@ -2235,6 +2291,7 @@ mod tests {
         assert_eq!(app.list.preview_content_index, None);
 
         // Test Tree layout (visual list contains folders -> preview_content_index is Some(0))
+        app.config.list.section_tabs = false;
         app.list.notes_layout = crate::config::NotesLayout::Tree;
         app.list.preview_content_index = Some(999);
         app.refresh_visual_list();

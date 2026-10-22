@@ -60,6 +60,7 @@ fn key(app: &mut App, focus: &mut EditFocus, code: KeyCode, modifiers: KeyModifi
 fn list_rename_changes_filename_and_preserves_note_source_and_subnotes() {
     let (_guard, _root, mut app) = fixture();
     app.keybinds = crate::keybinds::Keybinds::default();
+    app.list.grid_folder.clear();
     for ext in ["md", "txt"] {
         for pinned in [false, true] {
             let id = format!("stable.{ext}");

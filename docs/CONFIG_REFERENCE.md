@@ -100,7 +100,8 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
 | `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
-| `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
+| `default_view` | `enum` | `"grid"` | Notes layout: `"grid"` tiles; `"tree"` expanding folders; `"list"` directory rows; `"multi"` directory rows with selected-folder contents on the right |
+| `section_tabs` | `bool` | `false` | Show Vault, Pinned, Smart, and Subnotes as header tabs in all four layouts; otherwise show them as folder items |
 | `default_sort_field` | `enum` | — | Optional initial sort field: `"title"` or `"modified"` |
 | `default_sort_order` | `enum` | — | Optional initial sort order: `"ascending"` or `"descending"` |
 | `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
@@ -108,7 +109,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
 | `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
 | `skip_dirs` | `array` | `[]` | Directory-name patterns to omit from the notes list |
-| `folders_first` | `bool` | `true` | Show subfolders before files in the notes list (Tree and Grid layouts) |
+| `folders_first` | `bool` | `true` | Show subfolders before files in every notes layout |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
@@ -118,6 +119,14 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
 | `custom_smart_folders` | `array` | `[]` | User-defined smart folder rules. Each entry: `{name, tags=[], title_contains=..., folder_prefix=..., updated_within_days=...}` |
+
+The **Select Notes Layout** command opens a searchable list with the current layout selected. Choose a row and press Enter; Esc returns without applying another layout.
+
+**Toggle Notes Section Tabs** switches `list.section_tabs` for every layout and saves the choice. With tabs off (the default), Tree expands section folders in place, while Grid, List, and Multi open them as directories. With tabs on, all layouts display only the active section; Tab/Shift+Tab or a mouse click changes sections. Smart and Subnotes follow their feature settings.
+
+Directory layouts (`grid`, `list`, `multi`) navigate into folders. In List and Multi, Enter or Right opens a folder; Left returns to its parent. Grid keeps its tile-navigation shortcuts. Multi shows the selected folder's children in the right column; clicking a child enters that folder and selects the child. A browser narrower than 24 cells uses one column.
+
+Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Layout editing resizes the preview by one terminal cell per horizontal keypress. Footer bars show at most five primary shortcuts and shorten with an ellipsis when space is tight, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
 
 ### `[editor]`
 
@@ -172,7 +181,7 @@ Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Dis
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
 | `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
 | `tab_icons_only` | `bool` | `false` | Show only icons on tab bars; text labels remain in `"none"` mode |
-| `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"none"`: text labels without decorative icons. Unicode/None use portable bar separators |
+| `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"emoji"`: emoji icons (terminal emoji support required); `"none"`: text labels without decorative icons. Unicode/Emoji/None use portable bar separators |
 | `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
 | `scrollbar_pan_mode` | `bool` | `false` | Notes list scrollbar pans without moving selection |
 | `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blurred"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |
@@ -230,7 +239,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 ##### Config Echo (all views)
 - `{theme}`: Active theme name
 - `{preset}`: Keybind preset (`default`, `helix`, `vim`, `emacs`)
-- `{icon_mode}`: Icon mode (`nerd`, `unicode`, `none`)
+- `{icon_mode}`: Icon mode (`nerd`, `unicode`, `emoji`, `none`)
 - `{hint_bar_style}`: Style variant (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blurred`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
 - `{background}`: Background style (`transparent`, `solid`)
 
@@ -245,10 +254,10 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{title}`: Header title text (e.g. `"Notes"`, `"Notes - Editing Layout"`)
 - `{sort_field}`: Current sorting field (`title`, `modified`)
 - `{sort_order}`: Current sorting order (`ascending`, `descending`)
-- `{layout}`: Active notes layout (`tree`, `grid`)
+- `{layout}`: Active notes layout (`tree`, `grid`, `list`, `multi`)
 - `{density}`: Active list density (`compact`, `comfortable`)
-- `{section}`: Active notes section (`vault`, `pinned`, `smart`)
-- `{folder}`: Active grid folder path
+- `{section}`: Active notes section (`sections`, `vault`, `pinned`, `smart`, `subnotes`)
+- `{folder}`: Active notes directory path
 - `{folder_count}`: Number of folders in the cache
 - `{tag_count}`: Number of unique live tags in the vault
 - `{note_count}`: Total notes in the notes directory
@@ -480,6 +489,7 @@ show_file_size = false
 date_format = "%Y-%m-%d"
 density = "comfortable"
 default_view = "grid"
+section_tabs = false
 default_sort_field = "modified"
 default_sort_order = "descending"
 pinned_on_top = true

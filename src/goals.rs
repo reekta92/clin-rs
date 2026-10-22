@@ -5,7 +5,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph},
+    widgets::{Block, Padding, Paragraph},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -191,29 +191,12 @@ pub fn draw_goals_progress(
 
     // Border at the interface edge spans the full strip width so that a single
     // centered section still gets a full-width border.
-    let border = if bottom_border {
-        Borders::BOTTOM
-    } else {
-        Borders::TOP
-    };
-    let border_bg = theme.bg.unwrap_or(Color::Reset);
-    let strip_block = Block::default()
-        .style(theme.bg_style())
-        .borders(border)
-        .border_style(Style::default().fg(theme.muted).bg(border_bg));
-    let inner = strip_block.inner(strip_rect);
-    frame.render_widget(&strip_block, strip_rect);
-
     // Content area = section rect clipped to the border's inner area.
-    let content_x = rect.x.max(inner.x);
-    let content_y = rect.y.max(inner.y);
-    let content_w = (rect.right().min(inner.right())).saturating_sub(content_x);
-    let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
-    let content_area = Rect::new(content_x, content_y, content_w, content_h);
-    let pad_top = content_area.height.saturating_sub(8) / 2;
+    let content_area = crate::ui::widget_strip_area(frame, rect, strip_rect, bottom_border, theme);
+    let pad_top = content_area.height.saturating_sub(lines.len() as u16) / 2;
     let inner_block = Block::default()
         .style(theme.bg_style())
-        .padding(Padding::new(2, 2, pad_top, 0));
+        .padding(Padding::new(0, 0, pad_top, 0));
     let paragraph = Paragraph::new(lines)
         .style(theme.bg_style())
         .block(inner_block);

@@ -83,6 +83,7 @@ impl Fixture {
         config.save().unwrap();
         let mut app = App::new(storage).unwrap();
         app.config = config;
+        app.list.grid_folder.clear();
         app.command_usage.clear();
         app.command_usage_path = Some(root.path().join("state.json"));
         app.keybinds = KeybindPreset::Default.base_keybinds();
@@ -1556,6 +1557,58 @@ fn palette_workflow_options_creation_and_import_validation() {
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.command_palette.is_none());
     assert!(f.app.storage.note_path("new-art.draw").is_file());
+}
+
+#[test]
+fn notes_layout_picker_searches_selects_and_persists_like_theme_selection() {
+    let mut f = Fixture::new();
+    let original = f.app.list.notes_layout.clone();
+    activate(&mut f.app, "toggle_notes_layout");
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>(),
+        crate::setup::SETUP_LAYOUTS
+    );
+    assert_eq!(
+        palette.state.selected(),
+        Some(crate::setup::layout_index(&original))
+    );
+    assert_eq!(f.app.list.notes_layout, original);
+    replace_step_input(&mut f.app, "multi");
+    select_step(&mut f.app, "3");
+    assert_eq!(f.app.list.notes_layout, crate::config::NotesLayout::Multi);
+    assert_eq!(
+        f.app.config.list.default_view,
+        crate::config::NotesLayout::Multi
+    );
+    assert_eq!(
+        crate::config::ClinConfig::load()
+            .0
+            .unwrap()
+            .list
+            .default_view,
+        crate::config::NotesLayout::Multi
+    );
+    replace_step_input(&mut f.app, "list");
+    select_step(&mut f.app, "2");
+    assert_eq!(f.app.list.notes_layout, crate::config::NotesLayout::List);
+    replace_step_input(&mut f.app, "multi");
+    select_step(&mut f.app, "3");
+    assert!(f.app.command_palette.is_some());
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.is_none());
+
+    crate::actions::execute_action("toggle_notes_layout", &mut f.app, None).unwrap();
+    assert!(f.app.command_palette.is_some());
+    replace_step_input(&mut f.app, "tree");
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert_eq!(f.app.list.notes_layout, crate::config::NotesLayout::Multi);
 }
 
 #[test]

@@ -11,8 +11,8 @@ use ratatui::{
 /// handler can hit-test without re-running layout math.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ScrollbarMeta {
-    pub track: Rect,         // rightmost 1-column gutter of the scrollable inner area
-    pub content_len: usize,  // total scrollable units
+    pub track: Rect, // 1-column divider or gutter belonging to the scrollable region
+    pub content_len: usize, // total scrollable units
     pub viewport_len: usize, // visible units
 }
 
@@ -23,6 +23,14 @@ pub fn track_rect(area: Rect) -> Rect {
         y: area.y,
         width: 1,
         height: area.height,
+    }
+}
+
+/// Use the pane divider as the scrollbar track whenever one is present.
+pub fn pane_track(area: Rect, divider: Option<Rect>) -> Rect {
+    match divider.filter(|divider| !divider.is_empty()) {
+        Some(divider) => Rect::new(divider.x, area.y, 1, area.height).intersection(divider),
+        None => track_rect(area),
     }
 }
 
@@ -51,8 +59,9 @@ pub fn draw_scrollbar(
     position: usize,
     max_position: usize,
     theme: &AppThemeColors,
+    mouse_pos: Option<(u16, u16)>,
 ) {
-    if !overflows(content_len, viewport_len) {
+    if area.is_empty() || !overflows(content_len, viewport_len) {
         return;
     }
     // Scale from caller's range [0, max_position] into ratatui's selection
@@ -70,13 +79,15 @@ pub fn draw_scrollbar(
     let mut s = ScrollbarState::new(content_len)
         .viewport_content_length(viewport_len)
         .position(scaled_position);
+    let hovered =
+        mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(track_rect(area), x, y));
     let sb = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .thumb_style(
             Style::default()
-                .fg(theme.accent)
+                .fg(if hovered { theme.heading } else { theme.accent })
                 .add_modifier(Modifier::BOLD),
         )
-        .track_style(Style::default().fg(theme.muted))
+        .track_style(Style::default().fg(if hovered { theme.accent } else { theme.muted }))
         .begin_symbol(None)
         .end_symbol(None);
     frame.render_stateful_widget(sb, area, &mut s);
@@ -99,7 +110,7 @@ pub fn handle_scrollbar_mouse(
     current_fraction: f32,
     drag: &mut Option<i32>,
 ) -> Option<f32> {
-    if !overflows(meta.content_len, meta.viewport_len) {
+    if meta.track.is_empty() || !overflows(meta.content_len, meta.viewport_len) {
         return None;
     }
 
@@ -301,6 +312,7 @@ mod tests {
                     90,  // position == max_position (offset convention)
                     90,  // max_position = content_len - viewport_len
                     &AppThemeColors::default(),
+                    None,
                 );
             })
             .unwrap();
@@ -327,6 +339,7 @@ mod tests {
                     99,  // position == content_len - 1 (selection convention)
                     99,  // max_position = content_len - 1
                     &AppThemeColors::default(),
+                    None,
                 );
             })
             .unwrap();
@@ -349,6 +362,7 @@ mod tests {
                     0,   // position
                     90,  // max_position (offset convention)
                     &AppThemeColors::default(),
+                    None,
                 );
             })
             .unwrap();

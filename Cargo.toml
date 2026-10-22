@@ -112,7 +112,7 @@ ratatui-image = { version = "11.0.6", default-features = false, features = ["cro
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
-ratatui = "0.30"
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 graf = { package = "graf-rs", version = "1.1.0" }
 pinstar = { version = "1.1.2", features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }

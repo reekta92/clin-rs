@@ -257,11 +257,7 @@ impl ratatui::widgets::canvas::Shape for HollowCircle {
 pub(crate) fn section_rects(cal_rect: Rect, active: &[crate::config::NotesSection]) -> Vec<Rect> {
     match active.len() {
         0 => Vec::new(),
-        1 => {
-            let w = cal_rect.width / 2;
-            let x = cal_rect.x + (cal_rect.width - w) / 2;
-            vec![Rect::new(x, cal_rect.y, w, cal_rect.height)]
-        }
+        1 => vec![cal_rect],
         _ => {
             let cs = Layout::default()
                 .direction(Direction::Horizontal)
@@ -282,32 +278,12 @@ fn draw_strip_draw(
     if !app.config.features.draw_view.is_enabled() {
         return;
     }
-    use ratatui::widgets::{Block, Borders};
 
     // Strip-wide border so that a single centered section still gets a
     // full-width border.
-    let borders = if bottom_border {
-        Borders::BOTTOM
-    } else {
-        Borders::TOP
-    };
-    let strip_block = Block::default()
-        .style(app.app_theme.bg_style())
-        .borders(borders)
-        .border_style(
-            ratatui::style::Style::default()
-                .fg(app.app_theme.border)
-                .bg(app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset)),
-        );
-    frame.render_widget(&strip_block, strip_rect);
-    let inner = strip_block.inner(strip_rect);
-
     // Content area = section rect clipped to the border's inner area.
-    let content_x = rect.x.max(inner.x);
-    let content_y = rect.y.max(inner.y);
-    let content_w = (rect.right().min(inner.right())).saturating_sub(content_x);
-    let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
-    let content_area = Rect::new(content_x, content_y, content_w, content_h);
+    let content_area =
+        crate::ui::widget_strip_area(frame, rect, strip_rect, bottom_border, &app.app_theme);
 
     let (_, data) = match app.draw_preview.as_ref() {
         Some(pair) => pair,
@@ -349,6 +325,8 @@ fn draw_strip_graf(
     bottom_border: bool,
     strip_rect: Rect,
 ) {
+    let widget_area =
+        crate::ui::widget_strip_area(frame, rect, strip_rect, bottom_border, &app.app_theme);
     match app.graph_preview.as_mut() {
         Some(gs) => {
             // Progressive settle: 10 steps per frame to avoid blocking
@@ -368,27 +346,14 @@ fn draw_strip_graf(
 
             // Border spans the full strip rect (so it extends across the
             // entire strip even when a single section is centered)
-            let borders = if bottom_border {
-                Borders::BOTTOM
-            } else {
-                Borders::TOP
-            };
-            let block = Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(borders)
-                .border_style(
-                    Style::default()
-                        .fg(app.app_theme.border)
-                        .bg(app.app_theme.bg.unwrap_or(Color::Reset)),
-                );
-            let outer_inner = block.inner(strip_rect);
-            frame.render_widget(block, strip_rect);
-
             // Content area = intersection of section rect with border inner
-            let content_x = rect.x.max(outer_inner.x);
-            let content_y = rect.y.max(outer_inner.y);
-            let content_w = (rect.right().min(outer_inner.right())).saturating_sub(content_x);
-            let content_h = (rect.bottom().min(outer_inner.bottom())).saturating_sub(content_y);
+            let content_area = widget_area;
+            let (content_x, content_y, content_w, content_h) = (
+                content_area.x,
+                content_area.y,
+                content_area.width,
+                content_area.height,
+            );
             if content_w == 0 || content_h == 0 {
                 return;
             }
@@ -489,7 +454,7 @@ fn draw_strip_graf(
             let p = ratatui::widgets::Paragraph::new(line)
                 .style(app.app_theme.bg_style())
                 .alignment(ratatui::layout::Alignment::Center);
-            frame.render_widget(p, rect);
+            frame.render_widget(p, widget_area);
         }
     }
 }
@@ -774,6 +739,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.mouse_pos = None;
     }
     let area = frame.area();
+    app.list.last_area = area;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -853,7 +819,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Some(app.status.as_ref()),
                 app.load_spinner_tick,
             );
-        } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
+        } else if app.config.list.section_tabs {
             let mut tabs = vec![
                 (
                     "Vault",
@@ -992,6 +958,33 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.list.calendar_height,
         app.config.list.calendar_position,
     );
+    let browser_area = list_area;
+    let (list_area, multi_area) = if app.preview_fullscreen {
+        app.list.last_scroll = None;
+        (list_area, None)
+    } else {
+        browser_columns(list_area, &app.list.notes_layout)
+    };
+    if let Some(right) = multi_area {
+        app.refresh_multi_preview();
+        draw_multi_preview(frame, right, app);
+        draw_dim_vline(
+            frame,
+            Rect::new(right.x.saturating_sub(1), right.y, 1, right.height),
+            app.app_theme.border,
+        );
+    }
+    let scroll_divider = if let Some(preview) = preview_area.filter(|_| !app.preview_fullscreen) {
+        let x = if preview.x < list_area.x {
+            preview.right()
+        } else {
+            preview.x.saturating_sub(1)
+        };
+        Some(Rect::new(x, list_area.y, 1, list_area.height))
+    } else {
+        multi_area.map(|right| Rect::new(right.x.saturating_sub(1), right.y, 1, right.height))
+    };
+    let scroll_track = crate::ui::scrollbar::pane_track(list_area, scroll_divider);
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
         app.list.last_preview_pane_height = p.height;
@@ -1011,7 +1004,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let is_subnotes = app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
                 || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder);
             let mut spans = Vec::new();
-            if is_pinned {
+            if app.list.grid_folder == crate::app::VIRTUAL_ROOT_PATH {
+                spans.push(Span::styled(
+                    " Sections",
+                    Style::default().fg(app.app_theme.heading),
+                ));
+            } else if is_pinned {
                 // Removed Pinned title
             } else if is_smart {
                 if app.list.grid_folder.starts_with('@') {
@@ -1066,7 +1064,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         offset += 1;
                     }
 
-                    let part_w = part.chars().count() as u16;
+                    let part_w = part.width() as u16;
                     if !current_path.is_empty() {
                         current_path.push('/');
                     }
@@ -1283,28 +1281,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
             if len > 0 && rows > 0 {
                 let meta = crate::ui::scrollbar::ScrollbarMeta {
-                    track: crate::ui::scrollbar::track_rect(list_area),
+                    track: scroll_track,
                     content_len: total_rows,
                     viewport_len: rows,
                 };
                 app.list.last_scroll = Some(meta);
                 if !crate::ui::scrollbar::overflows(total_rows, rows) {
                     app.list.scroll_drag = None;
-                } else if app.config.ui.scrollbars {
-                    crate::ui::scrollbar::draw_scrollbar(
-                        frame,
-                        list_area,
-                        meta.content_len,
-                        meta.viewport_len,
-                        app.list.grid_scroll,
-                        max_scroll,
-                        &app.app_theme,
-                    );
                 }
             }
         } else {
             let total_len = app.list.visual_list.len();
-            let viewport_len = list_area.height.saturating_sub(2) as usize;
+            let viewport_len =
+                usize::from(list_area.height.saturating_sub(2) / app.list.row_height());
 
             let max_off = total_len.saturating_sub(viewport_len);
 
@@ -1342,7 +1331,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     && row >= inner_y
                     && row < inner_y + inner_h
                 {
-                    crate::ui::list_index_at(row, inner_y, 1, offset, total_len)
+                    crate::ui::list_index_at(row, inner_y, app.list.row_height(), offset, total_len)
                 } else {
                     None
                 }
@@ -1407,29 +1396,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 );
 
             frame.render_stateful_widget(list, list_area, &mut rel_state);
+            if app.list.notes_layout.browses_folders() {
+                let folder = App::notes_directory_label(&app.list.grid_folder);
+                let label = crate::fsutil::sanitize_for_terminal(folder);
+                frame.render_widget(
+                    Paragraph::new(label).style(Style::default().fg(app.app_theme.heading)),
+                    Rect::new(inner_x, list_area.y, inner_w, 1),
+                );
+            }
             let content_len = total_len;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(list_area),
+                track: scroll_track,
                 content_len,
                 viewport_len,
             };
             app.list.last_scroll = Some(meta);
-            if app.config.ui.scrollbars {
-                let (pos, max_pos) = if app.config.ui.scrollbar_pan_mode {
-                    (offset, max_off)
-                } else {
-                    (app.list.visual_index, total_len.saturating_sub(1))
-                };
-                crate::ui::scrollbar::draw_scrollbar(
-                    frame,
-                    list_area,
-                    content_len,
-                    viewport_len,
-                    pos,
-                    max_pos,
-                    &app.app_theme,
-                );
-            }
         }
     }
     if let Some(preview_rect) = preview_area {
@@ -1659,49 +1640,40 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
         }
     }
+    if let Some(strip) = calendar_area {
+        let sections = app.active_strip_sections_for(strip.width);
+        for (section, rect) in sections.iter().zip(section_rects(strip, &sections)) {
+            let interactive = app.layout_edit
+                || matches!(
+                    section,
+                    crate::config::NotesSection::Draw | crate::config::NotesSection::Graf
+                );
+            if interactive
+                && app
+                    .mouse_pos
+                    .is_some_and(|(x, y)| crate::events::contains_cell(rect, x, y))
+            {
+                frame
+                    .buffer_mut()
+                    .set_style(rect, app.app_theme.hover_style());
+            }
+        }
+    }
     let kb = &app.keybinds;
-    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-    let hints_items = if is_grid {
-        vec![
-            (
-                format!(
-                    "{}/{}/{}/{}",
-                    kb.display_list(ListAction::MoveLeft),
-                    kb.display_list(ListAction::MoveDown),
-                    kb.display_list(ListAction::MoveUp),
-                    kb.display_list(ListAction::MoveRight)
-                ),
-                "move",
+    let hints_items = vec![
+        (
+            format!(
+                "{}/{}",
+                kb.display_list(ListAction::MoveUp),
+                kb.display_list(ListAction::MoveDown)
             ),
-            (kb.display_list(ListAction::Open), "open"),
-            (kb.list_keys_display(ListAction::Quit), "quit"),
-            (
-                format!("F1/{}", kb.list_keys_display(ListAction::Help)),
-                "help",
-            ),
-            ("F2".to_string(), "keybinds"),
-        ]
-    } else {
-        vec![
-            (
-                format!(
-                    "{}/{}",
-                    kb.display_list(ListAction::MoveDown),
-                    kb.display_list(ListAction::MoveUp)
-                ),
-                "move",
-            ),
-            (kb.display_list(ListAction::Open), "open"),
-            (kb.display_list(ListAction::CollapseAll), "collapse"),
-            (kb.display_list(ListAction::ExpandAll), "expand"),
-            (kb.list_keys_display(ListAction::Quit), "quit"),
-            (
-                format!("F1/{}", kb.list_keys_display(ListAction::Help)),
-                "help",
-            ),
-            ("F2".to_string(), "keybinds"),
-        ]
-    };
+            "move",
+        ),
+        (kb.display_list(ListAction::Open), "open"),
+        (kb.display_list(ListAction::CreateNote), "new"),
+        (kb.display_list(ListAction::Search), "search"),
+        (app.palette_keys_display(ViewMode::List), "commands"),
+    ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
 
     let hint = if in_select_mode {
@@ -1709,23 +1681,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
             (kb.display_list(ListAction::MoveNote), "move"),
             (kb.display_list(ListAction::ManageTags), "tag"),
-            (
-                kb.display_list(ListAction::RemoveTagsFromSelected),
-                "remove tags",
-            ),
             (kb.display_list(ListAction::Delete), "delete"),
             (kb.display_list(ListAction::ToggleSelectMode), "exit"),
         ];
         format_keybind_hints(&app.app_theme, &select_items)
     } else if app.layout_edit {
         let layout_items = vec![
-            ("drag".to_string(), "borders/panes"),
-            ("Tab".to_string(), "swap sections"),
-            ("Space/click".to_string(), "cycle section"),
-            ("a".to_string(), "add/remove section"),
+            ("←→ ↑↓/drag".to_string(), "resize"),
             ("s".to_string(), "preview"),
-            ("c".to_string(), "widget pane"),
-            ("←→ ↑↓".to_string(), "resize"),
+            ("c".to_string(), "widgets"),
+            ("Space".to_string(), "section"),
             ("Esc".to_string(), "done"),
         ];
         format_keybind_hints(&app.app_theme, &layout_items)
@@ -1762,25 +1727,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     );
     draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     if app.list.preview_enabled && !app.preview_fullscreen {
-        let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
-        let constraints = match app.preview_position {
-            crate::config::PreviewPosition::Left => [
-                Constraint::Ratio(ratio_num, 100),
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ],
-            crate::config::PreviewPosition::Right => [
-                Constraint::Min(0),
-                Constraint::Length(1),
-                Constraint::Ratio(ratio_num, 100),
-            ],
+        let preview = preview_area.expect("preview is enabled");
+        let divider_x = match app.preview_position {
+            crate::config::PreviewPosition::Left => preview.right(),
+            crate::config::PreviewPosition::Right => preview.x.saturating_sub(1),
         };
-        let full_cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(chunks[1]);
+        let divider_area = Rect::new(divider_x, chunks[1].y, 1, chunks[1].height);
         if app.layout_edit {
-            let divider_area = full_cols[1];
             let accent = app.app_theme.heading;
             let buf = frame.buffer_mut();
             for row in divider_area.top()..divider_area.bottom() {
@@ -1795,7 +1748,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 cell.set_fg(accent);
             }
         } else {
-            draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+            draw_dim_vline(frame, divider_area, app.app_theme.muted);
         }
     }
     if app.layout_edit && app.list.calendar_enabled {
@@ -1805,20 +1758,113 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
         let accent = app.app_theme.heading;
         let buf = frame.buffer_mut();
-        for col in list_area.left()..list_area.right() {
+        for col in browser_area.left()..browser_area.right() {
             if let Some(cell) = buf.cell_mut((col, hdiv_y)) {
                 cell.set_char('═');
                 cell.set_fg(accent);
             }
         }
-        let mid_col = list_area.left() + list_area.width / 2;
+        let mid_col = browser_area.left() + browser_area.width / 2;
         if let Some(cell) = buf.cell_mut((mid_col, hdiv_y)) {
             cell.set_char('⇅');
             cell.set_fg(accent);
         }
     }
 
+    if !app.preview_fullscreen
+        && !app.layout_edit
+        && app.config.ui.scrollbars
+        && let Some(meta) = app.list.last_scroll
+    {
+        let (position, max_position) = if app.list.notes_layout == crate::config::NotesLayout::Grid
+        {
+            (
+                app.list.grid_scroll,
+                meta.content_len.saturating_sub(meta.viewport_len),
+            )
+        } else if app.config.ui.scrollbar_pan_mode {
+            (
+                app.list.list_state.offset(),
+                meta.content_len.saturating_sub(meta.viewport_len),
+            )
+        } else {
+            (app.list.visual_index, meta.content_len.saturating_sub(1))
+        };
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            meta.track,
+            meta.content_len,
+            meta.viewport_len,
+            position,
+            max_position,
+            &app.app_theme,
+            app.mouse_pos,
+        );
+    }
+
     app.mouse_pos = saved_mouse_pos;
+}
+
+pub(crate) fn browser_columns(
+    area: Rect,
+    layout: &crate::config::NotesLayout,
+) -> (Rect, Option<Rect>) {
+    if *layout != crate::config::NotesLayout::Multi || area.width < 24 {
+        return (area, None);
+    }
+    let columns = Layout::horizontal([
+        Constraint::Percentage(50),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .split(area);
+    (columns[0], Some(columns[2]))
+}
+
+fn draw_multi_preview(frame: &mut Frame, area: Rect, app: &mut App) {
+    let theme = &app.app_theme;
+    let block = Block::default()
+        .style(theme.bg_style())
+        .padding(Padding::new(2, 2, 1, 1));
+    let inner = block.inner(area);
+    let Some((folder, items)) = &app.list.multi_preview else {
+        frame.render_widget(
+            Paragraph::new("Select a folder")
+                .style(Style::default().fg(theme.muted))
+                .block(block),
+            area,
+        );
+        return;
+    };
+    let offset = app.list.multi_scroll.min(
+        items
+            .len()
+            .saturating_sub(usize::from(inner.height / app.list.row_height())),
+    );
+    app.list.multi_scroll = offset;
+    let hovered = app.mouse_pos.and_then(|(col, row)| {
+        crate::events::contains_cell(inner, col, row)
+            .then_some(offset + usize::from(row.saturating_sub(inner.y) / app.list.row_height()))
+    });
+    let rows: Vec<_> = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let row = app.format_list_item(item, None);
+            if hovered == Some(index) {
+                row.style(theme.hover_style())
+            } else {
+                row
+            }
+        })
+        .collect();
+    let mut state = ListState::default().with_offset(offset);
+    frame.render_stateful_widget(List::new(rows).block(block), area, &mut state);
+    let label = crate::fsutil::sanitize_for_terminal(App::notes_directory_label(folder));
+    frame.render_widget(
+        Paragraph::new(label).style(Style::default().fg(theme.heading)),
+        Rect::new(inner.x, area.y, inner.width, 1),
+    );
 }
 
 pub(crate) fn list_view_layout(
@@ -1845,11 +1891,12 @@ pub(crate) fn list_view_layout(
     }
 
     let (list_column, preview_area) = if preview_enabled {
-        let ratio_num = (preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
+        let preview_width =
+            (preview_width_ratio.clamp(0.2, 0.8) * f32::from(area.width)).round() as u16;
         let (constraints, list_idx, p_idx) = match preview_position {
             crate::config::PreviewPosition::Left => (
                 [
-                    Constraint::Ratio(ratio_num, 100),
+                    Constraint::Length(preview_width),
                     Constraint::Length(1),
                     Constraint::Min(0),
                 ],
@@ -1860,7 +1907,7 @@ pub(crate) fn list_view_layout(
                 [
                     Constraint::Min(0),
                     Constraint::Length(1),
-                    Constraint::Ratio(ratio_num, 100),
+                    Constraint::Length(preview_width),
                 ],
                 0,
                 2,
@@ -2202,7 +2249,7 @@ mod tests {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::{Terminal, backend::TestBackend};
 
-    fn grid_test_app(items: usize) -> (tempfile::TempDir, App) {
+    pub(super) fn grid_test_app(items: usize) -> (tempfile::TempDir, App) {
         let temp_dir = tempfile::tempdir().unwrap();
         let storage = crate::storage::Storage {
             data_dir: temp_dir.path().join("data"),
@@ -2229,6 +2276,8 @@ mod tests {
             })
             .collect();
         app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.config.list.section_tabs = true;
+        app.list.grid_folder.clear();
         app.list.preview_enabled = false;
         app.list.calendar_enabled = false;
         app.config.ui.scrollbars = true;
@@ -2517,7 +2566,12 @@ mod tests {
         app.list.list_density = crate::config::ListDensity::Compact;
         let mut terminal = Terminal::new(TestBackend::new(100, 60)).unwrap();
 
-        for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
+        for mode in [
+            IconMode::Nerd,
+            IconMode::Unicode,
+            IconMode::None,
+            IconMode::Emoji,
+        ] {
             use crate::ui::icons;
             let icons = [
                 icons::MARKDOWN,
@@ -2672,7 +2726,12 @@ mod tests {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (_temp_dir, app) = grid_test_app(0);
         let area = Rect::new(0, 0, GRID_TILE_W, GRID_TILE_H);
-        for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
+        for mode in [
+            IconMode::Nerd,
+            IconMode::Unicode,
+            IconMode::None,
+            IconMode::Emoji,
+        ] {
             for (pin, template) in [(false, false), (true, false), (false, true), (true, true)] {
                 let mut buffer = ratatui::buffer::Buffer::empty(area);
                 let icon = crate::ui::icons::FOLDER.char(mode);
@@ -2710,6 +2769,19 @@ mod tests {
                     (template, crate::ui::icons::SETTINGS.char(mode)),
                 ] {
                     if !enabled || glyph == ' ' {
+                        continue;
+                    }
+                    if mode == IconMode::Emoji {
+                        let positions: Vec<_> = (1..3)
+                            .flat_map(|y| (1..GRID_TILE_W - 1).map(move |x| (x, y)))
+                            .filter(|&(x, y)| buffer[(x, y)].symbol() == glyph.to_string())
+                            .collect();
+                        assert_eq!(positions.len(), 1);
+                        let (x, y) = positions[0];
+                        assert!(
+                            y > 1 || x >= main_x + main_width,
+                            "badge overlaps main icon"
+                        );
                         continue;
                     }
                     let x = badge_right - glyph.width().unwrap_or(1) as u16;
@@ -3124,8 +3196,8 @@ mod tests {
         let active = [crate::config::NotesSection::Calendar];
         let rects = section_rects(r, &active);
         assert_eq!(rects.len(), 1);
-        // Single section centered at 50% width: 100/2=50 wide, x=(100-50)/2=25
-        assert_eq!(rects[0], Rect::new(25, 0, 50, 10));
+        // A single widget uses the full strip width.
+        assert_eq!(rects[0], r);
     }
 
     #[test]
@@ -3407,3 +3479,7 @@ mod tests {
         assert!(without_count.to_string().contains("M▾"));
     }
 }
+
+#[cfg(test)]
+#[path = "design_tests.rs"]
+mod design_tests;

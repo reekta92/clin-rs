@@ -44,10 +44,14 @@ impl CommandPalette {
             }
             Some(Workflow::Options(kind)) => match kind {
                 OptionKind::Hint => app.config.ui.hint_bar_style.name().to_owned(),
+                OptionKind::Layout => crate::setup::SETUP_LAYOUTS
+                    [crate::setup::layout_index(&app.list.notes_layout)]
+                .into(),
                 OptionKind::Icon => kind.labels()[match app.config.ui.icon_mode {
                     crate::config::IconMode::Nerd => 0,
                     crate::config::IconMode::Unicode => 1,
                     crate::config::IconMode::None => 2,
+                    crate::config::IconMode::Emoji => 3,
                 }]
                 .into(),
                 OptionKind::Preset => {
@@ -127,6 +131,7 @@ impl CommandPalette {
                 let mode = match item.id.as_str() {
                     "0" => IconMode::Nerd,
                     "1" => IconMode::Unicode,
+                    "3" => IconMode::Emoji,
                     _ => IconMode::None,
                 };
                 for (icon, label, color) in [

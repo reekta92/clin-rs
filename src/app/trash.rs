@@ -41,13 +41,8 @@ impl App {
                     self.set_temporary_status_static("Cannot delete Vault root");
                     return;
                 }
-                if Self::is_virtual_pinned_path(path) {
-                    self.set_temporary_status_static("Cannot delete virtual Pinned folder");
-                    return;
-                }
-                if Self::is_virtual_subnotes_path(path) || Self::is_subnotes_parent_grid_path(path)
-                {
-                    self.set_temporary_status_static("Cannot delete virtual Subnotes folder");
+                if Self::is_virtual_path(path) {
+                    self.set_temporary_status_static("Cannot delete virtual folder");
                     return;
                 }
                 let path = path.clone();

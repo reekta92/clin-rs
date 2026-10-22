@@ -203,6 +203,7 @@ impl App {
         self.help_tab = tab;
         self.help_page = 0;
         self.help_info_active = 0;
+        self.help_side_scroll = [0; 2];
         self.help_tab_page.insert(tab, 0);
         self.status = Cow::Borrowed("");
         self.status_until = None;
@@ -294,9 +295,7 @@ impl App {
                 .unwrap_or_else(|| std::path::Path::new(""))
                 .to_string_lossy()
                 .into_owned()
-        } else if self.mode == ViewMode::List
-            && self.list.notes_layout == crate::config::NotesLayout::Grid
-        {
+        } else if self.mode == ViewMode::List && self.list.notes_layout.browses_folders() {
             self.list.grid_folder.clone()
         } else if self.mode == ViewMode::List {
             self.get_current_folder_context()
@@ -641,6 +640,7 @@ impl App {
         self.help_tab_page.insert(self.help_tab, current_page);
         self.help_tab = tab;
         self.help_info_active = 0;
+        self.help_side_scroll = [0; 2];
         self.help_page = self.help_tab_page.get(&tab).copied().unwrap_or(0);
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
@@ -648,7 +648,8 @@ impl App {
     }
 
     pub fn reroll_help_suggestions(&mut self) {
-        let rolled = crate::ui::roll_suggestions(self.help_tab, 4);
+        self.help_side_scroll[1] = 0;
+        let rolled = crate::ui::roll_suggestions(self.help_tab, 3);
         self.help_suggestions = rolled.into_iter().copied().collect();
     }
 
@@ -660,7 +661,7 @@ impl App {
         ) {
             return;
         }
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        let folder = if self.list.notes_layout.browses_folders() {
             self.list.grid_folder.clone()
         } else {
             self.get_current_folder_context()
@@ -695,7 +696,7 @@ impl App {
         ) {
             return;
         }
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        let folder = if self.list.notes_layout.browses_folders() {
             self.list.grid_folder.clone()
         } else {
             self.get_current_folder_context()

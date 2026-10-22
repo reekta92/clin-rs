@@ -1680,11 +1680,6 @@ fn draw_status_bar(
         (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
         (keybinds.display_graph(GraphAction::AutoFit), "fit"),
         (keybinds.graph_keys_display(GraphAction::Quit), "quit"),
-        (
-            format!("F1/{}", keybinds.graph_keys_display(GraphAction::Help)),
-            "help",
-        ),
-        ("F2".to_string(), "keybinds"),
     ];
     let hint_line = crate::ui::format_keybind_hints(app_theme, &hints_items);
     let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);

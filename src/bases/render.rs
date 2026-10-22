@@ -143,6 +143,7 @@ fn draw_scrollbar(frame: &mut Frame, area: Rect, state: &mut BasesState, app: &c
         state.selected,
         state.items.len().saturating_sub(1),
         &app.app_theme,
+        app.mouse_pos,
     );
 }
 #[path = "linear.rs"]
