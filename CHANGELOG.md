@@ -23,6 +23,10 @@ All notable changes to clin are documented in this file.
 ### Build
 
 - Track CI gates and isolated upstream adapter checks
+
+### Release
+
+- V0.14.0-beta.2
 ## [0.14.0-beta.1] - 2026-10-19
 
 ### Added
