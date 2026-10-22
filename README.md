@@ -93,7 +93,7 @@ Open an existing Obsidian vault in `clin` to use public Markdown, Canvas and Bas
 
 ## Dependencies
 These are highly recommended for the best experience:
-- **A Nerd Font** — recommended for `icon_mode = "nerd"`. `JetBrains Mono Nerd Font` works well; see [Nerd Fonts](https://www.nerdfonts.com/font-downloads). Use `"unicode"` for single-cell text symbols with a regular monospace font, or `"none"` for text labels without decorative icons. Both portable modes also replace Powerline separators.
+- **A Nerd Font** — recommended for `icon_mode = "nerd"`. `JetBrains Mono Nerd Font` works well; see [Nerd Fonts](https://www.nerdfonts.com/font-downloads). Use `"unicode"` for single-cell text symbols with a regular monospace font, `"emoji"` for emoji icons, or `"none"` for text labels without decorative icons. These modes also replace Powerline separators.
 - **A modern terminal** — such as `kitty`, `ghostty`, `alacritty`, `foot` etc. preferably a terminal with **image protocol support**. **Note that some shortcuts might conflict with a specific terminals shortcuts** in that case you can either customize the shortcuts of the `clin` or your terminal to avoid conflicts.
 
 ---
@@ -344,7 +344,7 @@ CLI templates currently insert the literal body without variable substitution or
 | Feature | Description |
 |---|---|
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
-| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, 13 hint-bar styles |
+| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/Emoji/None icon modes, 13 hint-bar styles |
 | **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
 | **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
 | **Keybinds** | Fully customizable through active-preset keybind files, with navigation-only Helix/Vim/Emacs presets (not modal body editing) |
@@ -385,7 +385,8 @@ preview_position = "right"
 show_file_size = false
 date_format = "%Y-%m-%d"
 density = "comfortable"
-default_view = "grid"
+default_view = "grid" # grid, tree, list, multi
+section_tabs = false # true: section tabs in every layout; false: section folders
 # default_sort_field = "title"
 # default_sort_order = "ascending"
 pinned_on_top = false

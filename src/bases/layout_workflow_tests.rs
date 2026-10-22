@@ -394,13 +394,13 @@ fn paging_and_scrollbars_follow_rendered_rows_in_every_layout() {
 }
 
 #[test]
-fn eighth_help_tab_uses_bases_bindings_and_feature_visibility() {
+fn seventh_help_tab_uses_bases_bindings_and_feature_visibility() {
     let (_root, mut app) = fixture();
     app.config.features = crate::config::FeaturesConfig::default();
     app.open_help_page_with_tab(HelpTab::Notes);
     crate::events::handle_help_keys(
         &mut app,
-        KeyEvent::new(KeyCode::Char('8'), KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Char('7'), KeyModifiers::NONE),
     );
     assert_eq!(app.help_tab, HelpTab::Bases);
     app.config.features.bases_view = FeatureState::Disabled;

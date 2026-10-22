@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::layout::Rect;
 
 use crate::app::App;
 use crate::keybinds::ListAction;
@@ -24,38 +24,38 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Left => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    0.02
+                    1
                 } else {
-                    -0.02
+                    -1
                 };
-                app.adjust_preview_width(delta);
+                app.adjust_preview_width_cells(delta);
             }
             KeyCode::Right => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    -0.02
+                    -1
                 } else {
-                    0.02
+                    1
                 };
-                app.adjust_preview_width(delta);
+                app.adjust_preview_width_cells(delta);
             }
             KeyCode::Up => app.adjust_calendar_height(1),
             KeyCode::Down => app.adjust_calendar_height(-1),
             KeyCode::Char('s') | KeyCode::Char('S') => app.swap_preview_position(),
             KeyCode::Char('h') | KeyCode::Char('H') => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    0.02
+                    1
                 } else {
-                    -0.02
+                    -1
                 };
-                app.adjust_preview_width(delta);
+                app.adjust_preview_width_cells(delta);
             }
             KeyCode::Char('l') | KeyCode::Char('L') => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
-                    -0.02
+                    -1
                 } else {
-                    0.02
+                    1
                 };
-                app.adjust_preview_width(delta);
+                app.adjust_preview_width_cells(delta);
             }
             KeyCode::Char('k') | KeyCode::Char('K') => app.adjust_calendar_height(1),
             KeyCode::Char('j') | KeyCode::Char('J') => app.adjust_calendar_height(-1),
@@ -102,13 +102,13 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     match outcome {
         crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             ListAction::CycleFocus => {
-                if app.list.notes_layout == crate::config::NotesLayout::Grid {
+                if app.config.list.section_tabs {
                     app.cycle_grid_tab();
                 }
                 return false;
             }
             ListAction::ReverseCycleFocus => {
-                if app.list.notes_layout == crate::config::NotesLayout::Grid {
+                if app.config.list.section_tabs {
                     app.reverse_cycle_grid_tab();
                 }
                 return false;
@@ -555,59 +555,65 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         }
     }
 
-    let vertical_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Min(5),
-            Constraint::Length(1),
-        ])
-        .split(terminal_area);
+    let (list_area, preview_area, _) = crate::ui::list_view_layout(
+        terminal_area,
+        app.list.preview_enabled,
+        app.preview_position,
+        app.list.calendar_enabled,
+        app.preview_fullscreen,
+        app.list.preview_width_ratio,
+        app.list.calendar_height,
+        app.config.list.calendar_position,
+    );
 
-    let main_area = vertical_chunks[1];
-
-    let (list_area, preview_area) = if app.preview_fullscreen {
-        (main_area, Some(main_area))
-    } else if app.list.preview_enabled {
-        let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
-        let (constraints, list_idx, p_idx) = match app.preview_position {
-            crate::config::PreviewPosition::Left => (
-                [
-                    Constraint::Ratio(ratio_num, 100),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-                2,
-                0,
-            ),
-            crate::config::PreviewPosition::Right => (
-                [
-                    Constraint::Min(0),
-                    Constraint::Length(1),
-                    Constraint::Ratio(ratio_num, 100),
-                ],
-                0,
-                2,
-            ),
-        };
-        let full_cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(main_area);
-        let list_area = full_cols[list_idx];
-        let preview_area = Some(full_cols[p_idx]);
-        (list_area, preview_area)
+    let (list_area, multi_area) = if app.preview_fullscreen {
+        (list_area, None)
     } else {
-        (
-            Rect::new(
-                terminal_area.x,
-                terminal_area.y + 1,
-                terminal_area.width,
-                main_area.height,
-            ),
-            None,
-        )
+        crate::ui::browser_columns(list_area, &app.list.notes_layout)
     };
+    if let Some(multi_area) = multi_area {
+        let inner = Rect::new(
+            multi_area.x.saturating_add(2),
+            multi_area.y.saturating_add(1),
+            multi_area.width.saturating_sub(4),
+            multi_area.height.saturating_sub(2),
+        );
+        if contains_cell(inner, mouse_event.column, mouse_event.row) {
+            let len = app
+                .list
+                .multi_preview
+                .as_ref()
+                .map_or(0, |(_, items)| items.len());
+            match mouse_event.kind {
+                MouseEventKind::ScrollUp => {
+                    app.list.multi_scroll = app.list.multi_scroll.saturating_sub(1)
+                }
+                MouseEventKind::ScrollDown => {
+                    app.list.multi_scroll =
+                        app.list.multi_scroll.saturating_add(1).min(
+                            len.saturating_sub(usize::from(inner.height / app.list.row_height())),
+                        )
+                }
+                MouseEventKind::Down(MouseButton::Left | MouseButton::Right) => {
+                    if let Some(index) = crate::ui::list_index_at(
+                        mouse_event.row,
+                        inner.y,
+                        app.list.row_height(),
+                        app.list.multi_scroll,
+                        len,
+                    ) && let Some((folder, _)) = &app.list.multi_preview
+                    {
+                        app.enter_list_directory(folder.clone(), index);
+                        if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
+                            app.open_command_palette(None);
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+    }
 
     let inner_list_area = Rect::new(
         list_area.x.saturating_add(2),
@@ -617,7 +623,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     );
 
     // --- Scrollbar handling (list layout) ---
-    if app.config.ui.scrollbars
+    if !app.preview_fullscreen
+        && app.config.ui.scrollbars
         && app.list.notes_layout != crate::config::NotesLayout::Grid
         && let Some(meta) = app.list.last_scroll
     {
@@ -847,10 +854,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if app.preview_fullscreen {
-        return;
-    }
-
     if mouse_event.kind == MouseEventKind::ScrollUp {
         app.list.list_viewport_offset = None;
         let current = app.list.list_state.selected().unwrap_or(0);
@@ -866,69 +869,72 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
+    // Vault/Pinned tabs
+    if app.config.list.section_tabs
+        && app.list.list_mode != ListMode::Select
+        && (app.status.trim().is_empty() || app.status == "Ready")
+        && mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+        && mouse_event.row == terminal_area.y
+    {
+        let mut tabs = vec![
+            (
+                "Vault",
+                Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
+            ),
+            (
+                "Pinned",
+                Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
+            ),
+        ];
+        if app.config.features.smart_folders.is_enabled() {
+            tabs.push((
+                "Smart",
+                Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
+            ));
+        }
+        if app.config.features.subnotes.is_enabled() {
+            tabs.push((
+                "Subnotes",
+                Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
+            ));
+        }
+        let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
+        if let Some(i) = crate::ui::hit_test_tabs(
+            &tabs,
+            terminal_area.x,
+            terminal_area.width,
+            region.x, // min_x: don't overlap the title badge
+            mouse_event.column,
+            app.config.ui.tab_icons_only,
+            app.config.ui.icon_mode,
+        ) {
+            let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
+                3
+            } else {
+                2
+            };
+            let folder = if i == 1 {
+                crate::app::VIRTUAL_PINNED_PATH.to_string()
+            } else if i == 2 && app.config.features.smart_folders.is_enabled() {
+                crate::app::VIRTUAL_SMART_PATH.to_string()
+            } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
+                crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
+            } else {
+                String::new()
+            };
+            app.enter_list_directory(folder, 0);
+            return;
+        }
+    }
     if app.list.notes_layout == crate::config::NotesLayout::Grid {
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            // Vault/Pinned tabs
-            if mouse_event.row == terminal_area.y {
-                let mut tabs = vec![
-                    (
-                        "Vault",
-                        Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
-                    ),
-                    (
-                        "Pinned",
-                        Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
-                    ),
-                ];
-                if app.config.features.smart_folders.is_enabled() {
-                    tabs.push((
-                        "Smart",
-                        Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
-                    ));
-                }
-                if app.config.features.subnotes.is_enabled() {
-                    tabs.push((
-                        "Subnotes",
-                        Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
-                    ));
-                }
-                let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
-                if let Some(i) = crate::ui::hit_test_tabs(
-                    &tabs,
-                    terminal_area.x,
-                    terminal_area.width,
-                    region.x, // min_x: don't overlap the title badge
-                    mouse_event.column,
-                    app.config.ui.tab_icons_only,
-                    app.config.ui.icon_mode,
-                ) {
-                    let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
-                        3
-                    } else {
-                        2
-                    };
-                    app.list.grid_folder = if i == 1 {
-                        crate::app::VIRTUAL_PINNED_PATH.to_string()
-                    } else if i == 2 && app.config.features.smart_folders.is_enabled() {
-                        crate::app::VIRTUAL_SMART_PATH.to_string()
-                    } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
-                        crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
-                    } else {
-                        String::new()
-                    };
-                    app.list.visual_index = 0;
-                    app.refresh_visual_list();
-                    return;
-                }
-            }
-
             // Breadcrumbs
             if mouse_event.row == list_area.y + 1 {
                 let is_smart = app.list.grid_folder == crate::app::VIRTUAL_SMART_PATH
                     || app.list.grid_folder.starts_with('@');
                 if is_smart {
                     // Smart title is no longer rendered at root. If there's a label, we don't have a root click target.
-                } else if app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH {
+                } else if !crate::app::App::is_virtual_path(&app.list.grid_folder) {
                     let mut offset = list_area.x;
                     if !app.list.grid_folder.is_empty() {
                         offset += 1; // space padding we added
@@ -938,16 +944,14 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                             if part_idx > 0 {
                                 offset += 3; // " / "
                             }
-                            let part_w = part.chars().count() as u16;
+                            let part_w = unicode_width::UnicodeWidthStr::width(part) as u16;
                             if !current_path.is_empty() {
                                 current_path.push('/');
                             }
                             current_path.push_str(part);
                             if mouse_event.column >= offset && mouse_event.column < offset + part_w
                             {
-                                app.list.grid_folder = current_path;
-                                app.list.visual_index = 0;
-                                app.refresh_visual_list();
+                                app.enter_list_directory(current_path, 0);
                                 return;
                             }
                             offset += part_w;
@@ -1031,7 +1035,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         let Some(clicked_visual_index) = crate::ui::list_index_at(
             mouse_event.row,
             inner_list_area.y,
-            1,
+            app.list.row_height(),
             app.list.list_state.offset(),
             app.list.visual_list.len(),
         ) else {
@@ -1045,11 +1049,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-        let pitch = if app.list.list_density == crate::config::ListDensity::Comfortable {
-            2
-        } else {
-            1
-        };
+        let pitch = app.list.row_height();
         let Some(clicked_visual_index) = crate::ui::list_index_at(
             mouse_event.row,
             inner_list_area.y,
@@ -1089,15 +1089,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if app.list.note_drag.is_some() && app.list.notes_layout == crate::config::NotesLayout::Tree
         {
             if contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {
-                let pitch = if app.list.list_density == crate::config::ListDensity::Comfortable {
-                    2
-                } else {
-                    1
-                };
                 let Some(clicked_visual_index) = crate::ui::list_index_at(
                     mouse_event.row,
                     inner_list_area.y,
-                    pitch,
+                    app.list.row_height(),
                     app.list.list_state.offset(),
                     app.list.visual_list.len(),
                 ) else {
@@ -1129,10 +1124,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 ..
             }) = app.list.visual_list.get(hovered_idx)
         {
-            if crate::app::App::is_virtual_subnotes_path(target_folder)
-                || crate::app::App::is_subnotes_parent_grid_path(target_folder)
-            {
-                app.set_temporary_status_static("Cannot move note into Subnotes view");
+            if crate::app::App::is_virtual_path(target_folder) {
+                app.set_temporary_status_static("Cannot move note into a virtual folder");
                 app.refresh_visual_list();
                 return;
             }

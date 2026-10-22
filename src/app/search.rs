@@ -4,9 +4,9 @@ use crate::popups::*;
 use std::time::{Duration, Instant};
 
 impl App {
-    /// In grid layout, cycle between Vault, Pinned, Smart, and Subnotes tabs.
+    /// Cycle between Vault, Pinned, Smart, and Subnotes tabs.
     pub fn cycle_grid_tab(&mut self) {
-        if self.list.notes_layout != crate::config::NotesLayout::Grid {
+        if !self.config.list.section_tabs {
             return;
         }
         let sf = self.config.features.smart_folders.is_enabled();
@@ -27,14 +27,12 @@ impl App {
         } else {
             VIRTUAL_PINNED_PATH
         };
-        self.list.grid_folder = next.to_string();
-        self.list.visual_index = 0;
-        self.refresh_visual_list();
+        self.enter_list_directory(next.to_owned(), 0);
     }
 
-    /// In grid layout, reverse-cycle between Vault, Pinned, Smart, and Subnotes tabs.
+    /// Reverse-cycle between Vault, Pinned, Smart, and Subnotes tabs.
     pub fn reverse_cycle_grid_tab(&mut self) {
-        if self.list.notes_layout != crate::config::NotesLayout::Grid {
+        if !self.config.list.section_tabs {
             return;
         }
         let sf = self.config.features.smart_folders.is_enabled();
@@ -57,9 +55,7 @@ impl App {
         } else {
             VIRTUAL_PINNED_PATH
         };
-        self.list.grid_folder = next.to_string();
-        self.list.visual_index = 0;
-        self.refresh_visual_list();
+        self.enter_list_directory(next.to_owned(), 0);
     }
 
     pub fn begin_search(&mut self) {
@@ -88,10 +84,11 @@ impl App {
 
     fn jump_to_note_index(&mut self, note_idx: usize) {
         if let Some(note) = self.notes.get(note_idx) {
-            if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            if self.list.notes_layout.browses_folders() || self.config.list.section_tabs {
                 // Grid: navigate into the folder holding the note.
                 self.list.grid_folder = note.folder.clone();
             }
+            self.list.folder_expanded.insert(String::new());
             if !note.folder.is_empty() {
                 let mut path = String::new();
                 for part in note.folder.split('/') {
@@ -371,9 +368,12 @@ impl App {
     }
 
     fn jump_to_subnote(&mut self, parent_id: &str, subnote_idx: usize) {
-        if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        if self.list.notes_layout.browses_folders() {
             self.list.grid_folder = format!("subnotes:{parent_id}");
         } else {
+            if self.config.list.section_tabs {
+                self.list.grid_folder = VIRTUAL_SUBNOTES_PATH.to_owned();
+            }
             self.list
                 .folder_expanded
                 .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
@@ -602,6 +602,45 @@ impl App {
 }
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn tree_search_jumps_switch_tabs_to_the_result_section() {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut storage = make_test_storage(tmp.path());
+        std::fs::write(storage.note_path("target.md"), "# Target\nBody\n").unwrap();
+        storage
+            .set_subnotes(
+                "target.md",
+                &[crate::storage::SubNote {
+                    id: "child".into(),
+                    title: "Child".into(),
+                    content: "Body".into(),
+                    updated_at: 1,
+                }],
+            )
+            .unwrap();
+        let mut app = crate::app::App::new(storage).unwrap();
+        app.list.notes_layout = crate::config::NotesLayout::Tree;
+        app.config.list.section_tabs = true;
+        app.config.features.subnotes = crate::config::FeatureState::Enabled;
+        app.enter_list_directory(crate::app::VIRTUAL_SMART_PATH.to_owned(), 0);
+        let index = app
+            .notes
+            .iter()
+            .position(|note| note.id == "target.md")
+            .unwrap();
+        app.jump_to_note_index(index);
+        assert_eq!(app.list.grid_folder, "");
+        assert!(
+            matches!(&app.list.visual_list[app.list.visual_index], crate::list_view::VisualItem::Note { summary_idx, .. } if *summary_idx == index)
+        );
+        app.jump_to_subnote("target.md", 0);
+        assert_eq!(app.list.grid_folder, crate::app::VIRTUAL_SUBNOTES_PATH);
+        assert!(
+            matches!(&app.list.visual_list[app.list.visual_index], crate::list_view::VisualItem::Subnote { parent_id, subnote_idx: 0, .. } if parent_id == "target.md")
+        );
+    }
 
     fn make_test_storage(dir: &std::path::Path) -> crate::storage::Storage {
         crate::storage::Storage {

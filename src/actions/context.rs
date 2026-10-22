@@ -31,7 +31,7 @@ impl ActionContext {
             note_id,
             note_stamp,
             creation_folder: list.then(|| {
-                if app.list.notes_layout == crate::config::NotesLayout::Grid {
+                if app.list.notes_layout.browses_folders() {
                     app.list.grid_folder.clone()
                 } else {
                     app.get_current_folder_context()
@@ -115,7 +115,7 @@ impl ActionContext {
     fn creation_folder_current(&self, app: &App) -> bool {
         self.creation_folder.as_ref().is_some_and(|folder| {
             *folder
-                == if app.list.notes_layout == crate::config::NotesLayout::Grid {
+                == if app.list.notes_layout.browses_folders() {
                     app.list.grid_folder.clone()
                 } else {
                     app.get_current_folder_context()
@@ -163,6 +163,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "create_canvas"
         | "external_editor.toggle"
         | "toggle_notes_layout"
+        | "settings.notes_section_tabs"
         | "templates.edit_folder_variables"
         | "settings.preview_pane"
         | "settings.calendar"

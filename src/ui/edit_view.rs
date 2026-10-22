@@ -117,14 +117,14 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let right_width = right_line.as_ref().map(|r| r.width() as u16).unwrap_or(0);
         let title_str = get_title_text(&app.editor.title_editor).into_owned();
         use unicode_width::UnicodeWidthStr;
-        let center_width = if title_str.is_empty() {
+        let title_width = if title_str.is_empty() {
             13u16
         } else {
             title_str.width() as u16
         };
         let remaining = outer_chunks[0]
             .width
-            .saturating_sub(left_width + center_width);
+            .saturating_sub(left_width.saturating_add(title_width));
         let actual_right = right_width.min(remaining);
 
         let header_chunks = Layout::default()
@@ -154,110 +154,99 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::editor::AutosaveStatus::Saved => None,
         };
 
-        if focus == EditFocus::Title {
-            // Render background/blank bar first
-            let background_bar = Paragraph::new("").style(theme.title_bar_bg_style());
-            frame.render_widget(background_bar, outer_chunks[0]);
-
-            // Render left and right bars on top of the background
-            let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
-            frame.render_widget(left_bar, left_area);
-
-            if let Some(r_text) = right_line {
-                let is_powerline = theme.hint_bar_style.has_filled_cells();
-                if is_powerline {
-                    let r_bar = Paragraph::new(r_text)
-                        .style(theme.hint_line_bg_style())
-                        .alignment(Alignment::Left);
-                    frame.render_widget(r_bar, right_area);
-                } else {
-                    let r_bar = Paragraph::new(r_text)
-                        .style(theme.title_bar_bg_style())
-                        .alignment(Alignment::Right);
-                    frame.render_widget(r_bar, right_area);
-                }
-            }
-
-            // Render TextArea centered relative to the screen width, clamped to left/right bars
-            let text_width = title_str.len() as u16;
-            let display_width = text_width.min(outer_chunks[0].width);
-            let raw_x_offset = (outer_chunks[0].width.saturating_sub(display_width)) / 2;
-            let start_x = (outer_chunks[0].x + raw_x_offset).max(left_area.right());
-            let end_x = right_area.x;
-            let title_rect =
-                Rect::new(start_x, outer_chunks[0].y, end_x.saturating_sub(start_x), 1);
-
-            app.editor
-                .title_editor
-                .set_style(theme.title_bar_bg_style().fg(theme.heading));
-            app.editor.title_editor.set_block(
-                Block::default()
-                    .style(theme.title_bar_bg_style())
-                    .borders(Borders::NONE),
-            );
-            app.editor
-                .title_editor
-                .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
-            app.editor
-                .title_editor
-                .set_cursor_line_style(Style::default());
-            frame.render_widget(&app.editor.title_editor, title_rect);
-
-            if let Some(icon) = icon_span.clone() {
-                let w = icon.width() as u16;
-                let icon_x = (start_x + display_width).min(end_x.saturating_sub(w));
-                let icon_rect = Rect::new(icon_x, outer_chunks[0].y, w, 1);
-                frame.render_widget(Paragraph::new(Line::from(vec![icon])), icon_rect);
-            }
-
-            {
-                let (r, c) = crate::ui::refresh_textarea_viewport(
-                    &app.editor.title_editor,
-                    app.editor.title_viewport_row,
-                    app.editor.title_viewport_col,
-                    title_rect,
-                    false,
-                );
-                app.editor.title_viewport_row = r;
-                app.editor.title_viewport_col = c;
-            }
+        // Both focus states share terminal-cell geometry and the same title widget.
+        let icon_width = icon_span
+            .as_ref()
+            .map_or(0, |icon| icon.width() as u16)
+            .min(center_area.width.saturating_sub(1));
+        let slot_width = title_width
+            .saturating_add(1 + icon_width)
+            .min(center_area.width);
+        let centered_x = outer_chunks[0].x + outer_chunks[0].width.saturating_sub(title_width) / 2;
+        let start_x = centered_x.clamp(
+            center_area.x,
+            center_area.right().saturating_sub(slot_width),
+        );
+        let title_rect = Rect::new(
+            start_x,
+            outer_chunks[0].y,
+            slot_width.saturating_sub(icon_width),
+            1,
+        );
+        let title_style = if app
+            .mouse_pos
+            .is_some_and(|(x, y)| crate::events::contains_cell(title_rect, x, y))
+        {
+            theme.title_bar_bg_style().patch(theme.hover_style())
         } else {
-            // Render background + centered title Paragraph on outer_chunks[0]
-            let (span, style) = if title_str.is_empty() {
-                ("Untitled note", Style::default().fg(theme.muted))
+            theme.title_bar_bg_style()
+        };
+
+        // Render background/blank bar first, then the left and right status bars.
+        frame.render_widget(
+            Paragraph::new("").style(theme.title_bar_bg_style()),
+            outer_chunks[0],
+        );
+        frame.render_widget(
+            Paragraph::new(left_line).style(theme.title_bar_bg_style()),
+            left_area,
+        );
+        if let Some(right_line) = right_line {
+            let style = if theme.hint_bar_style.has_filled_cells() {
+                theme.hint_line_bg_style()
             } else {
-                (title_str.as_str(), Style::default().fg(theme.heading))
+                theme.title_bar_bg_style()
             };
-            let mut spans = vec![Span::styled(span, style)];
-            if let Some(icon) = icon_span {
-                spans.push(icon);
-            }
-            let center_paragraph = Paragraph::new(Line::from(spans))
-                .style(theme.title_bar_bg_style())
-                .alignment(Alignment::Center);
-            frame.render_widget(center_paragraph, outer_chunks[0]);
-
-            // Render left and right bars on top of the centered title
-            let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
-            frame.render_widget(left_bar, left_area);
-
-            if let Some(r_text) = right_line {
-                let is_powerline = theme.hint_bar_style.has_filled_cells();
-                if is_powerline {
-                    let r_bar = Paragraph::new(r_text)
-                        .style(theme.hint_line_bg_style())
-                        .alignment(Alignment::Left);
-                    frame.render_widget(r_bar, right_area);
-                } else {
-                    let r_bar = Paragraph::new(r_text)
-                        .style(theme.title_bar_bg_style())
-                        .alignment(Alignment::Right);
-                    frame.render_widget(r_bar, right_area);
-                }
-            }
+            let alignment = if theme.hint_bar_style.has_filled_cells() {
+                Alignment::Left
+            } else {
+                Alignment::Right
+            };
+            frame.render_widget(
+                Paragraph::new(right_line).style(style).alignment(alignment),
+                right_area,
+            );
         }
 
-        app.editor.header_title_rect = center_area;
+        app.editor
+            .title_editor
+            .set_style(title_style.fg(theme.heading));
+        app.editor
+            .title_editor
+            .set_placeholder_text("Untitled note");
+        app.editor
+            .title_editor
+            .set_placeholder_style(Style::default().fg(theme.muted));
+        app.editor
+            .title_editor
+            .set_block(Block::default().style(title_style).borders(Borders::NONE));
+        app.editor
+            .title_editor
+            .set_cursor_style(if focus == EditFocus::Title {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            });
+        app.editor
+            .title_editor
+            .set_cursor_line_style(Style::default());
+        frame.render_widget(&app.editor.title_editor, title_rect);
+        if let Some(icon) = icon_span {
+            frame.render_widget(
+                Paragraph::new(Line::from(icon)),
+                Rect::new(title_rect.right(), title_rect.y, icon_width, 1),
+            );
+        }
+        let (row, col) = crate::ui::refresh_textarea_viewport(
+            &app.editor.title_editor,
+            app.editor.title_viewport_row,
+            app.editor.title_viewport_col,
+            title_rect,
+            false,
+        );
+        app.editor.title_viewport_row = row;
+        app.editor.title_viewport_col = col;
+        app.editor.header_title_rect = title_rect;
     }
     let body_area = crate::editor::frontmatter::draw_region(frame, app, focus, outer_chunks[1]);
     let hint_area = outer_chunks[2];
@@ -287,6 +276,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let splitter_area = layout.splitter;
 
     let editor_container = layout.body;
+    app.editor.last_scroll = None;
 
     app.editor.last_body_width = editor_container.width;
     app.editor.last_body_height = editor_container.height;
@@ -309,22 +299,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             // (src/ui/mod.rs:1516), which derives visible rows from
             // block.inner(area).
             let viewport_len = editor_container.height.saturating_sub(1) as usize;
-            let area = editor_container;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(area),
+                track: crate::ui::scrollbar::pane_track(editor_container, splitter_area),
                 content_len,
                 viewport_len,
             };
             app.editor.last_scroll = Some(meta);
-            crate::ui::scrollbar::draw_scrollbar(
-                frame,
-                area,
-                content_len,
-                viewport_len,
-                app.editor.body_viewport_row as usize,
-                content_len.saturating_sub(viewport_len),
-                &app.app_theme,
-            );
         } else {
             app.editor.last_scroll = None;
         }
@@ -442,17 +422,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let kb = &app.keybinds;
         let hints_items = vec![
             (kb.display_edit(EditAction::CycleFocus), "focus"),
+            (kb.display_edit(EditAction::Find), "find"),
             (
                 kb.display_edit(EditAction::ToggleMarkdownPreview),
                 "preview",
             ),
-            (kb.display_edit(EditAction::ToggleOutline), "outline"),
-            (kb.display_edit(EditAction::ToggleLinks), "links"),
-            (kb.display_edit(EditAction::Find), "find"),
-            (kb.display_edit(EditAction::ToggleWrap), "wrap"),
+            (kb.display_edit(EditAction::Save), "save"),
             (kb.edit_keys_display(EditAction::Back), "back"),
-            ("F1".to_string(), "help"),
-            ("F2".to_string(), "keybinds"),
         ];
         let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
         let hint = default_hints;
@@ -479,7 +455,23 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
     }
     if let Some(splitter_area) = splitter_area {
-        draw_dim_vline(frame, splitter_area, app.app_theme.muted);
+        let color = if matches!(focus, EditFocus::Body | EditFocus::Sidebar) {
+            app.app_theme.accent
+        } else {
+            app.app_theme.muted
+        };
+        draw_dim_vline(frame, splitter_area, color);
+    }
+    if let Some(meta) = app.editor.last_scroll {
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            meta.track,
+            meta.content_len,
+            meta.viewport_len,
+            app.editor.body_viewport_row as usize,
+            meta.content_len.saturating_sub(meta.viewport_len),
+            &app.app_theme,
+        );
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
@@ -592,7 +584,8 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
     // Draw Title
     let title_style = if focus == EditFocus::Sidebar {
         Style::default()
-            .fg(theme.accent)
+            .fg(theme.highlight_fg)
+            .bg(theme.accent)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
@@ -667,11 +660,18 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
         );
 
         let item_count = items.len();
-        let list = List::new(items).block(Block::default()).highlight_style(
-            Style::default()
-                .bg(theme.highlight_bg)
-                .fg(theme.highlight_fg),
-        );
+        let list = List::new(items)
+            .block(Block::default())
+            .highlight_symbol(if focus == EditFocus::Sidebar {
+                "▸ "
+            } else {
+                "  "
+            })
+            .highlight_style(
+                Style::default()
+                    .bg(theme.highlight_bg)
+                    .fg(theme.highlight_fg),
+            );
         frame.render_stateful_widget(list, list_area, &mut state);
         app.editor.sidebar_scroll_offset = state.offset();
         app.editor.sidebar_list_rect = list_area;

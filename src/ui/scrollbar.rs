@@ -11,8 +11,8 @@ use ratatui::{
 /// handler can hit-test without re-running layout math.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ScrollbarMeta {
-    pub track: Rect,         // rightmost 1-column gutter of the scrollable inner area
-    pub content_len: usize,  // total scrollable units
+    pub track: Rect, // 1-column divider or gutter belonging to the scrollable region
+    pub content_len: usize, // total scrollable units
     pub viewport_len: usize, // visible units
 }
 
@@ -23,6 +23,14 @@ pub fn track_rect(area: Rect) -> Rect {
         y: area.y,
         width: 1,
         height: area.height,
+    }
+}
+
+/// Use the pane divider as the scrollbar track whenever one is present.
+pub fn pane_track(area: Rect, divider: Option<Rect>) -> Rect {
+    match divider.filter(|divider| !divider.is_empty()) {
+        Some(divider) => Rect::new(divider.x, area.y, 1, area.height).intersection(divider),
+        None => track_rect(area),
     }
 }
 
@@ -52,7 +60,7 @@ pub fn draw_scrollbar(
     max_position: usize,
     theme: &AppThemeColors,
 ) {
-    if !overflows(content_len, viewport_len) {
+    if area.is_empty() || !overflows(content_len, viewport_len) {
         return;
     }
     // Scale from caller's range [0, max_position] into ratatui's selection
@@ -99,7 +107,7 @@ pub fn handle_scrollbar_mouse(
     current_fraction: f32,
     drag: &mut Option<i32>,
 ) -> Option<f32> {
-    if !overflows(meta.content_len, meta.viewport_len) {
+    if meta.track.is_empty() || !overflows(meta.content_len, meta.viewport_len) {
         return None;
     }
 

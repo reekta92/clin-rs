@@ -33,11 +33,11 @@ pub const SETUP_THEMES: &[&str] = &[
     "material",
 ];
 pub const SETUP_PRESETS: &[&str] = &["default", "helix", "vim", "emacs"];
-pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none"];
+pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none", "emoji"];
 pub const SETUP_HINT_STYLES: &[&str] = &[
     "Classic", "Sharp", "Rounded", "Slanted", "Bubbles", "Blurred", "Chips", "Brackets", "Compact",
 ];
-pub const SETUP_LAYOUTS: &[&str] = &["Grid", "Tree"];
+pub const SETUP_LAYOUTS: &[&str] = &["Grid", "Tree", "List", "Multi"];
 pub const SETUP_FEATURE_PRESETS: &[&str] = &["Default", "Expanded", "Minimal", "Custom"];
 
 /// Feature preset for the setup wizard's Features row. `Custom` keeps the
@@ -88,6 +88,7 @@ pub fn icon_mode_at(idx: usize) -> crate::config::IconMode {
     match idx {
         1 => crate::config::IconMode::Unicode,
         2 => crate::config::IconMode::None,
+        3 => crate::config::IconMode::Emoji,
         _ => crate::config::IconMode::Nerd,
     }
 }
@@ -96,6 +97,7 @@ pub fn icon_mode_index(m: crate::config::IconMode) -> usize {
         crate::config::IconMode::Nerd => 0,
         crate::config::IconMode::Unicode => 1,
         crate::config::IconMode::None => 2,
+        crate::config::IconMode::Emoji => 3,
     }
 }
 
@@ -109,6 +111,8 @@ pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
 pub fn layout_at(idx: usize) -> crate::config::NotesLayout {
     match idx {
         1 => crate::config::NotesLayout::Tree,
+        2 => crate::config::NotesLayout::List,
+        3 => crate::config::NotesLayout::Multi,
         _ => crate::config::NotesLayout::Grid,
     }
 }
@@ -116,6 +120,8 @@ pub fn layout_index(l: &crate::config::NotesLayout) -> usize {
     match l {
         crate::config::NotesLayout::Tree => 1,
         crate::config::NotesLayout::Grid => 0,
+        crate::config::NotesLayout::List => 2,
+        crate::config::NotesLayout::Multi => 3,
     }
 }
 

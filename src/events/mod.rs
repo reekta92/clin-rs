@@ -154,7 +154,7 @@ fn route_selection_popup(
     app.seq_matcher.clear();
     let action = match &mut popup {
         crate::popups::ActivePopup::IconMode(p) => {
-            route_selection_list(&key, &app.keybinds, &mut p.selected, 2)
+            route_selection_list(&key, &app.keybinds, &mut p.selected, 3)
         }
         crate::popups::ActivePopup::HintBarStyle(p) => route_selection_list(
             &key,

@@ -387,7 +387,11 @@ pub(crate) fn draw_region(frame: &mut Frame, app: &mut App, focus: EditFocus, ar
         app.config.editor.frontmatter_mode == FrontmatterMode::RawYaml && state.input.is_none();
     let block = Block::bordered()
         .style(app.app_theme.bg_style())
-        .border_style(Style::default().fg(app.app_theme.border))
+        .border_style(Style::default().fg(if focus == EditFocus::Frontmatter {
+            app.app_theme.accent
+        } else {
+            app.app_theme.border
+        }))
         .title(if state.input.is_some() {
             "Property · Tab field · Ctrl+Enter apply · Esc cancel"
         } else if raw_mode {
@@ -461,6 +465,7 @@ pub(crate) fn draw_region(frame: &mut Frame, app: &mut App, focus: EditFocus, ar
                         ))
                     })
                     .collect::<Vec<_>>();
+                let item_count = items.len();
                 let mut selection = ListState::default().with_selected(Some(state.selected));
                 *selection.offset_mut() = state.list_offset;
                 frame.render_stateful_widget(
@@ -475,6 +480,14 @@ pub(crate) fn draw_region(frame: &mut Frame, app: &mut App, focus: EditFocus, ar
                     &mut selection,
                 );
                 state.list_offset = selection.offset();
+                crate::ui::paint_list_hover(
+                    frame,
+                    inner,
+                    &selection,
+                    item_count,
+                    app.mouse_pos,
+                    app.app_theme.hover_style(),
+                );
             }
             Err(error) => frame.render_widget(
                 Paragraph::new(format!(

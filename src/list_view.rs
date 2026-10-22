@@ -115,6 +115,19 @@ pub enum VisualItem {
     },
 }
 
+impl VisualItem {
+    pub(crate) fn depth_mut(&mut self) -> &mut usize {
+        match self {
+            Self::Folder { depth, .. }
+            | Self::SmartFolder { depth, .. }
+            | Self::Note { depth, .. }
+            | Self::CreateNew { depth, .. }
+            | Self::TemplateConfig { depth, .. }
+            | Self::Subnote { depth, .. } => depth,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct GridTile {
     pub visual_index: usize,
@@ -122,6 +135,8 @@ pub struct GridTile {
 }
 
 pub struct ListView {
+    pub multi_preview: Option<(String, Vec<VisualItem>)>,
+    pub multi_scroll: usize,
     pub visual_list: Vec<VisualItem>,
     pub visual_index: usize,
     pub list_state: ListState,
@@ -152,6 +167,7 @@ pub struct ListView {
     pub folders_first: bool,
     pub show_hidden_files: bool,
     pub show_all_files: bool,
+    pub last_area: ratatui::layout::Rect,
     pub last_preview_pane_width: u16,
     pub last_preview_pane_height: u16,
     pub preview_content_width: Option<u16>,
@@ -184,6 +200,8 @@ impl Default for ListView {
         Self {
             visual_list: Vec::new(),
             visual_index: 0,
+            multi_preview: None,
+            multi_scroll: 0,
             list_state: ListState::default(),
             grid_scroll: 0,
             grid_tiles: Vec::new(),
@@ -213,6 +231,7 @@ impl Default for ListView {
             week_start: crate::config::WeekStart::default(),
             grid_folder: String::new(),
             grid_columns: 4,
+            last_area: ratatui::layout::Rect::default(),
             last_preview_pane_width: 0,
             last_preview_pane_height: 34,
             preview_content_width: None,
@@ -244,6 +263,13 @@ impl Default for ListView {
 impl ListView {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn row_height(&self) -> u16 {
+        match self.list_density {
+            crate::config::ListDensity::Compact => 1,
+            crate::config::ListDensity::Comfortable => 2,
+        }
     }
 }
 

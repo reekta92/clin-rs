@@ -151,14 +151,19 @@ fn handle_confirm_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: 
         return;
     }
     let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Confirm, terminal_area);
-    if contains_cell(popup_area, mouse.column, mouse.row) {
-        let mid_x = popup_area.x + popup_area.width / 2;
-        if mouse.column < mid_x {
-            app.confirm_action();
-        } else {
-            app.cancel_confirm();
-        }
-    } else {
+    if !contains_cell(popup_area, mouse.column, mouse.row) {
+        app.cancel_confirm();
+        return;
+    }
+    let Some(popup) = app.popups.confirm.as_ref() else {
+        return;
+    };
+    let literal_yes_no = !matches!(app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
+    let (_, buttons) =
+        crate::ui::confirm_popup_layout(terminal_area, &popup.confirm_label, literal_yes_no);
+    if contains_cell(buttons[0], mouse.column, mouse.row) {
+        app.confirm_action();
+    } else if contains_cell(buttons[1], mouse.column, mouse.row) {
         app.cancel_confirm();
     }
 }
@@ -175,6 +180,7 @@ pub(crate) fn handle_command_palette_mouse(
     let Some(mut palette) = app.command_palette.take() else {
         return false;
     };
+    app.mouse_pos = Some((mouse.column, mouse.row));
     let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
     let content = Layout::default()
         .direction(Direction::Vertical)
@@ -436,7 +442,7 @@ impl crate::popups::ActivePopup {
             }
             IconMode(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
-                match handle_list_popup_mouse(mouse, area, &mut p.selected, 3) {
+                match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(IconMode(p));
                     }

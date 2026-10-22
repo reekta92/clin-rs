@@ -266,12 +266,15 @@ pub fn hit_test_tabs(
     }
     let center_x = area_x + area_width.saturating_sub(total) / 2;
     let start_x = center_x.max(min_x);
-    if click_x < start_x || click_x >= start_x.saturating_add(total) {
+    if click_x < start_x
+        || click_x >= start_x.saturating_add(total)
+        || click_x >= area_x.saturating_add(area_width)
+    {
         return None;
     }
     let mut offset = start_x;
     for (i, w) in widths.iter().enumerate() {
-        if click_x < offset.saturating_add(*w) {
+        if (offset..offset.saturating_add(*w)).contains(&click_x) {
             return Some(i);
         }
         offset = offset.saturating_add(*w).saturating_add(1);

@@ -182,15 +182,17 @@ toggle_action!(
 toggle_action!(
     ToggleLayoutAction,
     "toggle_notes_layout",
-    "Toggle Notes Layout",
-    "Switch between Tree and Grid layout for the notes view",
+    "Select Notes Layout",
+    "Choose Tree, Grid, List, or Multi for the notes view",
     ActionCategory::Settings,
     crate::ui::icons::LAYOUT.pair(),
-    toggle_notes_layout,
+    begin_notes_layout_selection,
     app,
     match app.list.notes_layout {
         crate::config::NotesLayout::Tree => "Tree",
         crate::config::NotesLayout::Grid => "Grid",
+        crate::config::NotesLayout::List => "List",
+        crate::config::NotesLayout::Multi => "Multi",
     }
 );
 toggle_action!(
@@ -275,6 +277,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleShowHiddenFilesAction),
         Box::new(settings::ToggleShowAllFilesAction),
         Box::new(settings::ToggleTabIconsOnlyAction),
+        Box::new(settings::ToggleNotesSectionTabsAction),
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::ToggleFoldersFirstAction),
         Box::new(settings::ToggleInlineInfoAction),

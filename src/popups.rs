@@ -404,7 +404,7 @@ impl ActivePopup {
                 frame,
                 area,
                 "ICON MODE",
-                &["Nerd Font", "Unicode", "None"],
+                &["Nerd Font", "Unicode", "None", "Emoji"],
                 p.selected,
                 keybinds,
                 theme,
@@ -460,7 +460,9 @@ impl ActivePopup {
                 theme,
                 mouse_pos,
             ),
-            ActivePopup::Subnotes(p) => crate::ui::draw_subnotes_popup(frame, p, area, theme),
+            ActivePopup::Subnotes(p) => {
+                crate::ui::draw_subnotes_popup(frame, p, area, theme, mouse_pos)
+            }
             ActivePopup::Info(p) => crate::ui::draw_info_popup(frame, area, p, theme),
             _ => {}
         }

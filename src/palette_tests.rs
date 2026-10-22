@@ -83,6 +83,7 @@ impl Fixture {
         config.save().unwrap();
         let mut app = App::new(storage).unwrap();
         app.config = config;
+        app.list.grid_folder.clear();
         app.command_usage.clear();
         app.command_usage_path = Some(root.path().join("state.json"));
         app.keybinds = KeybindPreset::Default.base_keybinds();
@@ -202,6 +203,95 @@ fn visible(app: &App, id: &str) -> bool {
         .items
         .iter()
         .any(|item| item.id == id)
+}
+
+#[test]
+fn palette_mouse_motion_highlights_rows_and_tabs_through_each_dispatcher() {
+    for mode in [ViewMode::List, ViewMode::Edit] {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        f.app.config.ui.tab_icons_only = false;
+        drive(&mut f.app, key(KeyCode::F(6)));
+        let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let palette = f.app.command_palette.as_ref().unwrap();
+        let results = palette.last_results_area.unwrap();
+        let selected = palette.state.selected();
+        let target = if selected == Some(palette.state.offset()) {
+            1
+        } else {
+            0
+        };
+        let row = results.y + 1 + target * 2;
+        let column = results.x + 3;
+        drive(
+            &mut f.app,
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        assert_eq!(f.app.mouse_pos, Some((column, row)), "{mode:?}");
+        assert_eq!(
+            f.app.command_palette.as_ref().unwrap().state.selected(),
+            selected
+        );
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(column, row)].bg,
+            f.app.app_theme.hover_style().bg.unwrap(),
+            "{mode:?}"
+        );
+        let palette = f.app.command_palette.as_ref().unwrap();
+        let popup = crate::ui::centered_rect(crate::ui::PopupSize::Large, AREA);
+        let content = Rect::new(popup.x, popup.y, popup.width, popup.height - 1);
+        let chunks = palette.content_areas(content, false);
+        let tabs: Vec<_> = palette
+            .tabs
+            .iter()
+            .map(|(label, glyph, _)| (*label, Some(*glyph)))
+            .collect();
+        let active = palette.active_tab;
+        let tab = (0..tabs.len()).find(|&index| index != active).unwrap();
+        let column = (chunks[1].x..chunks[1].right())
+            .find(|&column| {
+                crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    column,
+                    false,
+                    f.app.config.ui.icon_mode,
+                ) == Some(tab)
+            })
+            .unwrap();
+        let row = chunks[1].y;
+        drive(
+            &mut f.app,
+            Event::Mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }),
+        );
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(column, row)].bg,
+            f.app.app_theme.hover_style().bg.unwrap(),
+            "{mode:?}"
+        );
+        assert_eq!(f.app.command_palette.as_ref().unwrap().active_tab, active);
+    }
 }
 
 #[test]
@@ -1556,6 +1646,58 @@ fn palette_workflow_options_creation_and_import_validation() {
     assert_eq!(f.app.mode, ViewMode::Draw);
     assert!(f.app.command_palette.is_none());
     assert!(f.app.storage.note_path("new-art.draw").is_file());
+}
+
+#[test]
+fn notes_layout_picker_searches_selects_and_persists_like_theme_selection() {
+    let mut f = Fixture::new();
+    let original = f.app.list.notes_layout.clone();
+    activate(&mut f.app, "toggle_notes_layout");
+    let palette = f.app.command_palette.as_ref().unwrap();
+    assert_eq!(
+        palette
+            .items
+            .iter()
+            .map(|item| item.name.as_str())
+            .collect::<Vec<_>>(),
+        crate::setup::SETUP_LAYOUTS
+    );
+    assert_eq!(
+        palette.state.selected(),
+        Some(crate::setup::layout_index(&original))
+    );
+    assert_eq!(f.app.list.notes_layout, original);
+    replace_step_input(&mut f.app, "multi");
+    select_step(&mut f.app, "3");
+    assert_eq!(f.app.list.notes_layout, crate::config::NotesLayout::Multi);
+    assert_eq!(
+        f.app.config.list.default_view,
+        crate::config::NotesLayout::Multi
+    );
+    assert_eq!(
+        crate::config::ClinConfig::load()
+            .0
+            .unwrap()
+            .list
+            .default_view,
+        crate::config::NotesLayout::Multi
+    );
+    replace_step_input(&mut f.app, "list");
+    select_step(&mut f.app, "2");
+    assert_eq!(f.app.list.notes_layout, crate::config::NotesLayout::List);
+    replace_step_input(&mut f.app, "multi");
+    select_step(&mut f.app, "3");
+    assert!(f.app.command_palette.is_some());
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert!(f.app.command_palette.is_none());
+
+    crate::actions::execute_action("toggle_notes_layout", &mut f.app, None).unwrap();
+    assert!(f.app.command_palette.is_some());
+    replace_step_input(&mut f.app, "tree");
+    drive(&mut f.app, key(KeyCode::Esc));
+    drive(&mut f.app, key(KeyCode::Esc));
+    assert_eq!(f.app.list.notes_layout, crate::config::NotesLayout::Multi);
 }
 
 #[test]

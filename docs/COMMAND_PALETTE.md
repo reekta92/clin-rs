@@ -214,7 +214,7 @@ Theme/preset/UI changes update retained owners, including those suspended under 
    }
    ```
 
-**Note:** `icon_mode = "nerd"` uses Nerd Font icons; `"unicode"` uses single-cell text symbols; `"none"` hides decorative icons. Built-in actions share the catalog in `src/ui/icons.rs`. Custom action glyphs should also occupy one terminal cell and avoid emoji or combining sequences.
+**Note:** `icon_mode = "nerd"` uses Nerd Font icons; `"unicode"` uses single-cell text symbols; `"emoji"` uses emoji icons; `"none"` hides decorative icons. Built-in actions share the catalog in `src/ui/icons.rs`. Custom action glyphs should also occupy one terminal cell and avoid emoji or combining sequences.
 3. Register in `src/actions/mod.rs`:
    - Add `pub mod my_action;`
    - Add `Box::new(my_action::MyAction),` to the `ACTIONS` vec
@@ -268,3 +268,5 @@ Run `cargo test --locked palette_`, `cargo test --locked actions::`, and the aff
 ## Frontmatter in the editor
 
 **Toggle Frontmatter** (`editor.frontmatter`) shares the F7 visibility action for ordinary Markdown/text notes and unsaved new notes. It is unavailable in specialized source/template editors. The region starts hidden and uses `editor.frontmatter_mode`. Captured frontmatter focus excludes body insertion/image commands. Navigation saves pending header input as well as Title/Body and retains the owner and recovery draft on validation or publication failure.
+
+**Select Notes Layout** opens a searchable list of Grid, Tree, List, and Multi with the active layout selected. **Toggle Notes Section Tabs** switches Vault, Pinned, Smart, and Subnotes between tabs and folder items across every layout; both commands save their choices.

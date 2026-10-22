@@ -778,7 +778,9 @@ fn heading_style(ctx: &Ctx<'_, '_>, level: u8) -> Style {
 
 fn heading_marker(level: u8, mode: crate::config::IconMode) -> &'static str {
     match mode {
-        crate::config::IconMode::Nerd | crate::config::IconMode::Unicode => match level {
+        crate::config::IconMode::Nerd
+        | crate::config::IconMode::Unicode
+        | crate::config::IconMode::Emoji => match level {
             1 => "①",
             2 => "②",
             3 => "③",
@@ -2657,7 +2659,12 @@ mod tests {
             ("https://example.com/?next=x.com", icons::LINK),
             ("../local.md", icons::LINK),
         ] {
-            for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::None] {
+            for mode in [
+                IconMode::Nerd,
+                IconMode::Unicode,
+                IconMode::None,
+                IconMode::Emoji,
+            ] {
                 assert_eq!(link_icon(url, mode), icon.get(mode), "{url}: {mode:?}");
             }
         }

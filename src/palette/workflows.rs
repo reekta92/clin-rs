@@ -37,6 +37,7 @@ pub(crate) enum OptionKind {
     Icon,
     Hint,
     Preset,
+    Layout,
 }
 
 impl OptionKind {
@@ -48,12 +49,13 @@ impl OptionKind {
                 "Modified (newest)",
                 "Modified (oldest)",
             ],
-            Self::Icon => vec!["Nerd Font", "Unicode", "None"],
+            Self::Icon => vec!["Nerd Font", "Unicode", "None", "Emoji"],
             Self::Hint => crate::config::HintBarStyle::ALL
                 .iter()
                 .map(|style| style.name())
                 .collect(),
             Self::Preset => vec!["Default", "Helix", "Vim", "Emacs"],
+            Self::Layout => crate::setup::SETUP_LAYOUTS.to_vec(),
         }
     }
 }
@@ -114,6 +116,7 @@ impl CommandPalette {
             Some(Workflow::Options(OptionKind::Icon)) => "COMMANDS › Icon Mode",
             Some(Workflow::Options(OptionKind::Hint)) => "COMMANDS › Hint Bar Style",
             Some(Workflow::Options(OptionKind::Preset)) => "COMMANDS › Navigation Preset",
+            Some(Workflow::Options(OptionKind::Layout)) => "COMMANDS › Notes Layout",
             Some(Workflow::Create {
                 format: NoteFormat::Draw,
                 ..
@@ -195,6 +198,13 @@ impl CommandPalette {
                         i.to_string(),
                         label.to_owned(),
                         match kind {
+                            OptionKind::Layout => [
+                                "Tiles in the current folder",
+                                "Expandable folders and notes",
+                                "Rows in the current folder",
+                                "Current folder and selected-folder contents",
+                            ][i]
+                                .into(),
                             OptionKind::Preset => [
                                 "Arrow navigation · Ctrl shortcuts",
                                 "Space leader · hjkl navigation",
@@ -290,6 +300,20 @@ impl CommandPalette {
 }
 
 impl App {
+    pub(crate) fn begin_notes_layout_selection(&mut self) {
+        let mut palette = self
+            .command_palette
+            .take()
+            .unwrap_or_else(|| CommandPalette::new(None, self));
+        palette.workflow_action = Some("toggle_notes_layout".into());
+        let input = crate::ui::make_popup_textarea(&self.app_theme, "Search notes layouts...");
+        palette.push_workflow(Workflow::Options(OptionKind::Layout), input, self);
+        palette
+            .state
+            .select(Some(crate::setup::layout_index(&self.list.notes_layout)));
+        self.command_palette = Some(palette);
+    }
+
     pub(crate) fn begin_feature_selection(&mut self) {
         let mut palette = self
             .command_palette
@@ -491,6 +515,7 @@ impl App {
                         OptionKind::Icon => self.apply_icon_selection(index)?,
                         OptionKind::Hint => self.apply_hint_selection(index)?,
                         OptionKind::Preset => self.apply_preset_selection(index)?,
+                        OptionKind::Layout => self.apply_notes_layout_selection(index)?,
                     }
                     Ok(matches!(kind, OptionKind::Sort | OptionKind::Icon))
                 }

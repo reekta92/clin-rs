@@ -226,7 +226,7 @@ pub struct UiConfig {
     #[serde(default)]
     pub tab_icons_only: bool,
 
-    /// Icon display mode: Nerd Font, Unicode fallback, or None.
+    /// Icon display mode: Nerd Font, Unicode fallback, Emoji, or None.
     #[serde(default)]
     pub icon_mode: IconMode,
     /// Show mouse-draggable scrollbars on scrollable regions.
@@ -334,6 +334,7 @@ pub struct ListConfig {
     pub density: ListDensity,
     #[serde(default)]
     pub default_view: NotesLayout,
+    pub section_tabs: bool,
     #[serde(default)]
     pub default_sort_field: Option<crate::app::SortField>,
     #[serde(default)]
@@ -373,6 +374,7 @@ impl Default for ListConfig {
             date_format: "%Y-%m-%d".to_string(),
             density: ListDensity::default(),
             default_view: NotesLayout::default(),
+            section_tabs: false,
             default_sort_field: None,
             default_sort_order: None,
             inline_info: true,

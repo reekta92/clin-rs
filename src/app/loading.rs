@@ -11,10 +11,13 @@ struct SmartFolderData {
     matches: Vec<usize>,
 }
 impl App {
-    fn add_local_template_configs(&mut self, visual: &mut Vec<VisualItem>) {
-        self.list.template_config_folders.clear();
+    fn add_local_template_configs(
+        &self,
+        visual: &mut Vec<VisualItem>,
+        directory: Option<&str>,
+    ) -> std::collections::HashSet<String> {
         if !self.config.features.templates.is_enabled() {
-            return;
+            return std::collections::HashSet::new();
         }
         let mut folders: std::collections::HashSet<String> = visual
             .iter()
@@ -27,18 +30,15 @@ impl App {
                 _ => None,
             })
             .collect();
-        if self.list.notes_layout == crate::config::NotesLayout::Grid
-            && !Self::is_virtual_path(&self.list.grid_folder)
-        {
-            folders.insert(self.list.grid_folder.clone());
+        if let Some(folder) = directory.filter(|folder| !Self::is_virtual_path(folder)) {
+            folders.insert(folder.to_owned());
         }
-        self.list.template_config_folders = folders
+        let folders: std::collections::HashSet<String> = folders
             .into_iter()
             .filter(|folder| self.storage.has_local_template_config(folder))
             .collect();
-        if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            let folder = &self.list.grid_folder;
-            if self.list.template_config_folders.contains(folder) {
+        if let Some(folder) = directory {
+            if folders.contains(folder) {
                 let index = visual
                     .iter()
                     .position(|item| matches!(item, VisualItem::CreateNew { .. }))
@@ -46,12 +46,12 @@ impl App {
                 visual.insert(
                     index,
                     VisualItem::TemplateConfig {
-                        folder: folder.clone(),
+                        folder: folder.to_owned(),
                         depth: 0,
                     },
                 );
             }
-            return;
+            return folders;
         }
         let mut items = Vec::with_capacity(visual.len());
         for item in std::mem::take(visual) {
@@ -61,9 +61,7 @@ impl App {
                     depth,
                     is_expanded: true,
                     ..
-                } if !Self::is_virtual_path(path)
-                    && self.list.template_config_folders.contains(path) =>
-                {
+                } if !Self::is_virtual_path(path) && folders.contains(path) => {
                     Some(VisualItem::TemplateConfig {
                         folder: path.clone(),
                         depth: depth + 1,
@@ -77,11 +75,33 @@ impl App {
             }
         }
         *visual = items;
+        folders
     }
 
     pub fn refresh_visual_list(&mut self) {
         self.list.list_viewport_offset = None;
+        let directory = self
+            .list
+            .notes_layout
+            .browses_folders()
+            .then(|| self.list.grid_folder.clone());
+        let (visual, configs) = self.build_visual_list(directory.as_deref());
+        self.list.visual_list = visual;
+        self.list.template_config_folders = configs;
+        self.list.multi_preview = None;
+        self.clamp_visual_index();
+        self.request_preview_update();
+    }
+
+    fn build_visual_list(
+        &mut self,
+        directory: Option<&str>,
+    ) -> (Vec<VisualItem>, std::collections::HashSet<String>) {
         let mut visual = Vec::new();
+        let tab_section = (directory.is_none() && self.config.list.section_tabs)
+            .then(|| self.notes_section_path().to_owned());
+        let pinned_expanded = self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH)
+            || tab_section.as_deref() == Some(VIRTUAL_PINNED_PATH);
         // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
         let subnotes_cache = if !self.config.features.subnotes.is_enabled() {
             self.subnotes_view_cache.clear();
@@ -181,14 +201,14 @@ impl App {
             path: VIRTUAL_PINNED_PATH.to_string(),
             name: VIRTUAL_PINNED_LABEL.to_string(),
             depth: 0,
-            is_expanded: self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH),
+            is_expanded: pinned_expanded,
             note_count: pinned_notes.len(),
             recursive_count: pinned_notes.len(),
             stale: false,
             is_pinned: false,
         });
 
-        if self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH) {
+        if pinned_expanded {
             for (idx, note) in &pinned_notes {
                 visual.push(VisualItem::Note {
                     summary_idx: *idx,
@@ -341,7 +361,7 @@ impl App {
             .collect();
         sorted_pinned.sort();
 
-        for pinned_path in &sorted_pinned {
+        for pinned_path in sorted_pinned.iter().filter(|_| pinned_expanded) {
             let name = if let Some(slash) = pinned_path.rfind('/') {
                 pinned_path[slash + 1..].to_string()
             } else {
@@ -359,7 +379,7 @@ impl App {
             visual.push(VisualItem::Folder {
                 path: pinned_path.clone(),
                 name,
-                depth: 0,
+                depth: 1,
                 is_expanded,
                 note_count: direct,
                 recursive_count: rec_count,
@@ -370,7 +390,7 @@ impl App {
             if is_expanded {
                 push_tree(
                     pinned_path.as_str(),
-                    1,
+                    2,
                     &mut visual,
                     &self.list.folder_expanded,
                     &subfolders_map,
@@ -382,6 +402,7 @@ impl App {
                 );
             }
         }
+        let smart_start = visual.len();
         let mut computed_smart_folders = Vec::new();
         if self.config.features.smart_folders.is_enabled() {
             let today_matches = self.notes_in_smart_folder(&SmartFolderKind::Today);
@@ -516,19 +537,47 @@ impl App {
                 }
             }
         }
+        if self.config.features.smart_folders.is_enabled() {
+            let expanded = self.list.folder_expanded.contains(VIRTUAL_SMART_PATH)
+                || tab_section.as_deref() == Some(VIRTUAL_SMART_PATH);
+            for item in &mut visual[smart_start..] {
+                *item.depth_mut() += 1;
+            }
+            if !expanded {
+                visual.truncate(smart_start);
+            }
+            visual.insert(
+                smart_start,
+                VisualItem::Folder {
+                    path: VIRTUAL_SMART_PATH.to_owned(),
+                    name: VIRTUAL_SMART_LABEL.to_owned(),
+                    depth: 0,
+                    is_expanded: expanded,
+                    note_count: computed_smart_folders.len(),
+                    recursive_count: computed_smart_folders
+                        .iter()
+                        .map(|folder| folder.matches.len())
+                        .sum(),
+                    stale: false,
+                    is_pinned: false,
+                },
+            );
+        }
         let subnotes_total: usize = subnotes_cache.iter().map(|(_, v)| v.len()).sum();
+        let subnotes_expanded = self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH)
+            || tab_section.as_deref() == Some(VIRTUAL_SUBNOTES_PATH);
         if self.config.features.subnotes.is_enabled() {
             visual.push(VisualItem::Folder {
                 path: VIRTUAL_SUBNOTES_PATH.to_string(),
                 name: VIRTUAL_SUBNOTES_LABEL.to_string(),
                 depth: 0,
-                is_expanded: self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH),
+                is_expanded: subnotes_expanded,
                 note_count: subnotes_cache.len(),
                 recursive_count: subnotes_total,
                 stale: subnotes_cache.is_empty(),
                 is_pinned: false,
             });
-            if self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH) {
+            if subnotes_expanded {
                 for (parent_id, subs) in &subnotes_cache {
                     let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
                     let note = pidx.and_then(|i| self.notes.get(i));
@@ -563,18 +612,20 @@ impl App {
         }
         let vault_direct = by_folder.get("").map_or(0, |v| v.len());
         let vault_recursive = recursive_count.get("").copied().unwrap_or(vault_direct);
+        let vault_expanded =
+            self.list.folder_expanded.contains("") || tab_section.as_deref() == Some("");
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
             depth: 0,
-            is_expanded: self.list.folder_expanded.contains(""),
+            is_expanded: vault_expanded,
             note_count: vault_direct,
             recursive_count: vault_recursive,
             stale: false,
             is_pinned: false,
         });
 
-        if self.list.folder_expanded.contains("") {
+        if vault_expanded {
             push_tree(
                 "",
                 1,
@@ -589,11 +640,39 @@ impl App {
             );
         }
 
-        if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        if let Some(gf) = directory {
+            let mut sections: Vec<_> = visual
+                .iter()
+                .filter_map(|item| match item {
+                    VisualItem::Folder { path, depth: 0, .. }
+                        if path.is_empty()
+                            || [
+                                VIRTUAL_PINNED_PATH,
+                                VIRTUAL_SMART_PATH,
+                                VIRTUAL_SUBNOTES_PATH,
+                            ]
+                            .contains(&path.as_str()) =>
+                    {
+                        let mut item = item.clone();
+                        if let VisualItem::Folder { is_expanded, .. } = &mut item {
+                            *is_expanded = false;
+                        }
+                        Some(item)
+                    }
+                    _ => None,
+                })
+                .collect();
+            sections.sort_by_key(|item| match item {
+                VisualItem::Folder { path, .. } if path.is_empty() => 0,
+                VisualItem::Folder { path, .. } if path == VIRTUAL_PINNED_PATH => 1,
+                VisualItem::Folder { path, .. } if path == VIRTUAL_SMART_PATH => 2,
+                _ => 3,
+            });
             // Discard the tree-view items (Pinned/Vault folders) built above.
             visual.clear();
-            let gf = &self.list.grid_folder;
-            if gf == VIRTUAL_PINNED_PATH {
+            if gf == VIRTUAL_ROOT_PATH {
+                visual = sections;
+            } else if gf == VIRTUAL_PINNED_PATH {
                 // Pinned tab: show pinned folders first, then pinned notes
                 for pinned_path in &sorted_pinned {
                     let name = if let Some(slash) = pinned_path.rfind('/') {
@@ -696,7 +775,7 @@ impl App {
                 // 2. Find the matching smart folder by virtual path and render its notes
                 if let Some(folder_data) = computed_smart_folders
                     .iter()
-                    .find(|d| d.kind.virtual_path() == *gf)
+                    .find(|d| d.kind.virtual_path() == gf)
                 {
                     for idx in &folder_data.matches {
                         let note = &self.notes[*idx];
@@ -826,7 +905,7 @@ impl App {
                             });
                         }
                     }
-                    if let Some(notes) = by_folder.get(gf.as_str()) {
+                    if let Some(notes) = by_folder.get(gf) {
                         for (idx, note) in notes {
                             visual.push(VisualItem::Note {
                                 summary_idx: *idx,
@@ -839,7 +918,7 @@ impl App {
                         }
                     }
                 } else {
-                    if let Some(notes) = by_folder.get(gf.as_str()) {
+                    if let Some(notes) = by_folder.get(gf) {
                         for (idx, note) in notes {
                             visual.push(VisualItem::Note {
                                 summary_idx: *idx,
@@ -880,17 +959,78 @@ impl App {
                 }
                 if self.list.list_mode != crate::list_view::ListMode::Select {
                     visual.push(VisualItem::CreateNew {
-                        path: gf.clone(),
+                        path: gf.to_owned(),
                         depth: 0,
                     });
                 }
             }
+            if !self.config.list.section_tabs
+                && (gf.is_empty()
+                    || [
+                        VIRTUAL_PINNED_PATH,
+                        VIRTUAL_SMART_PATH,
+                        VIRTUAL_SUBNOTES_PATH,
+                    ]
+                    .contains(&gf))
+            {
+                visual.insert(
+                    0,
+                    VisualItem::Folder {
+                        path: VIRTUAL_ROOT_PATH.to_owned(),
+                        name: "..".to_owned(),
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: 0,
+                        recursive_count: 0,
+                        stale: false,
+                        is_pinned: false,
+                    },
+                );
+            }
         }
 
-        self.add_local_template_configs(&mut visual);
-        self.list.visual_list = visual;
-        self.clamp_visual_index();
-        self.request_preview_update();
+        let configs = self.add_local_template_configs(&mut visual, directory);
+        if let Some(section) = tab_section {
+            if let Some(start) = visual.iter().position(|item| matches!(item, VisualItem::Folder { path, depth: 0, .. } if path == &section)) {
+                let end = visual[start + 1..].iter_mut().position(|item| *item.depth_mut() == 0)
+                    .map_or(visual.len(), |offset| start + 1 + offset);
+                visual = visual.drain(start + 1..end).collect();
+                for item in &mut visual {
+                    *item.depth_mut() -= 1;
+                }
+            } else {
+                visual.clear();
+            }
+        }
+        (visual, configs)
+    }
+
+    pub(crate) fn refresh_multi_preview(&mut self) {
+        if self.list.notes_layout != crate::config::NotesLayout::Multi {
+            self.list.multi_preview = None;
+            return;
+        }
+        let folder = match self.list.visual_list.get(self.list.visual_index) {
+            Some(VisualItem::Folder { path, .. }) => Some(path.clone()),
+            Some(VisualItem::SmartFolder { kind, .. }) => Some(kind.virtual_path()),
+            _ => None,
+        };
+        let Some(folder) = folder else {
+            self.list.multi_preview = None;
+            return;
+        };
+        if self
+            .list
+            .multi_preview
+            .as_ref()
+            .is_some_and(|(path, _)| path == &folder)
+        {
+            return;
+        }
+        let (items, configs) = self.build_visual_list(Some(&folder));
+        self.list.template_config_folders.extend(configs);
+        self.list.multi_preview = Some((folder, items));
+        self.list.multi_scroll = 0;
     }
 
     /// Poll only state owned by Edit mode. Generic list/setup work stays out of
@@ -1104,6 +1244,7 @@ impl App {
     }
 
     pub fn request_preview_update(&mut self) {
+        self.refresh_multi_preview();
         if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
         }
@@ -2076,6 +2217,7 @@ mod tests {
                 (0, IconMode::Nerd),
                 (1, IconMode::Unicode),
                 (2, IconMode::None),
+                (3, IconMode::Emoji),
             ] {
                 app.apply_icon_selection(selected).unwrap();
                 assert_eq!(app.app_theme.icon_mode, mode);
@@ -2314,8 +2456,15 @@ mod tests {
         app.refresh_visual_list();
         app.list.preview_enabled = true;
 
+        app.enter_list_directory(String::new(), 0);
+
         // Warm cache
-        app.list.visual_index = 0;
+        app.list.visual_index = app
+            .list
+            .visual_list
+            .iter()
+            .position(|item| matches!(item, VisualItem::Note { .. }))
+            .unwrap();
         app.update_preview();
         assert!(matches!(
             app.list.preview_content,

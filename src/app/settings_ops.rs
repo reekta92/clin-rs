@@ -151,8 +151,15 @@ impl App {
         }
     }
 
-    pub fn adjust_preview_width(&mut self, delta: f32) {
-        self.adjust_preview_width_to(self.list.preview_width_ratio + delta);
+    pub fn adjust_preview_width_cells(&mut self, delta: i16) {
+        let width = self.list.last_area.width;
+        if width == 0 {
+            return;
+        }
+        let current = (self.list.preview_width_ratio * f32::from(width)).round() as u16;
+        self.adjust_preview_width_to(
+            f32::from(current.saturating_add_signed(delta)) / f32::from(width),
+        );
         self.persist_list_layout();
     }
 
@@ -223,7 +230,8 @@ impl App {
 
     pub fn active_strip_sections_for(&self, width: u16) -> Vec<crate::config::NotesSection> {
         let mut v = self.active_strip_sections();
-        if width < 42 {
+        let section_width = width / v.len().max(1) as u16;
+        if section_width < 21 {
             v.retain(|s| !matches!(s, crate::config::NotesSection::Goals));
         }
         if v.is_empty() {
@@ -557,18 +565,32 @@ impl App {
         })
     }
 
-    pub fn toggle_notes_layout(&mut self) {
-        self.list.notes_layout = match self.list.notes_layout {
-            crate::config::NotesLayout::Tree => crate::config::NotesLayout::Grid,
-            crate::config::NotesLayout::Grid => crate::config::NotesLayout::Tree,
-        };
-        self.list.visual_index = 0;
-        // #1: entering grid always opens the Vault tab (grid_folder == "")
-        self.list.grid_folder = String::new();
-        self.refresh_visual_list();
+    pub(crate) fn apply_notes_layout_selection(&mut self, selected: usize) -> anyhow::Result<()> {
+        let layout = crate::setup::layout_at(selected);
+        if self.list.notes_layout == layout {
+            return Ok(());
+        }
         // #2: persist
-        let val = self.list.notes_layout.clone();
-        let _ = self.persist_config(|c| c.list.default_view = val);
+        self.persist_config(|config| config.list.default_view = layout.clone())?;
+        self.config.list.default_view = layout.clone();
+        self.list.notes_layout = layout;
+        // #1: entering any layout opens its root: the Vault tab when tabs are enabled,
+        // or the section folders when tabs are disabled.
+        self.enter_list_directory(self.notes_root_directory(), 0);
+        Ok(())
+    }
+
+    pub fn toggle_notes_section_tabs(&mut self) -> anyhow::Result<()> {
+        let enabled = !self.config.list.section_tabs;
+        self.persist_config(|config| config.list.section_tabs = enabled)?;
+        self.config.list.section_tabs = enabled;
+        self.enter_list_directory(self.notes_root_directory(), 0);
+        self.set_temporary_status_static(if enabled {
+            "Notes sections shown as tabs"
+        } else {
+            "Notes sections shown as folders"
+        });
+        Ok(())
     }
     fn local_state_path(&self) -> anyhow::Result<std::path::PathBuf> {
         #[cfg(test)]

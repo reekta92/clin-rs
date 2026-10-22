@@ -37,7 +37,7 @@ fn row(buffer: &ratatui::buffer::Buffer, y: u16, start: u16, end: u16) -> String
 }
 
 #[test]
-fn config_items_are_visible_in_both_layouts_and_selection_modes_but_are_not_notes() {
+fn config_items_are_visible_in_all_layouts_and_selection_modes_but_are_not_notes() {
     let _guard = ConfigTestGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     config(dir.path(), "book", "[variables]\nbook = 'Rust'");
@@ -49,7 +49,12 @@ fn config_items_are_visible_in_both_layouts_and_selection_modes_but_are_not_note
     app.list
         .folder_expanded
         .extend(["".into(), "book".into(), "book/chapter".into()]);
-    for layout in [NotesLayout::Grid, NotesLayout::Tree] {
+    for layout in [
+        NotesLayout::Grid,
+        NotesLayout::Tree,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
         app.list.notes_layout = layout;
         app.list.grid_folder = "book".into();
         for mode in [ListMode::Normal, ListMode::Select] {
@@ -133,7 +138,7 @@ fn folder_badges_are_local_only_and_virtual_views_do_not_show_config_items() {
 }
 
 #[test]
-fn folder_template_glyph_renders_in_both_layouts_without_overwriting_pin() {
+fn folder_template_glyph_renders_in_all_layouts_without_overwriting_pin() {
     let _guard = ConfigTestGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     config(dir.path(), "book", "[variables]\nchapter = '04'");
@@ -144,7 +149,12 @@ fn folder_template_glyph_renders_in_both_layouts_without_overwriting_pin() {
     app.list.pinned_folders.insert("book".into());
     app.pinned_on_top = false;
     app.list.folder_expanded.insert("".into());
-    for layout in [NotesLayout::Grid, NotesLayout::Tree] {
+    for layout in [
+        NotesLayout::Grid,
+        NotesLayout::Tree,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
         app.list.notes_layout = layout.clone();
         app.list.grid_folder.clear();
         app.refresh_visual_list();
@@ -204,7 +214,7 @@ fn folder_template_glyph_renders_in_both_layouts_without_overwriting_pin() {
 }
 
 #[test]
-fn config_rows_open_validated_editor_and_preview_in_both_layouts() {
+fn config_rows_open_validated_editor_and_preview_in_all_layouts() {
     let _guard = ConfigTestGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     config(dir.path(), "book", "[variables]\nchapter = '04'");
@@ -212,7 +222,12 @@ fn config_rows_open_validated_editor_and_preview_in_both_layouts() {
     app.catalog_folders = vec!["book".into()];
     app.list.folder_expanded.extend(["".into(), "book".into()]);
     app.list.preview_enabled = true;
-    for layout in [NotesLayout::Grid, NotesLayout::Tree] {
+    for layout in [
+        NotesLayout::Grid,
+        NotesLayout::Tree,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
         app.list.notes_layout = layout;
         app.list.grid_folder = "book".into();
         app.refresh_visual_list();
@@ -248,7 +263,7 @@ fn config_rows_open_validated_editor_and_preview_in_both_layouts() {
 }
 
 #[test]
-fn config_filename_is_muted_in_tree_and_grid_rendering() {
+fn config_filename_is_muted_in_all_layouts() {
     let _guard = ConfigTestGuard::lock();
     let dir = tempfile::tempdir().unwrap();
     config(dir.path(), "book", "[variables]\nchapter = '04'");
@@ -256,7 +271,12 @@ fn config_filename_is_muted_in_tree_and_grid_rendering() {
     app.catalog_folders = vec!["book".into()];
     app.list.folder_expanded.extend(["".into(), "book".into()]);
     app.config.ui.icon_mode = IconMode::None;
-    for layout in [NotesLayout::Grid, NotesLayout::Tree] {
+    for layout in [
+        NotesLayout::Grid,
+        NotesLayout::Tree,
+        NotesLayout::List,
+        NotesLayout::Multi,
+    ] {
         app.list.notes_layout = layout.clone();
         app.list.grid_folder = "book".into();
         app.refresh_visual_list();

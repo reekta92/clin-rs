@@ -3,7 +3,85 @@ use crate::list_view::*;
 use crate::popups::*;
 
 impl App {
+    pub(crate) fn notes_directory_label(path: &str) -> &str {
+        match path {
+            VIRTUAL_ROOT_PATH => "Sections",
+            "" => "Vault",
+            VIRTUAL_PINNED_PATH => VIRTUAL_PINNED_LABEL,
+            VIRTUAL_SMART_PATH => VIRTUAL_SMART_LABEL,
+            VIRTUAL_SUBNOTES_PATH => VIRTUAL_SUBNOTES_LABEL,
+            _ => path,
+        }
+    }
+
+    pub(crate) fn notes_root_directory(&self) -> String {
+        if self.config.list.section_tabs {
+            String::new()
+        } else {
+            VIRTUAL_ROOT_PATH.to_owned()
+        }
+    }
+
+    pub(crate) fn notes_section_path(&self) -> &str {
+        let path = self.list.grid_folder.as_str();
+        if path == VIRTUAL_PINNED_PATH {
+            VIRTUAL_PINNED_PATH
+        } else if path == VIRTUAL_SMART_PATH || path.starts_with('@') {
+            VIRTUAL_SMART_PATH
+        } else if path == VIRTUAL_SUBNOTES_PATH || Self::is_subnotes_parent_grid_path(path) {
+            VIRTUAL_SUBNOTES_PATH
+        } else {
+            ""
+        }
+    }
+
+    pub(crate) fn enter_list_directory(&mut self, folder: String, selected: usize) {
+        self.list.grid_folder = folder;
+        self.list.visual_index = selected;
+        self.list.grid_scroll = 0;
+        *self.list.list_state.offset_mut() = 0;
+        self.list.selected_indices.clear();
+        self.list.note_drag = None;
+        self.list.drag_hover = None;
+        self.refresh_visual_list();
+    }
+
     pub fn collapse_selected_folder(&mut self) {
+        if self.list.notes_layout.browses_folders() {
+            let folder = self.list.grid_folder.clone();
+            if folder == VIRTUAL_ROOT_PATH || (folder.is_empty() && self.config.list.section_tabs) {
+                return;
+            }
+            let parent = if [
+                VIRTUAL_PINNED_PATH,
+                VIRTUAL_SMART_PATH,
+                VIRTUAL_SUBNOTES_PATH,
+            ]
+            .contains(&folder.as_str())
+                || folder.is_empty()
+            {
+                self.notes_root_directory()
+            } else if folder.starts_with('@') {
+                VIRTUAL_SMART_PATH.to_owned()
+            } else if Self::is_subnotes_parent_grid_path(&folder) {
+                VIRTUAL_SUBNOTES_PATH.to_owned()
+            } else {
+                folder
+                    .rsplit_once('/')
+                    .map_or("", |(parent, _)| parent)
+                    .to_owned()
+            };
+            self.enter_list_directory(parent, 0);
+            if let Some(index) = self.list.visual_list.iter().position(|item| match item {
+                VisualItem::Folder { path, .. } => path == &folder,
+                VisualItem::SmartFolder { kind, .. } => kind.virtual_path() == folder,
+                _ => false,
+            }) {
+                self.list.visual_index = index;
+                self.request_preview_update();
+            }
+            return;
+        }
         if self.list.visual_list.is_empty() {
             return;
         }
@@ -72,6 +150,10 @@ impl App {
     }
 
     pub fn expand_selected_folder(&mut self) {
+        if self.list.notes_layout.browses_folders() {
+            self.open_selected();
+            return;
+        }
         if self.list.visual_list.is_empty() {
             return;
         }
@@ -155,12 +237,9 @@ impl App {
 
             match &popup.mode {
                 FolderPopupMode::Create { parent_path } => {
-                    if Self::is_virtual_pinned_path(parent_path)
-                        || Self::is_virtual_subnotes_path(parent_path)
-                        || Self::is_subnotes_parent_grid_path(parent_path)
-                    {
+                    if Self::is_virtual_path(parent_path) {
                         self.set_temporary_status_static(
-                            "Cannot create folder inside virtual Subnotes",
+                            "Cannot create folder inside a virtual folder",
                         );
                         return;
                     }
@@ -177,11 +256,8 @@ impl App {
                     }
                 }
                 FolderPopupMode::Rename { old_path } => {
-                    if Self::is_virtual_pinned_path(old_path)
-                        || Self::is_virtual_subnotes_path(old_path)
-                        || Self::is_subnotes_parent_grid_path(old_path)
-                    {
-                        self.set_temporary_status_static("Cannot rename virtual Subnotes folder");
+                    if Self::is_virtual_path(old_path) {
+                        self.set_temporary_status_static("Cannot rename virtual folder");
                         return;
                     }
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
@@ -219,11 +295,8 @@ impl App {
         if let Some(VisualItem::Folder { path, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            if Self::is_virtual_pinned_path(path)
-                || Self::is_virtual_subnotes_path(path)
-                || Self::is_subnotes_parent_grid_path(path)
-            {
-                self.set_temporary_status_static("Cannot move virtual Subnotes folder");
+            if path.is_empty() || Self::is_virtual_path(path) {
+                self.set_temporary_status_static("Cannot move Vault root or virtual folder");
                 return;
             }
             let folder_path = path.clone();
@@ -252,10 +325,7 @@ impl App {
                     if path.is_empty() {
                         continue;
                     } // never move/delete vault root
-                    if Self::is_virtual_pinned_path(path)
-                        || Self::is_virtual_subnotes_path(path)
-                        || Self::is_subnotes_parent_grid_path(path)
-                    {
+                    if Self::is_virtual_path(path) {
                         continue;
                     } // never touch virtual folders
                     folder_paths.push(path.clone());
@@ -604,6 +674,9 @@ impl App {
             .folder_expanded
             .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
         if self.config.features.smart_folders.is_enabled() {
+            self.list
+                .folder_expanded
+                .insert(VIRTUAL_SMART_PATH.to_owned());
             self.list.folder_expanded.insert("@today".to_string());
             self.list.folder_expanded.insert("@week".to_string());
             self.list.folder_expanded.insert("@untagged".to_string());
@@ -624,8 +697,8 @@ impl App {
         }
     }
     pub fn toggle_pin_folder(&mut self, path: String) {
-        if path.is_empty() || path == crate::app::VIRTUAL_PINNED_PATH {
-            self.set_temporary_status_static("Cannot pin Vault root or Pinned notes");
+        if path.is_empty() || Self::is_virtual_path(&path) {
+            self.set_temporary_status_static("Cannot pin Vault root or virtual folders");
             return;
         }
         if self.list.pinned_folders.contains(&path) {

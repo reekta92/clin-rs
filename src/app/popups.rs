@@ -41,7 +41,7 @@ impl App {
     }
 
     pub fn select_template(&mut self) {
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        let folder = if self.list.notes_layout.browses_folders() {
             if Self::is_virtual_path(&self.list.grid_folder) {
                 String::new()
             } else {
@@ -89,7 +89,7 @@ impl App {
             self.set_temporary_status_static("Select a physical folder in the notes list first");
             return;
         }
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+        let folder = if self.list.notes_layout.browses_folders() {
             self.list.grid_folder.clone()
         } else {
             match self.list.visual_list.get(self.list.visual_index) {
@@ -686,6 +686,7 @@ template = """
             crate::config::IconMode::Nerd => 0,
             crate::config::IconMode::Unicode => 1,
             crate::config::IconMode::None => 2,
+            crate::config::IconMode::Emoji => 3,
         };
         self.present_action_popup(crate::popups::ActivePopup::IconMode(
             crate::popups::SelectionPopup {
@@ -704,6 +705,7 @@ template = """
         let mode = match selected {
             0 => crate::config::IconMode::Nerd,
             1 => crate::config::IconMode::Unicode,
+            3 => crate::config::IconMode::Emoji,
             _ => crate::config::IconMode::None,
         };
         self.config.ui.icon_mode = mode;
@@ -713,6 +715,7 @@ template = """
             crate::config::IconMode::Nerd => "Icon mode: Nerd Font",
             crate::config::IconMode::Unicode => "Icon mode: Unicode",
             crate::config::IconMode::None => "Icon mode: None",
+            crate::config::IconMode::Emoji => "Icon mode: Emoji",
         };
         self.set_temporary_status_static(status);
         self.persist_config(|config| config.ui.icon_mode = mode)?;
@@ -1099,8 +1102,8 @@ template = """
 
         if self.list.notes_layout != self.config.list.default_view {
             self.list.notes_layout = self.config.list.default_view.clone();
-            if self.list.notes_layout == crate::config::NotesLayout::Grid {
-                self.list.grid_folder = String::new();
+            if self.list.notes_layout.browses_folders() {
+                self.list.grid_folder = self.notes_root_directory();
             }
             self.list.visual_index = 0;
             self.refresh_visual_list();

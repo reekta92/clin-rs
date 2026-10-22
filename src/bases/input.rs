@@ -178,9 +178,7 @@ impl BasesState {
                 (app.keybinds.display_bases(BasesAction::Open), "open"),
                 (app.keybinds.display_bases(BasesAction::Edit), "edit"),
                 (app.keybinds.display_bases(BasesAction::NextView), "views"),
-                (app.keybinds.display_bases(BasesAction::Configure), "config"),
                 (app.keybinds.display_bases(BasesAction::Search), "search"),
-                (app.keybinds.display_bases(BasesAction::Refresh), "refresh"),
             ],
         );
         let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Bases);

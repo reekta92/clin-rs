@@ -1,9 +1,9 @@
 use chrono::Datelike;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Padding, Paragraph};
+use ratatui::widgets::{Block, Padding, Paragraph};
 
 use crate::app_theme::AppThemeColors;
 
@@ -106,29 +106,12 @@ pub fn draw_calendar(
 
     // Border at the interface edge spans the full strip width so that a single
     // centered section still gets a full-width border.
-    let border = if bottom_border {
-        Borders::BOTTOM
-    } else {
-        Borders::TOP
-    };
-    let border_bg = theme.bg.unwrap_or(Color::Reset);
-    let strip_block = Block::default()
-        .style(theme.bg_style())
-        .borders(border)
-        .border_style(Style::default().fg(theme.muted).bg(border_bg));
-    let inner = strip_block.inner(strip_rect);
-    frame.render_widget(&strip_block, strip_rect);
-
     // Content area = section rect clipped to the border's inner area.
-    let content_x = rect.x.max(inner.x);
-    let content_y = rect.y.max(inner.y);
-    let content_w = (rect.right().min(inner.right())).saturating_sub(content_x);
-    let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
-    let content_area = Rect::new(content_x, content_y, content_w, content_h);
+    let content_area = crate::ui::widget_strip_area(frame, rect, strip_rect, bottom_border, theme);
     let pad_top = content_area.height.saturating_sub(8) / 2;
     let inner_block = Block::default()
         .style(theme.bg_style())
-        .padding(Padding::new(2, 2, pad_top, 0));
+        .padding(Padding::new(0, 0, pad_top, 0));
     let paragraph = Paragraph::new(lines)
         .style(theme.bg_style())
         .block(inner_block);
