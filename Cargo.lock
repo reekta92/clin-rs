@@ -1796,7 +1796,6 @@ dependencies = [
  "qoi",
  "ravif",
  "rayon",
- "rgb",
  "tiff",
  "zune-core",
  "zune-jpeg",
@@ -2954,9 +2953,9 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pinstar"
-version = "1.1.2"
+version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8672cf48a0f362ae7aaf4b1a830ea779bc75fc34f820d42b13f909cb553e35a"
+checksum = "9860472f38518dec3f117f9435b61f045cb39a7d9831094eff9bfb90d0c4581a"
 dependencies = [
  "anyhow",
  "crossterm",

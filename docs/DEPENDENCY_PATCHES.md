@@ -9,9 +9,9 @@ Stored digests and recovery record formats remain unchanged.
 Image features explicitly retain the existing decoders and PNG output while
 omitting the unused AVIF encoder. Image 0.25's `avif` feature enables encoding;
 AVIF decoding requires the separate `avif-native` feature, which Clin did not
-enable. Pinstar defaults are disabled so its forthcoming `image-defaults` opt-out
-can take effect. Published Pinstar 1.1.2 and 1.1.3 still force image defaults;
-the AVIF dependency reduction requires the coordinated Pinstar release.
+enable. Pinstar 1.1.4 separates `image-defaults` from image-node support, so Clin
+disables its defaults and selects codecs itself. Older Pinstar releases force
+all image defaults.
 
 The lockfile also selects `rustls 0.23.46`, resolving
 `RUSTSEC-2026-0346` through `RUSTSEC-2026-0349` without advisory ignores or an MSRV
@@ -21,9 +21,9 @@ distrusted intermediate certificates), preserving the same compiler minimum.
 
 ## Mermaid YAML backend
 
-Clin depends on published Graf, Draw and Pinstar packages, with a minimum of
-Pinstar 1.1.2 for the maintained Mermaid backend. Cargo.lock fixes exact versions
-and registry checksums.
+Clin depends on published Graf, Draw and Pinstar packages. Pinstar 1.1.4 provides
+the maintained Mermaid backend and independent image codec selection. Cargo.lock
+fixes exact versions and registry checksums.
 
 Pinstar uses published `merman-core-clin 0.6.0` from
 [the maintained fork branch](https://github.com/reekta92/merman/tree/fix/maintained-yaml-msrv-1.90).
