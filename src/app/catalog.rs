@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
 use std::time::{Duration, Instant};
 
-const NOTE_CACHE_VERSION: u16 = 5;
+const NOTE_CACHE_VERSION: u16 = 6;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct PersistedNoteCache {
@@ -742,6 +742,22 @@ mod tests {
         assert_eq!(reloaded_summaries.len(), 1);
         assert_eq!(reloaded_summaries[0].title, "Super Secret Title");
         assert_eq!(reloaded_map.get("folder/secret_note.md").unwrap().0, stamp);
+
+        let (mut old, _) = bincode::serde::decode_from_slice::<PersistedNoteCache, _>(
+            &raw,
+            bincode::config::standard(),
+        )
+        .unwrap();
+        old.version = 5;
+        old.entries[0].2.links = vec!["code-block-link-from-legacy-scanner".into()];
+        std::fs::write(
+            &cache_path,
+            bincode::serde::encode_to_vec(old, bincode::config::standard()).unwrap(),
+        )
+        .unwrap();
+        let (summaries, map, folders) =
+            load_persisted_note_cache(&storage, &cache_path, digest, false, false);
+        assert!(summaries.is_empty() && map.is_empty() && folders.is_empty());
     }
 
     #[test]
