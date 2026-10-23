@@ -73,6 +73,25 @@ fn attachment_paths_stay_in_the_public_vault() -> Result<()> {
 }
 
 #[test]
+fn oversized_subnote_saves_keep_the_existing_database_readable() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut storage = fixture(root.path());
+    let mut notes = vec![SubNote {
+        id: "child".into(),
+        title: "Child".into(),
+        content: "keep".into(),
+        updated_at: 1,
+    }];
+    storage.set_subnotes("note.md", &notes)?;
+    let before = fs::read(storage.subnotes_db_path())?;
+    notes[0].content = "x".repeat(SUBNOTES_MAX_BYTES);
+    assert!(storage.set_subnotes("large.md", &notes).is_err());
+    assert_eq!(fs::read(storage.subnotes_db_path())?, before);
+    assert_eq!(storage.get_subnotes("note.md")?[0].content, "keep");
+    Ok(())
+}
+
+#[test]
 fn pinning_rejects_structured_documents_without_changing_bytes() -> Result<()> {
     let root = tempfile::tempdir()?;
     let storage = fixture(root.path());

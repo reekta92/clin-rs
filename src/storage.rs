@@ -13,8 +13,11 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+const SUBNOTES_MAX_BYTES: usize = 40 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
@@ -1655,21 +1658,16 @@ impl Storage {
     }
     fn load_subnotes_db(&self) -> Result<HashMap<String, SubNotePayload>> {
         let path = self.subnotes_db_path();
-        let mut bytes = match fs::read(&path) {
-            Ok(bytes) => bytes,
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
             Err(error) => return Err(error).context("failed to read subnotes database"),
         };
+        let mut bytes = Vec::new();
+        file.take(SUBNOTES_MAX_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)?;
         obfuscate(&mut bytes);
-        let (db, used) = bincode::serde::decode_from_slice(
-            &bytes,
-            bincode::config::standard().with_limit::<{ 40 * 1024 * 1024 }>(),
-        )
-        .context("invalid subnotes database; original data retained")?;
-        if used != bytes.len() {
-            anyhow::bail!("unexpected trailing subnotes data; original data retained");
-        }
-        Ok(db)
+        decode_subnotes_db(&bytes)
     }
 
     fn save_subnotes_db(&self, db: &HashMap<String, SubNotePayload>) -> Result<()> {
@@ -1680,6 +1678,9 @@ impl Storage {
         )?;
         let mut bytes = bincode::serde::encode_to_vec(db, bincode::config::standard())
             .context("failed to serialize subnotes database")?;
+        // Validate the reader's allocation budget too, before replacing readable data.
+        decode_subnotes_db(&bytes)
+            .context("subnotes save exceeds reader limits; original retained")?;
         obfuscate(&mut bytes);
         crate::fsutil::atomic_write_with_mode(&path, &bytes, 0o600)
             .context("failed to write subnotes database")
@@ -1782,6 +1783,23 @@ impl Storage {
         }
     }
 }
+fn decode_subnotes_db(bytes: &[u8]) -> Result<HashMap<String, SubNotePayload>> {
+    anyhow::ensure!(
+        bytes.len() <= SUBNOTES_MAX_BYTES,
+        "subnotes database exceeds 40 MiB; original retained"
+    );
+    let (db, used) = bincode::serde::decode_from_slice(
+        bytes,
+        bincode::config::standard().with_limit::<SUBNOTES_MAX_BYTES>(),
+    )
+    .context("invalid subnotes database; original data retained")?;
+    anyhow::ensure!(
+        used == bytes.len(),
+        "unexpected trailing subnotes data; original data retained"
+    );
+    Ok(db)
+}
+
 fn obfuscate(data: &mut [u8]) {
     // Generate pattern dynamically to prevent false positive in SAST tools
     let mut pattern = Vec::with_capacity(39);
