@@ -208,6 +208,93 @@ fn visible(app: &App, id: &str) -> bool {
 }
 
 #[test]
+fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    let ids = f
+        .app
+        .calendar
+        .update(&f.app.storage, |data| {
+            let mut ids = Vec::new();
+            for title in ["First", "Second"] {
+                let mut draft = crate::calendar::ical::Draft::new(date);
+                draft.title = title.into();
+                let event = crate::calendar::store::Resource::new(draft.build(None)?, None);
+                ids.push(event.id.clone());
+                data.resources.push(event);
+            }
+            Ok(ids)
+        })
+        .unwrap();
+    for display in ['m', 'w', 'd', 'a'] {
+        drive(&mut f.app, key(KeyCode::Char(display)));
+        for (movement, arrow) in [
+            ('h', KeyCode::Left),
+            ('l', KeyCode::Right),
+            ('j', KeyCode::Down),
+            ('k', KeyCode::Up),
+        ] {
+            f.app.calendar_view.as_mut().unwrap().date = date;
+            drive(&mut f.app, key(KeyCode::Char('K')));
+            drive(&mut f.app, key(KeyCode::Char(movement)));
+            let moved_date = f.app.calendar_view.as_ref().unwrap().date;
+            let days = match (display, movement) {
+                (_, 'h') => -1,
+                (_, 'l') => 1,
+                ('m' | 'w', 'j') => 7,
+                ('m' | 'w', 'k') => -7,
+                _ => 0,
+            };
+            assert_eq!(moved_date, date + chrono::Duration::days(days));
+            drive(&mut f.app, key(KeyCode::Char('y')));
+            let moved_reference =
+                crate::text_edit::TEST_CLIPBOARD.with(|c| c.borrow().clone().unwrap());
+            assert!(f.app.calendar_view.as_ref().unwrap().dialog.is_none());
+            f.app.calendar_view.as_mut().unwrap().date = date;
+            drive(&mut f.app, key(KeyCode::Char('K')));
+            drive(&mut f.app, key(arrow));
+            assert_eq!(
+                f.app.calendar_view.as_ref().unwrap().date,
+                moved_date,
+                "{display}: {movement}"
+            );
+            drive(&mut f.app, key(KeyCode::Char('y')));
+            assert_eq!(
+                crate::text_edit::TEST_CLIPBOARD.with(|c| c.borrow().clone().unwrap()),
+                moved_reference
+            );
+        }
+        f.app.calendar_view.as_mut().unwrap().date = date;
+        drive(&mut f.app, key(KeyCode::Char('K')));
+        drive(&mut f.app, key(KeyCode::Char('J')));
+        drive(&mut f.app, key(KeyCode::Char('y')));
+        assert_eq!(f.app.calendar_view.as_ref().unwrap().date, date);
+        assert!(
+            crate::text_edit::TEST_CLIPBOARD.with(|c| c
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .contains(&ids[1]))
+        );
+        drive(&mut f.app, key(KeyCode::Char('K')));
+        drive(&mut f.app, key(KeyCode::Char('y')));
+        assert!(
+            crate::text_edit::TEST_CLIPBOARD.with(|c| c
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .contains(&ids[0]))
+        );
+    }
+    drive(&mut f.app, key(KeyCode::Char('L')));
+    assert!(matches!(
+        f.app.calendar_view.as_ref().unwrap().dialog,
+        Some(crate::calendar::view::Dialog::Notes { .. })
+    ));
+}
+
+#[test]
 fn calendar_schedule_form_links_note_and_returns_from_editor() {
     let mut f = Fixture::new();
     activate(&mut f.app, "calendar.schedule_note");
@@ -283,7 +370,7 @@ fn calendar_form_retains_invalid_input_and_renders_all_views_at_small_sizes() {
                 .unwrap();
         }
     }
-    drive(&mut f.app, key(KeyCode::Char('l')));
+    drive(&mut f.app, key(KeyCode::Char('L')));
     drive(&mut f.app, key(KeyCode::Enter));
     let id = &f.app.calendar.data().resources[0].id;
     assert_eq!(

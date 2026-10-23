@@ -17,7 +17,7 @@ use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
 use std::collections::BTreeMap;
 
-const HELP: &str = "m/w/d/a  Month / Week / Day / Agenda\nArrows  Select date    PgUp/PgDn  Previous/next period\nt  Today    j/k  Select event    Tab  Next view\nn  New event    e  Edit series    Delete  Delete series\nl  Link note (or schedule note on an empty date)\no / Enter  Open linked note    c  Resolve sync conflict\ny  Copy inline date/event reference\ni  Import .ics    E  Export .ics (new file only)\ns  Sync CalDAV    r  Reload from disk\nEsc  Return to Notes    ?  This help\n\nDate input: YYYY-MM-DD (all day; end date exclusive)\nTime input: YYYY-MM-DDTHH:MM (local), or RFC3339 with offset.\nRepeat: RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,WE\nEdits and deletes apply to the entire series.\nTimes display in your system timezone. Note links remain local.";
+const HELP: &str = "m/w/d/a  Month / Week / Day / Agenda\nhjkl / Arrows  Navigate dates/events    PgUp/PgDn  Previous/next period\nt  Today    J/K  Select event    Tab  Next view\nn  New event    e  Edit series    Delete  Delete series\nL  Link note (or schedule note on an empty date)\no / Enter  Open linked note    c  Resolve sync conflict\ny  Copy inline date/event reference\ni  Import .ics    E  Export .ics (new file only)\ns  Sync CalDAV    r  Reload from disk\nEsc  Return to Notes    ?  This help\n\nDate input: YYYY-MM-DD (all day; end date exclusive)\nTime input: YYYY-MM-DDTHH:MM (local), or RFC3339 with offset.\nRepeat: RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,WE\nEdits and deletes apply to the entire series.\nTimes display in your system timezone. Note links remain local.";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Display {
@@ -633,11 +633,21 @@ impl View {
             KeyCode::Char('a') => self.display = Display::Agenda,
             KeyCode::Tab => self.display = self.display.next(),
             KeyCode::Left | KeyCode::Char('h') => days = -1,
-            KeyCode::Right => days = 1,
-            KeyCode::Up if matches!(self.display, Display::Month | Display::Week) => days = -7,
-            KeyCode::Down if matches!(self.display, Display::Month | Display::Week) => days = 7,
-            KeyCode::Up | KeyCode::Char('k') => self.selected = self.selected.saturating_sub(1),
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Right | KeyCode::Char('l') => days = 1,
+            KeyCode::Up | KeyCode::Char('k')
+                if matches!(self.display, Display::Month | Display::Week) =>
+            {
+                days = -7
+            }
+            KeyCode::Down | KeyCode::Char('j')
+                if matches!(self.display, Display::Month | Display::Week) =>
+            {
+                days = 7
+            }
+            KeyCode::Up | KeyCode::Char('k' | 'K') => {
+                self.selected = self.selected.saturating_sub(1)
+            }
+            KeyCode::Down | KeyCode::Char('j' | 'J') => {
                 self.selected = (self.selected + 1).min(self.visible.len().saturating_sub(1))
             }
             KeyCode::PageUp | KeyCode::PageDown => {
@@ -668,7 +678,7 @@ impl View {
                     self.dialog = Some(Dialog::Delete(id));
                 }
             }
-            KeyCode::Char('l') => self.begin_notes(app, false),
+            KeyCode::Char('L') => self.begin_notes(app, false),
             KeyCode::Char('o') | KeyCode::Enter => self.begin_notes(app, true),
             KeyCode::Char('y') => {
                 let target = self.selected_event().map_or_else(
@@ -916,7 +926,7 @@ impl View {
         }
         self.render_inspector(frame, body[1], app);
         let footer = self.error.as_deref().unwrap_or(
-            "n New  e Edit  l Link note  o Open note  s Sync  i Import  E Export  ? Help  Esc Back",
+            "n New  e Edit  L Link note  o Open note  s Sync  i Import  E Export  ? Help  Esc Back",
         );
         let conflicts = app.calendar.store.as_ref().map_or(0, |s| {
             s.data
@@ -1205,7 +1215,7 @@ impl View {
         } else {
             vec![
                 Line::from("Select a date or event."),
-                Line::from("n: create event · l: schedule note"),
+                Line::from("n: create event · L: schedule note"),
             ]
         };
         frame.render_widget(

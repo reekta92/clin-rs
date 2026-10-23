@@ -78,7 +78,9 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         ViewMode::Calendar => [
             ("m / w / d / a", "Month / week / day / agenda"),
             ("n / e / Delete", "New / edit / delete event"),
-            ("l / o", "Link / open note"),
+            ("hjkl / Arrows", "Navigate dates / events"),
+            ("J / K", "Next / previous event"),
+            ("L / o", "Link / open note"),
             ("s / i / E", "Sync / import / export"),
             ("?", "Calendar help"),
             ("Esc", "Back to Notes"),
