@@ -144,6 +144,7 @@ ryu-js = "1.0.3"
 rquickjs = { version = "0.14.0", default-features = false, features = ["std"] }
 strum = { version = "0.28", features = ["derive"] }
 yaml-edit = { version = "0.3.2", default-features = false }
+which = "8.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"
