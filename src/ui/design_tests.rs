@@ -11,6 +11,7 @@ fn fixture() -> (tempfile::TempDir, App) {
     crate::config::set_config_path_override(app.storage.config_dir.join("config.toml"));
     app.mode = ViewMode::List;
     app.status = "".into();
+    app.command_usage_path = Some(app.storage.config_dir.join("commands.json"));
     app.messages.messages.clear();
     std::fs::create_dir_all(app.storage.notes_dir.join("docs/nested")).unwrap();
     app.catalog_folders = vec!["docs".into(), "docs/nested".into()];
@@ -934,10 +935,9 @@ fn section_tabs_toggle_and_persist_for_every_layout() {
             .unwrap();
         assert!(
             text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1)).contains("Pinned"),
-            "{layout:?} {:?}: {} {:?}",
+            "{layout:?} {:?}: {}",
             app.mode,
-            text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1)),
-            app.messages.messages.iter().map(|m| &m.text).collect::<Vec<_>>()
+            text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1))
         );
         let tabs = [
             ("Vault", Some(icons::FOLDER.get(app.config.ui.icon_mode))),

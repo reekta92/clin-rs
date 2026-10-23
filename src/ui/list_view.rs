@@ -1845,10 +1845,7 @@ pub(crate) fn list_view_layout(
             .split(chunks[1]);
         (full_cols[list_idx], Some(full_cols[p_idx]))
     } else {
-        (
-            Rect::new(area.x, area.y + 1, area.width, chunks[1].height),
-            None,
-        )
+        (chunks[1], None)
     };
 
     let (list_area, calendar_area) = if calendar_enabled {

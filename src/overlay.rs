@@ -146,7 +146,8 @@ pub enum OverlayResult {
 
 /// Uniform contract for sub-view overlays.
 pub trait OverlayView {
-    /// Render the overlay into `area`.
+    /// Render into `area`, which excludes the application's shared footer.
+    /// The host reserves and paints that row; overlays only render their content.
     fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,

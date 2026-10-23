@@ -303,20 +303,17 @@ impl App {
             .unwrap_or_else(|_| self.storage.data_dir.to_string_lossy().into_owned());
         let expanded: std::collections::BTreeSet<String> =
             self.list.folder_expanded.iter().cloned().collect();
-        if let Ok(paths) = crate::paths::AppPaths::discover(
-            crate::config::ClinConfig::config_path().unwrap_or_default(),
-        ) {
-            let state_path = paths.state_path();
-            if let Err(e) = crate::local_state::LocalState::update(&state_path, |s| {
+        if let Ok(state_path) = self.local_state_path()
+            && let Err(e) = crate::local_state::LocalState::update(&state_path, |s| {
                 let vault = s.vaults.entry(vault_id.clone()).or_default();
                 vault.expanded_folders = expanded.clone();
                 Ok(())
-            }) {
-                self.messages.push(
-                    format!("Failed to persist folder state: {e}"),
-                    crate::app::messages::MessageSeverity::Warning,
-                );
-            }
+            })
+        {
+            self.messages.push(
+                format!("Failed to persist folder state: {e}"),
+                crate::app::messages::MessageSeverity::Warning,
+            );
         }
     }
 

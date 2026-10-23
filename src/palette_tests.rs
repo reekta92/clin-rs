@@ -208,6 +208,29 @@ fn visible(app: &App, id: &str) -> bool {
 }
 
 #[test]
+fn shared_footer_survives_missing_view_state_and_tiny_terminals() {
+    use strum::IntoEnumIterator;
+    let mut f = Fixture::new();
+    f.app.config.statusline.footer_left = Some("F".into());
+    f.app.config.statusline.footer_right = Some(String::new());
+    f.app.app_theme.hint_bar_style = crate::config::HintBarStyle::Classic;
+    for mode in ViewMode::iter() {
+        f.app.mode = mode;
+        for (width, height) in [(1, 1), (12, 4), (80, 12)] {
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            assert_eq!(
+                terminal.backend().buffer()[(0, height - 1)].symbol(),
+                "F",
+                "{mode:?} at {width}x{height}"
+            );
+        }
+    }
+}
+
+#[test]
 fn every_view_has_the_host_footer_in_every_hint_style() {
     use strum::IntoEnumIterator;
     for mode in ViewMode::iter() {
