@@ -33,6 +33,7 @@ where
 
         dirty |= app.messages.tick_expirations();
         dirty |= app.tick_status();
+        dirty |= app.poll_calendar();
         if app.base_embeds.has_visible() {
             crate::process_watcher_events(app);
             dirty |= app.poll_bases();

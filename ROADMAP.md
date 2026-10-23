@@ -131,8 +131,8 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [ ] **To-do view** — a new view for specifically managing to-dos
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
-- [ ] **Interactive calendar** — for managing tasks/assigning tasks to dates
-- [ ] **Integration** — allow for integration and sync for third party calendar apps or system calendar app
+- [x] **Interactive calendar** — month/week/day/agenda with scheduled events and linked notes; see [Calendar](docs/CALENDAR.md)
+- [x] **Calendar integration** — iCalendar import/export and manual CalDAV synchronization
 
 #### Project Management View
 - [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.

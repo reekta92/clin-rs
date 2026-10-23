@@ -1364,6 +1364,19 @@ fn finish_overlay_event(app: &mut App, kind: ViewKind, res: crate::overlay::Over
                     app.set_default_status();
                 }
             }
+            ViewKind::Calendar => match other {
+                OverlayResult::Exit => {
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                    app.set_default_status();
+                }
+                OverlayResult::NoteOpened(id) => {
+                    app.open_note_at_line(&id, None);
+                    if app.mode == ViewMode::Edit {
+                        app.return_mode = Some(ViewMode::Calendar);
+                    }
+                }
+                _ => {}
+            },
             ViewKind::Outline => match other {
                 OverlayResult::Exit | OverlayResult::JumpToLine { .. } => {
                     app.outline_state = None;
@@ -1408,6 +1421,10 @@ where
             crate::editor_session::run_editor_session(terminal, app, events, &mut |_| false)?;
             prev_mode = app.mode;
             continue;
+        }
+        if app.poll_calendar() {
+            list_dirty = true;
+            graph_dirty = true;
         }
         if app.poll_bases() {
             list_dirty = true;
@@ -1766,7 +1783,8 @@ where
                         | ViewMode::Canvas
                         | ViewMode::Bases
                         | ViewMode::Draw
-                        | ViewMode::Outline => match OverlayState::take(app) {
+                        | ViewMode::Outline
+                        | ViewMode::Calendar => match OverlayState::take(app) {
                             Some(mut view) => {
                                 let kind = view.kind();
                                 let res = view.overlay_handle_event(Event::Key(key), app, area);
@@ -1812,7 +1830,8 @@ where
                         | ViewMode::Canvas
                         | ViewMode::Bases
                         | ViewMode::Draw
-                        | ViewMode::Outline => {
+                        | ViewMode::Outline
+                        | ViewMode::Calendar => {
                             let kind = ViewKind::from_mode(app.mode);
                             let scrolls = matches!(kind, Some(ViewKind::Draw | ViewKind::Canvas));
                             let mut coalesce = false;

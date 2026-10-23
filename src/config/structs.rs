@@ -724,6 +724,21 @@ impl FeaturesConfig {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CalendarConfig {
+    pub caldav: Vec<CalDavAccount>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CalDavAccount {
+    pub name: String,
+    pub url: String,
+    pub username: String,
+    pub password_env: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ClinConfig {
@@ -740,6 +755,8 @@ pub struct ClinConfig {
     pub graf: GrafConfig,
     #[serde(default)]
     pub goals: GoalsConfig,
+    #[serde(default)]
+    pub calendar: CalendarConfig,
     pub image: ImageConfig,
     #[serde(default)]
     pub statusline: StatuslineConfig,

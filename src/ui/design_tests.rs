@@ -778,6 +778,7 @@ fn widget_frames_share_padding_and_only_the_interface_border() {
         for bottom in [false, true] {
             for section in [
                 crate::config::NotesSection::Calendar,
+                crate::config::NotesSection::Activity,
                 crate::config::NotesSection::Goals,
                 crate::config::NotesSection::Todo,
                 crate::config::NotesSection::Draw,
@@ -785,7 +786,10 @@ fn widget_frames_share_padding_and_only_the_interface_border() {
             ] {
                 terminal
                     .draw(|frame| match section {
-                        crate::config::NotesSection::Calendar => crate::calendar::draw_calendar(
+                        crate::config::NotesSection::Calendar => {
+                            crate::calendar::view::draw_widget(frame, area, &mut app, bottom, area)
+                        }
+                        crate::config::NotesSection::Activity => crate::calendar::draw_calendar(
                             frame,
                             area,
                             &app.app_theme,

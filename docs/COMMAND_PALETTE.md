@@ -1,6 +1,6 @@
 # Command Palette
 
-The same command palette opens with **Ctrl+Space** or **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Outline, and Setup. Only key presses open it. View bindings containing a global shortcut stroke take priority. F2 and Help show the available configured shortcuts. Legacy terminal NUL input is accepted as Ctrl+Space.
+The same command palette opens with **Ctrl+Space** or **F6** in List, Edit, Help, Graph, Draw, Canvas, Bases, Outline, Calendar, and Setup. Only key presses open it. View bindings containing a global shortcut stroke take priority. F2 and Help show the available configured shortcuts. Legacy terminal NUL input is accepted as Ctrl+Space.
 
 Remap the palette in the active preset file; existing files inherit these defaults:
 
@@ -71,6 +71,7 @@ Unknown IDs are denied. A registration test checks unique IDs and complete class
 | Graph | Live legend, minimap, and orphan settings |
 | Bases | Guarded public operations and public Bases creation in the active file's parent folder |
 | Canvas | Image insertion through Canvas history, raw-editor synchronization, and fallible save |
+| Calendar | New event, iCalendar import/export, CalDAV sync; Schedule Note starts from a selected Markdown note in Notes |
 | Draw, Outline, Help | Shared settings and valid navigation |
 | Setup | Pending theme/preset selectors, Finish Setup, and Cancel Setup only |
 

@@ -295,6 +295,21 @@ pub fn handle_bracketed_paste(
     }
 
     // 5. Per view mode
+    if app.mode == ViewMode::Calendar
+        && let Some(mut view) = app.calendar_view.take()
+    {
+        let result = crate::overlay::OverlayView::overlay_handle_event(
+            &mut view,
+            crossterm::event::Event::Paste(data),
+            app,
+            Rect::default(),
+        );
+        app.calendar_view = Some(view);
+        if let Err(error) = result {
+            app.set_temporary_status(&format!("{error:#}"));
+        }
+        return true;
+    }
     match app.mode {
         ViewMode::Edit => match focus {
             EditFocus::Title => {

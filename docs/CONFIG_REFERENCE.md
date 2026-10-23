@@ -65,7 +65,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `import` | `enum` | `true` | Enable import (File/CSV/JSON/URL/Clipboard) and OCR paste |
 | `images` | `enum` | `true` | Enable native pixel image rendering (restart required) |
 | `goals` | `enum` | `true` | Enable the daily word/note goals system |
-| `calendar` | `enum` | `true` | Show rolling-week note activity in the notes list |
+| `calendar` | `enum` | `true` | Show the Notes widget strip (Calendar view remains available) |
 | `smart_folders` | `enum` | `true` | Enable virtual smart folders (Today, This Week, Untagged) |
 
 ### `[core]`
@@ -113,8 +113,8 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
-| `week_start` | `enum` | `"sunday"` | Start day for rolling-week activity: `"sunday"` or `"monday"` |
-| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`, `todo` |
+| `week_start` | `enum` | `"sunday"` | Start day for Calendar and rolling-week activity: `"sunday"` or `"monday"` |
+| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `activity`, `goals`, `draw`, `graf`, `todo` |
 | `folder_graph_preview` | `bool` | `false` | Show graph preview for folders |
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
@@ -808,3 +808,25 @@ The old `graf.toml` file is **no longer used**. All graf options (`[graf.visual]
 - [README.md](../README.md) — Quickstart, installation, CLI commands
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system details and color reference
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Graph view configuration context
+
+## Calendar and CalDAV
+
+The Calendar view is available from the command palette independently of the Notes widget strip. `calendar` selects the month widget; `activity` selects the note-activity heatmap.
+
+```toml
+[[calendar.caldav]]
+name = "Work"
+url = "https://example.org/dav/"
+username = "user"
+password_env = "CLIN_CALDAV_PASSWORD"
+```
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `calendar.caldav` | array of tables | `[]` | Accounts for manual CalDAV synchronization |
+| `name` | string | `""` | Display prefix for discovered calendars |
+| `url` | string | `""` | HTTPS account/home/collection endpoint; required per account |
+| `username` | string | `""` | Basic-auth username; configure together with `password_env` |
+| `password_env` | string | `""` | Environment-variable name containing the password/app password |
+
+Set the named variable before starting clin. Password values stay outside config. Only localhost permits HTTP; redirects and cross-origin discovery are rejected. See [Calendar](CALENDAR.md) for scheduling, sync conflicts, limits, and the local protocol simulation.

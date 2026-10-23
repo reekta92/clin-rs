@@ -70,6 +70,7 @@ Open an existing Obsidian vault in `clin` to use public Markdown, Canvas and Bas
 
 ## Highlights
 
+- **Calendar view** — month/week/day/agenda, note scheduling and inline date/event references, iCalendar import/export, and manual CalDAV sync with conflict handling. See [Calendar](docs/CALENDAR.md).
 - **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews; auto-refresh on external file changes; show-info popup with word/char/header metrics.
 - **Editor view** — title/body editing with optional Markdown preview, built-in find popup, soft-wrap toggle, sidebars with wikilink previews, mouse support, line numbers, undo/redo, editor context menu, external editor integration, insert-date action. See [EDITOR.md](docs/EDITOR.md).
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
@@ -478,6 +479,7 @@ Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all proje
 - [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and preset keybind-file options
 - [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
 - [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
+- [Calendar](docs/CALENDAR.md) — scheduling, linked notes, iCalendar, and CalDAV setup
 - [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view
 
 - [Draw](docs/DRAW.md) — freehand drawing canvas

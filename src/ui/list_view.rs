@@ -1595,7 +1595,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let rects = section_rects(cal_rect, &active);
         for (sec, r) in active.iter().zip(rects.iter().copied()) {
             match sec {
-                crate::config::NotesSection::Calendar => crate::calendar::draw_calendar(
+                crate::config::NotesSection::Calendar => {
+                    crate::calendar::view::draw_widget(frame, r, app, bottom_border, cal_rect)
+                }
+                crate::config::NotesSection::Activity => crate::calendar::draw_calendar(
                     frame,
                     r,
                     &app.app_theme,

@@ -18,6 +18,7 @@ pub enum ViewMode {
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
     Bases,   // Public-only .base queries and native authoring
     Outline,  // Header-based note outline
+    Calendar, // Events, linked notes, iCalendar and CalDAV
     Setup,   // First-run setup wizard
 }
 ```
@@ -40,13 +41,20 @@ List  ──?/F1──► Help
 Help  ──Esc───► previous view
 List  ──palette──► Outline  (via command palette outline.open)
 List  ──palette──► Setup   (via setup_wizard)
+List/Edit ──palette or date reference──► Calendar
+Calendar ──open linked note──► Edit ──Esc──► Calendar
+Calendar ──Esc──► List
 Setup ──Esc───► List
 Outline ──Esc───► List
 ```
 
-Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Bases, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
+Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Bases, Outline, and Calendar all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
 
 ---
+
+## Calendar ownership
+
+`calendar::view` owns the Calendar overlay and Notes mini-month; `calendar::ical` owns RFC 5545 parsing, recurrence, and schedule edits. `calendar::store` owns per-vault atomic event storage, stale-write checks, and note associations through guarded frontmatter writes. `calendar::dav` owns RFC 4791 discovery and conditional synchronization. A manual sync runs on a worker with a captured vault storage handle and a separate calendar lock; main/editor loops poll completion without blocking note editing. Calendar navigation reuses the shared save/departure and history paths. See [Calendar](CALENDAR.md) for protocol and recurrence limits.
 
 ## Event Loop Structure
 

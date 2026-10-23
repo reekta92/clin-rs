@@ -13,6 +13,7 @@ enum Place {
     PublicSource(String),
     Template(PathBuf),
     Graph,
+    Calendar(chrono::NaiveDate, crate::calendar::view::Display),
     Draw(Option<String>),
     Canvas(String),
     Bases {
@@ -30,6 +31,7 @@ impl Place {
         match (self, other) {
             (Self::Notes, Self::Notes)
             | (Self::Graph, Self::Graph)
+            | (Self::Calendar(..), Self::Calendar(..))
             | (Self::Help(_), Self::Help(_))
             | (Self::Setup, Self::Setup) => true,
             (Self::Note(a), Self::Note(b))
@@ -119,6 +121,10 @@ impl Location {
                     view: state.named_view.clone(),
                     request: state.embedded_request.clone(),
                 }
+            }
+            ViewMode::Calendar => {
+                let view = app.calendar_view.as_ref()?;
+                Place::Calendar(view.date, view.display)
             }
             ViewMode::Outline => Place::Outline(app.outline_state.as_ref()?.note_id.clone()),
             ViewMode::Help => Place::Help(app.help_tab),
@@ -230,6 +236,12 @@ impl Location {
                 state.embedded_request = request;
                 Prepared::overlay(OverlayState::Bases(state))
             }
+            Place::Calendar(date, display) => {
+                crate::calendar::store::Store::load(&app.storage)?;
+                let mut view = crate::calendar::view::View::new(*date);
+                view.display = *display;
+                Prepared::overlay(OverlayState::Calendar(view))
+            }
             Place::Outline(id) => {
                 ensure!(
                     app.config.features.outline_view.is_enabled(),
@@ -298,6 +310,7 @@ impl Prepared {
                     ViewKind::Canvas => ViewMode::Canvas,
                     ViewKind::Bases => ViewMode::Bases,
                     ViewKind::Outline => ViewMode::Outline,
+                    ViewKind::Calendar => ViewMode::Calendar,
                 };
                 if let OverlayState::Bases(state) = &mut *view {
                     state.previous_mode = parent;

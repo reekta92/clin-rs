@@ -24,6 +24,7 @@ pub enum ViewKind {
     Bases,
     Draw,
     Outline,
+    Calendar,
 }
 
 impl ViewKind {
@@ -34,6 +35,7 @@ impl ViewKind {
             ViewMode::Bases => Some(Self::Bases),
             ViewMode::Draw => Some(Self::Draw),
             ViewMode::Outline => Some(Self::Outline),
+            ViewMode::Calendar => Some(Self::Calendar),
             _ => None,
         }
     }
@@ -48,6 +50,7 @@ pub enum OverlayState {
     Bases(crate::bases::state::BasesState),
     Draw(crate::draw_adapter::DrawPlugin),
     Outline(crate::outline::state::OutlineState),
+    Calendar(crate::calendar::view::View),
 }
 
 impl OverlayState {
@@ -58,6 +61,7 @@ impl OverlayState {
             Self::Bases(_) => ViewKind::Bases,
             Self::Draw(_) => ViewKind::Draw,
             Self::Outline(_) => ViewKind::Outline,
+            Self::Calendar(_) => ViewKind::Calendar,
         }
     }
 
@@ -70,6 +74,7 @@ impl OverlayState {
             ViewKind::Bases => app.bases_state.take().map(Self::Bases),
             ViewKind::Draw => app.draw_state.take().map(Self::Draw),
             ViewKind::Outline => app.outline_state.take().map(Self::Outline),
+            ViewKind::Calendar => app.calendar_view.take().map(Self::Calendar),
         }
     }
 
@@ -80,6 +85,7 @@ impl OverlayState {
             Self::Bases(s) => app.bases_state = Some(s),
             Self::Draw(s) => app.draw_state = Some(s),
             Self::Outline(s) => app.outline_state = Some(s),
+            Self::Calendar(s) => app.calendar_view = Some(s),
         }
     }
 }
@@ -97,6 +103,7 @@ impl OverlayView for OverlayState {
             Self::Bases(s) => s.overlay_render(frame, area, app),
             Self::Draw(s) => s.overlay_render(frame, area, app),
             Self::Outline(s) => s.overlay_render(frame, area, app),
+            Self::Calendar(s) => s.overlay_render(frame, area, app),
         }
     }
 
@@ -112,6 +119,7 @@ impl OverlayView for OverlayState {
             Self::Bases(s) => s.overlay_handle_event(event, app, term_area),
             Self::Draw(s) => s.overlay_handle_event(event, app, term_area),
             Self::Outline(s) => s.overlay_handle_event(event, app, term_area),
+            Self::Calendar(s) => s.overlay_handle_event(event, app, term_area),
         }
     }
 }

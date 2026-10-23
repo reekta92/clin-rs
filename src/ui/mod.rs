@@ -155,6 +155,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Setup => draw_setup_view(frame, app),
+        ViewMode::Calendar => {
+            if let Some(mut calendar) = app.calendar_view.take() {
+                calendar.overlay_render(frame, frame.area(), app);
+                app.calendar_view = Some(calendar);
+            }
+        }
         ViewMode::Graph => {
             if let Some(mut graf) = app.graph_plugin.take() {
                 let outer = Layout::default()

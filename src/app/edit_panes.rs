@@ -286,6 +286,12 @@ impl App {
                 return;
             }
         };
+        if let Some(reference) = target.strip_prefix("calendar:") {
+            if let Err(error) = self.open_calendar_reference(reference) {
+                self.set_temporary_status(&format!("{error:#}"));
+            }
+            return;
+        }
         let id = self.resolve_wikilink_target(&target);
 
         // Reuse an already-rendered preview for the same valid target.
