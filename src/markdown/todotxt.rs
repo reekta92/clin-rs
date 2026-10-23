@@ -12,7 +12,15 @@ pub(crate) enum TodoTxtSpan<'a> {
     Text(&'a str),
     Project(&'a str),
     Context(&'a str),
-    Tag(&'a str, &'a str), // key, value
+    Tag(&'a str),
+}
+
+impl<'a> TodoTxtSpan<'a> {
+    pub fn text(&self) -> &'a str {
+        match self {
+            Self::Text(text) | Self::Project(text) | Self::Context(text) | Self::Tag(text) => text,
+        }
+    }
 }
 
 pub(crate) fn parse_todotxt_line(line: &str) -> TodoTxtItem<'_> {
@@ -29,33 +37,40 @@ pub(crate) fn parse_todotxt_line(line: &str) -> TodoTxtItem<'_> {
     }
 
     // 2. Priority
-    if current.len() >= 4
-        && current.starts_with('(')
-        && &current[2..=3] == ") "
-        && let Some(c) = current[1..=1].chars().next()
-        && c.is_ascii_uppercase()
+    let bytes = current.as_bytes();
+    if bytes.len() >= 4
+        && bytes[0] == b'('
+        && bytes[1].is_ascii_uppercase()
+        && bytes[2] == b')'
+        && bytes[3].is_ascii_whitespace()
     {
-        priority = Some(c);
+        priority = Some(char::from(bytes[1]));
         current = &current[4..];
     }
 
     // Date parsing helper
     fn parse_date(s: &str) -> Option<(&str, &str)> {
-        if s.len() >= 10 && s[..10].chars().all(|c| c.is_ascii_digit() || c == '-') {
-            // Very loose check for YYYY-MM-DD
-            if &s[4..5] == "-" && &s[7..8] == "-" && (s.len() == 10 || s[10..].starts_with(' ')) {
-                return Some((&s[..10], s[10..].trim_start()));
-            }
+        let date = s.get(..10)?;
+        if date.as_bytes()[4] == b'-'
+            && date.as_bytes()[7] == b'-'
+            && date.bytes().all(|b| b.is_ascii_digit() || b == b'-')
+            && chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok()
+            && (s.len() == 10 || s[10..].starts_with(char::is_whitespace))
+        {
+            return Some((date, s[10..].trim_start()));
         }
         None
     }
 
     // 3. Dates
     if let Some((d1, rest1)) = parse_date(current) {
-        if let Some((d2, rest2)) = parse_date(rest1) {
+        if completed {
             completion_date = Some(d1);
-            creation_date = Some(d2);
-            current = rest2;
+            current = rest1;
+            if let Some((d2, rest2)) = parse_date(current) {
+                creation_date = Some(d2);
+                current = rest2;
+            }
         } else {
             creation_date = Some(d1);
             current = rest1;
@@ -71,7 +86,7 @@ pub(crate) fn parse_todotxt_line(line: &str) -> TodoTxtItem<'_> {
             spans.push(TodoTxtSpan::Context(word));
         } else if let Some(idx) = word.find(':') {
             if idx > 0 && idx < word.len() - 1 {
-                spans.push(TodoTxtSpan::Tag(&word[..idx], &word[idx + 1..]));
+                spans.push(TodoTxtSpan::Tag(word));
             } else {
                 spans.push(TodoTxtSpan::Text(word));
             }
@@ -110,7 +125,7 @@ mod tests {
                 TodoTxtSpan::Text("for"),
                 TodoTxtSpan::Project("+chapelShelving"),
                 TodoTxtSpan::Context("@chapel"),
-                TodoTxtSpan::Tag("due", "2024-05-30"),
+                TodoTxtSpan::Tag("due:2024-05-30"),
             ]
         );
 
@@ -123,5 +138,28 @@ mod tests {
             item2.spans,
             vec![TodoTxtSpan::Text("Simple"), TodoTxtSpan::Text("task"),]
         );
+    }
+
+    #[test]
+    fn unicode_and_invalid_dates_are_plain_text() {
+        for line in [
+            "(é) unicode priority",
+            "abcdefghié remains a task",
+            "2024-02-30 invalid",
+        ] {
+            let item = parse_todotxt_line(line);
+            assert_eq!(item.priority, None);
+            assert_eq!(item.creation_date, None);
+            assert_eq!(
+                item.spans[0].text(),
+                line.split_whitespace().next().unwrap()
+            );
+        }
+        let item = parse_todotxt_line("x 2024-02-29 finished +家 @iş due:yarın");
+        assert_eq!(item.completion_date, Some("2024-02-29"));
+        assert_eq!(item.creation_date, None);
+        assert_eq!(item.spans[1], TodoTxtSpan::Project("+家"));
+        assert_eq!(item.spans[2], TodoTxtSpan::Context("@iş"));
+        assert_eq!(item.spans[3], TodoTxtSpan::Tag("due:yarın"));
     }
 }

@@ -163,10 +163,8 @@ impl SourceHighlighter {
                 crate::markdown::todotxt::TodoTxtSpan::Context(word) => {
                     styles[char_range(word)].fill(self.theme.todotxt_context);
                 }
-                crate::markdown::todotxt::TodoTxtSpan::Tag(k, v) => {
-                    let byte_start = k.as_ptr() as usize - line.as_ptr() as usize;
-                    let byte_end = v.as_ptr() as usize - line.as_ptr() as usize + v.len();
-                    styles[char_range(&line[byte_start..byte_end])].fill(self.theme.todotxt_tag);
+                crate::markdown::todotxt::TodoTxtSpan::Tag(word) => {
+                    styles[char_range(word)].fill(self.theme.todotxt_tag);
                 }
                 crate::markdown::todotxt::TodoTxtSpan::Text(_) => {}
             }

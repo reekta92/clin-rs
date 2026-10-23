@@ -900,10 +900,8 @@ fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtIt
                     ctx.push_str(t, ctx.theme.todotxt_completed, margin);
                     ctx.push(' ', ctx.theme.todotxt_completed, margin);
                 }
-                TodoTxtSpan::Tag(k, v) => {
-                    ctx.push_str(k, ctx.theme.todotxt_completed, margin);
-                    ctx.push(':', ctx.theme.todotxt_completed, margin);
-                    ctx.push_str(v, ctx.theme.todotxt_completed, margin);
+                TodoTxtSpan::Tag(word) => {
+                    ctx.push_str(word, ctx.theme.todotxt_completed, margin);
                     ctx.push(' ', ctx.theme.todotxt_completed, margin);
                 }
             }
@@ -935,7 +933,8 @@ fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtIt
                 ctx.push_str(t, ctx.theme.todotxt_context, margin);
                 ctx.push(' ', ctx.theme.paragraph, margin);
             }
-            TodoTxtSpan::Tag(k, v) => {
+            TodoTxtSpan::Tag(word) => {
+                let (k, v) = word.split_once(':').expect("parsed todo.txt tag");
                 ctx.push_str(k, ctx.theme.todotxt_tag, margin);
                 ctx.push(':', ctx.theme.paragraph, margin);
                 ctx.push_str(v, ctx.theme.paragraph, margin);
