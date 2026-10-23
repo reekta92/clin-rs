@@ -18,8 +18,8 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
     let config_dir = dir.join(".clin");
     std::fs::create_dir_all(&notes_dir).expect("e2e fixture");
     std::fs::create_dir_all(&config_dir).expect("e2e fixture");
-    std::fs::write(notes_dir.join("a.md"), "link [[b]]").expect("e2e fixture");
-    std::fs::write(notes_dir.join("b.md"), "back [[a]]").expect("e2e fixture");
+    std::fs::write(notes_dir.join("a.md"), "Note A without links").expect("e2e fixture");
+    std::fs::write(notes_dir.join("b.md"), "Note B without links").expect("e2e fixture");
 
     let storage = clin::storage::Storage {
         data_dir: dir.join("data"),
@@ -50,7 +50,7 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
             folder: "".into(),
             tags: vec![],
             pinned: false,
-            links: vec!["b".into()],
+            links: vec![],
             size_bytes: 0,
         },
         clin::storage::NoteSummary {
@@ -60,7 +60,7 @@ fn make_plugin() -> (GrafPlugin, std::path::PathBuf) {
             folder: "".into(),
             tags: vec![],
             pinned: false,
-            links: vec!["a".into()],
+            links: vec![],
             size_bytes: 0,
         },
     ];
@@ -159,77 +159,81 @@ fn connection_mode_writes_wikilink_to_disk() {
         .overlay_handle_event(key('a'), &mut app, area)
         .expect("e2e fixture");
 
-    // Find a screen cell whose hit_test resolves to the OTHER node. The
-    // physics thread keeps moving nodes and graf's AutoFit fits a fixed
-    // 200-unit square (canvas-agnostic), so under parallel-test CPU
-    // contention the fit can leave a tall bbox offscreen. Retry for a
-    // bounded time; on each miss, re-center on the node bbox and apply an
-    // aspect-correct zoom (f64 cells per world unit on both axes).
+    // Freeze physics so node coordinates cannot change between hit testing and clicking.
+    plugin
+        .graph_kill_tx
+        .take()
+        .expect("physics worker")
+        .send(())
+        .expect("stop physics");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while plugin
+        .graph_state
+        .as_ref()
+        .expect("graph state")
+        .read()
+        .physics_worker_active
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "physics worker did not stop"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    // Find a screen cell whose hit_test resolves to the OTHER node.
     let (target_col, target_row) = {
-        let mut found = None;
-        for _ in 0..100 {
-            let attempt = {
-                let gs = plugin.graph_state.as_ref().expect("e2e fixture");
-                let mut guard = gs.write();
-                let graph = guard.simulation.get_graph();
-                let selected = guard.selection.primary.expect("e2e fixture");
-                let other = graph
-                    .node_indices()
-                    .find(|i| *i != selected)
-                    .expect("e2e fixture");
-                let outer = ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Vertical)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(1),
-                        ratatui::layout::Constraint::Min(0),
-                    ])
-                    .split(area);
-                let canvas = graf::canvas_area(outer[1], true);
-                // Aspect-correct fit: center on bbox, zoom = cells per world
-                // unit bounded by both canvas axes with 25% margin.
-                let (mut min_x, mut max_x, mut min_y, mut max_y) =
-                    (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
-                for n in graph.node_weights() {
-                    min_x = min_x.min(n.location.x as f64);
-                    max_x = max_x.max(n.location.x as f64);
-                    min_y = min_y.min(n.location.y as f64);
-                    max_y = max_y.max(n.location.y as f64);
-                }
-                let range_x = (max_x - min_x).max(1.0);
-                let range_y = (max_y - min_y).max(1.0);
-                let fit = 0.75
-                    * (f64::from(canvas.width) / range_x).min(f64::from(canvas.height) / range_y);
-                let vp = &mut guard.viewport;
-                vp.center_x = (min_x + max_x) / 2.0;
-                vp.center_y = (min_y + max_y) / 2.0;
-                vp.zoom = fit;
-                vp.auto_fit_zoom = fit;
-
-                let settings = clin::graf_adapter::clin_settings(&config);
-                let max_lc = guard.render_cache.lock().max_link_count;
-                let mut hit = None;
-                'scan: for row in canvas.y..canvas.bottom() {
-                    for col in canvas.x..canvas.right() {
-                        let (wx, wy) = guard.viewport.screen_to_world(col, row, canvas);
-                        if guard
-                            .viewport
-                            .hit_test(wx, wy, &guard, &settings, canvas, max_lc)
-                            == Some(other)
-                        {
-                            hit = Some((col, row));
-                            break 'scan;
-                        }
-                    }
-                }
-                hit
-            };
-            if let Some(cell) = attempt {
-                found = Some(cell);
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
+        let gs = plugin.graph_state.as_ref().expect("e2e fixture");
+        let mut guard = gs.write();
+        let graph = guard.simulation.get_graph();
+        let selected = guard.selection.primary.expect("e2e fixture");
+        let other = graph
+            .node_indices()
+            .find(|i| *i != selected)
+            .expect("e2e fixture");
+        let outer = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Length(1),
+                ratatui::layout::Constraint::Min(0),
+            ])
+            .split(area);
+        let canvas = graf::canvas_area(outer[1], true);
+        // Aspect-correct fit: center on bbox, zoom = cells per world
+        // unit bounded by both canvas axes with 25% margin.
+        let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+        for n in graph.node_weights() {
+            min_x = min_x.min(n.location.x as f64);
+            max_x = max_x.max(n.location.x as f64);
+            min_y = min_y.min(n.location.y as f64);
+            max_y = max_y.max(n.location.y as f64);
         }
-        found.expect("target node must be on screen somewhere")
+        let range_x = (max_x - min_x).max(1.0);
+        let range_y = (max_y - min_y).max(1.0);
+        let fit =
+            0.75 * (f64::from(canvas.width) / range_x).min(f64::from(canvas.height) / range_y);
+        let vp = &mut guard.viewport;
+        vp.center_x = (min_x + max_x) / 2.0;
+        vp.center_y = (min_y + max_y) / 2.0;
+        vp.zoom = fit;
+        vp.auto_fit_zoom = fit;
+
+        let settings = clin::graf_adapter::clin_settings(&config);
+        let max_lc = guard.render_cache.lock().max_link_count;
+        let mut hit = None;
+        'scan: for row in canvas.y..canvas.bottom() {
+            for col in canvas.x..canvas.right() {
+                let (wx, wy) = guard.viewport.screen_to_world(col, row, canvas);
+                if guard
+                    .viewport
+                    .hit_test(wx, wy, &guard, &settings, canvas, max_lc)
+                    == Some(other)
+                {
+                    hit = Some((col, row));
+                    break 'scan;
+                }
+            }
+        }
+        hit.expect("target node must be on screen somewhere")
     };
     let click = crossterm::event::Event::Mouse(crossterm::event::MouseEvent {
         kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
@@ -241,16 +245,15 @@ fn connection_mode_writes_wikilink_to_disk() {
         .overlay_handle_event(click, &mut app, area)
         .expect("e2e fixture");
 
+    let clin::overlay::OverlayResult::NoteModified(id) = res else {
+        panic!("expected NoteModified, got {res:?}");
+    };
+    let target = if id == "a.md" { "b" } else { "a" };
+    let saved = std::fs::read_to_string(dir.join("notes").join(&id)).expect("saved source note");
     assert!(
-        matches!(res, clin::overlay::OverlayResult::NoteModified(_)),
-        "expected NoteModified, got {res:?}"
+        saved.contains(&format!("[[{target}]]")),
+        "new link must be written: {saved}"
     );
-    let wrote_link = ["a.md", "b.md"].iter().any(|f| {
-        std::fs::read_to_string(dir.join("notes").join(f))
-            .map(|c| c.contains("[["))
-            .unwrap_or(false)
-    });
-    assert!(wrote_link, "wikilink must be written to a note file");
 }
 
 #[test]
