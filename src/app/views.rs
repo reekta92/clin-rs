@@ -594,10 +594,10 @@ impl App {
         anyhow::ensure!(id.ends_with(".canvas"), "Not a canvas: {id}");
         self.save_before_session_replace()?;
         if self.palette_source() != ViewMode::Canvas
-            || !self
+            || self
                 .canvas_state
                 .as_ref()
-                .is_some_and(|state| state.current_file == id)
+                .is_none_or(|state| state.current_file != id)
         {
             let plugin = crate::pinstar_adapter::PinstarPlugin::new_in_storage(
                 &self.storage.document_path(id)?,

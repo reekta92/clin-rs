@@ -266,7 +266,7 @@ mod tests {
             config_dir: source.path().into(),
             templates_dir: source.path().join(".clin/templates"),
             skip_dir_patterns: Vec::new(),
-            frontmatter_policy: Default::default(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         fs::write(source.path().join("a.md"), "body")?;
         let lock = storage.calendar_guard()?;

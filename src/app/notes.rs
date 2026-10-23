@@ -1398,12 +1398,15 @@ impl App {
                 &self.storage,
             )?);
         }
-        self.return_mode = Some(self.mode);
-        self.mode = if format == crate::popups::NoteFormat::Draw {
+        let mode = if format == crate::popups::NoteFormat::Draw {
             ViewMode::Draw
         } else {
             ViewMode::Canvas
         };
+        if self.mode != mode {
+            self.return_mode = Some(self.mode);
+        }
+        self.mode = mode;
         if format == crate::popups::NoteFormat::Draw {
             self.editor.note_baseline = Some(snapshot);
             self.editor.editing_id = Some(id);

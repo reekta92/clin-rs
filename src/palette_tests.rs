@@ -2677,6 +2677,30 @@ fn palette_custom_theme_sources_survive_filter_apply_and_setup() {
 }
 
 #[test]
+fn creating_a_replacement_canvas_keeps_the_original_editor_return_route() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    let editor_id = f.app.editor.editing_id.clone();
+    f.app.open_note_at_line("map.canvas", None);
+    f.app
+        .apply_note_creation(
+            String::new(),
+            crate::popups::NoteFormat::Canvas,
+            "replacement",
+        )
+        .unwrap();
+    assert_eq!(f.app.return_mode, Some(ViewMode::Edit));
+    assert_eq!(
+        f.app.canvas_state.as_ref().unwrap().current_file,
+        "replacement.canvas"
+    );
+    f.app.close_canvas_view();
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    assert_eq!(f.app.editor.editing_id, editor_id);
+    f.app.autosave().unwrap();
+}
+
+#[test]
 fn canvas_opens_requested_file_and_preserves_the_returning_editor() {
     let mut f = Fixture::new();
     f.enter(ViewMode::Edit);

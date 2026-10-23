@@ -18,7 +18,7 @@ fn migration_preserves_current_vault_paths_and_converts_legacy_only_on_request()
         ];
         for id in files {
             let path = source.join(id);
-            fs::create_dir_all(path.parent().unwrap())?;
+            fs::create_dir_all(path.parent().expect("fixture file has a parent"))?;
             fs::write(path, id)?;
         }
         if legacy {
