@@ -3115,7 +3115,7 @@ mod markdown_highlight_tests {
         let mut app = App::new(storage).expect("app");
         let mut picker = ratatui_image::picker::Picker::halfblocks();
         picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel();
         app.image_picker = Some(picker);
         app.image_decode_tx = Some(tx);
         app.editor.editor_preview_enabled = true;
@@ -3141,7 +3141,12 @@ mod markdown_highlight_tests {
         terminal
             .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
             .expect("image request");
-        app.install_image(crate::image_render::worker::DecodedImage { key: path, image });
+        let job = rx.try_recv().expect("image decode request");
+        assert_eq!(job.key, path.canonicalize().expect("canonical image path"));
+        app.install_image(crate::image_render::worker::DecodedImage {
+            key: job.key,
+            image,
+        });
         app.messages.push(
             "A startup warning covering the preview".repeat(5),
             crate::app::messages::MessageSeverity::Warning,
