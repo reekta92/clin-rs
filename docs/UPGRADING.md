@@ -27,6 +27,11 @@ temporary file and reports its path; save a copy before your OS clears temporary
 
 `clin storage migrate` copies the complete vault, including attachments, `.base` files, `.obsidian` settings, subnotes, templates, and recovery records. It rejects symlink traversal, nested source/destination vaults, live recovery owners, and read failures. Source data remains in place; external legacy keys still require a separate copy.
 
+Migration preserves root-relative paths even when all notes live in `notes/`.
+Use `clin storage migrate --legacy-layout` only to convert the old layout:
+`notes/` contents move to the vault root and `templates/` contents move to
+`.clin/templates/`. Private vault metadata is copied in either case.
+
 ## Safe note saving
 
 Loaded notes and public documents share raw-source baseline checks, read-only checks, permission-preserving atomic replacement, and a native lock for cooperating clin writers. A disk change already present when saving is checked causes a conflict rather than silently replacing newer content. Other editors do not honor clin's lock; no cross-application guarantee is made for a write racing inside the final check/publication interval.

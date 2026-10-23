@@ -135,36 +135,6 @@ pub struct Storage {
     pub skip_dir_patterns: Vec<regex::Regex>,
 }
 
-/// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
-pub(crate) fn is_existing_vault(dir: &Path) -> bool {
-    if !dir.exists() {
-        return false;
-    }
-    match dir.read_dir() {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let fname = entry.file_name();
-                let name = match fname.to_str() {
-                    Some(n) => n,
-                    None => continue,
-                };
-                // Ignore clin-managed subdirectories and all hidden entries
-                if name == "notes"
-                    || name == "templates"
-                    || name.starts_with('.')
-                    || name == "key.bin"
-                    || name == "state.json"
-                {
-                    continue;
-                }
-                return true;
-            }
-            false
-        }
-        Err(_) => false,
-    }
-}
-
 /// Copy a legacy classic-layout default vault into the current vault-layout
 /// default path. No-op unless `old` holds user content and `new` is absent.
 fn migrate_legacy_default_vault_at(old: &Path, new: &Path, warnings: &mut Vec<String>) {
@@ -1857,20 +1827,6 @@ mod safety_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn is_existing_vault_detects_user_content() {
-        let tmp = tempfile::tempdir().unwrap();
-        let vault = tmp.path().join("v");
-        std::fs::create_dir_all(vault.join("notes")).unwrap();
-        std::fs::create_dir_all(vault.join("templates")).unwrap();
-        std::fs::create_dir_all(vault.join(".clin")).unwrap();
-        std::fs::write(vault.join("key.bin"), "k").unwrap();
-        std::fs::write(vault.join("state.json"), "{}").unwrap();
-        assert!(!is_existing_vault(&vault)); // only managed content
-        std::fs::write(vault.join("mynote.md"), "x").unwrap();
-        assert!(is_existing_vault(&vault)); // one user file
-    }
 
     #[test]
     fn migrate_legacy_default_vault_copies_classic_layout() {
