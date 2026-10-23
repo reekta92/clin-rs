@@ -1,11 +1,9 @@
 use super::{
-    PreviewHeaderInfo, build_tab_spans, draw_dim_vline, draw_status_bar, draw_view_title_bar,
-    draw_view_title_bar_with_tabs, format_keybind_hints, format_mode_keybind_hints,
-    popup_hint_line, preview_spans,
+    PreviewHeaderInfo, build_tab_spans, draw_dim_vline, draw_view_title_bar,
+    draw_view_title_bar_with_tabs, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
-use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
 use unicode_width::UnicodeWidthStr;
 
@@ -743,12 +741,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     app.list.last_area = area;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Min(5),
-            Constraint::Length(1),
-        ])
-        .split(area);
+        .constraints([Constraint::Length(1), Constraint::Min(5)])
+        .split(super::footer::content_area(area));
     let title = if app.layout_edit {
         "Notes - Editing Layout"
     } else {
@@ -1663,77 +1657,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
         }
     }
-    let kb = &app.keybinds;
-    let hints_items = vec![
-        (
-            format!(
-                "{}/{}",
-                kb.display_list(ListAction::MoveUp),
-                kb.display_list(ListAction::MoveDown)
-            ),
-            "move",
-        ),
-        (kb.display_list(ListAction::Open), "open"),
-        (kb.display_list(ListAction::CreateNote), "new"),
-        (kb.display_list(ListAction::Search), "search"),
-        (app.palette_keys_display(ViewMode::List), "commands"),
-    ];
-    let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
-
-    let hint = if in_select_mode {
-        let select_items = vec![
-            (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
-            (kb.display_list(ListAction::MoveNote), "move"),
-            (kb.display_list(ListAction::Duplicate), "copy"),
-            (kb.display_list(ListAction::ManageTags), "tag"),
-            (kb.display_list(ListAction::RemoveTagsFromSelected), "untag"),
-            (kb.display_list(ListAction::Delete), "delete"),
-            (kb.display_list(ListAction::ToggleSelectMode), "exit"),
-        ];
-        format_mode_keybind_hints(&app.app_theme, &select_items)
-    } else if app.layout_edit {
-        let layout_items = vec![
-            ("←→ ↑↓/drag".to_string(), "resize"),
-            ("s".to_string(), "preview"),
-            ("c".to_string(), "widgets"),
-            ("Space/Ctrl+Space".to_string(), "cycle"),
-            ("Tab".to_string(), "swap"),
-            ("a".to_string(), "toggle"),
-            ("Esc".to_string(), "done"),
-        ];
-        format_mode_keybind_hints(&app.app_theme, &layout_items)
-    } else {
-        default_hints
-    };
-    let badge_spans = if app.app_theme.hint_bar_style.has_filled_cells() {
-        crate::ui::ext_badge_spans(
-            app.editor.external_editor_enabled,
-            &app.app_theme,
-            Some(app.app_theme.accent),
-        )
-    } else {
-        crate::ui::ext_badge_spans(app.editor.external_editor_enabled, &app.app_theme, None)
-    };
-    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
-    ctx.area = Some(chunks[2]);
-    ctx.hints = Some(hint.spans);
-    ctx.badge = Some(badge_spans);
-    if let Some(p) = &app.seq_matcher.pending_display() {
-        ctx.pending = Some(vec![Span::styled(
-            format!("{} ", p),
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent),
-        )]);
-    }
-
-    let (left_line, right_line) = crate::statusline::render_footer(
-        &ctx,
-        &app.config.statusline,
-        ViewMode::List,
-        &app.app_theme,
-    );
-    draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let preview = preview_area.expect("preview is enabled");
         let divider_x = match app.preview_position {
@@ -1886,12 +1809,8 @@ pub(crate) fn list_view_layout(
 ) -> (Rect, Option<Rect>, Option<Rect>) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Min(5),
-            Constraint::Length(1),
-        ])
-        .split(area);
+        .constraints([Constraint::Length(1), Constraint::Min(5)])
+        .split(super::footer::content_area(area));
 
     if preview_fullscreen {
         return (chunks[1], Some(chunks[1]), None);
@@ -2292,7 +2211,9 @@ mod tests {
     }
 
     fn draw_grid(terminal: &mut Terminal<TestBackend>, app: &mut App) {
-        terminal.draw(|frame| draw_list_view(frame, app)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, app, crate::app::EditFocus::Body))
+            .unwrap();
     }
 
     fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {

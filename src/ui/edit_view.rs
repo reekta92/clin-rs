@@ -1,12 +1,11 @@
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
-    PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_status_bar,
-    draw_view_title_bar, format_keybind_hints, get_preview_info,
+    PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_view_title_bar,
+    get_preview_info,
 };
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
-use crate::keybinds::EditAction;
 use crate::outline::parse::NodeKind;
 
 /// Render the body editor widget with proper style, cursor, line numbers, and cursor-line fill.
@@ -70,9 +69,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         .constraints([
             Constraint::Length(1), // header
             Constraint::Min(0),    // body
-            Constraint::Length(1), // hint bar
         ])
-        .split(area);
+        .split(super::footer::content_area(area));
 
     let preview_info = get_preview_info(app);
     let note = crate::statusline::active_note(app, ViewMode::Edit);
@@ -249,7 +247,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         app.editor.header_title_rect = title_rect;
     }
     let body_area = crate::editor::frontmatter::draw_region(frame, app, focus, outer_chunks[1]);
-    let hint_area = outer_chunks[2];
 
     let layout = crate::events::compute_edit_layout(
         body_area,
@@ -414,45 +411,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 frame.render_widget(loading, preview_area_rect);
             }
         }
-    }
-    if app.zen_mode {
-        let blank = Paragraph::new("").style(app.app_theme.bg_style());
-        frame.render_widget(blank, hint_area);
-    } else {
-        let kb = &app.keybinds;
-        let hints_items = vec![
-            (kb.display_edit(EditAction::CycleFocus), "focus"),
-            (kb.display_edit(EditAction::Find), "find"),
-            (
-                kb.display_edit(EditAction::ToggleMarkdownPreview),
-                "preview",
-            ),
-            (kb.display_edit(EditAction::Save), "save"),
-            (kb.edit_keys_display(EditAction::Back), "back"),
-        ];
-        let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
-        let hint = default_hints;
-        let note = crate::statusline::active_note(app, ViewMode::Edit);
-        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
-        ctx.area = Some(hint_area);
-        ctx.note = note;
-        ctx.hints = Some(hint.spans);
-        if let Some(p) = &app.seq_matcher.pending_display() {
-            ctx.pending = Some(vec![Span::styled(
-                format!("{} ", p),
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.accent),
-            )]);
-        }
-
-        let (left_line, right_line) = crate::statusline::render_footer(
-            &ctx,
-            &app.config.statusline,
-            ViewMode::Edit,
-            &app.app_theme,
-        );
-        draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
     }
     if let Some(splitter_area) = splitter_area {
         let color = if matches!(focus, EditFocus::Body | EditFocus::Sidebar) {

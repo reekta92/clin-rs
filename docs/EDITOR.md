@@ -113,13 +113,12 @@ A custom find popup replaces the legacy textarea search. State is stored in the 
 
 ## Zen Mode
 
-`F8` (edit view, remappable) toggles zen mode: the footer hint bar is hidden,
-the header bar is hidden except while the title field is focused (`Ctrl+t` to
+`F8` (edit view, remappable) toggles zen mode: the header bar is hidden except while the title field is focused (`Ctrl+t` to
 cycle focus) or a transient status (clipboard notices, autosave errors) is
 active, and the editor content is padded from the left and right edges.
 `EditorConfig.zen_padding_percent` (default `15`) sets the padding as a
 percent of the terminal width per side, clamped to 45. Overlays, popups, and
-message toasts stay visible. Zen mode is per-session; it resets on restart.
+message toasts and the shared footer stay visible. Zen mode is per-session; it resets on restart.
 
 By default, line numbers and the scrollbar are also hidden while in zen mode.
 These can be restored by setting `zen_hide_line_numbers = false` and 

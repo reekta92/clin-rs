@@ -1,14 +1,11 @@
 #![allow(clippy::vec_init_then_push)]
 use ratatui::{prelude::*, widgets::*};
 
-use super::{
-    build_tab_spans, draw_dim_vline, draw_status_bar, draw_view_title_bar_with_tabs,
-    format_keybind_hints,
-};
+use super::{build_tab_spans, draw_dim_vline, draw_view_title_bar_with_tabs};
 use crate::app::{App, HelpTab, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::help_meta::{self, HelpMeta};
-use crate::keybinds::{HelpAction, Keybinds, ListAction};
+use crate::keybinds::{Keybinds, ListAction};
 use crate::storage::Storage;
 use strum::IntoEnumIterator;
 
@@ -188,12 +185,8 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Min(8),
-            Constraint::Length(1),
-        ])
-        .split(area);
+        .constraints([Constraint::Length(1), Constraint::Min(8)])
+        .split(super::footer::content_area(area));
     let tabs_data = help_tabs(app.config.ui.icon_mode, &app.config.features);
     let tabs: Vec<(&str, Option<&str>)> = tabs_data.iter().map(|(_, l, i)| (*l, *i)).collect();
     let selected_idx = tabs_data
@@ -342,51 +335,6 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         )
     }
 
-    let kb = &app.keybinds;
-    let hints_items = vec![
-        (
-            format!(
-                "{}/{}",
-                kb.display_help(HelpAction::PrevTab),
-                kb.display_help(HelpAction::NextTab)
-            ),
-            "switch tab",
-        ),
-        (
-            format!(
-                "{}/{}",
-                kb.display_help(HelpAction::ScrollUp),
-                kb.display_help(HelpAction::ScrollDown)
-            ),
-            "scroll",
-        ),
-        (kb.display_help(HelpAction::Search), "search"),
-        (kb.display_help(HelpAction::Reroll), "reroll tips"),
-        (
-            format!("F1/{}", kb.help_keys_display(HelpAction::Close)),
-            "close",
-        ),
-    ];
-    let hint = format_keybind_hints(&app.app_theme, &hints_items);
-    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Help);
-    ctx.area = Some(chunks[2]);
-    ctx.hints = Some(hint.spans);
-    if let Some(p) = &app.seq_matcher.pending_display() {
-        ctx.pending = Some(vec![Span::styled(
-            format!("{} ", p),
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent),
-        )]);
-    }
-
-    let (left_line, right_line) = crate::statusline::render_footer(
-        &ctx,
-        &app.config.statusline,
-        ViewMode::Help,
-        &app.app_theme,
-    );
-    draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     if let Some(ref popup) = app.help_search.popup {
         let theme = &app.app_theme;
         let max_visible = 10usize;

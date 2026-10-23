@@ -852,7 +852,7 @@ impl View {
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Min(1),
-            Constraint::Length(2),
+            Constraint::Length(1),
         ])
         .split(area);
         let mut ctx =
@@ -925,9 +925,6 @@ impl View {
             Display::Agenda => self.render_agenda(frame, body[0], theme, true),
         }
         self.render_inspector(frame, body[1], app);
-        let footer = self.error.as_deref().unwrap_or(
-            "n New  e Edit  L Link note  o Open note  s Sync  i Import  E Export  ? Help  Esc Back",
-        );
         let conflicts = app.calendar.store.as_ref().map_or(0, |s| {
             s.data
                 .resources
@@ -941,13 +938,13 @@ impl View {
             format!("{}  {}", self.date.format("%A, %d %B %Y"), app.status)
         };
         frame.render_widget(
-            Paragraph::new(vec![Line::from(footer), Line::from(details)]).style(
-                Style::default().fg(if self.error.is_some() {
+            Paragraph::new(self.error.as_deref().unwrap_or(&details)).style(Style::default().fg(
+                if self.error.is_some() {
                     theme.warning
                 } else {
                     theme.muted
-                }),
-            ),
+                },
+            )),
             layout[3],
         );
         if let Some(dialog) = &mut self.dialog {

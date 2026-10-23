@@ -261,6 +261,7 @@ pub fn parse_search_query(query: &str, tags_enabled: bool, subnotes_enabled: boo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(strum::EnumIter))]
 pub enum ViewMode {
     List,
     Edit,

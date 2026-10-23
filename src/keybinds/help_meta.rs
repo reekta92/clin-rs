@@ -214,7 +214,7 @@ pub fn graph_action_meta(a: GraphAction) -> HelpMeta {
         GraphAction::ToggleMinimap => meta("Display", "Toggle minimap"),
         GraphAction::ToggleLegend => meta("Display", "Toggle legend"),
         GraphAction::ToggleGrid => meta("Display", "Toggle background grid"),
-        GraphAction::ToggleStatus => meta("Display", "Toggle status bar"),
+        GraphAction::ToggleStatus => meta("Display", "Toggle Graph shortcuts"),
         GraphAction::TogglePreview => meta("Display", "Toggle preview"),
         GraphAction::OpenContextMenu => meta("Menu", "Open context menu"),
         GraphAction::CreateConnection => meta("Actions", "Create connection"),

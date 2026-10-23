@@ -126,7 +126,7 @@ The **Select Notes Layout** command opens a searchable list with the current lay
 
 Directory layouts (`grid`, `list`, `multi`) navigate into folders. In List and Multi, Enter or Right opens a folder; Left returns to its parent. Grid keeps its tile-navigation shortcuts. Multi shows the selected folder's children in the right column; clicking a child enters that folder and selects the child. A browser narrower than 24 cells uses one column.
 
-Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
+Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Every view shares a footer controlled by `hint_bar_style` and the statusline templates, including Calendar, Setup, and Zen mode. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
 
 ### `[editor]`
 
@@ -179,7 +179,7 @@ Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Dis
 |---|---|---|---|
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 19 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
-| `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
+| `show_status_bar` | `bool` | `true` | Show Graph shortcut hints; the shared footer always remains visible |
 | `tab_icons_only` | `bool` | `false` | Show only icons on tab bars; text labels remain in `"none"` mode |
 | `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"emoji"`: emoji icons (terminal emoji support required); `"none"`: text labels without decorative icons. Unicode/Emoji/None use portable bar separators |
 | `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
@@ -677,7 +677,7 @@ These global handlers take precedence over per-view bindings.
 | `toggle_minimap` | `Shift+M` | Toggle minimap |
 | `toggle_legend` | `Shift+L` | Toggle legend |
 | `toggle_grid` | `Shift+G` | Toggle background grid |
-| `toggle_status` | `Shift+S` | Toggle status bar |
+| `toggle_status` | `Shift+S` | Toggle Graph shortcuts |
 | `refresh` | `r` | Refresh physics |
 | `toggle_preview` | `Shift+P` | Toggle preview |
 | `create_connection` | `c` | Create connection |

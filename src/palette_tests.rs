@@ -208,6 +208,50 @@ fn visible(app: &App, id: &str) -> bool {
 }
 
 #[test]
+fn every_view_has_the_host_footer_in_every_hint_style() {
+    use strum::IntoEnumIterator;
+    for mode in ViewMode::iter() {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        f.app.config.statusline.footer_left = Some("{hints}".into());
+        f.app.config.statusline.footer_right = Some("HOST FOOTER".into());
+        f.app.zen_mode = true;
+        if let Some(graph) = &mut f.app.graph_plugin {
+            graph.show_status_bar = false;
+        }
+        let mut classic = None;
+        for style in crate::config::HintBarStyle::ALL {
+            f.app.app_theme.hint_bar_style = style;
+            let mut terminal = Terminal::new(TestBackend::new(240, 40)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let row: Vec<_> = (0..240)
+                .map(|x| terminal.backend().buffer()[(x, 39)].clone())
+                .collect();
+            let text = row
+                .iter()
+                .map(ratatui::buffer::Cell::symbol)
+                .collect::<String>();
+            assert!(text.contains("HOST FOOTER"), "{mode:?} {style:?}: {text}");
+            assert!(
+                !text[..text.find("HOST FOOTER").unwrap()].trim().is_empty(),
+                "missing hints: {mode:?}"
+            );
+            if style == crate::config::HintBarStyle::Classic {
+                classic = Some(row);
+            } else {
+                assert_ne!(
+                    row,
+                    *classic.as_ref().unwrap(),
+                    "style ignored: {mode:?} {style:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
     let mut f = Fixture::new();
     let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();

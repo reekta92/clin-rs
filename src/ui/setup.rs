@@ -53,6 +53,7 @@ pub(crate) struct SetupLayout {
 }
 
 pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
+    let area = super::footer::content_area(area);
     let total_w = COL_WIDTH + 2 + PREVIEW_WIDTH;
     let actual_w = total_w.min(area.width);
 
@@ -1162,6 +1163,7 @@ mod tests {
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         let mut app = crate::app::App::new(storage).unwrap();
+        app.mode = crate::app::ViewMode::Setup;
         app.setup_state = Some(crate::setup::SetupState::from_config(
             &app.config,
             &crate::app_theme::AppThemeColors::default(),
@@ -1172,7 +1174,9 @@ mod tests {
         fn render(app: &mut crate::app::App) -> String {
             let backend = TestBackend::new(120, 40);
             let mut terminal = Terminal::new(backend).unwrap();
-            terminal.draw(|frame| draw_setup_view(frame, app)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, app, crate::app::EditFocus::Body))
+                .unwrap();
             let buf = terminal.backend().buffer().clone();
             let mut text = String::new();
             for y in 0..buf.area.height {

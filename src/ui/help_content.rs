@@ -287,8 +287,8 @@ const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
         "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view.",
     ),
     tip(
-        "Toggle status bar",
-        "Press {graph:ToggleStatus} to show or hide the **status bar** at the bottom of the graph view.",
+        "Toggle Graph shortcuts",
+        "Press {graph:ToggleStatus} to show or hide Graph shortcut hints. The shared footer remains visible.",
     ),
     tip(
         "Toggle preview",

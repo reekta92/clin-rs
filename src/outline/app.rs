@@ -36,17 +36,7 @@ impl crate::overlay::OverlayView for OutlineState {
         app: &mut crate::app::App,
     ) {
         self.last_area = area;
-        let keybinds = self.keybinds.clone();
-        let app_status = app.status.as_ref();
-        render::draw_outline(
-            frame,
-            area,
-            self,
-            &app.app_theme,
-            &keybinds,
-            &app.config,
-            Some(app_status),
-        );
+        render::draw_outline(frame, area, self, &app.app_theme, &app.config);
     }
 
     fn overlay_handle_event(

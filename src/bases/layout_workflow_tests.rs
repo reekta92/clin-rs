@@ -37,11 +37,9 @@ fn footer_uses_shared_hint_styles_and_statusline_templates() {
     for style in crate::config::HintBarStyle::ALL {
         app.app_theme.hint_bar_style = style;
         let mut terminal = Terminal::new(TestBackend::new(240, 28)).unwrap();
-        let mut state = app.bases_state.take().unwrap();
         terminal
-            .draw(|frame| state.render_native(frame, frame.area(), &app))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
             .unwrap();
-        app.bases_state = Some(state);
         let buffer = terminal.backend().buffer();
         let footer: String = (0..240).map(|x| buffer[(x, 27)].symbol()).collect();
         assert!(footer.contains("Public:1"), "{style:?}: {footer}");
