@@ -300,7 +300,6 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
     let mut rdr = csv::ReaderBuilder::new()
         .delimiter(delimiter)
         .has_headers(false)
-        .flexible(true)
         .from_reader(Cursor::new(text.as_bytes()));
 
     let mut md = String::new();
@@ -538,6 +537,15 @@ mod tests {
             ]
         );
         assert!(md.ends_with('\n'));
+        Ok(())
+    }
+
+    #[test]
+    fn csv_rejects_rows_that_would_lose_fields() -> Result<()> {
+        let mut tmp = NamedTempFile::new()?;
+        writeln!(tmp, "a,b\n1,2,valuable data")?;
+        let error = convert_csv(tmp.path().to_str().unwrap()).unwrap_err();
+        assert!(format!("{error:#}").contains("3 fields"));
         Ok(())
     }
 
