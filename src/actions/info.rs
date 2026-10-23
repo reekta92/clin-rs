@@ -40,23 +40,9 @@ impl Action for ShowInfoAction {
             let words = note.content.split_whitespace().count();
             let reading_time_mins = (words as f64 / 200.0).ceil() as usize;
 
-            // Header count via outline parser (minus root node)
-            let header_count = crate::outline::parse::parse_outline(&note.title, &note.content)
-                .len()
-                .saturating_sub(1);
-
-            // Task count: lines matching - [ ], - [x], * [ ], * [x]
-            let task_count = note
-                .content
-                .lines()
-                .filter(|l| {
-                    let t = l.trim_start();
-                    t.starts_with("- [ ] ")
-                        || t.starts_with("- [x] ")
-                        || t.starts_with("* [ ] ")
-                        || t.starts_with("* [x] ")
-                })
-                .count();
+            let markdown_counts = crate::markdown::structure::counts(&note.content);
+            let header_count = markdown_counts.headings;
+            let task_count = markdown_counts.tasks;
 
             // Top Words Algorithm (no regex dependency)
             let stop_words: std::collections::HashSet<&str> = vec![

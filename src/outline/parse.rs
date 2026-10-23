@@ -28,191 +28,126 @@ impl TreeNode {
 /// `title` = note title (becomes the depth-0 root).
 /// `content` = note body (already frontmatter-stripped by `Storage::load_note`).
 pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
-    let mut nodes = Vec::new();
-
-    // 1. Push root node
-    nodes.push(TreeNode {
+    use comrak::{Arena, nodes::NodeValue, parse_document};
+    let arena = Arena::new();
+    let root = parse_document(&arena, content, &crate::markdown::structure::options());
+    let mut nodes = vec![TreeNode {
         kind: NodeKind::Header {
             level: 0,
-            title: title.to_string(),
+            title: title.to_owned(),
         },
         depth: 0,
         line: 1,
         has_children: false,
-    });
-
-    let mut stack: Vec<(u8, usize)> = vec![];
-    let mut current_code_block: Option<(usize, String, String)> = None; // (start_line, lang, code)
-    let mut para: Option<(usize, String)> = None; // (start_line, full_text)
-
-    let cur_depth = |stack: &[(u8, usize)]| -> usize { stack.last().map(|(_, d)| *d).unwrap_or(0) };
-
-    let close_paragraph =
-        |para: &mut Option<(usize, String)>, nodes: &mut Vec<TreeNode>, current_depth: usize| {
-            if let Some((line, full_text)) = para.take() {
-                let first_line = full_text.lines().next().unwrap_or("").to_string();
-                let preview = crate::fsutil::truncate_ellipsis(&first_line, 60);
-                nodes.push(TreeNode {
-                    kind: NodeKind::Paragraph { preview, full_text },
-                    depth: current_depth + 1,
-                    line,
-                    has_children: false,
-                });
-            }
-        };
-
-    for (idx, line_raw) in content.lines().enumerate() {
-        let line_no = idx + 1;
-        let t = line_raw.trim_start();
-
-        // Check for code block fences
-        if t.starts_with("```") || t.starts_with("~~~") {
-            if current_code_block.is_none() {
-                // Starting a code block
-                close_paragraph(&mut para, &mut nodes, cur_depth(&stack));
-                let lang = t[3..].trim().to_string();
-                current_code_block = Some((line_no, lang, String::new()));
-            } else {
-                // Closing a code block
-                if let Some((start_line, lang, mut code)) = current_code_block.take() {
-                    if code.ends_with('\n') {
-                        code.pop();
-                    }
-                    nodes.push(TreeNode {
-                        kind: NodeKind::CodeBlock { lang, code },
-                        depth: cur_depth(&stack) + 1,
-                        line: start_line,
-                        has_children: false,
-                    });
-                }
-            }
-            continue;
-        }
-
-        // If we are currently inside a code block, accumulate the line
-        if let Some((_, _, ref mut code)) = current_code_block {
-            code.push_str(line_raw);
-            code.push('\n');
-            continue;
-        }
-
-        // Check for ATX header
-        let mut chars = t.chars();
-        let mut hash_count = 0;
-        while let Some('#') = chars.clone().next() {
-            chars.next();
-            hash_count += 1;
-        }
-
-        if (1..=6).contains(&hash_count) {
-            let next_char = chars.next();
-            if next_char.is_none_or(|c| c.is_whitespace()) {
-                close_paragraph(&mut para, &mut nodes, cur_depth(&stack));
-                let header_title = chars.collect::<String>().trim().to_string();
-
-                while stack.last().map(|(lv, _)| *lv >= hash_count) == Some(true) {
-                    stack.pop();
-                }
-
-                let depth = stack.len() + 1;
-                nodes.push(TreeNode {
-                    kind: NodeKind::Header {
-                        level: hash_count,
-                        title: header_title,
-                    },
-                    depth,
-                    line: line_no,
-                    has_children: false,
-                });
-                stack.push((hash_count, depth));
-                continue;
-            }
-        }
-
-        // Blank line
-        if t.is_empty() {
-            close_paragraph(&mut para, &mut nodes, cur_depth(&stack));
-            continue;
-        }
-
-        // List item
-        let is_list = if t.starts_with("- ")
-            || t.starts_with("* ")
-            || t.starts_with("+ ")
-            || t == "-"
-            || t == "*"
-            || t == "+"
-        {
-            Some(if t.len() >= 2 {
-                t[2..].trim().to_string()
-            } else {
-                String::new()
+    }];
+    let mut headings = Vec::new();
+    for node in root.descendants().skip(1) {
+        let data = node.data.borrow();
+        let list_depth = node
+            .ancestors()
+            .skip(1)
+            .filter(|parent| {
+                matches!(
+                    parent.data.borrow().value,
+                    NodeValue::Item(_) | NodeValue::TaskItem(_)
+                )
             })
-        } else {
-            let mut chs = t.chars().peekable();
-            let mut digits = String::new();
-            while let Some(&c) = chs.peek() {
-                if c.is_ascii_digit() {
-                    digits.push(c);
-                    chs.next();
-                } else {
-                    break;
+            .count();
+        let mut depth = headings.len() + list_depth + 1;
+        let kind = match &data.value {
+            NodeValue::Heading(heading) => {
+                while headings.last().is_some_and(|level| *level >= heading.level) {
+                    headings.pop();
+                }
+                depth = headings.len() + 1;
+                headings.push(heading.level);
+                NodeKind::Header {
+                    level: heading.level,
+                    title: inline_text(node),
                 }
             }
-            if !digits.is_empty() {
-                let next_char = chs.next();
-                if next_char == Some('.') || next_char == Some(')') {
-                    let after_char = chs.next();
-                    if after_char.is_none_or(|c| c.is_whitespace()) {
-                        let rest = chs.collect::<String>();
-                        Some(rest.trim().to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+            NodeValue::Item(_) | NodeValue::TaskItem(_) => {
+                let mut text = node
+                    .first_child()
+                    .filter(|child| matches!(child.data.borrow().value, NodeValue::Paragraph))
+                    .map(inline_text)
+                    .unwrap_or_default();
+                if let NodeValue::TaskItem(task) = data.value {
+                    text = format!("[{}] {text}", task.symbol.unwrap_or(' '));
                 }
-            } else {
-                None
+                NodeKind::ListItem { text }
             }
+            NodeValue::Paragraph => {
+                if node.previous_sibling().is_none()
+                    && node.parent().is_some_and(|parent| {
+                        matches!(
+                            parent.data.borrow().value,
+                            NodeValue::Item(_) | NodeValue::TaskItem(_)
+                        )
+                    })
+                {
+                    continue;
+                }
+                let full_text = inline_text(node);
+                let preview =
+                    crate::fsutil::truncate_ellipsis(full_text.lines().next().unwrap_or(""), 60);
+                NodeKind::Paragraph { preview, full_text }
+            }
+            NodeValue::CodeBlock(code) => NodeKind::CodeBlock {
+                lang: code.info.split_whitespace().next().unwrap_or("").to_owned(),
+                code: code.literal.trim_end_matches('\n').to_owned(),
+            },
+            _ => continue,
         };
-
-        if let Some(list_text) = is_list {
-            close_paragraph(&mut para, &mut nodes, cur_depth(&stack));
-            nodes.push(TreeNode {
-                kind: NodeKind::ListItem { text: list_text },
-                depth: cur_depth(&stack) + 1,
-                line: line_no,
-                has_children: false,
-            });
-            continue;
-        }
-
-        // Prose paragraph
-        if let Some((_, ref mut full_text)) = para {
-            full_text.push('\n');
-            full_text.push_str(t);
-        } else {
-            para = Some((line_no, t.to_string()));
-        }
+        nodes.push(TreeNode {
+            kind,
+            depth,
+            line: data.sourcepos.start.line,
+            has_children: false,
+        });
     }
-
-    // Close remaining paragraph
-    close_paragraph(&mut para, &mut nodes, cur_depth(&stack));
-
-    // Update has_children in a final pass
-    for i in 0..nodes.len() {
-        if i + 1 < nodes.len() {
-            nodes[i].has_children = nodes[i + 1].depth > nodes[i].depth;
-        }
+    for i in 0..nodes.len().saturating_sub(1) {
+        nodes[i].has_children = nodes[i + 1].depth > nodes[i].depth;
     }
-
     nodes
+}
+
+fn inline_text<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
+    use comrak::nodes::NodeValue;
+    let mut text = String::new();
+    for child in node.descendants().skip(1) {
+        match &child.data.borrow().value {
+            NodeValue::Text(value) => text.push_str(value),
+            NodeValue::Code(code) => text.push_str(&code.literal),
+            NodeValue::SoftBreak | NodeValue::LineBreak => text.push('\n'),
+            _ => {}
+        }
+    }
+    text
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commonmark_fences_headings_and_nested_lists_keep_source_lines() {
+        let source = "Heading\n=======\n\n````rust\n~~~\n# code, not a heading\n````\n\n- outer\n  - inner\n\n```text\nunclosed\n";
+        let nodes = parse_outline("Note", source);
+        assert_eq!(
+            nodes.iter().map(|node| node.line).collect::<Vec<_>>(),
+            [1, 1, 4, 9, 10, 12]
+        );
+        assert!(
+            matches!(&nodes[1].kind, NodeKind::Header { level: 1, title } if title == "Heading")
+        );
+        assert!(
+            matches!(&nodes[2].kind, NodeKind::CodeBlock { lang, code } if lang == "rust" && code == "~~~\n# code, not a heading")
+        );
+        assert_eq!(nodes[4].depth, nodes[3].depth + 1);
+        assert!(nodes[3].has_children);
+        assert!(matches!(&nodes[5].kind, NodeKind::CodeBlock { code, .. } if code == "unclosed"));
+    }
 
     #[test]
     fn test_parse_outline() {
