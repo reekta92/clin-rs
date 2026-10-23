@@ -3,6 +3,7 @@ use crate::app::App;
 use crate::popups::{ImportSource, ImportTarget};
 use anyhow::{Context, Result, bail};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::Cursor;
 use std::path::Path;
 use std::process::Command;
@@ -285,6 +286,20 @@ fn detect_delimiter(first_line: &str) -> u8 {
 }
 
 pub fn convert_csv(path: &str) -> Result<(String, String)> {
+    convert_csv_cancellable(path, &AtomicBool::new(false))
+}
+
+fn check_import(cancelled: &AtomicBool, bytes: usize) -> Result<()> {
+    anyhow::ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
+    anyhow::ensure!(
+        bytes <= MAX_IMPORT_BYTES,
+        "Imported note exceeds 16 MiB safety limit"
+    );
+    Ok(())
+}
+
+fn convert_csv_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(String, String)> {
+    check_import(cancelled, 0)?;
     let text = crate::storage::documents::read_bounded_text(Path::new(path), MAX_IMPORT_BYTES)
         .context("Failed to read CSV file")?;
     if text.trim().is_empty() {
@@ -300,7 +315,6 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
     let mut rdr = csv::ReaderBuilder::new()
         .delimiter(delimiter)
         .has_headers(false)
-        .flexible(true)
         .from_reader(Cursor::new(text.as_bytes()));
 
     let mut md = String::new();
@@ -314,12 +328,14 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
             md.push(' ');
             md.push_str(&field.replace('|', "\\|").replace('\n', " <br>"));
             md.push_str(" |");
+            check_import(cancelled, md.len())?;
         }
         md.push('\n');
 
         md.push('|');
         for _ in 0..header_len {
             md.push_str(" --- |");
+            check_import(cancelled, md.len())?;
         }
         md.push('\n');
     } else {
@@ -327,6 +343,7 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
     }
 
     for result in rdr.records() {
+        check_import(cancelled, md.len())?;
         let record = result.context("Failed to read CSV row")?;
         md.push('|');
         for i in 0..header_len {
@@ -335,14 +352,21 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
                 md.push_str(&field.replace('|', "\\|").replace('\n', " <br>"));
             }
             md.push_str(" |");
+            check_import(cancelled, md.len())?;
         }
         md.push('\n');
     }
 
+    check_import(cancelled, md.len())?;
     Ok(sanitized(file_stem_title(path), md))
 }
 
 pub fn convert_json(path: &str) -> Result<(String, String)> {
+    convert_json_cancellable(path, &AtomicBool::new(false))
+}
+
+fn convert_json_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(String, String)> {
+    check_import(cancelled, 0)?;
     let text = crate::storage::documents::read_bounded_text(Path::new(path), MAX_IMPORT_BYTES)
         .context("Failed to read JSON file")?;
     let value: serde_json::Value = serde_json::from_str(&text).context("Invalid JSON")?;
@@ -352,10 +376,12 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
         && arr.iter().all(|v| v.is_object())
     {
         let mut keys = Vec::new();
+        let mut seen = HashSet::new();
         for obj in arr {
+            check_import(cancelled, 0)?;
             if let Some(map) = obj.as_object() {
                 for key in map.keys() {
-                    if !keys.contains(key) {
+                    if seen.insert(key) {
                         keys.push(key.clone());
                     }
                 }
@@ -368,16 +394,19 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
             md.push(' ');
             md.push_str(&key.replace('|', "\\|").replace('\n', " <br>"));
             md.push_str(" |");
+            check_import(cancelled, md.len())?;
         }
         md.push('\n');
 
         md.push('|');
         for _ in 0..keys.len() {
             md.push_str(" --- |");
+            check_import(cancelled, md.len())?;
         }
         md.push('\n');
 
         for obj in arr {
+            check_import(cancelled, md.len())?;
             md.push('|');
             if let Some(map) = obj.as_object() {
                 for key in &keys {
@@ -391,14 +420,17 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
                         md.push_str(&s.replace('|', "\\|").replace('\n', " <br>"));
                     }
                     md.push_str(" |");
+                    check_import(cancelled, md.len())?;
                 }
             }
             md.push('\n');
         }
+        check_import(cancelled, md.len())?;
         return Ok(sanitized(file_stem_title(path), md));
     }
 
     let md = format!("```json\n{}\n```", serde_json::to_string_pretty(&value)?);
+    check_import(cancelled, md.len())?;
     Ok(sanitized(file_stem_title(path), md))
 }
 
@@ -466,8 +498,8 @@ pub(crate) fn convert_source(
     anyhow::ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
     let result = match source {
         ImportSource::File => convert_file_cancellable(input, cancelled),
-        ImportSource::Csv => convert_csv(input),
-        ImportSource::Json => convert_json(input),
+        ImportSource::Csv => convert_csv_cancellable(input, cancelled),
+        ImportSource::Json => convert_json_cancellable(input, cancelled),
         ImportSource::Url => convert_url_cancellable(input, cancelled),
         ImportSource::Clipboard => bail!("Clipboard imports do not use a prompt"),
     }?;
@@ -542,6 +574,15 @@ mod tests {
     }
 
     #[test]
+    fn csv_rejects_rows_that_would_lose_fields() -> Result<()> {
+        let mut tmp = NamedTempFile::new()?;
+        writeln!(tmp, "a,b\n1,2,valuable data")?;
+        let error = convert_csv(tmp.path().to_str().unwrap()).unwrap_err();
+        assert!(format!("{error:#}").contains("3 fields"));
+        Ok(())
+    }
+
+    #[test]
     fn test_json_table_conversion() -> Result<()> {
         let mut tmp = NamedTempFile::new()?;
         write!(
@@ -558,6 +599,43 @@ mod tests {
                 "| 1 | x |  |",
                 "| 2 |  | true |",
             ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sparse_json_tables_stop_at_the_output_budget_and_can_cancel() -> Result<()> {
+        let mut tmp = NamedTempFile::new()?;
+        let objects = (0..3000)
+            .map(|i| format!("{{\"column{i}\":{i}}}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        write!(tmp, "[{objects}]")?;
+        let path = tmp.path().to_str().unwrap();
+        assert!(
+            convert_json(path)
+                .unwrap_err()
+                .to_string()
+                .contains("16 MiB")
+        );
+        let cancelled = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(5));
+                cancelled.store(true, Ordering::Relaxed);
+            });
+            assert!(
+                convert_json_cancellable(path, &cancelled)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("cancelled")
+            );
+        });
+        assert!(
+            convert_csv_cancellable(path, &AtomicBool::new(true))
+                .unwrap_err()
+                .to_string()
+                .contains("cancelled")
         );
         Ok(())
     }

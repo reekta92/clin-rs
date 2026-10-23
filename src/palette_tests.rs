@@ -2237,6 +2237,41 @@ fn palette_workflow_mouse_apply_resize_and_failed_theme_exit() {
 }
 
 #[test]
+fn subnote_outside_click_keeps_pending_input_when_another_window_saved() {
+    let mut f = Fixture::new();
+    let before = vec![crate::storage::SubNote {
+        id: "child".into(),
+        title: "Original".into(),
+        content: "body".into(),
+        updated_at: 1,
+    }];
+    f.app.storage.set_subnotes("selected.md", &before).unwrap();
+    f.app.open_subnotes_popup_for("selected.md", None);
+    if let Some(crate::popups::ActivePopup::Subnotes(popup)) = &mut f.app.popups.active {
+        popup.title_input.select_all();
+        popup.title_input.insert_str("local title");
+    }
+    let mut remote = before;
+    remote[0].content = "other window".into();
+    f.app.storage.set_subnotes("selected.md", &remote).unwrap();
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    let Some(crate::popups::ActivePopup::Subnotes(popup)) = &f.app.popups.active else {
+        panic!("failed save must retain popup");
+    };
+    assert_eq!(popup.subnotes[0].title, "local title");
+    assert_eq!(f.app.storage.get_subnotes("selected.md").unwrap(), remote);
+    assert!(f.app.status.contains("changed on disk"));
+}
+
+#[test]
 fn palette_subnotes_save_failure_preserves_original_manager() {
     let mut f = Fixture::new();
     activate(&mut f.app, "manage_subnotes_list");
@@ -2639,6 +2674,59 @@ fn palette_custom_theme_sources_survive_filter_apply_and_setup() {
     activate(&mut f.app, "switch_theme");
     let buffer = render_palette(&mut f.app);
     assert!((0..AREA.height).any(|y| rendered_text(&buffer, y).contains("Custom theme · Current")));
+}
+
+#[test]
+fn creating_a_replacement_canvas_keeps_the_original_editor_return_route() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    let editor_id = f.app.editor.editing_id.clone();
+    f.app.open_note_at_line("map.canvas", None);
+    f.app
+        .apply_note_creation(
+            String::new(),
+            crate::popups::NoteFormat::Canvas,
+            "replacement",
+        )
+        .unwrap();
+    assert_eq!(f.app.return_mode, Some(ViewMode::Edit));
+    assert_eq!(
+        f.app.canvas_state.as_ref().unwrap().current_file,
+        "replacement.canvas"
+    );
+    f.app.close_canvas_view();
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    assert_eq!(f.app.editor.editing_id, editor_id);
+    f.app.autosave().unwrap();
+}
+
+#[test]
+fn canvas_opens_requested_file_and_preserves_the_returning_editor() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    let editor_id = f.app.editor.editing_id.clone();
+    f.app.open_note_at_line("map.canvas", None);
+    assert_eq!(f.app.mode, ViewMode::Canvas);
+    assert_eq!(
+        f.app.canvas_state.as_ref().unwrap().current_file,
+        "map.canvas"
+    );
+    assert_eq!(f.app.editor.editing_id, editor_id);
+    f.app.canvas_state.as_mut().unwrap().state.zoom = 2.0;
+    f.app.open_note_at_line("map.canvas", None);
+    assert_eq!(f.app.canvas_state.as_ref().unwrap().state.zoom, 2.0);
+    for id in ["missing.canvas", "../escape.canvas", "selected.md"] {
+        assert!(f.app.open_canvas_document(id).is_err());
+        assert_eq!(f.app.mode, ViewMode::Canvas);
+        assert_eq!(
+            f.app.canvas_state.as_ref().unwrap().current_file,
+            "map.canvas"
+        );
+    }
+    f.app.close_canvas_view();
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    assert_eq!(f.app.editor.editing_id, editor_id);
+    f.app.autosave().unwrap();
 }
 
 #[test]

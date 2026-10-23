@@ -22,14 +22,26 @@ impl App {
     }
 
     pub(crate) fn send_catalog_cmd(&mut self, cmd: crate::app::catalog::CatalogCommand) {
-        let _ = self.catalog_cmd_tx.try_send(cmd).inspect_err(|e| {
-            if matches!(e, std::sync::mpsc::TrySendError::Disconnected(_)) {
+        match self.catalog_cmd_tx.try_send(cmd) {
+            Ok(()) => {}
+            Err(std::sync::mpsc::TrySendError::Full(_)) => self.catalog_reconcile_pending = true,
+            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
                 self.messages.push(
                     "Catalog worker disconnected; note list will not refresh".to_string(),
                     crate::app::messages::MessageSeverity::Warning,
                 );
             }
-        });
+        }
+    }
+
+    pub(crate) fn retry_catalog_reconcile(&mut self) {
+        if std::mem::take(&mut self.catalog_reconcile_pending) {
+            self.send_catalog_cmd(crate::app::catalog::CatalogCommand::Reconcile {
+                generation: self.catalog_generation.load(Ordering::SeqCst),
+                show_hidden: self.list.show_hidden_files,
+                show_all: self.list.show_all_files,
+            });
+        }
     }
 
     pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
@@ -120,9 +132,23 @@ impl App {
                 generation,
                 complete,
                 warnings,
+                snapshot,
             } => {
                 if generation == cur_gen {
                     if complete {
+                        // A cancelled generation may have cached updates the app never received.
+                        (self.notes, self.note_stamps) = snapshot
+                            .into_iter()
+                            .map(|(note, stamp)| {
+                                let id = note.id.clone();
+                                (note, (id, stamp))
+                            })
+                            .unzip();
+                        self.sort_notes();
+                        self.notes_revision += 1;
+                        self.rebuild_note_index();
+                        self.refresh_visual_list();
+                        self.refresh_subnotes_view_cache();
                         self.initial_load_done = true;
                         self.catalog_status = None;
                         if self
@@ -334,15 +360,17 @@ impl App {
             }
             return;
         }
+        if note_id.ends_with(".canvas") {
+            if let Err(error) = self.open_canvas_document(note_id) {
+                self.set_temporary_status(&format!("{error:#}"));
+            }
+            return;
+        }
         if !self.prepare_editor_transition() {
             return;
         }
         if note_id.ends_with(".base") {
             self.open_bases_view(note_id, None);
-            return;
-        }
-        if note_id.ends_with(".canvas") {
-            self.open_canvas_view();
             return;
         }
         if note_id.ends_with(".clin") {
@@ -586,7 +614,7 @@ impl App {
                 }
             }
 
-            let _secret = SecretTempFile::new(temp_file_path.clone());
+            let secret = SecretTempFile::new(temp_file_path.clone());
 
             let mut args: Vec<String> = Vec::new();
             if let Some(l) = line_number {
@@ -614,11 +642,20 @@ impl App {
                                 tags: note.tags,
                             };
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
-                                self.set_temporary_status(&format!("Failed to save note: {e}"));
-                                self.messages.push(
-                                    format!("Failed to save note: {e}"),
-                                    crate::app::messages::MessageSeverity::Warning,
-                                );
+                                let recovery =
+                                    self.retain_external_editor_input(note_id, updated_note);
+                                let detail = match recovery {
+                                    Ok(()) => "Edits retained in the editor and recovery storage"
+                                        .to_owned(),
+                                    Err(error) => format!(
+                                        "Recovery failed: {error:#}. Edits retained at {}",
+                                        secret.persist().display()
+                                    ),
+                                };
+                                let message = format!("Failed to save note: {e}. {detail}");
+                                self.set_temporary_status(&message);
+                                self.messages
+                                    .push(message, crate::app::messages::MessageSeverity::Warning);
                             } else {
                                 self.set_temporary_status_static("Note saved");
                                 self.refresh_note_single(None, note_id);
@@ -648,7 +685,11 @@ impl App {
                             self.set_temporary_status_static("No changes made in external editor.");
                         }
                     } else {
-                        self.set_temporary_status_static("Failed to read from temp file.");
+                        let retained = secret.persist();
+                        self.set_temporary_status(&format!(
+                            "Failed to read editor output; file retained at {}",
+                            retained.display()
+                        ));
                         self.messages.push(
                             "Failed to read from temp file.".to_string(),
                             crate::app::messages::MessageSeverity::Warning,
@@ -656,8 +697,10 @@ impl App {
                     }
                 }
                 Ok(status) => {
+                    let retained = secret.persist();
                     self.set_temporary_status(&format!(
-                        "Editor '{editor_prog}' exited with status: {status}"
+                        "Editor '{editor_prog}' exited with status: {status}; file retained at {}",
+                        retained.display()
                     ));
                 }
                 Err(e) => {
@@ -673,6 +716,29 @@ impl App {
                 crate::app::messages::MessageSeverity::Warning,
             );
         }
+    }
+
+    fn retain_external_editor_input(&mut self, note_id: &str, note: Note) -> Result<()> {
+        let baseline = note
+            .baseline
+            .as_ref()
+            .context("missing external editor baseline")?;
+        let frame = crate::frontmatter::properties::PropertyFrame::parse(baseline.source())?;
+        let recovery = crate::storage::document_recovery::EditorRecovery {
+            id: note_id.to_owned(),
+            before: Some(baseline.source().to_owned()),
+            title: note.title.clone(),
+            loaded_title: note.title.clone(),
+            yaml: frame.yaml().to_owned(),
+            body: note.content.clone(),
+            input: None,
+        };
+        let _lease = self.storage.recovery_guard(false)?;
+        let result = self.storage.write_editor_draft(baseline, &recovery);
+        self.open_loaded_note(note_id, note, None);
+        self.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
+        self.editor.autosave_timer = None;
+        result
     }
 
     pub fn open_note_by_title(&mut self, title: &str) -> bool {
@@ -1332,14 +1398,19 @@ impl App {
                 &self.storage,
             )?);
         }
-        self.return_mode = Some(self.mode);
-        self.mode = if format == crate::popups::NoteFormat::Draw {
+        let mode = if format == crate::popups::NoteFormat::Draw {
             ViewMode::Draw
         } else {
             ViewMode::Canvas
         };
-        self.editor.note_baseline = Some(snapshot);
-        self.editor.editing_id = Some(id);
+        if self.mode != mode {
+            self.return_mode = Some(self.mode);
+        }
+        self.mode = mode;
+        if format == crate::popups::NoteFormat::Draw {
+            self.editor.note_baseline = Some(snapshot);
+            self.editor.editing_id = Some(id);
+        }
         self.set_default_status();
         Ok(())
     }
@@ -1526,6 +1597,7 @@ impl App {
 
         let popup = crate::popups::SubnotesPopup {
             parent_id: parent_id.to_string(),
+            baseline: subnotes.clone(),
             subnotes,
             selected,
             focus: crate::popups::SubnotesFocus::List,
@@ -1558,8 +1630,8 @@ impl App {
     }
 
     pub fn close_subnotes_popup(&mut self) -> Result<(), String> {
-        if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take()
-            && let Err(error) = self.save_subnotes_state(&popup)
+        if let Some(crate::popups::ActivePopup::Subnotes(mut popup)) = self.popups.active.take()
+            && let Err(error) = self.save_subnotes_state(&mut popup)
         {
             self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
             let message = format!("Failed to save sub-notes: {error:#}");
@@ -1571,11 +1643,14 @@ impl App {
     }
     pub(crate) fn save_subnotes_state(
         &mut self,
-        popup: &crate::popups::SubnotesPopup,
+        popup: &mut crate::popups::SubnotesPopup,
     ) -> Result<()> {
+        popup.commit_edits();
         if popup.is_dirty {
             self.storage
-                .set_subnotes(&popup.parent_id, &popup.subnotes)?;
+                .replace_subnotes(&popup.parent_id, &popup.baseline, &popup.subnotes)?;
+            popup.baseline.clone_from(&popup.subnotes);
+            popup.is_dirty = false;
         }
         self.notes_with_subnotes = self.storage.get_notes_with_subnotes()?;
         self.refresh_subnotes_view_cache();
@@ -1600,18 +1675,8 @@ impl App {
             return;
         }
 
-        // Sync TUI inputs to subnote struct first
+        popup.commit_edits();
         let cur_idx = popup.selected;
-        let new_title = popup.title_input.lines().join("");
-        let new_content_tui = popup.content_input.lines().join("\n");
-        if popup.subnotes[cur_idx].title != new_title
-            || popup.subnotes[cur_idx].content != new_content_tui
-        {
-            popup.subnotes[cur_idx].title = new_title;
-            popup.subnotes[cur_idx].content = new_content_tui;
-            popup.subnotes[cur_idx].updated_at = now_unix_secs();
-            popup.is_dirty = true;
-        }
 
         let subnote = &popup.subnotes[cur_idx];
         let temp_dir = std::env::temp_dir().join("clin");
@@ -1701,5 +1766,76 @@ impl App {
                 self.set_temporary_status(&format!("Failed to launch editor '{editor_prog}': {e}"));
             }
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod external_editor_tests {
+    use super::*;
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    #[test]
+    fn external_editor_conflicts_keep_edits_even_when_recovery_fails() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        for block_recovery in [false, true] {
+            let root = tempfile::tempdir()?;
+            crate::config::set_config_path_override(root.path().join("config.toml"));
+            let mut config = crate::config::ClinConfig::default();
+            config.core.storage_path = Some(root.path().join("vault"));
+            config.save()?;
+            let (storage, _) = crate::storage::Storage::init();
+            let storage = storage?;
+            storage.create_document("note.md", "---\n# keep\nscore: 1\n---\noriginal")?;
+            let mut app = App::new(storage.clone())?;
+            let script = root.path().join("editor");
+            let argument = root.path().join("argument");
+            fs::write(
+                &script,
+                format!(
+                    "#!/bin/sh\nprintf '%s' \"$1\" > '{}'\nprintf 'local edits\\n' > \"$1\"\nprintf 'other writer\\n' > '{}'\n",
+                    argument.display(),
+                    storage.note_path("note.md").display()
+                ),
+            )?;
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o700))?;
+            if block_recovery {
+                fs::write(storage.data_dir.join(".clin/document-recovery-v2"), "block")?;
+            }
+            app.editor.external_editor = Some(script.to_str().unwrap().to_owned());
+            app.open_note_in_external_editor("note.md", None);
+            assert_eq!(storage.load_document("note.md")?.source(), "other writer\n");
+            assert_eq!(app.editor.body.text(), "local edits\n");
+            assert_eq!(app.mode, ViewMode::Edit);
+            assert_eq!(
+                app.editor.autosave_status,
+                crate::editor::AutosaveStatus::Unsaved
+            );
+            assert!(app.status.contains("Failed to save note"));
+            let original_temp = fs::read_to_string(&argument)?;
+            assert!(!std::path::Path::new(&original_temp).exists());
+            if block_recovery {
+                let path = std::path::Path::new(app.status.rsplit("retained at ").next().unwrap());
+                assert_eq!(fs::read_to_string(path)?, "local edits\n");
+                assert!(
+                    path.file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .starts_with("retained-")
+                );
+                fs::remove_file(path)?;
+            } else {
+                let drafts = storage.editor_drafts()?;
+                assert_eq!(drafts.len(), 1);
+                assert_eq!(drafts[0].1.body, "local edits\n");
+                assert!(drafts[0].1.yaml.contains("# keep"));
+                drop(app);
+                let recovered = App::new(storage.clone())?;
+                assert_eq!(recovered.mode, ViewMode::Edit);
+                assert_eq!(recovered.editor.body.text(), "local edits\n");
+                assert_eq!(storage.load_document("note.md")?.source(), "other writer\n");
+            }
+        }
+        Ok(())
     }
 }

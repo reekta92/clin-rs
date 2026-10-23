@@ -116,7 +116,11 @@ pub enum StorageCmd {
     /// Reset to the default storage path.
     Reset,
     /// Migrate data from a previous storage location.
-    Migrate,
+    Migrate {
+        /// Convert the old notes/ + templates/ layout instead of preserving vault-relative paths.
+        #[arg(long)]
+        legacy_layout: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

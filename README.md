@@ -446,6 +446,7 @@ clin storage show                 Show storage path
 clin storage set <PATH>           Set a custom (absolute) storage path
 clin storage reset                Reset to default storage path
 clin storage migrate              Migrate data from a previous location
+clin storage migrate --legacy-layout Convert the old notes/ + templates/ layout
 
 clin keybinds show                Show keybindings
 clin keybinds export              Export keybinds as TOML

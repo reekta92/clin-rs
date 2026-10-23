@@ -12,6 +12,113 @@ fn fixture(root: &Path) -> Storage {
 }
 
 #[test]
+fn keybinds_follow_the_active_configuration_directory() -> Result<()> {
+    let _guard = crate::config::ConfigTestGuard::lock();
+    let root = tempfile::tempdir()?;
+    let profile = root.path().join("profile");
+    crate::config::set_config_path_override(profile.join("custom.toml"));
+    let mut config = ClinConfig::default();
+    config.core.storage_path = Some(root.path().join("vault"));
+    config.save()?;
+    let (storage, _) = Storage::init();
+    let storage = storage?;
+    assert_eq!(storage.config_dir, profile);
+    let preset = crate::config::KeybindPreset::Vim;
+    storage.save_keybinds_for_preset(&preset.base_keybinds(), preset)?;
+    assert_eq!(
+        storage.keybinds_path_for_preset(preset),
+        profile.join("keybinds/vim.toml")
+    );
+    assert!(profile.join("keybinds/vim.toml").is_file());
+    Ok(())
+}
+
+#[test]
+fn attachment_paths_stay_in_the_public_vault() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let outside = tempfile::tempdir()?;
+    let storage = fixture(root.path());
+    let source = outside.path().join("source.png");
+    fs::write(&source, b"image bytes")?;
+    let id = storage.import_attachment(&source, "attachments/nested")?;
+    assert_eq!(
+        fs::read(storage.resolve_attachment(&id).unwrap())?,
+        b"image bytes"
+    );
+    fs::create_dir_all(root.path().join(".clin"))?;
+    fs::write(root.path().join(".clin/private.png"), b"private")?;
+    for id in [
+        "../outside.png",
+        source.to_str().unwrap(),
+        ".clin/private.png",
+        "attachments",
+    ] {
+        assert!(storage.resolve_attachment(id).is_none(), "{id}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+        symlink(outside.path(), root.path().join("escape"))?;
+        symlink(root.path().join(".clin"), root.path().join("private"))?;
+        for folder in ["escape", "private"] {
+            assert!(storage.import_attachment(&source, folder).is_err());
+        }
+        assert!(storage.resolve_attachment("escape/source.png").is_none());
+        assert!(storage.resolve_attachment("private/private.png").is_none());
+        assert_eq!(fs::read_dir(outside.path())?.count(), 1);
+        symlink(root.path().join("attachments"), root.path().join("alias"))?;
+        assert!(storage.import_attachment(&source, "alias").is_ok());
+    }
+    Ok(())
+}
+
+#[test]
+fn stale_subnote_edits_cannot_replace_another_windows_save() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut storage = fixture(root.path());
+    let before = vec![SubNote {
+        id: "child".into(),
+        title: "Original".into(),
+        content: "body".into(),
+        updated_at: 1,
+    }];
+    storage.set_subnotes("note.md", &before)?;
+    let mut first = before.clone();
+    first[0].content = "first window".into();
+    storage.replace_subnotes("note.md", &before, &first)?;
+    storage.replace_subnotes("note.md", &before, &first)?;
+    let mut second = before.clone();
+    second[0].title = "second window".into();
+    assert!(
+        storage
+            .replace_subnotes("note.md", &before, &second)
+            .is_err()
+    );
+    assert_eq!(storage.get_subnotes("note.md")?, first);
+    storage.replace_subnotes("other.md", &[], &second)?;
+    Ok(())
+}
+
+#[test]
+fn oversized_subnote_saves_keep_the_existing_database_readable() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut storage = fixture(root.path());
+    let mut notes = vec![SubNote {
+        id: "child".into(),
+        title: "Child".into(),
+        content: "keep".into(),
+        updated_at: 1,
+    }];
+    storage.set_subnotes("note.md", &notes)?;
+    let before = fs::read(storage.subnotes_db_path())?;
+    notes[0].content = "x".repeat(SUBNOTES_MAX_BYTES);
+    assert!(storage.set_subnotes("large.md", &notes).is_err());
+    assert_eq!(fs::read(storage.subnotes_db_path())?, before);
+    assert_eq!(storage.get_subnotes("note.md")?[0].content, "keep");
+    Ok(())
+}
+
+#[test]
 fn pinning_rejects_structured_documents_without_changing_bytes() -> Result<()> {
     let root = tempfile::tempdir()?;
     let storage = fixture(root.path());

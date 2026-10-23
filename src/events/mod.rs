@@ -1302,22 +1302,6 @@ impl crate::popups::ActivePopup {
                 app.confirm_goals_popup();
             }),
             ActivePopup::Subnotes(mut popup) => {
-                let commit_edits = |popup: &mut crate::popups::SubnotesPopup| {
-                    let cur_idx = popup.selected;
-                    if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
-                        let new_title = popup.title_input.lines().join("");
-                        let new_content = popup.content_input.lines().join("\n");
-                        if popup.subnotes[cur_idx].title != new_title
-                            || popup.subnotes[cur_idx].content != new_content
-                        {
-                            popup.subnotes[cur_idx].title = new_title;
-                            popup.subnotes[cur_idx].content = new_content;
-                            popup.subnotes[cur_idx].updated_at = crate::ui::now_unix_secs();
-                            popup.is_dirty = true;
-                        }
-                    }
-                };
-
                 let is_alt_n = (key.code == KeyCode::Char('n') || key.code == KeyCode::Char('N'))
                     && key.modifiers.contains(KeyModifiers::ALT);
 
@@ -1331,7 +1315,7 @@ impl crate::popups::ActivePopup {
                 }
 
                 if is_alt_n {
-                    commit_edits(&mut popup);
+                    popup.commit_edits();
 
                     let new_subnote = crate::storage::SubNote {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -1354,7 +1338,7 @@ impl crate::popups::ActivePopup {
                     crate::popups::SubnotesFocus::List => {
                         if key.code == KeyCode::Char('k') || key.code == KeyCode::Up {
                             if !popup.subnotes.is_empty() {
-                                commit_edits(&mut popup);
+                                popup.commit_edits();
                                 popup.selected = popup.selected.saturating_sub(1);
                                 popup.title_input =
                                     crate::ui::make_popup_textarea(&app.app_theme, "");
@@ -1370,7 +1354,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Char('j') || key.code == KeyCode::Down {
                             if !popup.subnotes.is_empty() {
-                                commit_edits(&mut popup);
+                                popup.commit_edits();
                                 popup.selected = popup
                                     .selected
                                     .saturating_add(1)
@@ -1388,7 +1372,7 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Char('n') {
-                            commit_edits(&mut popup);
+                            popup.commit_edits();
 
                             let new_subnote = crate::storage::SubNote {
                                 id: uuid::Uuid::new_v4().to_string(),
@@ -1432,7 +1416,7 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-                            commit_edits(&mut popup);
+                            popup.commit_edits();
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                             let _ = app.close_subnotes_popup();
                         } else {
@@ -1441,11 +1425,11 @@ impl crate::popups::ActivePopup {
                     }
                     crate::popups::SubnotesFocus::EditTitle => {
                         if key.code == KeyCode::Tab || key.code == KeyCode::Enter {
-                            commit_edits(&mut popup);
+                            popup.commit_edits();
                             popup.focus = crate::popups::SubnotesFocus::EditContent;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Esc {
-                            commit_edits(&mut popup);
+                            popup.commit_edits();
                             popup.focus = crate::popups::SubnotesFocus::List;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else {
@@ -1459,11 +1443,11 @@ impl crate::popups::ActivePopup {
                     }
                     crate::popups::SubnotesFocus::EditContent => {
                         if key.code == KeyCode::BackTab {
-                            commit_edits(&mut popup);
+                            popup.commit_edits();
                             popup.focus = crate::popups::SubnotesFocus::EditTitle;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Esc {
-                            commit_edits(&mut popup);
+                            popup.commit_edits();
                             popup.focus = crate::popups::SubnotesFocus::List;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else {

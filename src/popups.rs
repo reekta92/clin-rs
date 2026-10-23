@@ -352,6 +352,7 @@ pub enum SubnotesFocus {
 }
 pub struct SubnotesPopup {
     pub parent_id: String,
+    pub baseline: Vec<crate::storage::SubNote>,
     pub subnotes: Vec<crate::storage::SubNote>,
     pub selected: usize,
     pub focus: SubnotesFocus,
@@ -360,6 +361,21 @@ pub struct SubnotesPopup {
     pub content_input: TextArea<'static>,
     pub is_dirty: bool,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+}
+
+impl SubnotesPopup {
+    pub(crate) fn commit_edits(&mut self) {
+        if let Some(note) = self.subnotes.get_mut(self.selected) {
+            let title = self.title_input.lines().join("");
+            let content = self.content_input.lines().join("\n");
+            if note.title != title || note.content != content {
+                note.title = title;
+                note.content = content;
+                note.updated_at = crate::ui::now_unix_secs();
+                self.is_dirty = true;
+            }
+        }
+    }
 }
 
 /// The single active (non-confirm) popup. Only one is ever active at a time;

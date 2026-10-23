@@ -519,7 +519,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             );
             Ok(())
         }
-        StorageCmd::Migrate => {
+        StorageCmd::Migrate { legacy_layout } => {
             let bootstrap = ClinConfig::load().0?;
             let to = bootstrap.effective_storage_path()?;
 
@@ -572,61 +572,11 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             fs::create_dir_all(&to)
                 .with_context(|| format!("failed to create destination: {}", to.display()))?;
 
-            let mut migrated_count = 0;
-            let mut skipped_count = 0;
-            let mut conflict_action: Option<migration::ConflictAction> = None;
-
-            let source_is_vault = is_existing_vault(&from);
-
-            // Determine effective source dirs (vault mode: notes at root, .clin/templates/)
-            let notes_src = if source_is_vault {
-                from.clone()
+            let (migrated_count, skipped_count, _) = if legacy_layout {
+                migration::migrate_legacy_vault_with_conflict(&from, &to, None)?
             } else {
-                from.join("notes")
+                migration::migrate_note_files_with_conflict(&from, &to, None)?
             };
-            let templates_src = if source_is_vault {
-                from.join(".clin").join("templates")
-            } else {
-                from.join("templates")
-            };
-
-            // Determine effective target dirs (always vault layout now)
-            let notes_dst = to.clone();
-            let templates_dst = to.join(".clin").join("templates");
-
-            // Migrate notes
-            if notes_src.exists() && notes_src.is_dir() {
-                fs::create_dir_all(&notes_dst)?;
-                let (m, s, action) = if source_is_vault {
-                    // Vault-mode source: retain public files and durable private metadata.
-                    migration::migrate_note_files_with_conflict(
-                        &notes_src,
-                        &notes_dst,
-                        conflict_action,
-                    )?
-                } else {
-                    migration::migrate_directory_with_conflict(
-                        &notes_src,
-                        &notes_dst,
-                        conflict_action,
-                    )?
-                };
-                migrated_count += m;
-                skipped_count += s;
-                conflict_action = action;
-            }
-
-            // Migrate templates
-            if !source_is_vault && templates_src.exists() && templates_src.is_dir() {
-                fs::create_dir_all(&templates_dst)?;
-                let (m, s, _) = migration::migrate_directory_with_conflict(
-                    &templates_src,
-                    &templates_dst,
-                    conflict_action,
-                )?;
-                migrated_count += m;
-                skipped_count += s;
-            }
 
             // Clear storage migration record after successful migration
             if let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?) {
@@ -1462,6 +1412,7 @@ where
                 list_dirty = true;
             }
         }
+        app.retry_catalog_reconcile();
         if app.handle_search_events() && app.mode == ViewMode::List {
             list_dirty = true;
         }

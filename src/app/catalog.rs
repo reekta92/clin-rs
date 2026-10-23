@@ -69,6 +69,7 @@ pub enum CatalogEvent {
         generation: u64,
         complete: bool,
         warnings: Vec<String>,
+        snapshot: Vec<(NoteSummary, FileStamp)>,
     },
     Failed {
         generation: u64,
@@ -514,6 +515,13 @@ pub(crate) fn spawn_catalog_worker(
                                 generation: cmd_gen,
                                 complete: scan.complete,
                                 warnings: scan.warnings,
+                                snapshot: if scan.complete {
+                                    map.values()
+                                        .map(|(stamp, summary)| (summary.clone(), *stamp))
+                                        .collect()
+                                } else {
+                                    Vec::new()
+                                },
                             },
                             &generation,
                             cmd_gen,
@@ -746,6 +754,84 @@ mod tests {
         let (summaries, _, _) =
             load_persisted_note_cache(&storage, &cache_path, digest, false, false);
         assert_eq!(summaries.len(), 0);
+    }
+
+    #[test]
+    fn cancelled_batches_are_reconciled_even_after_the_worker_cached_them() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = TempDir::new()?;
+        crate::config::set_config_path_override(root.path().join("config.toml"));
+        let storage = make_test_storage(root.path());
+        storage.create_document("removed.md", "before")?;
+        let mut app = crate::app::App::new(storage.clone())?;
+        std::fs::remove_file(root.path().join("removed.md"))?;
+        storage.create_document("new.md", "new body")?;
+        app.request_notes_reconcile();
+        let mut queued = Vec::new();
+        let mut saw_add = false;
+        let mut saw_remove = false;
+        while !saw_add || !saw_remove {
+            let event = app.catalog_event_rx.recv_timeout(Duration::from_secs(5))?;
+            if let CatalogEvent::Delta {
+                upserts, removed, ..
+            } = &event
+            {
+                saw_add |= upserts.iter().any(|(note, _)| note.id == "new.md");
+                saw_remove |= removed.iter().any(|id| id == "removed.md");
+            }
+            queued.push(event);
+        }
+        app.request_notes_reconcile();
+        for event in queued {
+            app.handle_catalog_event(event);
+        }
+        for _ in 0..2 {
+            loop {
+                let event = app.catalog_event_rx.recv_timeout(Duration::from_secs(5))?;
+                let finished = matches!(&event, CatalogEvent::Finished { generation, .. }
+                    if *generation == app.catalog_generation.load(Ordering::SeqCst));
+                app.handle_catalog_event(event);
+                if finished {
+                    break;
+                }
+            }
+            assert_eq!(
+                app.notes
+                    .iter()
+                    .map(|note| note.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["new.md"]
+            );
+            app.request_notes_reconcile();
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_full_command_queue_retries_the_latest_reconciliation() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = TempDir::new()?;
+        let mut app = crate::app::App::new(make_test_storage(root.path()))?;
+        let (sender, receiver) = sync_channel(1);
+        app.catalog_cmd_tx = sender;
+        app.request_notes_reconcile();
+        app.list.show_hidden_files = true;
+        app.request_notes_reconcile();
+        assert!(app.catalog_reconcile_pending);
+        let _ = receiver.recv()?;
+        app.retry_catalog_reconcile();
+        assert!(!app.catalog_reconcile_pending);
+        let CatalogCommand::Reconcile {
+            generation,
+            show_hidden,
+            ..
+        } = receiver.recv()?
+        else {
+            panic!("expected reconciliation");
+        };
+        assert_eq!(generation, app.catalog_generation.load(Ordering::SeqCst));
+        assert!(show_hidden);
+        Ok(())
     }
 
     #[test]

@@ -440,6 +440,7 @@ pub struct App {
     pub catalog_generation: Arc<AtomicU64>,
     pub catalog_folders: Vec<String>,
     pub catalog_status: Option<String>,
+    pub(crate) catalog_reconcile_pending: bool,
     pub(crate) search_worker: crate::app::search_worker::SearchWorker,
     pub search_debounce_deadline: Option<Instant>,
     pub search_query_generation: Arc<AtomicU64>,
@@ -720,6 +721,7 @@ impl App {
             catalog_generation,
             catalog_folders,
             catalog_status: None,
+            catalog_reconcile_pending: false,
             search_status: None,
             search_worker: crate::app::search_worker::SearchWorker::spawn(
                 storage.clone(),
@@ -1009,6 +1011,7 @@ impl App {
             catalog_generation,
             catalog_folders,
             catalog_status: Some("Validating notes…".to_string()),
+            catalog_reconcile_pending: false,
             search_status: None,
             search_worker: crate::app::search_worker::SearchWorker::spawn(
                 storage.clone(),

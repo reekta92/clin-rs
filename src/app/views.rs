@@ -1,5 +1,4 @@
 use super::*;
-use crate::list_view::*;
 use crate::popups::*;
 use std::borrow::Cow;
 
@@ -587,65 +586,42 @@ impl App {
         self.set_default_status();
     }
 
-    pub fn open_canvas_view(&mut self) {
-        if self.feature_disabled(
+    pub(crate) fn open_canvas_document(&mut self, id: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(
             self.config.features.canvas_view.is_enabled(),
-            "Canvas view",
-            "canvas_view",
-        ) {
-            return;
-        }
-        if let Some(VisualItem::Note { summary_idx, .. }) =
-            self.list.visual_list.get(self.list.visual_index)
+            "Canvas disabled"
+        );
+        anyhow::ensure!(id.ends_with(".canvas"), "Not a canvas: {id}");
+        self.save_before_session_replace()?;
+        if self.palette_source() != ViewMode::Canvas
+            || self
+                .canvas_state
+                .as_ref()
+                .is_none_or(|state| state.current_file != id)
         {
-            let note_id = self.notes[*summary_idx].id.clone();
-            let path = self.storage.note_path(&note_id);
-            let prev_mode = self.mode;
-            self.load_and_open_note(&note_id, None);
-            if self.mode == ViewMode::Edit {
-                if prev_mode != ViewMode::Canvas {
-                    self.return_mode = Some(prev_mode);
-                }
-                self.mode = ViewMode::Canvas;
-            } else {
-                self.set_temporary_status_static("Failed to load .canvas file!");
-                self.messages.push(
-                    "Failed to load .canvas file!".to_string(),
-                    crate::app::messages::MessageSeverity::Warning,
-                );
-            }
-
-            match crate::pinstar_adapter::PinstarPlugin::new_in_storage(
-                &path,
+            let plugin = crate::pinstar_adapter::PinstarPlugin::new_in_storage(
+                &self.storage.document_path(id)?,
                 &self.config,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
                 self.image_picker.clone(),
                 &self.storage,
-            ) {
-                Ok(plugin) => {
-                    self.canvas_state = Some(plugin);
-                    self.set_default_status();
-                }
-                Err(_) => {
-                    self.set_temporary_status_static("Failed to load .canvas file!");
-                    self.messages.push(
-                        "Failed to load .canvas file!".to_string(),
-                        crate::app::messages::MessageSeverity::Warning,
-                    );
-                }
-            }
+            )?;
+            self.canvas_state = Some(plugin);
         }
+        if self.mode != ViewMode::Canvas {
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Canvas;
+        }
+        self.set_default_status();
+        Ok(())
     }
 
     pub fn close_canvas_view(&mut self) {
-        let editing_id = self.editor.editing_id.take();
+        let canvas = self.canvas_state.take();
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-
-        if let Some(id) = editing_id {
-            self.refresh_note_single(None, &id);
-        } else {
-            self.request_notes_reconcile();
+        if let Some(canvas) = canvas {
+            self.refresh_note_single(None, &canvas.current_file);
         }
         self.set_default_status();
     }

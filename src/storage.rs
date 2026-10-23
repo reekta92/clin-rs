@@ -13,8 +13,11 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
+
+const SUBNOTES_MAX_BYTES: usize = 40 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
@@ -132,36 +135,6 @@ pub struct Storage {
     pub skip_dir_patterns: Vec<regex::Regex>,
 }
 
-/// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
-pub(crate) fn is_existing_vault(dir: &Path) -> bool {
-    if !dir.exists() {
-        return false;
-    }
-    match dir.read_dir() {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let fname = entry.file_name();
-                let name = match fname.to_str() {
-                    Some(n) => n,
-                    None => continue,
-                };
-                // Ignore clin-managed subdirectories and all hidden entries
-                if name == "notes"
-                    || name == "templates"
-                    || name.starts_with('.')
-                    || name == "key.bin"
-                    || name == "state.json"
-                {
-                    continue;
-                }
-                return true;
-            }
-            false
-        }
-        Err(_) => false,
-    }
-}
-
 /// Copy a legacy classic-layout default vault into the current vault-layout
 /// default path. No-op unless `old` holds user content and `new` is absent.
 fn migrate_legacy_default_vault_at(old: &Path, new: &Path, warnings: &mut Vec<String>) {
@@ -272,8 +245,9 @@ impl Storage {
             migrate_legacy_default_vault(&data_dir, warnings);
         }
 
-        let config_dir =
-            crate::config::clin_config_dir().context("could not determine config directory")?;
+        let config_dir = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?
+            .config_dir()
+            .to_owned();
 
         let notes_dir = data_dir.clone();
         let templates_dir = data_dir.join(".clin").join("templates");
@@ -415,7 +389,7 @@ impl Storage {
 
     pub fn import_attachment(&self, src: &Path, attachments_subdir: &str) -> Result<String> {
         let relative = Self::validated_attachment_subdir(attachments_subdir)?;
-        let dir = self.notes_dir.join(&relative);
+        let dir = self.public_path(attachments_subdir)?;
         fs::create_dir_all(&dir).context("failed to create attachments directory")?;
 
         let ext = src
@@ -429,12 +403,15 @@ impl Storage {
             .as_millis();
         let short_id = &Uuid::new_v4().to_string()[..8];
         let filename = format!("{ts}_{short_id}{ext}");
-        fs::copy(src, dir.join(&filename)).context("failed to copy attachment")?;
-        Ok(format!(
+        let id = format!(
             "{}/{}",
             relative.to_string_lossy().replace('\\', "/"),
             filename
-        ))
+        );
+        let destination = self.document_path(&id)?;
+        crate::fsutil::atomic_copy(&src.canonicalize()?, &destination, false)
+            .context("failed to copy attachment")?;
+        Ok(id)
     }
 
     fn validated_attachment_subdir(attachments_subdir: &str) -> Result<PathBuf> {
@@ -459,19 +436,7 @@ impl Storage {
         Ok(normalized)
     }
     pub fn resolve_attachment(&self, id: &str) -> Option<PathBuf> {
-        // First try via validate_path_within_notes_dir (handles path traversal checks)
-        if let Some(p) = self.validate_path_within_notes_dir(id)
-            && p.exists()
-        {
-            return Some(p);
-        }
-        // Fallback: resolve as relative to notes_dir (for legacy absolute/relative paths)
-        let fallback = self.notes_dir.join(id);
-        if fallback.exists() {
-            Some(fallback)
-        } else {
-            None
-        }
+        self.document_path(id).ok().filter(|path| path.is_file())
     }
 
     fn validate_path_within_notes_dir(&self, rel_path: &str) -> Option<PathBuf> {
@@ -1663,21 +1628,16 @@ impl Storage {
     }
     fn load_subnotes_db(&self) -> Result<HashMap<String, SubNotePayload>> {
         let path = self.subnotes_db_path();
-        let mut bytes = match fs::read(&path) {
-            Ok(bytes) => bytes,
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
             Err(error) => return Err(error).context("failed to read subnotes database"),
         };
+        let mut bytes = Vec::new();
+        file.take(SUBNOTES_MAX_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)?;
         obfuscate(&mut bytes);
-        let (db, used) = bincode::serde::decode_from_slice(
-            &bytes,
-            bincode::config::standard().with_limit::<{ 40 * 1024 * 1024 }>(),
-        )
-        .context("invalid subnotes database; original data retained")?;
-        if used != bytes.len() {
-            anyhow::bail!("unexpected trailing subnotes data; original data retained");
-        }
-        Ok(db)
+        decode_subnotes_db(&bytes)
     }
 
     fn save_subnotes_db(&self, db: &HashMap<String, SubNotePayload>) -> Result<()> {
@@ -1688,6 +1648,9 @@ impl Storage {
         )?;
         let mut bytes = bincode::serde::encode_to_vec(db, bincode::config::standard())
             .context("failed to serialize subnotes database")?;
+        // Validate the reader's allocation budget too, before replacing readable data.
+        decode_subnotes_db(&bytes)
+            .context("subnotes save exceeds reader limits; original retained")?;
         obfuscate(&mut bytes);
         crate::fsutil::atomic_write_with_mode(&path, &bytes, 0o600)
             .context("failed to write subnotes database")
@@ -1718,9 +1681,27 @@ impl Storage {
     }
 
     pub fn set_subnotes(&mut self, parent_id: &str, subnotes: &[SubNote]) -> Result<()> {
+        let before = self.get_subnotes(parent_id)?;
+        self.replace_subnotes(parent_id, &before, subnotes)
+    }
+
+    pub fn replace_subnotes(
+        &self,
+        parent_id: &str,
+        before: &[SubNote],
+        subnotes: &[SubNote],
+    ) -> Result<()> {
         let _guard = self.write_guard()?;
         let mut db = self.load_subnotes_db()?;
         Self::check_subnotes_writable(&db, parent_id)?;
+        let current = match db.get(parent_id) {
+            Some(SubNotePayload::Plain(notes)) => notes.as_slice(),
+            _ => &[],
+        };
+        anyhow::ensure!(
+            current == before || current == subnotes,
+            "subnotes changed on disk; reopen before saving; local edits retained"
+        );
         if subnotes.is_empty() {
             db.remove(parent_id);
         } else {
@@ -1790,6 +1771,23 @@ impl Storage {
         }
     }
 }
+fn decode_subnotes_db(bytes: &[u8]) -> Result<HashMap<String, SubNotePayload>> {
+    anyhow::ensure!(
+        bytes.len() <= SUBNOTES_MAX_BYTES,
+        "subnotes database exceeds 40 MiB; original retained"
+    );
+    let (db, used) = bincode::serde::decode_from_slice(
+        bytes,
+        bincode::config::standard().with_limit::<SUBNOTES_MAX_BYTES>(),
+    )
+    .context("invalid subnotes database; original data retained")?;
+    anyhow::ensure!(
+        used == bytes.len(),
+        "unexpected trailing subnotes data; original data retained"
+    );
+    Ok(db)
+}
+
 fn obfuscate(data: &mut [u8]) {
     // Generate pattern dynamically to prevent false positive in SAST tools
     let mut pattern = Vec::with_capacity(39);
@@ -1829,20 +1827,6 @@ mod safety_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn is_existing_vault_detects_user_content() {
-        let tmp = tempfile::tempdir().unwrap();
-        let vault = tmp.path().join("v");
-        std::fs::create_dir_all(vault.join("notes")).unwrap();
-        std::fs::create_dir_all(vault.join("templates")).unwrap();
-        std::fs::create_dir_all(vault.join(".clin")).unwrap();
-        std::fs::write(vault.join("key.bin"), "k").unwrap();
-        std::fs::write(vault.join("state.json"), "{}").unwrap();
-        assert!(!is_existing_vault(&vault)); // only managed content
-        std::fs::write(vault.join("mynote.md"), "x").unwrap();
-        assert!(is_existing_vault(&vault)); // one user file
-    }
 
     #[test]
     fn migrate_legacy_default_vault_copies_classic_layout() {

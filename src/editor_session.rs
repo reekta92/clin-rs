@@ -42,6 +42,7 @@ where
         dirty |= app.poll_editor_image_results();
         dirty |= app.tick_autosave();
         dirty |= app.poll_draft_errors();
+        app.retry_catalog_reconcile();
         if app.poll_import() {
             dirty = true;
             if let Some(change) = app.editor.body.take_change() {
