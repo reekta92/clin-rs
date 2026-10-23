@@ -1,5 +1,18 @@
 # Dependency compatibility
 
+## Dependency footprint
+
+Clin uses bincode's Serde API without its derive macros, shares `directories` 6
+with Graf, and reuses TLS's `ring` dependency for streaming SHA-256 file digests.
+Stored digests and recovery record formats remain unchanged.
+
+Image features explicitly retain the existing decoders and PNG output while
+omitting the unused AVIF encoder. Image 0.25's `avif` feature enables encoding;
+AVIF decoding requires the separate `avif-native` feature, which Clin did not
+enable. Pinstar defaults are disabled so its forthcoming `image-defaults` opt-out
+can take effect. Published Pinstar 1.1.2 and 1.1.3 still force image defaults;
+the AVIF dependency reduction requires the coordinated Pinstar release.
+
 The lockfile also selects `rustls 0.23.46`, resolving
 `RUSTSEC-2026-0346` through `RUSTSEC-2026-0349` without advisory ignores or an MSRV
 change. This is a registry patch update, independent of the Mermaid fork below.

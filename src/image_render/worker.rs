@@ -110,6 +110,28 @@ mod tests {
         output.into_inner()
     }
     #[test]
+    fn existing_image_decoders_and_png_output_stay_enabled() {
+        use image::ImageFormat;
+        for format in [
+            ImageFormat::Png,
+            ImageFormat::Jpeg,
+            ImageFormat::Gif,
+            ImageFormat::WebP,
+            ImageFormat::Tiff,
+            ImageFormat::Tga,
+            ImageFormat::Bmp,
+            ImageFormat::Ico,
+            ImageFormat::Hdr,
+            ImageFormat::OpenExr,
+            ImageFormat::Pnm,
+            ImageFormat::Farbfeld,
+            ImageFormat::Qoi,
+        ] {
+            assert!(format.reading_enabled(), "{format:?} decoder disabled");
+        }
+        assert!(ImageFormat::Png.writing_enabled());
+    }
+    #[test]
     fn public_image_decode_is_bounded_and_downscales() {
         let decoded = decode_public_image(png(1024, 512), 64).unwrap();
         assert_eq!((decoded.width(), decoded.height()), (64, 32));

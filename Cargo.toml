@@ -110,14 +110,14 @@ crossterm = "0.29"
 directories = "6.0"
 fuzzy-matcher = "0.3.7"
 lru = "0.18.1"
-image = "0.25.10"
-ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm", "image-defaults"] }
+image = { version = "0.25.10", default-features = false, features = ["rayon", "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
+ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm"] }
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 graf = { package = "graf-rs", version = "1.1.0" }
-pinstar = { version = "1.1.2", features = ["images", "mermaid-preview"] }
+pinstar = { version = "1.1.2", default-features = false, features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 # Keep existing imports while using YAML Organization's maintained backend.
