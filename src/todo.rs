@@ -64,7 +64,10 @@ fn highlight_todo_task<'a>(task: &'a str, theme: &AppThemeColors) -> Line<'a> {
     for token in item.spans {
         let word = token.text();
         let start = word.as_ptr() as usize - task.as_ptr() as usize;
-        spans.push(Span::raw(&task[cursor..start]));
+        spans.push(Span::styled(
+            &task[cursor..start],
+            Style::default().fg(theme.text),
+        ));
         let color = match token {
             TodoTxtSpan::Text(_) => theme.text,
             TodoTxtSpan::Project(_) => theme.success,
@@ -74,7 +77,10 @@ fn highlight_todo_task<'a>(task: &'a str, theme: &AppThemeColors) -> Line<'a> {
         spans.push(Span::styled(word, Style::default().fg(color)));
         cursor = start + word.len();
     }
-    spans.push(Span::raw(&task[cursor..]));
+    spans.push(Span::styled(
+        &task[cursor..],
+        Style::default().fg(theme.text),
+    ));
     Line::from(spans)
 }
 
@@ -162,5 +168,8 @@ mod tests {
                 .collect::<String>(),
             state.items[0]
         );
+        let theme = AppThemeColors::default();
+        let dated = highlight_todo_task("2024-02-29 dated", &theme);
+        assert_eq!(dated.spans[0].style.fg, Some(theme.text));
     }
 }

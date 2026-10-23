@@ -442,3 +442,20 @@ A loaded `Note` carries an immutable raw-source `DocumentSnapshot`. Ordinary not
 `storage::drafts::DraftWorker` coalesces latest recovery sources off the input thread. Save/session boundaries flush it before recovery cleanup. `storage::document_recovery` stores version-2 plaintext drafts and transaction journals under private Unix permissions; old encrypted journals remain separate and untouched.
 
 There is no backup worker, Git dashboard, encryption action, or key lifecycle. Native terminal clipboard transport and shell stdin ingestion are documented with their limitations.
+
+## Library ownership
+
+`markdown::structure` owns shared Comrak options and Markdown metadata. Preview rendering, outlines, link extraction and heading/task metrics use that syntax; outlines retain Comrak source positions for editor jumps. The source highlighter remains incremental. The todo widget and both renderers share `markdown::todotxt`; the widget still selects pending tasks with a priority or creation date.
+
+`which` owns executable discovery across platforms. `http` owns cancellable HTTP execution and bounded response reads using the existing reqwest/Tokio dependencies. URL import and automatic image loading retain separate redirect, destination and size policies. Optional Trafilatura runs on the single downloaded HTML response through the bounded converter runner; failures fall back to the general converters. See [URL import verification](COMMAND_PALETTE.md).
+
+Body search retains its literal lowercase-and-substring matcher. A release-mode microbenchmark compared it with an escaped, case-insensitive ASCII `regex` matcher, retaining the original Unicode fallback. Five trials each scanned 50,000 ASCII lines eight times, with 25% matches. Regex compilation was outside the timed region; regex 1.13.1 matched the project's locked version.
+
+| Line length before suffix | Existing matcher median | Regex candidate median |
+| --- | --- | --- |
+| 80 bytes | 13.071 ms | 15.463 ms |
+| 1,000 bytes | 103.251 ms | 108.729 ms |
+
+These timings measure matching on synthetic memory-resident lines, excluding note loading, frontmatter parsing and disk I/O. They showed no repeatable gain to justify a matcher change. An external ripgrep backend also needs explicit candidate filtering, body-relative line positions and a deliberate Unicode policy.
+
+Taskwarrior remains a future optional full-task backend, rather than a second source of truth for Markdown checkboxes or todo.txt. CalDAV library migration, traversal replacement and ordinary temporary-file cleanup are separate candidates; the current changes retain their existing storage and safety policies.
