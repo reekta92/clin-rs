@@ -407,6 +407,31 @@ mod tests {
         (root, storage)
     }
     #[test]
+    fn file_digests_preserve_sha256_compatibility() {
+        let (root, _) = vault();
+        let path = root.path().join("digest.bin");
+        for (bytes, expected) in [
+            (
+                Vec::new(),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                b"abc".to_vec(),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+            (
+                vec![b'a'; 1_000_000],
+                "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+            ),
+        ] {
+            fs::write(&path, &bytes).unwrap();
+            let (hash, len) = digest(&path, &AtomicBool::new(false)).unwrap();
+            let hex: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+            assert_eq!(hex, expected);
+            assert_eq!(len, bytes.len() as u64);
+        }
+    }
+    #[test]
     fn binary_moves_preserve_bytes_metadata_and_guarded_replay() {
         let (root, storage) = vault();
         let bytes = [0, 255, 128, 0, 42];
