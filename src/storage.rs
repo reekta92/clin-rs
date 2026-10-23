@@ -416,7 +416,7 @@ impl Storage {
 
     pub fn import_attachment(&self, src: &Path, attachments_subdir: &str) -> Result<String> {
         let relative = Self::validated_attachment_subdir(attachments_subdir)?;
-        let dir = self.notes_dir.join(&relative);
+        let dir = self.public_path(attachments_subdir)?;
         fs::create_dir_all(&dir).context("failed to create attachments directory")?;
 
         let ext = src
@@ -430,12 +430,15 @@ impl Storage {
             .as_millis();
         let short_id = &Uuid::new_v4().to_string()[..8];
         let filename = format!("{ts}_{short_id}{ext}");
-        fs::copy(src, dir.join(&filename)).context("failed to copy attachment")?;
-        Ok(format!(
+        let id = format!(
             "{}/{}",
             relative.to_string_lossy().replace('\\', "/"),
             filename
-        ))
+        );
+        let destination = self.document_path(&id)?;
+        crate::fsutil::atomic_copy(&src.canonicalize()?, &destination, false)
+            .context("failed to copy attachment")?;
+        Ok(id)
     }
 
     fn validated_attachment_subdir(attachments_subdir: &str) -> Result<PathBuf> {
@@ -460,19 +463,7 @@ impl Storage {
         Ok(normalized)
     }
     pub fn resolve_attachment(&self, id: &str) -> Option<PathBuf> {
-        // First try via validate_path_within_notes_dir (handles path traversal checks)
-        if let Some(p) = self.validate_path_within_notes_dir(id)
-            && p.exists()
-        {
-            return Some(p);
-        }
-        // Fallback: resolve as relative to notes_dir (for legacy absolute/relative paths)
-        let fallback = self.notes_dir.join(id);
-        if fallback.exists() {
-            Some(fallback)
-        } else {
-            None
-        }
+        self.document_path(id).ok().filter(|path| path.is_file())
     }
 
     fn validate_path_within_notes_dir(&self, rel_path: &str) -> Option<PathBuf> {

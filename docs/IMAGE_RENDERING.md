@@ -16,6 +16,11 @@ The image rendering pipeline consists of three layers:
 
 ## Integration Points
 
+List and Editor preview attachments must use public vault-relative paths.
+Absolute paths, `..`, private vault files, and symlinks that resolve outside
+the public vault are rejected. Attachment imports apply the same rule to
+their destination and never overwrite an existing file.
+
 | Location | Usage |
 |---|---|
 | `src/ui/edit_view.rs` | Markdown editor preview images |

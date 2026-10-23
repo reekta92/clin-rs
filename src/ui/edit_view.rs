@@ -364,11 +364,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 {
                     let col_width = inner.width;
                     for (local_line_idx, url) in doc.image_slots(widget_range) {
-                        let resolved = app.storage.resolve_attachment(url);
-                        let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
-                        if !path.exists() {
+                        let Some(path) = app.storage.resolve_attachment(url) else {
                             continue;
-                        }
+                        };
                         let key = path;
                         if app.editor.image_cache.get_proto(&key).is_none() {
                             app.editor.image_cache.request(key.clone(), 2048, decode_tx);
