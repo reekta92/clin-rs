@@ -28,6 +28,7 @@ pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
 pub mod graf_adapter;
+mod http;
 pub mod image_render {
     pub mod cache;
     pub(crate) mod remote;

@@ -1,0 +1,5 @@
+simulation: clin-imports
+routing: path
+mocks:
+  - routeKey: imports
+    path: ../mocks/imports/config.yaml

@@ -444,47 +444,56 @@ fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(Stri
         matches!(url.scheme(), "http" | "https"),
         "URL imports require HTTP(S)"
     );
-    let ext = Path::new(url.path())
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .filter(|ext| ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
-        .unwrap_or("html");
+    let (url, content_type, bytes) = crate::http::run(cancelled, Duration::from_secs(30), async {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() > 5 {
+                    attempt.error("URL import exceeds five redirects")
+                } else if !matches!(attempt.url().scheme(), "http" | "https") {
+                    attempt.error("URL imports require HTTP(S) redirects")
+                } else {
+                    attempt.follow()
+                }
+            }))
+            .build()?;
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(reqwest::Error::without_url)?;
+        response
+            .error_for_status_ref()
+            .map_err(reqwest::Error::without_url)?;
+        let url = response.url().clone();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_owned();
+        let bytes = crate::http::read_bounded(response, MAX_IMPORT_BYTES).await?;
+        Ok((url, content_type, bytes))
+    })?;
+    let ext = match content_type.split(';').next().unwrap_or("").trim() {
+        "text/html" | "application/xhtml+xml" => "html",
+        "application/pdf" => "pdf",
+        _ => Path::new(url.path())
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .filter(|ext| ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+            .unwrap_or("html"),
+    };
     let directory = process::ImportDirectory::new()?;
     let downloaded = directory.path.join(format!("download.{ext}"));
     let temp_path = downloaded.to_str().context("temp path is not UTF-8")?;
-    let mut command = Command::new("curl");
-    command.args([
-        "--fail",
-        "--location",
-        "--silent",
-        "--show-error",
-        "--connect-timeout",
-        "5",
-        "--max-time",
-        "30",
-        "--max-redirs",
-        "5",
-        "--max-filesize",
-        "16777216",
-        "--proto",
-        "=http,https",
-        "--proto-redir",
-        "=http,https",
-        "--url",
-        url.as_str(),
-    ]);
-    let output = process::run(command, cancelled, COMMAND_TIMEOUT)?;
-    anyhow::ensure!(
-        output.status.success(),
-        "curl failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let title = std::str::from_utf8(&output.stdout)
+    let title = std::str::from_utf8(&bytes)
         .ok()
         .and_then(extract_html_title)
         .unwrap_or_else(|| url_fallback_title(source));
-    crate::fsutil::atomic_write_with_mode(&downloaded, &output.stdout, 0o600)?;
-    drop(output);
+    crate::fsutil::atomic_write_with_mode(&downloaded, &bytes, 0o600)?;
+    drop(bytes);
     // Convert the downloaded bytes once; title and body come from the same response.
     let (_, content) = convert_file_cancellable(temp_path, cancelled)?;
     Ok(sanitized(title, content))
@@ -531,6 +540,24 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    #[ignore = "requires the local imports Postman simulation"]
+    fn url_download_can_cancel_a_pending_response() -> Result<()> {
+        let base = std::env::var("CLIN_IMPORT_SIMULATION_URL")?;
+        let cancelled = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(200));
+                cancelled.store(true, Ordering::Relaxed);
+            });
+            let started = std::time::Instant::now();
+            let error = convert_url_cancellable(&format!("{base}/slow"), &cancelled).unwrap_err();
+            assert!(error.to_string().contains("cancelled"));
+            assert!(started.elapsed() < Duration::from_secs(1));
+        });
+        Ok(())
+    }
 
     #[test]
     fn html_titles_allow_unicode_before_and_inside_tags() {

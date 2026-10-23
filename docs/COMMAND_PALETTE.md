@@ -91,7 +91,20 @@ Actions are grouped by category:
 | **Views** | Notes, Help, Graph, Setup, Setup Finish/Cancel, document creation, public Bases operations, vault switcher |
 | **Settings** | Setup wizard, theme, keybind preset, editor/list/preview controls, goals, icon and hint-bar styles, smart folders, and graph visual controls |
 
-File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL import requires `curl`. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Bases/Views/Settings categories; General actions appear under All, not a separate General tab. Bases' Configure binding (`:` by default) opens the Bases category directly. Embedded regions expand into Bases before opening that category.
+File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL downloads use clin's built-in HTTP client. CSV and JSON conversions are handled in Rust. Tabs start with **All**, then available Notes/Import/Append/Bases/Views/Settings categories; General actions appear under All, not a separate General tab. Bases' Configure binding (`:` by default) opens the Bases category directly. Embedded regions expand into Bases before opening that category.
+
+URL downloads allow HTTP(S), at most five redirects, and at most 16 MiB. The local HTTP fixture exercises successful imports, redirects, HTTP errors, forbidden redirect schemes, oversized responses and cancellation:
+
+```sh
+postman simulation run postman/simulations/imports.sim.yaml --port 49150 --no-history
+```
+
+In another terminal, with MarkItDown or Pandoc installed:
+
+```sh
+CLIN_IMPORT_SIMULATION_URL=http://127.0.0.1:49150/imports cargo test --locked --test import_e2e url_import_simulation -- --ignored --exact
+CLIN_IMPORT_SIMULATION_URL=http://127.0.0.1:49150/imports cargo test --locked --lib actions::import::tests::url_download_can_cancel_a_pending_response -- --ignored --exact
+```
 
 ## Execution
 
