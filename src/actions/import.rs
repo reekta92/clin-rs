@@ -10,6 +10,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+mod article;
 mod process;
 pub(super) const MAX_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
@@ -256,7 +257,7 @@ fn convert_file_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(Strin
         );
     };
 
-    let output = process::run(cmd, cancelled, COMMAND_TIMEOUT)?;
+    let output = process::run(cmd, None, cancelled, COMMAND_TIMEOUT)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -494,6 +495,14 @@ fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(Stri
         .unwrap_or_else(|| url_fallback_title(source));
     crate::fsutil::atomic_write_with_mode(&downloaded, &bytes, 0o600)?;
     drop(bytes);
+    if matches!(ext.to_ascii_lowercase().as_str(), "html" | "htm")
+        && crate::fsutil::can_run("trafilatura")
+    {
+        if let Ok((extracted_title, content)) = article::extract(&downloaded, &url, cancelled) {
+            return Ok(sanitized(extracted_title.unwrap_or(title), content));
+        }
+        check_import(cancelled, 0)?;
+    }
     // Convert the downloaded bytes once; title and body come from the same response.
     let (_, content) = convert_file_cancellable(temp_path, cancelled)?;
     Ok(sanitized(title, content))

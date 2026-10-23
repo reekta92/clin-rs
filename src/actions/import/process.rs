@@ -88,6 +88,7 @@ fn read_output(path: &Path, limit: u64) -> Result<Vec<u8>> {
 
 pub(super) fn run(
     mut command: Command,
+    input: Option<&Path>,
     cancelled: &AtomicBool,
     timeout: Duration,
 ) -> Result<Output> {
@@ -96,7 +97,10 @@ pub(super) fn run(
     let stdout = directory.path.join("stdout");
     let stderr = directory.path.join("stderr");
     command
-        .stdin(Stdio::null())
+        .stdin(match input {
+            Some(path) => Stdio::from(File::open(path)?),
+            None => Stdio::null(),
+        })
         .stdout(output_file(&stdout)?)
         .stderr(output_file(&stderr)?);
     #[cfg(unix)]
@@ -147,17 +151,27 @@ mod tests {
         assert!(!scratch.exists());
         let mut command = Command::new("sh");
         command.args(["-c", "printf body; printf warning >&2"]);
-        let output = run(command, &AtomicBool::new(false), Duration::from_secs(2))?;
+        let output = run(
+            command,
+            None,
+            &AtomicBool::new(false),
+            Duration::from_secs(2),
+        )?;
         assert_eq!(output.stdout, b"body");
         assert_eq!(output.stderr, b"warning");
         let mut command = Command::new("sh");
         command.args(["-c", "sleep 10"]);
         let start = Instant::now();
         assert!(
-            run(command, &AtomicBool::new(false), Duration::from_millis(30))
-                .unwrap_err()
-                .to_string()
-                .contains("timed out")
+            run(
+                command,
+                None,
+                &AtomicBool::new(false),
+                Duration::from_millis(30)
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("timed out")
         );
         assert!(start.elapsed() < Duration::from_secs(2));
         let cancelled = AtomicBool::new(false);
@@ -169,7 +183,7 @@ mod tests {
             let mut command = Command::new("sh");
             command.args(["-c", "sleep 10"]);
             assert!(
-                run(command, &cancelled, Duration::from_secs(2))
+                run(command, None, &cancelled, Duration::from_secs(2))
                     .unwrap_err()
                     .to_string()
                     .contains("cancelled")
@@ -178,6 +192,7 @@ mod tests {
         assert!(
             run(
                 Command::new("must-not-start"),
+                None,
                 &AtomicBool::new(true),
                 Duration::from_secs(2)
             )
@@ -188,10 +203,15 @@ mod tests {
         let mut command = Command::new("sh");
         command.args(["-c", "head -c 16777217 /dev/zero"]);
         assert!(
-            run(command, &AtomicBool::new(false), Duration::from_secs(2))
-                .unwrap_err()
-                .to_string()
-                .contains("safety limit")
+            run(
+                command,
+                None,
+                &AtomicBool::new(false),
+                Duration::from_secs(2)
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("safety limit")
         );
         Ok(())
     }

@@ -109,6 +109,7 @@ These tools are **optional** — clin works without them:
 | `wl-clipboard` | Clipboard access (Wayland) | `wl-clipboard` |
 | `xclip` or `xsel` | Clipboard access (X11) | `xclip` |
 | `markitdown` or `pandoc` | Convert PDF/DOCX/HTML and other imported files to Markdown | `pip install markitdown` / `pandoc` |
+| `trafilatura` | Extract article text and metadata for HTML URL imports; falls back to the general converters | `pip install trafilatura` |
 
 ---
 
