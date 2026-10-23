@@ -2237,6 +2237,41 @@ fn palette_workflow_mouse_apply_resize_and_failed_theme_exit() {
 }
 
 #[test]
+fn subnote_outside_click_keeps_pending_input_when_another_window_saved() {
+    let mut f = Fixture::new();
+    let before = vec![crate::storage::SubNote {
+        id: "child".into(),
+        title: "Original".into(),
+        content: "body".into(),
+        updated_at: 1,
+    }];
+    f.app.storage.set_subnotes("selected.md", &before).unwrap();
+    f.app.open_subnotes_popup_for("selected.md", None);
+    if let Some(crate::popups::ActivePopup::Subnotes(popup)) = &mut f.app.popups.active {
+        popup.title_input.select_all();
+        popup.title_input.insert_str("local title");
+    }
+    let mut remote = before;
+    remote[0].content = "other window".into();
+    f.app.storage.set_subnotes("selected.md", &remote).unwrap();
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    let Some(crate::popups::ActivePopup::Subnotes(popup)) = &f.app.popups.active else {
+        panic!("failed save must retain popup");
+    };
+    assert_eq!(popup.subnotes[0].title, "local title");
+    assert_eq!(f.app.storage.get_subnotes("selected.md").unwrap(), remote);
+    assert!(f.app.status.contains("changed on disk"));
+}
+
+#[test]
 fn palette_subnotes_save_failure_preserves_original_manager() {
     let mut f = Fixture::new();
     activate(&mut f.app, "manage_subnotes_list");

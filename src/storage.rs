@@ -1711,9 +1711,27 @@ impl Storage {
     }
 
     pub fn set_subnotes(&mut self, parent_id: &str, subnotes: &[SubNote]) -> Result<()> {
+        let before = self.get_subnotes(parent_id)?;
+        self.replace_subnotes(parent_id, &before, subnotes)
+    }
+
+    pub fn replace_subnotes(
+        &self,
+        parent_id: &str,
+        before: &[SubNote],
+        subnotes: &[SubNote],
+    ) -> Result<()> {
         let _guard = self.write_guard()?;
         let mut db = self.load_subnotes_db()?;
         Self::check_subnotes_writable(&db, parent_id)?;
+        let current = match db.get(parent_id) {
+            Some(SubNotePayload::Plain(notes)) => notes.as_slice(),
+            _ => &[],
+        };
+        anyhow::ensure!(
+            current == before || current == subnotes,
+            "subnotes changed on disk; reopen before saving; local edits retained"
+        );
         if subnotes.is_empty() {
             db.remove(parent_id);
         } else {

@@ -73,6 +73,33 @@ fn attachment_paths_stay_in_the_public_vault() -> Result<()> {
 }
 
 #[test]
+fn stale_subnote_edits_cannot_replace_another_windows_save() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let mut storage = fixture(root.path());
+    let before = vec![SubNote {
+        id: "child".into(),
+        title: "Original".into(),
+        content: "body".into(),
+        updated_at: 1,
+    }];
+    storage.set_subnotes("note.md", &before)?;
+    let mut first = before.clone();
+    first[0].content = "first window".into();
+    storage.replace_subnotes("note.md", &before, &first)?;
+    storage.replace_subnotes("note.md", &before, &first)?;
+    let mut second = before.clone();
+    second[0].title = "second window".into();
+    assert!(
+        storage
+            .replace_subnotes("note.md", &before, &second)
+            .is_err()
+    );
+    assert_eq!(storage.get_subnotes("note.md")?, first);
+    storage.replace_subnotes("other.md", &[], &second)?;
+    Ok(())
+}
+
+#[test]
 fn oversized_subnote_saves_keep_the_existing_database_readable() -> Result<()> {
     let root = tempfile::tempdir()?;
     let mut storage = fixture(root.path());

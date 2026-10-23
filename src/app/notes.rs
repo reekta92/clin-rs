@@ -1530,6 +1530,7 @@ impl App {
 
         let popup = crate::popups::SubnotesPopup {
             parent_id: parent_id.to_string(),
+            baseline: subnotes.clone(),
             subnotes,
             selected,
             focus: crate::popups::SubnotesFocus::List,
@@ -1562,8 +1563,8 @@ impl App {
     }
 
     pub fn close_subnotes_popup(&mut self) -> Result<(), String> {
-        if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take()
-            && let Err(error) = self.save_subnotes_state(&popup)
+        if let Some(crate::popups::ActivePopup::Subnotes(mut popup)) = self.popups.active.take()
+            && let Err(error) = self.save_subnotes_state(&mut popup)
         {
             self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
             let message = format!("Failed to save sub-notes: {error:#}");
@@ -1575,11 +1576,14 @@ impl App {
     }
     pub(crate) fn save_subnotes_state(
         &mut self,
-        popup: &crate::popups::SubnotesPopup,
+        popup: &mut crate::popups::SubnotesPopup,
     ) -> Result<()> {
+        popup.commit_edits();
         if popup.is_dirty {
             self.storage
-                .set_subnotes(&popup.parent_id, &popup.subnotes)?;
+                .replace_subnotes(&popup.parent_id, &popup.baseline, &popup.subnotes)?;
+            popup.baseline.clone_from(&popup.subnotes);
+            popup.is_dirty = false;
         }
         self.notes_with_subnotes = self.storage.get_notes_with_subnotes()?;
         self.refresh_subnotes_view_cache();
@@ -1604,18 +1608,8 @@ impl App {
             return;
         }
 
-        // Sync TUI inputs to subnote struct first
+        popup.commit_edits();
         let cur_idx = popup.selected;
-        let new_title = popup.title_input.lines().join("");
-        let new_content_tui = popup.content_input.lines().join("\n");
-        if popup.subnotes[cur_idx].title != new_title
-            || popup.subnotes[cur_idx].content != new_content_tui
-        {
-            popup.subnotes[cur_idx].title = new_title;
-            popup.subnotes[cur_idx].content = new_content_tui;
-            popup.subnotes[cur_idx].updated_at = now_unix_secs();
-            popup.is_dirty = true;
-        }
 
         let subnote = &popup.subnotes[cur_idx];
         let temp_dir = std::env::temp_dir().join("clin");

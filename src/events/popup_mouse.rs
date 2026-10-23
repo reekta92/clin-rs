@@ -1121,11 +1121,8 @@ impl crate::popups::ActivePopup {
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && !contains_cell(popup_area, mouse.column, mouse.row)
                 {
-                    if p.is_dirty
-                        && let Err(e) = app.storage.set_subnotes(&p.parent_id, &p.subnotes)
-                    {
-                        app.set_temporary_status(&format!("Failed to save subnotes: {e}"));
-                    }
+                    app.popups.active = Some(Subnotes(p));
+                    let _ = app.close_subnotes_popup();
                     app.popups.text_selection = None;
                     return true;
                 }
@@ -1190,6 +1187,7 @@ impl crate::popups::ActivePopup {
                             if clicked == p.selected && p.focus == SubnotesFocus::List {
                                 p.focus = SubnotesFocus::EditTitle;
                             } else {
+                                p.commit_edits();
                                 p.selected = clicked;
                                 p.focus = SubnotesFocus::List;
                                 p.title_input = crate::ui::make_popup_textarea(&app.app_theme, "");
