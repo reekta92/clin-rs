@@ -1412,6 +1412,7 @@ where
                 list_dirty = true;
             }
         }
+        app.retry_catalog_reconcile();
         if app.handle_search_events() && app.mode == ViewMode::List {
             list_dirty = true;
         }

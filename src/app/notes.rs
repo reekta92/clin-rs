@@ -22,14 +22,26 @@ impl App {
     }
 
     pub(crate) fn send_catalog_cmd(&mut self, cmd: crate::app::catalog::CatalogCommand) {
-        let _ = self.catalog_cmd_tx.try_send(cmd).inspect_err(|e| {
-            if matches!(e, std::sync::mpsc::TrySendError::Disconnected(_)) {
+        match self.catalog_cmd_tx.try_send(cmd) {
+            Ok(()) => {}
+            Err(std::sync::mpsc::TrySendError::Full(_)) => self.catalog_reconcile_pending = true,
+            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
                 self.messages.push(
                     "Catalog worker disconnected; note list will not refresh".to_string(),
                     crate::app::messages::MessageSeverity::Warning,
                 );
             }
-        });
+        }
+    }
+
+    pub(crate) fn retry_catalog_reconcile(&mut self) {
+        if std::mem::take(&mut self.catalog_reconcile_pending) {
+            self.send_catalog_cmd(crate::app::catalog::CatalogCommand::Reconcile {
+                generation: self.catalog_generation.load(Ordering::SeqCst),
+                show_hidden: self.list.show_hidden_files,
+                show_all: self.list.show_all_files,
+            });
+        }
     }
 
     pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
@@ -120,9 +132,23 @@ impl App {
                 generation,
                 complete,
                 warnings,
+                snapshot,
             } => {
                 if generation == cur_gen {
                     if complete {
+                        // A cancelled generation may have cached updates the app never received.
+                        (self.notes, self.note_stamps) = snapshot
+                            .into_iter()
+                            .map(|(note, stamp)| {
+                                let id = note.id.clone();
+                                (note, (id, stamp))
+                            })
+                            .unzip();
+                        self.sort_notes();
+                        self.notes_revision += 1;
+                        self.rebuild_note_index();
+                        self.refresh_visual_list();
+                        self.refresh_subnotes_view_cache();
                         self.initial_load_done = true;
                         self.catalog_status = None;
                         if self
