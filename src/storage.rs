@@ -272,8 +272,9 @@ impl Storage {
             migrate_legacy_default_vault(&data_dir, warnings);
         }
 
-        let config_dir =
-            crate::config::clin_config_dir().context("could not determine config directory")?;
+        let config_dir = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?
+            .config_dir()
+            .to_owned();
 
         let notes_dir = data_dir.clone();
         let templates_dir = data_dir.join(".clin").join("templates");

@@ -12,6 +12,28 @@ fn fixture(root: &Path) -> Storage {
 }
 
 #[test]
+fn keybinds_follow_the_active_configuration_directory() -> Result<()> {
+    let _guard = crate::config::ConfigTestGuard::lock();
+    let root = tempfile::tempdir()?;
+    let profile = root.path().join("profile");
+    crate::config::set_config_path_override(profile.join("custom.toml"));
+    let mut config = ClinConfig::default();
+    config.core.storage_path = Some(root.path().join("vault"));
+    config.save()?;
+    let (storage, _) = Storage::init();
+    let storage = storage?;
+    assert_eq!(storage.config_dir, profile);
+    let preset = crate::config::KeybindPreset::Vim;
+    storage.save_keybinds_for_preset(&preset.base_keybinds(), preset)?;
+    assert_eq!(
+        storage.keybinds_path_for_preset(preset),
+        profile.join("keybinds/vim.toml")
+    );
+    assert!(profile.join("keybinds/vim.toml").is_file());
+    Ok(())
+}
+
+#[test]
 fn pinning_rejects_structured_documents_without_changing_bytes() -> Result<()> {
     let root = tempfile::tempdir()?;
     let storage = fixture(root.path());
