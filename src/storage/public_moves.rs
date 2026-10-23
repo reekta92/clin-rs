@@ -1,8 +1,8 @@
 //! Guarded public file moves. Staged links keep rollback data until durable commit.
 use super::Storage;
 use anyhow::{Context, Result, bail};
+use ring::digest::{Context as DigestContext, SHA256};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::{Read, Write},
@@ -60,7 +60,7 @@ fn digest(path: &Path, cancelled: &AtomicBool) -> Result<([u8; 32], u64)> {
     if !before.is_file() || fs::symlink_metadata(path)?.file_type().is_symlink() {
         bail!("public move source must be a regular non-symlink file");
     }
-    let mut hash = Sha256::new();
+    let mut hash = DigestContext::new(&SHA256);
     let mut buffer = [0; 16 * 1024];
     let mut len = 0;
     loop {
@@ -77,7 +77,13 @@ fn digest(path: &Path, cancelled: &AtomicBool) -> Result<([u8; 32], u64)> {
     {
         bail!("public file changed during snapshot; original retained");
     }
-    Ok((hash.finalize().into(), len))
+    Ok((
+        hash.finish()
+            .as_ref()
+            .try_into()
+            .expect("SHA-256 digest length"),
+        len,
+    ))
 }
 fn copy_new(
     source: &Path,
