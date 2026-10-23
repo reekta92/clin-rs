@@ -334,15 +334,17 @@ impl App {
             }
             return;
         }
+        if note_id.ends_with(".canvas") {
+            if let Err(error) = self.open_canvas_document(note_id) {
+                self.set_temporary_status(&format!("{error:#}"));
+            }
+            return;
+        }
         if !self.prepare_editor_transition() {
             return;
         }
         if note_id.ends_with(".base") {
             self.open_bases_view(note_id, None);
-            return;
-        }
-        if note_id.ends_with(".canvas") {
-            self.open_canvas_view();
             return;
         }
         if note_id.ends_with(".clin") {
@@ -1338,8 +1340,10 @@ impl App {
         } else {
             ViewMode::Canvas
         };
-        self.editor.note_baseline = Some(snapshot);
-        self.editor.editing_id = Some(id);
+        if format == crate::popups::NoteFormat::Draw {
+            self.editor.note_baseline = Some(snapshot);
+            self.editor.editing_id = Some(id);
+        }
         self.set_default_status();
         Ok(())
     }

@@ -2642,6 +2642,35 @@ fn palette_custom_theme_sources_survive_filter_apply_and_setup() {
 }
 
 #[test]
+fn canvas_opens_requested_file_and_preserves_the_returning_editor() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Edit);
+    let editor_id = f.app.editor.editing_id.clone();
+    f.app.open_note_at_line("map.canvas", None);
+    assert_eq!(f.app.mode, ViewMode::Canvas);
+    assert_eq!(
+        f.app.canvas_state.as_ref().unwrap().current_file,
+        "map.canvas"
+    );
+    assert_eq!(f.app.editor.editing_id, editor_id);
+    f.app.canvas_state.as_mut().unwrap().state.zoom = 2.0;
+    f.app.open_note_at_line("map.canvas", None);
+    assert_eq!(f.app.canvas_state.as_ref().unwrap().state.zoom, 2.0);
+    for id in ["missing.canvas", "../escape.canvas", "selected.md"] {
+        assert!(f.app.open_canvas_document(id).is_err());
+        assert_eq!(f.app.mode, ViewMode::Canvas);
+        assert_eq!(
+            f.app.canvas_state.as_ref().unwrap().current_file,
+            "map.canvas"
+        );
+    }
+    f.app.close_canvas_view();
+    assert_eq!(f.app.mode, ViewMode::Edit);
+    assert_eq!(f.app.editor.editing_id, editor_id);
+    f.app.autosave().unwrap();
+}
+
+#[test]
 fn draw_explicit_open_retains_active_state_and_rejects_invalid_targets() {
     let mut f = Fixture::new();
     let selected = fs::read(f.app.storage.note_path("selected.md")).unwrap();
