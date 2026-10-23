@@ -414,6 +414,8 @@ mod tests {
     }
     #[test]
     fn file_digests_preserve_sha256_compatibility() {
+        use std::fmt::Write;
+
         let (root, _) = vault();
         let path = root.path().join("digest.bin");
         for (bytes, expected) in [
@@ -432,7 +434,10 @@ mod tests {
         ] {
             fs::write(&path, &bytes).unwrap();
             let (hash, len) = digest(&path, &AtomicBool::new(false)).unwrap();
-            let hex: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
+            let mut hex = String::new();
+            for byte in hash {
+                write!(hex, "{byte:02x}").unwrap();
+            }
             assert_eq!(hex, expected);
             assert_eq!(len, bytes.len() as u64);
         }
