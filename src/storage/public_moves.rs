@@ -1,8 +1,8 @@
 //! Guarded public file moves. Staged links keep rollback data until durable commit.
 use super::Storage;
 use anyhow::{Context, Result, bail};
+use ring::digest::{Context as DigestContext, SHA256};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::{Read, Write},
@@ -60,7 +60,7 @@ fn digest(path: &Path, cancelled: &AtomicBool) -> Result<([u8; 32], u64)> {
     if !before.is_file() || fs::symlink_metadata(path)?.file_type().is_symlink() {
         bail!("public move source must be a regular non-symlink file");
     }
-    let mut hash = Sha256::new();
+    let mut hash = DigestContext::new(&SHA256);
     let mut buffer = [0; 16 * 1024];
     let mut len = 0;
     loop {
@@ -77,7 +77,13 @@ fn digest(path: &Path, cancelled: &AtomicBool) -> Result<([u8; 32], u64)> {
     {
         bail!("public file changed during snapshot; original retained");
     }
-    Ok((hash.finalize().into(), len))
+    Ok((
+        hash.finish()
+            .as_ref()
+            .try_into()
+            .expect("SHA-256 digest length"),
+        len,
+    ))
 }
 fn copy_new(
     source: &Path,
@@ -405,6 +411,36 @@ mod tests {
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (root, storage)
+    }
+    #[test]
+    fn file_digests_preserve_sha256_compatibility() {
+        use std::fmt::Write;
+
+        let (root, _) = vault();
+        let path = root.path().join("digest.bin");
+        for (bytes, expected) in [
+            (
+                Vec::new(),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                b"abc".to_vec(),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+            (
+                vec![b'a'; 1_000_000],
+                "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+            ),
+        ] {
+            fs::write(&path, &bytes).unwrap();
+            let (hash, len) = digest(&path, &AtomicBool::new(false)).unwrap();
+            let mut hex = String::new();
+            for byte in hash {
+                write!(hex, "{byte:02x}").unwrap();
+            }
+            assert_eq!(hex, expected);
+            assert_eq!(len, bytes.len() as u64);
+        }
     }
     #[test]
     fn binary_moves_preserve_bytes_metadata_and_guarded_replay() {
