@@ -1,6 +1,7 @@
 mod context;
 pub(crate) use context::ActionContext;
 mod bases;
+mod calendar;
 pub mod import;
 pub mod info;
 pub mod insert_date;
@@ -372,6 +373,11 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
                 "Save pending changes and quit the application",
             ),
             ("notes.open", "Open Notes", "Return to the Notes list"),
+            (
+                "calendar.open",
+                "Open Calendar View",
+                "Schedule events and link notes to dates and times",
+            ),
             ("help.open", "Open Help", "Show help for the current view"),
             (
                 "graph.open",
@@ -396,6 +402,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         }),
     );
     actions.extend(bases::commands());
+    actions.extend(calendar::commands());
     actions
 });
 
@@ -542,6 +549,7 @@ impl Action for NavigationAction {
             "document.save" => icons::SAVE,
             "app.quit" => icons::QUIT,
             "notes.open" => icons::MARKDOWN,
+            "calendar.open" => icons::CALENDAR,
             "help.open" => icons::HELP,
             "graph.open" => icons::GRAPH,
             "setup.finish" => icons::SUCCESS,

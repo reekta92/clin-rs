@@ -10,8 +10,6 @@
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::text::Span;
 
 use pinstar::image::DecodedImage;
 use pinstar::{
@@ -19,7 +17,7 @@ use pinstar::{
     execute_menu_action, handle_pinstar_mouse,
 };
 
-use crate::app::{App, HelpTab, ViewMode};
+use crate::app::{App, HelpTab};
 use crate::keybinds::{CanvasAction, KeyMatcher, Keybinds, MatchOutcome};
 use crate::overlay::{OverlayResult, OverlayView};
 
@@ -427,8 +425,6 @@ impl OverlayView for PinstarPlugin {
         self.poll_images();
 
         let theme = app.app_theme.clone();
-        let config = app.config.clone();
-
         let mouse_pos = self.state.mouse_pos;
         draw_pinstar_view(
             frame,
@@ -439,64 +435,6 @@ impl OverlayView for PinstarPlugin {
         );
 
         self.draw_base_embeds(frame, area, app);
-
-        // ── host-owned footer (painted over the lib's reserved bottom row) ──
-        let hint_area = Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1);
-        let hint_line = if self.state.footer_hint.is_empty() {
-            let hints_items = vec![
-                (
-                    format!(
-                        "{}/{}",
-                        self.keybinds.display_canvas(CanvasAction::MoveUp),
-                        self.keybinds.display_canvas(CanvasAction::MoveDown)
-                    ),
-                    "move",
-                ),
-                (
-                    self.keybinds.display_canvas(CanvasAction::OpenContextMenu),
-                    "menu",
-                ),
-                (
-                    format!(
-                        "{}/{}",
-                        self.keybinds.display_canvas(CanvasAction::ZoomOut),
-                        self.keybinds.display_canvas(CanvasAction::ZoomIn)
-                    ),
-                    "zoom",
-                ),
-                (
-                    self.keybinds.canvas_keys_display(CanvasAction::Quit),
-                    "back",
-                ),
-                (
-                    format!(
-                        "F1/{}",
-                        self.keybinds.canvas_keys_display(CanvasAction::Help)
-                    ),
-                    "help",
-                ),
-            ];
-            crate::ui::format_keybind_hints(&theme, &hints_items)
-        } else {
-            ratatui::text::Line::from(vec![Span::styled(
-                self.state.footer_hint.clone(),
-                Style::default().fg(theme.muted),
-            )])
-        };
-        let mut ctx = crate::statusline::StatuslineContext::for_overlay(&config, ViewMode::Canvas);
-        ctx.area = Some(hint_area);
-        ctx.canvas = Some(&self.state);
-        ctx.hints = Some(hint_line.spans);
-        if let Some(p) = self.seq_matcher.pending_display() {
-            ctx.pending = Some(vec![Span::styled(
-                format!("{p} "),
-                Style::default().fg(theme.highlight_fg).bg(theme.accent),
-            )]);
-        }
-
-        let (left_line, right_line) =
-            crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Canvas, &theme);
-        crate::ui::draw_status_bar(frame, hint_area, &theme, left_line, right_line);
 
         // ── rename popup keybind hints (below the lib-drawn popup) ──
         if self.state.rename_popup.is_some()
@@ -537,7 +475,12 @@ impl OverlayView for PinstarPlugin {
         let area = if term_area == Rect::default() {
             self.last_area
         } else {
-            term_area
+            let content = crate::ui::view_content_area(term_area);
+            ratatui::layout::Layout::vertical([
+                ratatui::layout::Constraint::Length(1),
+                ratatui::layout::Constraint::Min(0),
+            ])
+            .split(content)[1]
         };
         let modified = self.state.last_modified;
         let outcome = match event {

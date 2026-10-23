@@ -43,6 +43,7 @@ fn view_name(mode: ViewMode) -> &'static str {
         ViewMode::Canvas => "Canvas",
         ViewMode::Bases => "Bases",
         ViewMode::Outline => "Outline",
+        ViewMode::Calendar => "Calendar",
         ViewMode::Setup => "Setup",
     }
 }
@@ -59,6 +60,11 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         || app.editor.find_popup.is_some()
         || app.help_search.popup.is_some()
         || app.vault_switcher.is_some()
+        || (app.mode == ViewMode::Calendar
+            && app
+                .calendar_view
+                .as_ref()
+                .is_some_and(|view| view.dialog.is_some()))
         || app
             .bases_state
             .as_ref()
@@ -69,6 +75,19 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
 
     let theme: &AppThemeColors = &app.app_theme;
     let mut lines: Vec<(String, String)> = match app.mode {
+        ViewMode::Calendar => [
+            ("m / w / d / a", "Month / week / day / agenda"),
+            ("n / e / Delete", "New / edit / delete event"),
+            ("hjkl / Arrows", "Navigate dates / events"),
+            ("J / K", "Next / previous event"),
+            ("L / o", "Link / open note"),
+            ("s / i / E", "Sync / import / export"),
+            ("?", "Calendar help"),
+            ("Esc", "Back to Notes"),
+        ]
+        .into_iter()
+        .map(|(key, name)| (key.to_owned(), name.to_owned()))
+        .collect(),
         ViewMode::List => scope_keybind_lines::<crate::keybinds::ListAction>(
             &app.keybinds,
             Keybinds::list_keys_display,

@@ -2,7 +2,7 @@ use super::*;
 use crate::app::{EditFocus, EditSidebar, HelpTab};
 use crate::config::{ClinConfig, ConfigTestGuard, HintBarStyle, IconMode, NotesLayout};
 use crate::list_view::VisualItem;
-use crate::ui::{hit_test_tabs, icons, title_bar_tabs_region};
+use crate::ui::{format_keybind_hints, hit_test_tabs, icons, title_bar_tabs_region};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{Terminal, backend::TestBackend};
 
@@ -11,6 +11,8 @@ fn fixture() -> (tempfile::TempDir, App) {
     crate::config::set_config_path_override(app.storage.config_dir.join("config.toml"));
     app.mode = ViewMode::List;
     app.status = "".into();
+    app.command_usage_path = Some(app.storage.config_dir.join("commands.json"));
+    app.messages.messages.clear();
     std::fs::create_dir_all(app.storage.notes_dir.join("docs/nested")).unwrap();
     app.catalog_folders = vec!["docs".into(), "docs/nested".into()];
     for id in ["root.md", "docs/child.md", "docs/nested/deep.md"] {
@@ -111,7 +113,7 @@ fn multi_preview_shows_folder_children_and_mouse_enters_that_folder() {
     let area = Rect::new(0, 0, 120, 30);
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
     terminal
-        .draw(|frame| draw_list_view(frame, &mut app))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
         .unwrap();
     let (browser, _, _) = list_view_layout(
         area,
@@ -245,7 +247,7 @@ fn primary_scrollbar_uses_preview_divider_and_still_accepts_dragging() {
         ] {
             app.preview_position = position;
             terminal
-                .draw(|frame| draw_list_view(frame, &mut app))
+                .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
                 .unwrap();
             let preview = list_view_layout(
                 area,
@@ -274,7 +276,7 @@ fn primary_scrollbar_uses_preview_divider_and_still_accepts_dragging() {
             );
             app.mouse_pos = Some((meta.track.x, meta.track.y));
             terminal
-                .draw(|frame| draw_list_view(frame, &mut app))
+                .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
                 .unwrap();
             assert_eq!(
                 terminal.backend().buffer()[(meta.track.x, meta.track.y)].fg,
@@ -364,7 +366,7 @@ fn help_about_is_last_and_side_content_remains_reachable_at_small_sizes() {
             app.reroll_help_suggestions();
             app.help_side_scroll = [u16::MAX; 2];
             terminal
-                .draw(|frame| crate::ui::draw_help_view(frame, &mut app))
+                .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
                 .unwrap();
             let columns = crate::ui::help_body_columns(Rect::new(0, 1, width, height - 2));
             if columns[4].width > 0 {
@@ -391,7 +393,7 @@ fn editor_sidebar_focus_fills_title_without_adding_another_divider() {
         app.editor.sidebar = sidebar;
         let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
         terminal
-            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Sidebar))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Sidebar))
             .unwrap();
         let layout = crate::events::compute_edit_layout(
             Rect::new(0, 1, 120, 30),
@@ -411,7 +413,7 @@ fn editor_sidebar_focus_fills_title_without_adding_another_divider() {
             app.app_theme.accent
         );
         terminal
-            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Body))
             .unwrap();
         assert_ne!(
             terminal.backend().buffer()[(pane.x + 5, pane.y + 1)].bg,
@@ -460,7 +462,7 @@ fn rows_tabs_and_clickable_widgets_share_hover_feedback() {
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
     app.mouse_pos = Some((3, 2));
     terminal
-        .draw(|frame| draw_list_view(frame, &mut app))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
         .unwrap();
     assert_eq!(
         terminal.backend().buffer()[(3, 2)].bg,
@@ -501,7 +503,7 @@ fn rows_tabs_and_clickable_widgets_share_hover_feedback() {
         .unwrap();
     app.mouse_pos = Some((x, 0));
     terminal
-        .draw(|frame| draw_list_view(frame, &mut app))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
         .unwrap();
     assert_eq!(
         terminal.backend().buffer()[(x, 0)].bg,
@@ -527,7 +529,7 @@ fn rows_tabs_and_clickable_widgets_share_hover_feedback() {
     .unwrap();
     app.mouse_pos = Some((strip.x + 2, strip.y + 2));
     terminal
-        .draw(|frame| draw_list_view(frame, &mut app))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
         .unwrap();
     assert_eq!(
         terminal.backend().buffer()[(strip.x + 2, strip.y + 2)].bg,
@@ -589,7 +591,7 @@ fn editor_title_keeps_its_center_when_focus_changes() {
             let mut starts = Vec::new();
             for focus in [EditFocus::Body, EditFocus::Title, EditFocus::Sidebar] {
                 terminal
-                    .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, focus))
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, focus))
                     .unwrap();
                 let start = (0..100)
                     .find(|&x| terminal.backend().buffer()[(x, 0)].symbol() == first_symbol)
@@ -627,12 +629,12 @@ fn clipped_editor_titles_keep_the_same_viewport_without_focus() {
     for width in [3, 16, 40, 80] {
         let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
         terminal
-            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Title))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Title))
             .unwrap();
         let title_rect = app.editor.header_title_rect;
         let focused = text_in(terminal.backend().buffer(), title_rect);
         terminal
-            .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Body))
             .unwrap();
         assert_eq!(app.editor.header_title_rect, title_rect);
         assert_eq!(
@@ -686,7 +688,7 @@ fn notes_modes_show_their_complete_shortcut_sets() {
     let mut terminal = Terminal::new(TestBackend::new(240, 24)).unwrap();
     app.list.list_mode = crate::list_view::ListMode::Select;
     terminal
-        .draw(|frame| draw_list_view(frame, &mut app))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
         .unwrap();
     let footer = text_in(terminal.backend().buffer(), Rect::new(0, 23, 240, 1));
     for action in ["toggle", "move", "copy", "tag", "untag", "delete", "exit"] {
@@ -695,7 +697,7 @@ fn notes_modes_show_their_complete_shortcut_sets() {
     app.list.list_mode = crate::list_view::ListMode::Normal;
     app.layout_edit = true;
     terminal
-        .draw(|frame| draw_list_view(frame, &mut app))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
         .unwrap();
     let footer = text_in(terminal.backend().buffer(), Rect::new(0, 23, 240, 1));
     for key in ["Space", "Ctrl+Space", "Tab", "a", "Esc"] {
@@ -778,6 +780,7 @@ fn widget_frames_share_padding_and_only_the_interface_border() {
         for bottom in [false, true] {
             for section in [
                 crate::config::NotesSection::Calendar,
+                crate::config::NotesSection::Activity,
                 crate::config::NotesSection::Goals,
                 crate::config::NotesSection::Todo,
                 crate::config::NotesSection::Draw,
@@ -785,7 +788,10 @@ fn widget_frames_share_padding_and_only_the_interface_border() {
             ] {
                 terminal
                     .draw(|frame| match section {
-                        crate::config::NotesSection::Calendar => crate::calendar::draw_calendar(
+                        crate::config::NotesSection::Calendar => {
+                            crate::calendar::view::draw_widget(frame, area, &mut app, bottom, area)
+                        }
+                        crate::config::NotesSection::Activity => crate::calendar::draw_calendar(
                             frame,
                             area,
                             &app.app_theme,
@@ -891,7 +897,7 @@ fn section_tabs_toggle_and_persist_for_every_layout() {
             assert!(app.list.visual_list.iter().any(|item| matches!(item, VisualItem::Folder { path: folder, depth: 0, .. } if folder == path)), "{layout:?}: missing {path}");
         }
         terminal
-            .draw(|frame| draw_list_view(frame, &mut app))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
             .unwrap();
         assert!(
             !text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1))
@@ -925,10 +931,13 @@ fn section_tabs_toggle_and_persist_for_every_layout() {
         assert!(!app.list.visual_list.iter().any(|item| matches!(item, VisualItem::Folder { path, .. } if path.is_empty() || App::is_virtual_path(path))));
         app.status = "".into();
         terminal
-            .draw(|frame| draw_list_view(frame, &mut app))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
             .unwrap();
         assert!(
-            text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1)).contains("Pinned")
+            text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1)).contains("Pinned"),
+            "{layout:?} {:?}: {}",
+            app.mode,
+            text_in(terminal.backend().buffer(), Rect::new(0, 0, area.width, 1))
         );
         let tabs = [
             ("Vault", Some(icons::FOLDER.get(app.config.ui.icon_mode))),
@@ -1031,7 +1040,7 @@ fn editor_scrollbar_uses_each_splitter_and_keeps_mouse_scrolling() {
             app.editor.body_viewport_row = 0;
             app.editor.scroll_drag = None;
             terminal
-                .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+                .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Body))
                 .unwrap();
             let layout = crate::events::compute_edit_layout(
                 Rect::new(0, 1, 120, 30),
@@ -1072,7 +1081,7 @@ fn editor_scrollbar_uses_each_splitter_and_keeps_mouse_scrolling() {
     }
     app.preview_fullscreen = true;
     terminal
-        .draw(|frame| crate::ui::draw_edit_view(frame, &mut app, EditFocus::Body))
+        .draw(|frame| crate::ui::draw_ui(frame, &mut app, EditFocus::Body))
         .unwrap();
     assert!(app.editor.last_scroll.is_none());
 }
@@ -1163,7 +1172,7 @@ fn notes_row_density_keeps_hover_and_mouse_targets_on_the_rendered_rows() {
             let row = 2 + app.list.row_height();
             app.mouse_pos = Some((3, row));
             terminal
-                .draw(|frame| draw_list_view(frame, &mut app))
+                .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
                 .unwrap();
             assert!(
                 text_in(terminal.backend().buffer(), Rect::new(0, row, 45, 1)).contains("Today")
@@ -1183,7 +1192,7 @@ fn notes_row_density_keeps_hover_and_mouse_targets_on_the_rendered_rows() {
         app.enter_list_directory(String::new(), 0);
         select_folder(&mut app, "docs");
         terminal
-            .draw(|frame| draw_list_view(frame, &mut app))
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
             .unwrap();
         let pane = browser_columns(Rect::new(0, 1, 120, 30), &NotesLayout::Multi)
             .1

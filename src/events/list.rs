@@ -530,6 +530,25 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     && mouse_event.row < r.bottom()
                 {
                     match sec {
+                        crate::config::NotesSection::Calendar
+                        | crate::config::NotesSection::Activity => {
+                            let date = if *sec == crate::config::NotesSection::Calendar {
+                                crate::calendar::view::widget_date(
+                                    r,
+                                    cal_rect,
+                                    app.config.list.calendar_position
+                                        == crate::config::CalendarPosition::Top,
+                                    mouse_event.column,
+                                    mouse_event.row,
+                                    app.list.week_start,
+                                )
+                            } else {
+                                chrono::Local::now().date_naive()
+                            };
+                            if let Err(error) = app.open_calendar_at(Some(date)) {
+                                app.set_temporary_status(&format!("{error:#}"));
+                            }
+                        }
                         crate::config::NotesSection::Draw => {
                             if let Some(id) = app
                                 .draw_preview

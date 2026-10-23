@@ -13,6 +13,8 @@ use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
 mod edit_view;
+mod footer;
+pub(crate) use footer::content_area as view_content_area;
 mod help;
 pub(crate) mod help_content;
 pub mod icons;
@@ -150,17 +152,29 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(block, frame.area());
     }
 
+    let view_area = view_content_area(frame.area());
+    if view_area.height == 0 || view_area.width == 0 {
+        app.mouse_pos = popup_hover_pos;
+        footer::draw(frame, app);
+        return;
+    }
     match app.mode {
         ViewMode::List => draw_list_view(frame, app),
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Setup => draw_setup_view(frame, app),
+        ViewMode::Calendar => {
+            if let Some(mut calendar) = app.calendar_view.take() {
+                calendar.overlay_render(frame, view_area, app);
+                app.calendar_view = Some(calendar);
+            }
+        }
         ViewMode::Graph => {
             if let Some(mut graf) = app.graph_plugin.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(frame.area());
+                    .split(view_area);
 
                 let banner = graf
                     .graph_state
@@ -241,7 +255,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(frame.area());
+                    .split(view_area);
                 let icon_mode = app.config.ui.icon_mode;
                 let tabs_arr = crate::draw_adapter::draw_tool_tabs(icon_mode);
                 let tabs = tab_vec_from_array(&tabs_arr);
@@ -299,7 +313,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(frame.area());
+                    .split(view_area);
                 let mut ctx = crate::statusline::StatuslineContext::for_overlay(
                     &app.config,
                     ViewMode::Canvas,
@@ -330,7 +344,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
         ViewMode::Bases => {
             if let Some(mut bases) = app.bases_state.take() {
-                bases.overlay_render(frame, frame.area(), app);
+                bases.overlay_render(frame, view_area, app);
                 app.bases_state = Some(bases);
             }
         }
@@ -340,7 +354,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(frame.area());
+                    .split(view_area);
                 let mut ctx = crate::statusline::StatuslineContext::for_overlay(
                     &app.config,
                     ViewMode::Outline,
@@ -371,6 +385,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     }
+    footer::draw(frame, app);
     // Restore mouse_pos for popup hover detection
     app.mouse_pos = popup_hover_pos;
 

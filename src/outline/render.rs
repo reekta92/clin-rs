@@ -1,6 +1,4 @@
-use crate::app::ViewMode;
 use crate::app_theme::AppThemeColors;
-use crate::keybinds::{Keybinds, OutlineAction};
 use crate::outline::state::OutlineState;
 use ratatui::{
     Frame,
@@ -67,20 +65,9 @@ pub fn draw_outline(
     area: Rect,
     state: &mut OutlineState,
     theme: &AppThemeColors,
-    keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
-    app_status: Option<&str>,
 ) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),    // Tree + Side Pane
-            Constraint::Length(1), // Hint line
-        ])
-        .split(area);
-
-    let main_area = chunks[0];
-    let hint_area = chunks[1];
+    let main_area = area;
 
     // 2. Draw Tree and Side Pane Content
     if state.load_error {
@@ -242,50 +229,12 @@ pub fn draw_outline(
             frame.render_widget(p, right_area);
         }
     }
-
-    // 3. Draw Hint line
-    let hints_items = vec![
-        (
-            format!(
-                "{}/{}",
-                keybinds.display_outline(OutlineAction::MoveDown),
-                keybinds.display_outline(OutlineAction::MoveUp)
-            ),
-            "move",
-        ),
-        (
-            keybinds.display_outline(OutlineAction::ToggleCollapse),
-            "fold",
-        ),
-        (keybinds.display_outline(OutlineAction::Open), "jump"),
-        (keybinds.outline_keys_display(OutlineAction::Back), "back"),
-        (
-            format!("F1/{}", keybinds.outline_keys_display(OutlineAction::Help)),
-            "help",
-        ),
-    ];
-    let hint = crate::ui::format_keybind_hints(theme, &hints_items);
-    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Outline);
-    ctx.area = Some(hint_area);
-    ctx.outline = Some(state);
-    ctx.app_status = app_status;
-    ctx.hints = Some(hint.spans);
-    if let Some(p) = &state.seq_matcher.pending_display() {
-        ctx.pending = Some(vec![Span::styled(
-            format!("{} ", p),
-            Style::default().fg(theme.highlight_fg).bg(theme.accent),
-        )]);
-    }
-
-    let (left_line, right_line) =
-        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Outline, theme);
-    crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keybinds::KeyMatcher;
+    use crate::keybinds::{KeyMatcher, Keybinds};
     use ratatui::backend::TestBackend;
 
     #[test]
@@ -303,15 +252,7 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                draw_outline(
-                    frame,
-                    frame.area(),
-                    &mut state,
-                    &theme,
-                    &Keybinds::default(),
-                    &config,
-                    None,
-                );
+                draw_outline(frame, frame.area(), &mut state, &theme, &config);
             })
             .unwrap();
 
@@ -344,17 +285,7 @@ mod tests {
         let theme = AppThemeColors::default();
         let config = crate::config::ClinConfig::default();
         terminal
-            .draw(|frame| {
-                draw_outline(
-                    frame,
-                    frame.area(),
-                    &mut state,
-                    &theme,
-                    &keys,
-                    &config,
-                    None,
-                )
-            })
+            .draw(|frame| draw_outline(frame, frame.area(), &mut state, &theme, &config))
             .unwrap();
         let meta = state.last_tree_scroll.unwrap();
         assert_eq!(meta.track.x, state.tree_list_rect.right());

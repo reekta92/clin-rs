@@ -1,14 +1,13 @@
 use super::state::BasesState;
 use crate::{
-    app::{App, ViewMode},
+    app::App,
     keybinds::{BasesAction, MatchOutcome},
     overlay::{OverlayResult, OverlayView},
 };
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::Style,
-    text::{Line, Span},
+    text::Line,
 };
 
 impl OverlayView for BasesState {
@@ -126,11 +125,7 @@ impl BasesState {
     pub(crate) fn render_native(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &App) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ])
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
             .split(area);
         let view = self.loaded.as_ref().map_or("", |loaded| {
             loaded.document.config.views[loaded.view].name.as_str()
@@ -171,35 +166,6 @@ impl BasesState {
             app.load_spinner_tick,
         );
         super::render::render(frame, chunks[1], self, app);
-        let hints = crate::ui::format_keybind_hints(
-            &app.app_theme,
-            &[
-                (app.keybinds.display_bases(BasesAction::Back), "back"),
-                (app.keybinds.display_bases(BasesAction::Open), "open"),
-                (app.keybinds.display_bases(BasesAction::Edit), "edit"),
-                (app.keybinds.display_bases(BasesAction::NextView), "views"),
-                (app.keybinds.display_bases(BasesAction::Search), "search"),
-            ],
-        );
-        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Bases);
-        ctx.area = Some(chunks[2]);
-        ctx.bases = Some(self);
-        ctx.hints = Some(hints.spans);
-        if let Some(pending) = self.matcher.pending_display() {
-            ctx.pending = Some(vec![Span::styled(
-                format!("{pending} "),
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.accent),
-            )]);
-        }
-        let (left, right) = crate::statusline::render_footer(
-            &ctx,
-            &app.config.statusline,
-            ViewMode::Bases,
-            &app.app_theme,
-        );
-        crate::ui::draw_status_bar(frame, chunks[2], &app.app_theme, left, right);
         if self.embedded_request.is_none() || app.mode == crate::app::ViewMode::Bases {
             self.render_search(frame, area, app);
             if let Some(dialog) = self.dialog.as_mut() {

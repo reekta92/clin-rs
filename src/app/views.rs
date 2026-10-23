@@ -109,6 +109,12 @@ impl App {
         self.guard_palette_departure()?;
         if destination == "help.open" {
             ensure!(self.config.features.help_view.is_enabled(), "Help disabled");
+            if self.mode == ViewMode::Calendar {
+                if let Some(view) = &mut self.calendar_view {
+                    view.dialog = Some(crate::calendar::view::Dialog::Help);
+                }
+                return Ok(());
+            }
             self.open_help_page_with_tab(self.mode.help_tab().unwrap_or(HelpTab::Notes));
             return Ok(());
         }
@@ -117,7 +123,7 @@ impl App {
             return Ok(());
         }
         ensure!(
-            matches!(destination, "notes.open" | "graph.open"),
+            matches!(destination, "notes.open" | "graph.open" | "calendar.open"),
             "Unknown destination"
         );
         ensure!(
@@ -147,10 +153,22 @@ impl App {
         } else {
             None
         };
+        if destination == "calendar.open" {
+            self.calendar.ensure_loaded(&self.storage)?;
+        }
         self.release_navigation_owners();
         if destination == "graph.open" {
             self.graph_plugin = graph.or(retained_graph);
             self.mode = ViewMode::Graph;
+            self.return_mode = Some(ViewMode::List);
+        }
+        if destination == "calendar.open" {
+            if self.calendar_view.is_none() {
+                self.calendar_view = Some(crate::calendar::view::View::new(
+                    chrono::Local::now().date_naive(),
+                ));
+            }
+            self.mode = ViewMode::Calendar;
             self.return_mode = Some(ViewMode::List);
         }
         self.sync_retained_view_settings();

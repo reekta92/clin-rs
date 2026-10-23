@@ -137,6 +137,7 @@ pub(super) enum Scope {
     Markdown,
     Image,
     Graph,
+    Calendar,
     Bases,
     CreateBase,
     Setup,
@@ -157,8 +158,9 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "settings.scrollbars"
         | "settings.scrollbar_pan_mode"
         | "settings.confirm_quit" => Shared,
-        "notes.open" | "help.open" | "graph.open" | "setup_wizard" | "vault.switch"
-        | "navigation.back" | "navigation.forward" | "document.save" | "app.quit" => Navigation,
+        "notes.open" | "help.open" | "graph.open" | "calendar.open" | "setup_wizard"
+        | "vault.switch" | "navigation.back" | "navigation.forward" | "document.save"
+        | "app.quit" => Navigation,
         "draw.create"
         | "create_canvas"
         | "external_editor.toggle"
@@ -196,7 +198,8 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "insert.json_new"
         | "insert.url_new"
         | "insert.clipboard_new" => List,
-        "note.rasterize"
+        "calendar.schedule_note"
+        | "note.rasterize"
         | "manage_subnotes_list"
         | "outline.open"
         | "ocr.paste"
@@ -206,6 +209,7 @@ pub(super) fn scope(id: &str) -> Option<Scope> {
         | "insert.url_append"
         | "insert.clipboard_append" => Note,
         "info.show" => Info,
+        "calendar.new" | "calendar.import" | "calendar.export" | "calendar.sync" => Scope::Calendar,
         "bases.create" => CreateBase,
         "settings.wrap"
         | "settings.features"
@@ -285,6 +289,7 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
                     )
             }
             "notes.open" => !list,
+            "calendar.open" => context.mode != ViewMode::Calendar,
             "help.open" => context.mode != ViewMode::Help,
             "graph.open" => context.mode != ViewMode::Graph,
             _ => true,
@@ -304,6 +309,7 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
         }
         Note => {
             list && text
+                && (id != "calendar.schedule_note" || note.is_some_and(|id| id.ends_with(".md")))
                 && (!matches!(id, "outline.open" | "manage_subnotes_list")
                     || context.note_id == app.get_selected_note_id())
         }
@@ -345,6 +351,7 @@ pub(super) fn eligible(id: &str, app: &App, context: &ActionContext) -> bool {
                         .is_some_and(|s| !s.state.locked && s.palette_input_available()))
         }
         Graph => context.mode == ViewMode::Graph && app.graph_plugin.is_some(),
+        Scope::Calendar => context.mode == ViewMode::Calendar && app.calendar_view.is_some(),
         Bases => {
             context.mode == ViewMode::Bases
                 && context.owner_current(app)

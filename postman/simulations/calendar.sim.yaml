@@ -1,0 +1,5 @@
+simulation: clin-calendar
+routing: path
+mocks:
+  - routeKey: caldav
+    path: ../mocks/caldav/config.yaml

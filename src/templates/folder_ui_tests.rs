@@ -25,7 +25,7 @@ fn draw(app: &mut App) -> Terminal<TestBackend> {
     app.list.calendar_enabled = false;
     let mut terminal = Terminal::new(TestBackend::new(120, 35)).unwrap();
     terminal
-        .draw(|frame| crate::ui::draw_list_view(frame, app))
+        .draw(|frame| crate::ui::draw_ui(frame, app, crate::app::EditFocus::Body))
         .unwrap();
     terminal
 }

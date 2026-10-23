@@ -143,7 +143,7 @@ The Graph view supports a preview pane identically to the List view. When enable
 | `Shift+L` | Toggle legend |
 | `Shift+G` | Toggle grid |
 | `Shift+P` | Toggle preview pane |
-| `Shift+S` | Toggle status bar |
+| `Shift+S` | Toggle Graph shortcuts |
 | `r` | Refresh simulation |
 | `Ctrl+R` | Reload config |
 | `?` / `F1` | Help |

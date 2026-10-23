@@ -1,7 +1,7 @@
 //! Clin owns document IDs, key resolution, chrome and clipboard transport.
 //! The upstream `draw` crate owns the drawing document and its interactions.
 use crate::{
-    app::{App, HelpTab, ViewMode},
+    app::{App, HelpTab},
     keybinds::{DrawAction, KeyMatcher, Keybinds, MatchOutcome},
     overlay::{OverlayResult, OverlayView},
     storage::Storage,
@@ -12,7 +12,6 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::Style,
-    text::Span,
 };
 
 pub struct DrawPlugin {
@@ -195,8 +194,7 @@ pub(crate) fn theme_colors(theme: &crate::app_theme::AppThemeColors) -> ThemeCol
 
 impl OverlayView for DrawPlugin {
     fn overlay_render(&mut self, frame: &mut Frame, area: Rect, app: &mut App) {
-        let [canvas, status_area] =
-            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+        let canvas = area;
         let hints = DrawHints {
             shape_confirm: self.keybinds.display_draw(DrawAction::ShapeSelectorConfirm),
             shape_cancel: self.keybinds.display_draw(DrawAction::ShapeSelectorCancel),
@@ -213,47 +211,6 @@ impl OverlayView for DrawPlugin {
             &hints,
             app.mouse_pos,
         );
-        let hints_items = [
-            (
-                self.keybinds.display_draw(DrawAction::SelectCursorTool),
-                "cursor",
-            ),
-            (
-                self.keybinds.display_draw(DrawAction::SelectDrawTool),
-                "draw",
-            ),
-            (
-                self.keybinds.display_draw(DrawAction::ToggleShapeSelector),
-                "shape",
-            ),
-            (
-                self.keybinds.display_draw(DrawAction::SelectTextTool),
-                "text",
-            ),
-            (self.keybinds.draw_keys_display(DrawAction::Quit), "back"),
-        ];
-        let hint_line = crate::ui::format_keybind_hints(&app.app_theme, &hints_items);
-        let mut ctx =
-            crate::statusline::StatuslineContext::for_overlay(&app.config, ViewMode::Draw);
-        ctx.area = Some(status_area);
-        ctx.draw = Some(&self.state);
-        ctx.hints = Some(hint_line.spans);
-        if let Some(p) = &self.seq_matcher.pending_display() {
-            ctx.pending = Some(vec![Span::styled(
-                format!("{} ", p),
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.accent),
-            )]);
-        }
-
-        let (left_line, right_line) = crate::statusline::render_footer(
-            &ctx,
-            &app.config.statusline,
-            ViewMode::Draw,
-            &app.app_theme,
-        );
-        crate::ui::draw_status_bar(frame, status_area, &app.app_theme, left_line, right_line);
     }
 
     fn overlay_handle_event(

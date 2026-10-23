@@ -350,6 +350,7 @@ impl StatuslineContext<'_> {
                     ViewMode::Canvas => "Canvas",
                     ViewMode::Bases => "Bases",
                     ViewMode::Outline => "Outline",
+                    ViewMode::Calendar => "Calendar",
                     ViewMode::Setup => "Setup",
                 };
                 Some(s.into())
@@ -514,6 +515,7 @@ impl StatuslineContext<'_> {
                         |tree| format!("OUTLINE — {}", tree.note_title),
                     ),
                     ViewMode::Setup => "Setup".to_string(),
+                    ViewMode::Calendar => "Calendar".to_string(),
                 };
                 Some(title.into())
             }
@@ -1865,7 +1867,7 @@ pub fn effective_templates(cfg: &StatuslineConfig, view: ViewMode) -> Statusline
         ViewMode::Graph => cfg.graph.as_ref(),
         ViewMode::Draw => cfg.draw.as_ref(),
         ViewMode::Canvas => cfg.canvas.as_ref(),
-        ViewMode::Bases => None,
+        ViewMode::Bases | ViewMode::Calendar => None,
         ViewMode::Outline => cfg.outline.as_ref(),
         ViewMode::Setup => None,
     };

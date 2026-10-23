@@ -1,5 +1,6 @@
 pub mod messages;
 
+mod calendar;
 pub(crate) mod catalog;
 mod command_palette;
 mod drafts;
@@ -260,6 +261,7 @@ pub fn parse_search_query(query: &str, tags_enabled: bool, subnotes_enabled: boo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(strum::EnumIter))]
 pub enum ViewMode {
     List,
     Edit,
@@ -269,6 +271,7 @@ pub enum ViewMode {
     Canvas,
     Bases,
     Outline,
+    Calendar,
     Setup,
 }
 
@@ -286,6 +289,7 @@ impl ViewMode {
             ViewMode::Canvas => Some(HelpTab::Canvas),
             ViewMode::Bases => Some(HelpTab::Bases),
             ViewMode::Outline => Some(HelpTab::Notes), // no Outline tab; matches existing OutlineAction::Help target
+            ViewMode::Calendar => None,
             ViewMode::Help => None,
             ViewMode::Setup => None,
         }
@@ -420,6 +424,8 @@ pub struct App {
     pub draw_state: Option<crate::draw_adapter::DrawPlugin>,
     pub draw_clipboard: Option<crate::draw::state::DrawItem>,
     pub outline_state: Option<crate::outline::state::OutlineState>,
+    pub(crate) calendar: crate::calendar::store::Service,
+    pub(crate) calendar_view: Option<crate::calendar::view::View>,
     pub setup_state: Option<crate::setup::SetupState>,
     pub(crate) setup_rebootstrap: Option<crate::setup::SetupRebootstrapRequest>,
     pub config_errors: Vec<String>,
@@ -692,6 +698,8 @@ impl App {
             draw_state: None,
             draw_clipboard: None,
             outline_state: None,
+            calendar: crate::calendar::store::Service::default(),
+            calendar_view: None,
             setup_state: None,
             setup_rebootstrap: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
@@ -979,6 +987,8 @@ impl App {
             draw_state: None,
             draw_clipboard: None,
             outline_state: None,
+            calendar: crate::calendar::store::Service::default(),
+            calendar_view: None,
             setup_state: None,
             setup_rebootstrap: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,

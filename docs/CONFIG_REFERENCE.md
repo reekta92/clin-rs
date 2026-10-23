@@ -65,7 +65,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `import` | `enum` | `true` | Enable import (File/CSV/JSON/URL/Clipboard) and OCR paste |
 | `images` | `enum` | `true` | Enable native pixel image rendering (restart required) |
 | `goals` | `enum` | `true` | Enable the daily word/note goals system |
-| `calendar` | `enum` | `true` | Show rolling-week note activity in the notes list |
+| `calendar` | `enum` | `true` | Show the Notes widget strip (Calendar view remains available) |
 | `smart_folders` | `enum` | `true` | Enable virtual smart folders (Today, This Week, Untagged) |
 
 ### `[core]`
@@ -113,8 +113,8 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
-| `week_start` | `enum` | `"sunday"` | Start day for rolling-week activity: `"sunday"` or `"monday"` |
-| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`, `todo` |
+| `week_start` | `enum` | `"sunday"` | Start day for Calendar and rolling-week activity: `"sunday"` or `"monday"` |
+| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `activity`, `goals`, `draw`, `graf`, `todo` |
 | `folder_graph_preview` | `bool` | `false` | Show graph preview for folders |
 | `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
 | `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
@@ -126,7 +126,7 @@ The **Select Notes Layout** command opens a searchable list with the current lay
 
 Directory layouts (`grid`, `list`, `multi`) navigate into folders. In List and Multi, Enter or Right opens a folder; Left returns to its parent. Grid keeps its tile-navigation shortcuts. Multi shows the selected folder's children in the right column; clicking a child enters that folder and selects the child. A browser narrower than 24 cells uses one column.
 
-Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
+Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Every view shares a footer controlled by `hint_bar_style` and the statusline templates, including Calendar, Setup, and Zen mode. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
 
 ### `[editor]`
 
@@ -179,7 +179,7 @@ Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Dis
 |---|---|---|---|
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 19 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
-| `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
+| `show_status_bar` | `bool` | `true` | Show Graph shortcut hints; the shared footer always remains visible |
 | `tab_icons_only` | `bool` | `false` | Show only icons on tab bars; text labels remain in `"none"` mode |
 | `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"emoji"`: emoji icons (terminal emoji support required); `"none"`: text labels without decorative icons. Unicode/Emoji/None use portable bar separators |
 | `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
@@ -677,7 +677,7 @@ These global handlers take precedence over per-view bindings.
 | `toggle_minimap` | `Shift+M` | Toggle minimap |
 | `toggle_legend` | `Shift+L` | Toggle legend |
 | `toggle_grid` | `Shift+G` | Toggle background grid |
-| `toggle_status` | `Shift+S` | Toggle status bar |
+| `toggle_status` | `Shift+S` | Toggle Graph shortcuts |
 | `refresh` | `r` | Refresh physics |
 | `toggle_preview` | `Shift+P` | Toggle preview |
 | `create_connection` | `c` | Create connection |
@@ -808,3 +808,25 @@ The old `graf.toml` file is **no longer used**. All graf options (`[graf.visual]
 - [README.md](../README.md) — Quickstart, installation, CLI commands
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system details and color reference
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Graph view configuration context
+
+## Calendar and CalDAV
+
+The Calendar view is available from the command palette independently of the Notes widget strip. `calendar` selects the month widget; `activity` selects the note-activity heatmap.
+
+```toml
+[[calendar.caldav]]
+name = "Work"
+url = "https://example.org/dav/"
+username = "user"
+password_env = "CLIN_CALDAV_PASSWORD"
+```
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `calendar.caldav` | array of tables | `[]` | Accounts for manual CalDAV synchronization |
+| `name` | string | `""` | Display prefix for discovered calendars |
+| `url` | string | `""` | HTTPS account/home/collection endpoint; required per account |
+| `username` | string | `""` | Basic-auth username; configure together with `password_env` |
+| `password_env` | string | `""` | Environment-variable name containing the password/app password |
+
+Set the named variable before starting clin. Password values stay outside config. Only localhost permits HTTP; redirects and cross-origin discovery are rejected. See [Calendar](CALENDAR.md) for scheduling, sync conflicts, limits, and the local protocol simulation.

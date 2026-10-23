@@ -79,6 +79,7 @@ impl App {
                 ViewMode::Bases => claimed(&keybinds.bases, combo),
                 ViewMode::Outline => claimed(&keybinds.outline, combo),
                 ViewMode::Setup => claimed(&keybinds.setup, combo),
+                ViewMode::Calendar => false,
             })
             .cloned()
             .collect()
@@ -147,6 +148,10 @@ impl App {
                 .as_ref()
                 .is_some_and(|s| s.palette_input_available()),
             ViewMode::Outline => self.outline_state.is_some(),
+            ViewMode::Calendar => self
+                .calendar_view
+                .as_ref()
+                .is_some_and(|s| s.palette_input_available()),
             ViewMode::Setup => self
                 .setup_state
                 .as_ref()

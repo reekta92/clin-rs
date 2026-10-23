@@ -1,0 +1,9 @@
+version: 1
+name: caldav
+protocol: http
+port: 49148
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

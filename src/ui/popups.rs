@@ -862,8 +862,20 @@ pub(crate) fn widget_strip_area(
                 .fg(theme.muted)
                 .bg(theme.bg.unwrap_or(Color::Reset)),
         );
-    let inner = block.inner(strip_rect).intersection(rect);
     frame.render_widget(block, strip_rect);
+    widget_strip_content_area(rect, strip_rect, bottom_border)
+}
+
+pub(crate) fn widget_strip_content_area(rect: Rect, strip_rect: Rect, bottom_border: bool) -> Rect {
+    let border = if bottom_border {
+        Borders::BOTTOM
+    } else {
+        Borders::TOP
+    };
+    let inner = Block::default()
+        .borders(border)
+        .inner(strip_rect)
+        .intersection(rect);
     Block::default()
         .padding(Padding::horizontal(2))
         .inner(inner)

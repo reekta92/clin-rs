@@ -2,6 +2,19 @@
 
 All notable changes to clin are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Add Calendar view with month/week/day/agenda, clickable Notes calendar widget, palette commands, note scheduling and inline date/event references (#147).
+- Add iCalendar import/export and manual CalDAV discovery/sync with ETag protection and retained conflicts.
+- Preserve the note-activity heatmap as the `activity` widget.
+- Support `hjkl` calendar movement, `J/K` event selection, and `L` note linking.
+
+### Changed
+
+- Render one shared footer in every view, including Calendar, Setup, and Zen mode, with common hint styles and statusline templates. New views receive the footer through the host renderer.
+
 ## [0.14.0-beta.2] - 2026-10-21
 
 ### CI

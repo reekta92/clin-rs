@@ -701,7 +701,7 @@ fn graph_area(
             ratatui::layout::Constraint::Length(1),
             ratatui::layout::Constraint::Min(0),
         ])
-        .split(term_area);
+        .split(crate::ui::view_content_area(term_area));
     let content_area = outer[1];
     if app_state.preview_enabled {
         let (constraints, main_idx) = match config.list.preview_position {
@@ -1383,7 +1383,7 @@ fn handle_event(
                     graph_area,
                     &mut app_state.graph_mouse_state,
                     &settings,
-                    app_state.show_status_bar,
+                    false,
                 ) {
                     match action {
                         LibAction::OpenFile(path) => {
@@ -1479,11 +1479,9 @@ fn run_search(app_state: &mut GrafPlugin, config: &ClinConfig) {
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
-use crate::app::ViewMode;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Color;
-use ratatui::text::Span;
 
 impl crate::overlay::OverlayView for GrafPlugin {
     fn overlay_render(&mut self, frame: &mut Frame, area: Rect, app: &mut crate::app::App) {
@@ -1586,21 +1584,9 @@ fn draw_ui(
             show_legend: state.show_legend,
             grid: state.grid,
             show_minimap: state.show_minimap,
-            show_status_bar: state.show_status_bar,
+            show_status_bar: false,
         };
         draw_graph_view(frame, graph_area, &guard, &settings, &graf_theme, &flags);
-        if state.show_status_bar {
-            draw_status_bar(
-                frame,
-                area,
-                &guard,
-                config,
-                theme,
-                &state.keybinds,
-                state.seq_matcher.pending_display().as_deref(),
-                state.grid,
-            );
-        }
     }
 
     if let Some((p_area, sep_area)) = preview_area {
@@ -1638,67 +1624,6 @@ fn draw_ui(
     if let Some(ref msg) = state.config_reload_msg {
         draw_reload_notification(frame, area, msg, &colors, theme);
     }
-}
-
-/// Status bar the lib's `draw_graph_view` deliberately omits (host-owned).
-#[allow(clippy::too_many_arguments)]
-fn draw_status_bar(
-    frame: &mut Frame,
-    area: Rect,
-    state: &GraphState,
-    config: &ClinConfig,
-    app_theme: &crate::app_theme::AppThemeColors,
-    keybinds: &Keybinds,
-    pending: Option<&str>,
-    grid_visible: bool,
-) {
-    use ratatui::style::Style;
-
-    let status_area = Rect::new(
-        area.x,
-        area.y + area.height.saturating_sub(1),
-        area.width,
-        1,
-    );
-    let hints_items = vec![
-        (
-            format!(
-                "{}/{}",
-                keybinds.display_graph(GraphAction::PanUp),
-                keybinds.display_graph(GraphAction::PanDown)
-            ),
-            "pan",
-        ),
-        (
-            format!(
-                "{}/{}",
-                keybinds.display_graph(GraphAction::ZoomOut),
-                keybinds.display_graph(GraphAction::ZoomIn)
-            ),
-            "zoom",
-        ),
-        (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
-        (keybinds.display_graph(GraphAction::AutoFit), "fit"),
-        (keybinds.graph_keys_display(GraphAction::Quit), "quit"),
-    ];
-    let hint_line = crate::ui::format_keybind_hints(app_theme, &hints_items);
-    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
-    ctx.area = Some(status_area);
-    ctx.graph = Some(state);
-    ctx.graph_grid_visible = grid_visible;
-    ctx.hints = Some(hint_line.spans);
-    if let Some(p) = pending {
-        ctx.pending = Some(vec![Span::styled(
-            format!("{p} "),
-            Style::default()
-                .fg(app_theme.highlight_fg)
-                .bg(app_theme.accent),
-        )]);
-    }
-
-    let (left_line, right_line) =
-        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Graph, app_theme);
-    crate::ui::draw_status_bar(frame, status_area, app_theme, left_line, right_line);
 }
 
 fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], _config: &ClinConfig) {

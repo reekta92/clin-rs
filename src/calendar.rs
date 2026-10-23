@@ -7,6 +7,14 @@ use ratatui::widgets::{Block, Padding, Paragraph};
 
 use crate::app_theme::AppThemeColors;
 
+pub(crate) mod dav;
+pub(crate) mod ical;
+pub(crate) mod store;
+pub(crate) mod view;
+
+#[cfg(test)]
+mod tests;
+
 /// Draw a GitHub-contributions-style rolling-weeks heatmap at the bottom of
 /// the notes view.
 ///

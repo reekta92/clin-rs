@@ -29,13 +29,19 @@ pub(crate) static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 #[cfg(test)]
 pub struct ConfigTestGuard {
     _lock: parking_lot::MutexGuard<'static, ()>,
+    _profile: tempfile::TempDir,
 }
 
 #[cfg(test)]
 impl ConfigTestGuard {
     pub fn lock() -> Self {
         let lock = CONFIG_TEST_MUTEX.lock();
-        Self { _lock: lock }
+        let profile = tempfile::tempdir().expect("isolated test config directory");
+        set_config_path_override(profile.path().join("config.toml"));
+        Self {
+            _lock: lock,
+            _profile: profile,
+        }
     }
 }
 
@@ -733,6 +739,15 @@ impl ClinConfig {
 
     pub fn validate(&self) -> Vec<String> {
         let mut errs = Vec::new();
+        let mut calendar_urls = std::collections::HashSet::new();
+        for account in &self.calendar.caldav {
+            if let Err(error) = account.validate() {
+                errs.push(format!("calendar.caldav: {error:#}"));
+            }
+            if !calendar_urls.insert(account.url.trim_end_matches('/')) {
+                errs.push("calendar.caldav URLs must be unique".into());
+            }
+        }
         if self.graf.visual.label_max_length < 1 || self.graf.visual.label_max_length > 60 {
             errs.push(format!(
                 "graf.visual.label_max_length must be 1-60, got {}",
@@ -795,6 +810,17 @@ pub fn vault_path_or_dot(config: &ClinConfig) -> PathBuf {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn config_test_guard_isolates_and_removes_its_profile() {
+        let guard = ConfigTestGuard::lock();
+        let path = ClinConfig::config_path().unwrap();
+        assert!(path.starts_with(guard._profile.path()));
+        ClinConfig::default().save().unwrap();
+        assert!(path.is_file());
+        drop(guard);
+        assert!(!path.exists());
+    }
 
     #[test]
     fn test_default_config() {

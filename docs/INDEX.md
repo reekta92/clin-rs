@@ -21,6 +21,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) — Native audit, release measurements and manual checks
 - [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree layout, note format chooser, preview pane
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
+- [CALENDAR.md](CALENDAR.md) — Month/week/day/agenda, scheduling, note references, iCalendar and CalDAV
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
 - [OUTLINE.md](OUTLINE.md) — Outline view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
@@ -54,6 +55,7 @@ docs/
 ├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
 ├── HELP.md               Help: 3-pane, 8 tabs, keybind index, tips, popup accordion
+├── CALENDAR.md          Calendar, iCalendar and CalDAV
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
 ├── OUTLINE.md             Outline

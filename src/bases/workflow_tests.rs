@@ -102,11 +102,9 @@ fn key(app: &mut App, code: KeyCode) -> OverlayResult {
 }
 fn render(app: &mut App) -> String {
     let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
-    let mut state = app.bases_state.take().unwrap();
     terminal
-        .draw(|frame| state.overlay_render(frame, AREA, app))
+        .draw(|frame| crate::ui::draw_ui(frame, app, crate::app::EditFocus::Body))
         .unwrap();
-    app.bases_state = Some(state);
     terminal
         .backend()
         .buffer()

@@ -11,6 +11,13 @@ impl Storage {
         Ok(file)
     }
 
+    pub(crate) fn calendar_guard(&self) -> Result<fs::File> {
+        let file = self.coordination_file("calendar.lock")?;
+        file.try_lock()
+            .context("calendar is busy in another write or sync; retry shortly")?;
+        Ok(file)
+    }
+
     pub(crate) fn recovery_guard(&self, exclusive: bool) -> Result<fs::File> {
         let file = self.coordination_file("recovery.lock")?;
         if exclusive {
