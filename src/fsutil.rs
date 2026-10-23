@@ -227,20 +227,33 @@ impl Drop for TempFileGuard {
 }
 
 /// RAII guard: zero-fills then removes a file containing secret plaintext on drop.
-pub struct SecretTempFile(PathBuf);
+pub struct SecretTempFile(Option<PathBuf>);
 
 impl SecretTempFile {
     pub fn new(path: PathBuf) -> Self {
-        Self(path)
+        Self(Some(path))
+    }
+
+    /// Retain failed editor output, outside the orphan-cleanup filename prefix.
+    pub fn persist(mut self) -> PathBuf {
+        let path = self.0.take().expect("temporary file is owned");
+        let retained = path.with_file_name(format!("retained-{}.md", uuid::Uuid::new_v4()));
+        match fs::rename(&path, &retained) {
+            Ok(()) => retained,
+            Err(_) => path,
+        }
     }
 }
 
 impl Drop for SecretTempFile {
     fn drop(&mut self) {
-        if let Ok(len) = std::fs::metadata(&self.0).map(|m| m.len()) {
-            let _ = std::fs::write(&self.0, vec![0u8; len as usize]);
+        let Some(path) = &self.0 else {
+            return;
+        };
+        if let Ok(len) = std::fs::metadata(path).map(|m| m.len()) {
+            let _ = std::fs::write(path, vec![0u8; len as usize]);
         }
-        let _ = std::fs::remove_file(&self.0);
+        let _ = std::fs::remove_file(path);
     }
 }
 

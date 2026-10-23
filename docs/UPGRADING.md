@@ -21,6 +21,10 @@ Draft writes are coalesced off the input thread, with a 150 ms scheduling window
 
 Live draft workers and transactions hold a native shared recovery lock. Startup and migration require the exclusive lock, so they leave recovery records alone while another clin session is writing. The next startup can recover them after those owners close or exit.
 
+If an external-editor save fails, its input stays in the built-in editor and
+private recovery storage. If recovery storage also fails, clin retains the
+temporary file and reports its path; save a copy before your OS clears temporary files.
+
 `clin storage migrate` copies the complete vault, including attachments, `.base` files, `.obsidian` settings, subnotes, templates, and recovery records. It rejects symlink traversal, nested source/destination vaults, live recovery owners, and read failures. Source data remains in place; external legacy keys still require a separate copy.
 
 ## Safe note saving
