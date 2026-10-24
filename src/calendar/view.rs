@@ -1036,7 +1036,7 @@ impl View {
             area,
             &self.date.format("%B %Y").to_string(),
             theme,
-            false,
+            theme.bg_style(),
         );
         if inner.height < 2 {
             return;
@@ -1049,7 +1049,7 @@ impl View {
         );
         let grid = Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1);
         self.cells = month_cells(grid, self.date, app.list.week_start);
-        for (rect, date) in &self.cells {
+        for (index, (rect, date)) in self.cells.iter().enumerate() {
             let items: Vec<_> = self.events.iter().filter(|e| e.on_date(*date)).collect();
             let mut lines = vec![Line::from(format!(
                 "{:>2}{}",
@@ -1072,17 +1072,27 @@ impl View {
                     e.title
                 )));
             }
-            let mut style = Style::default().fg(if date.month() == self.date.month() {
-                theme.text
+            let current_month =
+                date.month() == self.date.month() && date.year() == self.date.year();
+            let mut style = if current_month {
+                calendar_section_style(theme, (index / 7 + index % 7) % 2 != 0, false)
+                    .fg(theme.text)
             } else {
-                theme.muted
-            });
+                let mut style = theme.preview_bg_style().fg(theme.muted);
+                if let Some(bg) = theme.bg
+                    && theme.preview_bg() == Some(bg)
+                {
+                    style = style.bg(crate::app_theme::mix_colors(bg, theme.muted, 0.12));
+                }
+                style
+            };
             if *date == Local::now().date_naive() {
                 style = style.fg(theme.success).add_modifier(Modifier::BOLD);
             }
             if *date == self.date {
                 style = style.bg(theme.highlight_bg).fg(theme.highlight_fg);
             }
+            frame.render_widget(Block::default().style(style), *rect);
             frame.render_widget(
                 Paragraph::new(lines).style(style),
                 Rect {
@@ -1108,7 +1118,7 @@ impl View {
                 rect,
                 &date.format("%a %d").to_string(),
                 &app.app_theme,
-                false,
+                calendar_section_style(&app.app_theme, col % 2 != 0, false),
             );
             if date == self.date {
                 frame.render_widget(
@@ -1140,7 +1150,13 @@ impl View {
                     ]
                 })
                 .collect();
-            frame.render_widget(Paragraph::new(lines).style(app.app_theme.bg_style()), inner);
+            frame.render_widget(
+                Paragraph::new(lines).style(
+                    calendar_section_style(&app.app_theme, col % 2 != 0, false)
+                        .fg(app.app_theme.text),
+                ),
+                inner,
+            );
         }
     }
 
@@ -1150,7 +1166,7 @@ impl View {
             area,
             &format!("{} · local time", self.date.format("%a %d %b")),
             &app.app_theme,
-            false,
+            app.app_theme.bg_style(),
         );
         let all_day = self
             .events
@@ -1175,7 +1191,15 @@ impl View {
                 .join(" · ");
             lines.push(Line::from(format!("{hour:02}:00  {names}")));
         }
-        frame.render_widget(Paragraph::new(lines).style(app.app_theme.bg_style()), inner);
+        for (index, line) in lines.into_iter().take(inner.height as usize).enumerate() {
+            frame.render_widget(
+                Paragraph::new(line).style(
+                    calendar_section_style(&app.app_theme, index % 2 != 0, false)
+                        .fg(app.app_theme.text),
+                ),
+                Rect::new(inner.x, inner.y + index as u16, inner.width, 1),
+            );
+        }
     }
 
     fn render_agenda(
@@ -1191,12 +1215,13 @@ impl View {
         } else {
             self.date.format("%a %d %b").to_string()
         };
-        let inner = calendar_pane(frame, area, &title, theme, sidebar);
-        let pane_style = if sidebar {
-            theme.preview_bg_style()
-        } else {
-            theme.bg_style()
-        };
+        let inner = calendar_pane(
+            frame,
+            area,
+            &title,
+            theme,
+            calendar_section_style(theme, false, sidebar),
+        );
         let height = inner.height as usize;
         let offset = self.selected.saturating_sub(height.saturating_sub(1));
         for (row, (index, event)) in self
@@ -1229,7 +1254,7 @@ impl View {
                         .bg(theme.highlight_bg)
                         .fg(theme.highlight_fg)
                 } else {
-                    pane_style.fg(theme.text)
+                    calendar_section_style(theme, index % 2 != 0, sidebar).fg(theme.text)
                 }),
                 rect,
             );
@@ -1254,7 +1279,14 @@ impl View {
             self.display == Display::Agenda,
             true,
         );
-        let inner = calendar_pane(frame, chunks[1], "Event / notes", &app.app_theme, true);
+        let detail_style = calendar_section_style(&app.app_theme, true, true);
+        let inner = calendar_pane(
+            frame,
+            chunks[1],
+            "Event / notes",
+            &app.app_theme,
+            detail_style,
+        );
         let lines = if let Some(event) = self.selected_event() {
             let resource = app
                 .calendar
@@ -1320,10 +1352,25 @@ impl View {
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
-                .style(app.app_theme.preview_bg_style().fg(app.app_theme.text)),
+                .style(detail_style.fg(app.app_theme.text)),
             inner,
         );
     }
+}
+
+fn calendar_section_style(theme: &AppThemeColors, alternate: bool, sidebar: bool) -> Style {
+    let base = if sidebar {
+        theme.preview_bg()
+    } else {
+        theme.bg
+    };
+    base.map_or_else(Style::default, |bg| {
+        Style::default().bg(if alternate {
+            crate::app_theme::mix_colors(bg, theme.text, 0.04)
+        } else {
+            bg
+        })
+    })
 }
 
 fn calendar_pane(
@@ -1331,13 +1378,8 @@ fn calendar_pane(
     area: Rect,
     title: &str,
     theme: &AppThemeColors,
-    sidebar: bool,
+    style: Style,
 ) -> Rect {
-    let style = if sidebar {
-        theme.preview_bg_style()
-    } else {
-        theme.bg_style()
-    };
     let block = Block::default()
         .style(style)
         .padding(Padding::new(1, 1, 1, 0));

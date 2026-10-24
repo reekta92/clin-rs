@@ -468,8 +468,16 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
                         "{display:?} at {x},{y}"
                     );
                 }
-                assert_eq!(buffer[(139, y)].bg, f.app.app_theme.preview_bg().unwrap());
             }
+            assert_eq!(buffer[(139, 1)].bg, f.app.app_theme.preview_bg().unwrap());
+            assert_eq!(
+                buffer[(139, 30)].bg,
+                crate::app_theme::mix_colors(
+                    f.app.app_theme.preview_bg().unwrap(),
+                    f.app.app_theme.text,
+                    0.04
+                )
+            );
         }
     }
     let rect = f
@@ -566,6 +574,76 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
         terminal.backend().buffer()[(139, 15)].bg,
         ratatui::style::Color::Reset
     );
+}
+
+#[test]
+fn calendar_checker_backgrounds_fill_days_and_mute_adjacent_months() {
+    use crate::calendar::view::Display;
+    use ratatui::style::Color;
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    f.app.status = "Ready".into();
+    for bg in [
+        Color::Rgb(40, 40, 40),
+        Color::Rgb(230, 230, 230),
+        Color::Black,
+    ] {
+        f.app.app_theme.bg = Some(bg);
+        f.app.calendar_view.as_mut().unwrap().display = Display::Month;
+        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let cells = crate::calendar::view::month_cells(
+            Rect::new(1, 3, 63, 36),
+            date,
+            f.app.list.week_start,
+        );
+        for (index, (rect, day)) in cells.iter().enumerate() {
+            if *day == date {
+                continue;
+            }
+            let expected = if day.format("%Y-%m").to_string() != "2026-10" {
+                let muted = f.app.app_theme.preview_bg().unwrap();
+                if muted == bg {
+                    crate::app_theme::mix_colors(bg, f.app.app_theme.muted, 0.12)
+                } else {
+                    muted
+                }
+            } else if (index / 7 + index % 7) % 2 == 0 {
+                bg
+            } else {
+                crate::app_theme::mix_colors(bg, f.app.app_theme.text, 0.04)
+            };
+            assert_eq!(
+                terminal.backend().buffer()[(rect.x, rect.y)].bg,
+                expected,
+                "{day}"
+            );
+            assert_eq!(
+                terminal.backend().buffer()[(rect.right() - 1, rect.bottom() - 1)].bg,
+                expected,
+                "whole cell: {day}"
+            );
+        }
+        for display in [Display::Week, Display::Day] {
+            f.app.calendar_view.as_mut().unwrap().display = display;
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let (first, second) = if display == Display::Week {
+                ((1, 2), (10, 2))
+            } else {
+                ((1, 2), (1, 3))
+            };
+            assert_ne!(
+                terminal.backend().buffer()[first].bg,
+                terminal.backend().buffer()[second].bg,
+                "{display:?} {bg:?}"
+            );
+        }
+    }
 }
 
 #[test]
