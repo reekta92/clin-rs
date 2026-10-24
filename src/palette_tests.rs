@@ -160,6 +160,23 @@ pub(crate) fn drive(app: &mut App, event: Event) {
     drive_focus(app, event, &mut EditFocus::Body);
 }
 fn drive_focus(app: &mut App, event: Event, focus: &mut EditFocus) {
+    if app.mode == ViewMode::Calendar {
+        app.poll_calendar();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while app.calendar.render_pending()
+            || app
+                .calendar_view
+                .as_ref()
+                .is_some_and(crate::calendar::view::View::render_pending)
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "calendar rendering timed out"
+            );
+            app.poll_calendar();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
     let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
     if app.mode == ViewMode::Edit {
         crate::editor_session::dispatch_editor_event(

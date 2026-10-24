@@ -140,6 +140,8 @@ fn background_images_visible(app: &App) -> bool {
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     app.refresh_command_palette();
     app.base_embeds.begin_frame();
+    app.list.image_cache.begin_frame();
+    app.editor.image_cache.begin_frame();
     // Suppress background element hover when a popup is active
     let popup_hover_pos = app.mouse_pos;
     if app.popups.active.is_some() || app.command_palette.is_some() || app.popups.confirm.is_some()
@@ -155,6 +157,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let view_area = view_content_area(frame.area());
     if view_area.height == 0 || view_area.width == 0 {
         app.mouse_pos = popup_hover_pos;
+        app.list.image_cache.end_frame();
+        app.editor.image_cache.end_frame();
         footer::draw(frame, app);
         return;
     }
@@ -385,6 +389,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     }
+    app.list.image_cache.end_frame();
+    app.editor.image_cache.end_frame();
     footer::draw(frame, app);
     // Restore mouse_pos for popup hover detection
     app.mouse_pos = popup_hover_pos;
@@ -3115,7 +3121,7 @@ mod markdown_highlight_tests {
         let mut app = App::new(storage).expect("app");
         let mut picker = ratatui_image::picker::Picker::halfblocks();
         picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::sync_channel(16);
         app.image_picker = Some(picker);
         app.image_decode_tx = Some(tx);
         app.editor.editor_preview_enabled = true;
@@ -3145,7 +3151,8 @@ mod markdown_highlight_tests {
         assert_eq!(job.key, path.canonicalize().expect("canonical image path"));
         app.install_image(crate::image_render::worker::DecodedImage {
             key: job.key,
-            image,
+            request: job.request,
+            result: Ok(crate::image_render::worker::ImageOutput::Decoded(image)),
         });
         app.messages.push(
             "A startup warning covering the preview".repeat(5),
@@ -3177,6 +3184,21 @@ mod markdown_highlight_tests {
                     .any(|cell| cell.symbol().contains("\u{1b}_Gq=2,i="));
             })
             .expect("uncovered frame");
+        assert!(!transmitted, "encoding must run outside rendering");
+        let job = rx.try_recv().expect("visible image encoding request");
+        let (completed, responses) = std::sync::mpsc::sync_channel(2);
+        crate::image_render::worker::process_job(job, &completed);
+        app.install_image(responses.recv().expect("encoded image"));
+        terminal
+            .draw(|frame| {
+                draw_ui(frame, &mut app, EditFocus::Body);
+                transmitted = frame
+                    .buffer_mut()
+                    .content()
+                    .iter()
+                    .any(|cell| cell.symbol().contains("\u{1b}_Gq=2,i="));
+            })
+            .expect("encoded frame");
         assert!(
             transmitted,
             "first visible frame must still transmit the image"

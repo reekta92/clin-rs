@@ -534,7 +534,7 @@ pub async fn sync(storage: &Storage, accounts: &[Account]) -> Result<String> {
         for collection in connection.discover(account).await? {
             let url = validate_url(&collection.url)?;
             let mut remote = connection.report(&url).await?;
-            let mut data = store.data.clone();
+            let mut data = (*store.data).clone();
             data.collections.retain(|c| c.url != collection.url);
             data.collections.push(collection.clone());
             let mut remove = HashSet::new();
@@ -619,7 +619,7 @@ pub async fn sync(storage: &Storage, accounts: &[Account]) -> Result<String> {
                     }
                     let response = request.send().await.map_err(reqwest::Error::without_url)?;
                     let status = response.status();
-                    let mut data = store.data.clone();
+                    let mut data = (*store.data).clone();
                     if status == StatusCode::PRECONDITION_FAILED {
                         let incoming = connection.get(&href).await?;
                         data.resources

@@ -47,6 +47,18 @@ impl Display {
     }
 }
 
+struct LinksJob {
+    revision: u64,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    receiver: std::sync::mpsc::Receiver<Result<BTreeMap<String, Vec<String>>>>,
+}
+impl Drop for LinksJob {
+    fn drop(&mut self) {
+        self.cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 pub struct View {
     pub date: NaiveDate,
     pub display: Display,
@@ -59,6 +71,10 @@ pub struct View {
     tabs: Vec<(Rect, Display)>,
     links: BTreeMap<String, Vec<String>>,
     links_revision: Option<u64>,
+    links_job: Option<LinksJob>,
+    events_key: Option<(NaiveDate, NaiveDate, u64)>,
+    visible_key: Option<(NaiveDate, Display)>,
+    pending_resource: Option<String>,
     pub error: Option<String>,
     hour_scroll: u32,
 }
@@ -148,6 +164,10 @@ impl View {
             tabs: Vec::new(),
             links: BTreeMap::new(),
             links_revision: None,
+            links_job: None,
+            events_key: None,
+            visible_key: None,
+            pending_resource: None,
             error: None,
             hour_scroll: 7,
         }
@@ -158,6 +178,7 @@ impl View {
     }
 
     pub fn select_resource(&mut self, app: &mut App, id: &str) {
+        self.pending_resource = Some(id.to_owned());
         self.refresh(app);
         if let Some(index) = self
             .visible
@@ -168,48 +189,131 @@ impl View {
         }
     }
 
-    fn refresh(&mut self, app: &mut App) {
+    pub(crate) fn render_pending(&self) -> bool {
+        self.links_job.is_some()
+    }
+
+    pub(crate) fn suspend(&mut self) {
+        self.links_job = None;
+    }
+
+    pub(crate) fn refresh(&mut self, app: &mut App) -> bool {
+        let mut changed = false;
         let from = week_start(month_start(self.date), app.list.week_start);
         let until = from
             .checked_add_signed(Duration::days(75))
             .unwrap_or(self.date);
-        match app.calendar.events(&app.storage, from, until) {
-            Ok((events, warnings)) => {
-                self.events = events.to_vec();
-                if !warnings.is_empty() {
-                    self.error = Some(warnings.join("; "));
+        let key = (from, until, app.calendar.revision());
+        if self.events_key != Some(key) {
+            match app
+                .calendar
+                .events_async(&app.storage, from, until, &app.notes_worker_pool)
+            {
+                Ok(Some((events, warnings))) => {
+                    self.events = events.to_vec();
+                    if !warnings.is_empty() {
+                        self.error = Some(warnings.join("; "));
+                    }
+                    self.events_key = Some(key);
+                    self.visible_key = None;
+                    changed = true;
+                }
+                Ok(None) => {
+                    if !self.events.is_empty() {
+                        self.events.clear();
+                        self.visible.clear();
+                        self.rows.clear();
+                        self.visible_key = None;
+                        changed = true;
+                    }
+                }
+                Err(error) => {
+                    self.error = Some(format!("{error:#}"));
+                    self.events.clear();
+                    self.visible.clear();
+                    self.rows.clear();
+                    self.events_key = Some(key);
+                    changed = true;
                 }
             }
-            Err(error) => self.error = Some(format!("{error:#}")),
         }
-        self.visible = self
-            .events
-            .iter()
-            .enumerate()
-            .filter(|(_, event)| {
-                if self.display == Display::Agenda {
-                    event.start.date() >= self.date
-                        && event.start.date()
-                            < self
-                                .date
-                                .checked_add_signed(Duration::days(30))
-                                .unwrap_or(NaiveDate::MAX)
-                } else {
-                    event.on_date(self.date)
-                }
-            })
-            .map(|(i, _)| i)
-            .collect();
-        self.selected = self.selected.min(self.visible.len().saturating_sub(1));
+        if self.visible_key != Some((self.date, self.display)) {
+            self.visible = self
+                .events
+                .iter()
+                .enumerate()
+                .filter(|(_, event)| {
+                    if self.display == Display::Agenda {
+                        event.start.date() >= self.date
+                            && event.start.date()
+                                < self
+                                    .date
+                                    .checked_add_signed(Duration::days(30))
+                                    .unwrap_or(NaiveDate::MAX)
+                    } else {
+                        event.on_date(self.date)
+                    }
+                })
+                .map(|(i, _)| i)
+                .collect();
+            self.selected = self.selected.min(self.visible.len().saturating_sub(1));
+            self.visible_key = Some((self.date, self.display));
+        }
+        if let Some(id) = &self.pending_resource
+            && self.events_key == Some(key)
+        {
+            if let Some(index) = self
+                .visible
+                .iter()
+                .position(|index| self.events[*index].resource == *id)
+            {
+                self.selected = index;
+            }
+            self.pending_resource = None;
+        }
         if self.links_revision != Some(app.notes_revision) {
-            match store::note_links(&app.storage) {
-                Ok(links) => {
-                    self.links = links;
-                    self.links_revision = Some(app.notes_revision);
+            if self
+                .links_job
+                .as_ref()
+                .is_none_or(|job| job.revision != app.notes_revision)
+            {
+                let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let token = cancel.clone();
+                let storage = app.storage.clone();
+                self.links_job = Some(LinksJob {
+                    revision: app.notes_revision,
+                    cancel,
+                    receiver,
+                });
+                app.notes_worker_pool.spawn(move || {
+                    let result = store::note_links_cancelled(&storage, &token);
+                    if !token.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = sender.send(result);
+                    }
+                });
+            }
+            if let Some(result) =
+                self.links_job
+                    .as_ref()
+                    .and_then(|job| match job.receiver.try_recv() {
+                        Ok(result) => Some(result),
+                        Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                            Some(Err(anyhow::anyhow!("Calendar note-link worker stopped")))
+                        }
+                    })
+            {
+                match result {
+                    Ok(links) => self.links = links,
+                    Err(error) => self.error = Some(format!("Cannot load note links: {error:#}")),
                 }
-                Err(error) => self.error = Some(format!("Cannot load note links: {error:#}")),
+                self.links_revision = Some(app.notes_revision);
+                self.links_job = None;
+                changed = true;
             }
         }
+        changed
     }
 
     fn selected_event(&self) -> Option<&Occurrence> {
@@ -1388,10 +1492,15 @@ pub fn draw_widget(frame: &mut Frame, rect: Rect, app: &mut App, bottom_border: 
     );
     let from = week_start(month_start(date), app.list.week_start);
     let until = from + Duration::days(42);
-    let (events, error) = match app.calendar.events(&app.storage, from, until) {
-        Ok((events, _)) => (events.to_vec(), false),
-        Err(_) => (Vec::new(), true),
-    };
+    let (events, error) =
+        match app
+            .calendar
+            .events_async(&app.storage, from, until, &app.notes_worker_pool)
+        {
+            Ok(Some((events, _))) => (events, false),
+            Ok(None) => (&[][..], false),
+            Err(_) => (&[][..], true),
+        };
     for (cell, day) in month_cells(
         Rect::new(area.x, area.y + 2, area.width, 6),
         date,

@@ -167,7 +167,7 @@ pub struct NoteEditor {
     pub preview_content_offset_x: Option<f64>,
     pub preview_content_offset_y: Option<f64>,
     pub image_picker: Option<ratatui_image::picker::Picker>,
-    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
+    pub image_decode_tx: Option<std::sync::mpsc::SyncSender<crate::image_render::worker::ImageJob>>,
     pub sidebar: EditSidebar,
     pub(crate) bases_sidebar_renderer: Option<MarkdownRenderer>,
     pub sidebar_scroll_offset: usize,
@@ -197,8 +197,8 @@ pub struct NoteEditor {
     pub md_highlight_memo:
         lru::LruCache<(String, bool, bool), std::rc::Rc<[ratatui::style::Style]>>,
     pub(crate) visual_row_cache: EditorVisualRowCache,
-    /// TTL cache for {modified} statusline token (500ms bounded).
-    pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
+    /// Cache for {modified}, keyed by the live revision and loaded baseline.
+    pub modified_status_cache: std::cell::RefCell<Option<((u64, usize), bool)>>,
     pub text_align: crate::config::TextAlignment,
 }
 

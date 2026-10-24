@@ -115,7 +115,36 @@ pub enum VisualItem {
     },
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(crate) enum SelectionKey {
+    Folder(String),
+    SmartFolder(SmartFolderKind),
+    Note(String, bool),
+    CreateNew(String),
+    TemplateConfig(String),
+    Subnote(String, usize),
+}
+
 impl VisualItem {
+    pub(crate) fn selection_key(&self, notes: &[crate::storage::NoteSummary]) -> SelectionKey {
+        match self {
+            Self::Folder { path, .. } => SelectionKey::Folder(path.clone()),
+            Self::SmartFolder { kind, .. } => SelectionKey::SmartFolder(kind.clone()),
+            Self::Note {
+                summary_idx,
+                in_virtual_pinned_folder,
+                ..
+            } => SelectionKey::Note(notes[*summary_idx].id.clone(), *in_virtual_pinned_folder),
+            Self::CreateNew { path, .. } => SelectionKey::CreateNew(path.clone()),
+            Self::TemplateConfig { folder, .. } => SelectionKey::TemplateConfig(folder.clone()),
+            Self::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => SelectionKey::Subnote(parent_id.clone(), *subnote_idx),
+        }
+    }
+
     pub(crate) fn depth_mut(&mut self) -> &mut usize {
         match self {
             Self::Folder { depth, .. }
@@ -147,6 +176,7 @@ pub struct ListView {
     pub template_config_folders: HashSet<String>,
     pub preview_enabled: bool,
     pub preview_content: Option<PreviewContent>,
+    pub(crate) preview_loader: Option<crate::app::preview_load::PreviewLoader>,
     pub preview_content_index: Option<usize>,
     pub snapshot_scroll_offset: u16,
     pub sort_field: SortField,
@@ -209,6 +239,7 @@ impl Default for ListView {
             template_config_folders: HashSet::new(),
             preview_enabled: false,
             preview_content: None,
+            preview_loader: None,
             preview_content_index: None,
             snapshot_scroll_offset: 0,
             sort_field: SortField::Modified,
@@ -276,11 +307,11 @@ impl ListView {
 pub enum PreviewContent {
     Markdown(Box<MarkdownRenderer>),
     CanvasGrid {
-        data: Box<pinstar::data::CanvasData>,
+        data: std::sync::Arc<pinstar::data::CanvasData>,
         grid: Vec<Vec<(char, Style)>>,
     },
     DrawGrid {
-        data: Box<crate::draw::state::DrawData>,
+        data: std::sync::Arc<crate::draw::state::DrawData>,
         grid: Vec<Vec<(char, Style)>>,
     },
     Image(std::path::PathBuf),

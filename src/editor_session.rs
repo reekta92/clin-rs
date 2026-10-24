@@ -31,6 +31,7 @@ where
             break;
         }
 
+        app.suspend_inactive_work();
         dirty |= app.messages.tick_expirations();
         dirty |= app.tick_status();
         dirty |= app.poll_calendar();
@@ -66,7 +67,8 @@ where
                 .as_ref()
                 .is_some_and(crate::markdown::MarkdownRenderer::is_pending)
             || app.editor.pending_editor_preview_update
-            || app.base_embeds.is_loading();
+            || app.base_embeds.is_loading()
+            || app.editor.image_cache.is_pending();
         let timeout = if editor_pending {
             std::time::Duration::from_millis(16)
         } else if let Some(timer) = app.editor.autosave_timer {
@@ -85,7 +87,8 @@ where
         while pending.len() < 64 && events.poll(Duration::ZERO)? {
             pending.push(events.read()?);
         }
-        for event in coalesce_editor_events(pending) {
+        let mut batch = coalesce_editor_events(pending).into_iter();
+        while let Some(event) = batch.next() {
             let frontmatter_visible = app
                 .editor
                 .frontmatter
@@ -127,6 +130,7 @@ where
             }
             if app.mode != ViewMode::Edit || app.should_quit {
                 if finish_editor_transition(app) {
+                    events.prepend(batch);
                     break;
                 }
                 dirty = true;

@@ -11,6 +11,7 @@ mod loading;
 mod navigation;
 mod notes;
 mod popups;
+pub(crate) mod preview_load;
 mod search;
 pub(crate) mod search_worker;
 mod settings_ops;
@@ -472,10 +473,9 @@ pub struct App {
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
     pub image_picker: Option<ratatui_image::picker::Picker>,
-    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
-    pub image_decode_rx: Option<
-        std::sync::mpsc::Receiver<anyhow::Result<crate::image_render::worker::DecodedImage>>,
-    >,
+    pub image_decode_tx: Option<std::sync::mpsc::SyncSender<crate::image_render::worker::ImageJob>>,
+    pub image_decode_rx:
+        Option<std::sync::mpsc::Receiver<crate::image_render::worker::DecodedImage>>,
     pub notes_worker_pool: Arc<rayon::ThreadPool>,
     pub fps: f64,
     pub last_frame_time: std::time::Instant,
@@ -539,7 +539,7 @@ impl App {
 
     fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
         let threads = std::thread::available_parallelism()
-            .map(|n| n.get().saturating_sub(1).max(1))
+            .map(|n| n.get().saturating_sub(1).clamp(1, 4))
             .unwrap_or(1);
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
@@ -2300,6 +2300,8 @@ mod tests {
         app.list.notes_layout = crate::config::NotesLayout::Grid;
         app.list.preview_content_index = Some(999);
         app.refresh_visual_list();
+        assert!(app.list.pending_preview_update);
+        app.poll_renderers();
         assert!(!app.list.pending_preview_update);
         assert_eq!(app.list.preview_content_index, None);
 
@@ -2308,6 +2310,8 @@ mod tests {
         app.list.notes_layout = crate::config::NotesLayout::Tree;
         app.list.preview_content_index = Some(999);
         app.refresh_visual_list();
+        assert!(app.list.pending_preview_update);
+        app.poll_renderers();
         assert!(!app.list.pending_preview_update);
         assert_eq!(app.list.preview_content_index, Some(0));
     }

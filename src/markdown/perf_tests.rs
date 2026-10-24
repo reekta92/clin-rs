@@ -143,3 +143,48 @@ fn code_block_highlighting_patches_match() {
         );
     }
 }
+
+#[test]
+fn suspended_preview_releases_workers_and_resumes_without_losing_scroll() {
+    use std::fmt::Write;
+    let content = (0..80).fold(String::new(), |mut content, index| {
+        writeln!(content, "```text\nblock {index}\n```\n").unwrap();
+        content
+    });
+    let theme = AppThemeColors::default();
+    let opts = MdRenderOpts::default();
+    let viewport = RenderViewport {
+        start: 0,
+        height: 20,
+    };
+    let mut hidden = MarkdownRenderer::new();
+    hidden.render_with(&content, 80, &theme, &opts, viewport);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while hidden.document().is_none() {
+        hidden.poll();
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    hidden.set_scroll_offset(10, 20);
+    hidden.suspend();
+    let mut active = MarkdownRenderer::new();
+    active.render_with("# Active preview\n", 80, &theme, &opts, viewport);
+    while active.is_pending() {
+        active.poll();
+        assert!(
+            std::time::Instant::now() < deadline,
+            "hidden preview blocked active rendering"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    while hidden.is_pending() {
+        hidden.poll();
+        assert!(
+            std::time::Instant::now() < deadline,
+            "suspended preview did not resume"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(hidden.scroll_offset(), 10);
+    assert!(hidden.document().unwrap().line_count() > 80);
+}

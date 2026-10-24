@@ -33,7 +33,7 @@ pub(crate) struct EditorDocument {
     revision: u64,
     identity: uuid::Uuid,
     counts: std::cell::Cell<Option<(usize, usize)>>,
-    snapshot: Option<Arc<str>>,
+    snapshot: std::cell::OnceCell<Arc<str>>,
     change: Option<DocumentChange>,
 }
 
@@ -51,7 +51,7 @@ impl EditorDocument {
             revision: 0,
             identity: uuid::Uuid::new_v4(),
             counts: std::cell::Cell::new(None),
-            snapshot: Some(Arc::from(normalized)),
+            snapshot: std::cell::OnceCell::from(Arc::from(normalized)),
             change: Some(DocumentChange::Full),
         }
     }
@@ -64,7 +64,7 @@ impl EditorDocument {
             revision: 0,
             identity: uuid::Uuid::new_v4(),
             counts: std::cell::Cell::new(None),
-            snapshot: Some(Arc::from(normalized)),
+            snapshot: std::cell::OnceCell::from(Arc::from(normalized)),
             change: Some(DocumentChange::Full),
         }
     }
@@ -77,7 +77,7 @@ impl EditorDocument {
             revision: 0,
             identity: uuid::Uuid::new_v4(),
             counts: std::cell::Cell::new(None),
-            snapshot: None,
+            snapshot: std::cell::OnceCell::new(),
             change: Some(DocumentChange::Full),
         }
     }
@@ -89,13 +89,11 @@ impl EditorDocument {
         self.revision
     }
 
-    pub(crate) fn snapshot(&mut self) -> Arc<str> {
-        if let Some(snapshot) = &self.snapshot {
-            return Arc::clone(snapshot);
-        }
-        let snapshot: Arc<str> = Arc::from(self.text());
-        self.snapshot = Some(Arc::clone(&snapshot));
-        snapshot
+    pub(crate) fn snapshot(&self) -> Arc<str> {
+        Arc::clone(
+            self.snapshot
+                .get_or_init(|| Arc::from(self.textarea.lines().join("\n"))),
+        )
     }
 
     pub(crate) fn text(&self) -> String {
@@ -345,7 +343,7 @@ impl EditorDocument {
 
     fn record_change(&mut self, change: DocumentChange) {
         self.revision = self.revision.wrapping_add(1);
-        self.snapshot = None;
+        self.snapshot.take();
         self.counts.set(None);
         self.change = Some(compose_change(self.change.take(), change));
     }

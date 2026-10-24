@@ -48,9 +48,11 @@ pub fn render_canvas_snapshot(
         fill_buf_bg(frame.buffer_mut(), area, preview_bg);
         let buf = frame.buffer_mut();
 
+        let nodes: std::collections::HashMap<_, _> =
+            data.nodes.iter().map(|node| (node.id(), node)).collect();
         for edge in &data.edges {
-            let from = data.nodes.iter().find(|n| n.id() == edge.from_node);
-            let to = data.nodes.iter().find(|n| n.id() == edge.to_node);
+            let from = nodes.get(edge.from_node.as_str());
+            let to = nodes.get(edge.to_node.as_str());
             if let (Some(f), Some(t)) = (from, to) {
                 let (fx, fy) = f.pos();
                 let (fw, fh) = f.size();

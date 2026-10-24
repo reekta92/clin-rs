@@ -1141,7 +1141,7 @@ fn notes_preview_and_linked_note_popup_use_the_public_containing_file() {
         crate::app::VisualItem::Note { summary_idx, .. } if *summary_idx == index)
         })
         .unwrap();
-    app.update_preview();
+    app.wait_for_preview_source();
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Some(crate::app::PreviewContent::Markdown(renderer)) = &mut app.list.preview_content

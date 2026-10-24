@@ -1500,9 +1500,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     continue;
                 };
                 let key = path;
-                if app.list.image_cache.get_proto(&key).is_none() {
-                    app.list.image_cache.request(key.clone(), 512, decode_tx);
-                }
+                app.list.image_cache.request(key.clone(), 512, decode_tx);
                 if let Some(proto) = app.list.image_cache.get_proto(&key) {
                     let row = inner.y + local_line_idx as u16;
                     let max_h = app.config.image.preview_rows as u16;
@@ -1538,9 +1536,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let inner_pad = 2_u16;
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
             let key = path.clone();
-            if app.list.image_cache.get_proto(&key).is_none() {
-                app.list.image_cache.request(key.clone(), 512, decode_tx);
-            }
+            app.list.image_cache.request(key.clone(), 512, decode_tx);
             if let Some(proto) = app.list.image_cache.get_proto(&key) {
                 // available area (full preview minus padding) — the bounding box
                 let max_w = col_width.min(preview_rect.width.saturating_sub(2));
@@ -1777,6 +1773,8 @@ fn draw_multi_preview(frame: &mut Frame, area: Rect, app: &mut App) {
     let rows: Vec<_> = items
         .iter()
         .enumerate()
+        .skip(offset)
+        .take(usize::from(inner.height / app.list.row_height()))
         .map(|(index, item)| {
             let row = app.format_list_item(item, None);
             if hovered == Some(index) {
@@ -1786,7 +1784,7 @@ fn draw_multi_preview(frame: &mut Frame, area: Rect, app: &mut App) {
             }
         })
         .collect();
-    let mut state = ListState::default().with_offset(offset);
+    let mut state = ListState::default();
     frame.render_stateful_widget(List::new(rows).block(block), area, &mut state);
     let label = crate::fsutil::sanitize_for_terminal(App::notes_directory_label(folder));
     frame.render_widget(

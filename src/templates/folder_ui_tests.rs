@@ -232,7 +232,7 @@ fn config_rows_open_validated_editor_and_preview_in_all_layouts() {
         app.list.grid_folder = "book".into();
         app.refresh_visual_list();
         app.list.visual_index = config_index(&app, "book");
-        app.update_preview();
+        app.wait_for_preview_source();
         assert!(matches!(
             app.list.preview_content,
             Some(crate::list_view::PreviewContent::Markdown(_))

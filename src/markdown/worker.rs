@@ -91,6 +91,22 @@ pub(crate) fn submit(job: RenderJob) {
     });
 }
 
+fn send(job: &RenderJob, mut event: RenderEvent) -> bool {
+    loop {
+        if job.cancel.load(Ordering::Relaxed) {
+            return false;
+        }
+        match job.tx.try_send(event) {
+            Ok(()) => return true,
+            Err(mpsc::TrySendError::Disconnected(_)) => return false,
+            Err(mpsc::TrySendError::Full(pending)) => {
+                event = pending;
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
+}
+
 fn execute_job(job: RenderJob) {
     let cancel = &job.cancel;
     if cancel.load(Ordering::Relaxed) {
@@ -112,14 +128,13 @@ fn execute_job(job: RenderJob) {
         return;
     }
 
-    if job
-        .tx
-        .send(RenderEvent::LayoutReady {
+    if !send(
+        &job,
+        RenderEvent::LayoutReady {
             generation: job.generation,
             document: layout_res.document,
-        })
-        .is_err()
-    {
+        },
+    ) {
         return;
     }
 
@@ -134,9 +149,12 @@ fn execute_job(job: RenderJob) {
     }
 
     if blocks_map.is_empty() {
-        let _ = job.tx.send(RenderEvent::Complete {
-            generation: job.generation,
-        });
+        let _ = send(
+            &job,
+            RenderEvent::Complete {
+                generation: job.generation,
+            },
+        );
         return;
     }
 
@@ -234,9 +252,12 @@ fn execute_job(job: RenderJob) {
         return;
     }
 
-    let _ = job.tx.send(RenderEvent::Complete {
-        generation: job.generation,
-    });
+    let _ = send(
+        &job,
+        RenderEvent::Complete {
+            generation: job.generation,
+        },
+    );
 }
 
 fn process_single_block(block: &PendingCodeBlock, job: &RenderJob, cancel: &AtomicBool) -> bool {
@@ -285,15 +306,14 @@ fn process_single_block(block: &PendingCodeBlock, job: &RenderJob, cancel: &Atom
             return true;
         }
 
-        if job
-            .tx
-            .send(RenderEvent::CodeBlockReady {
+        if !send(
+            job,
+            RenderEvent::CodeBlockReady {
                 generation: job.generation,
                 line_range: block.line_range.clone(),
                 lines: patch_lines,
-            })
-            .is_err()
-        {
+            },
+        ) {
             return true;
         }
     }

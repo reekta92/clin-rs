@@ -223,6 +223,7 @@ impl MarkdownRenderer {
             && cur == &next_key
         {
             self.set_viewport(viewport.start, viewport.height);
+            self.resume();
             return;
         }
 
@@ -275,6 +276,27 @@ impl MarkdownRenderer {
             return;
         }
 
+        self.start_job(next_key);
+    }
+
+    pub(crate) fn suspend(&mut self) {
+        if let Some(token) = self.cancel.take() {
+            token.store(true, Ordering::Relaxed);
+        }
+        self.events = None;
+    }
+
+    fn resume(&mut self) {
+        if self.pending
+            && self.events.is_none()
+            && let Some(key) = self.current_key.clone()
+        {
+            self.generation = self.generation.wrapping_add(1);
+            self.start_job(key);
+        }
+    }
+
+    fn start_job(&mut self, key: RenderKey) {
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel = Some(Arc::clone(&cancel));
         self.pending = true;
@@ -284,7 +306,7 @@ impl MarkdownRenderer {
 
         let job = RenderJob {
             generation: self.generation,
-            key: next_key,
+            key,
             viewport: Arc::clone(&self.viewport),
             cancel,
             tx,
@@ -460,6 +482,7 @@ impl MarkdownRenderer {
     }
 
     pub fn poll(&mut self) -> bool {
+        self.resume();
         let events: Vec<RenderEvent> = {
             let Some(rx) = &self.events else {
                 return false;
