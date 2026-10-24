@@ -736,6 +736,111 @@ fn calendar_distinguishes_events_and_linked_notes_in_every_display() {
 }
 
 #[test]
+fn calendar_month_summarizes_notes_and_events_while_other_views_list_all() {
+    use crate::calendar::{ical::Draft, store};
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    let mut resources = Vec::new();
+    for title in ["Meet", "Notes", "Znotes", "Zevent", "Zlast"] {
+        let mut draft = Draft::new(date);
+        draft.title = title.into();
+        resources.push(store::Resource::new(draft.build(None).unwrap(), None));
+    }
+    let linked = resources[1].id.clone();
+    let repeated = resources[2].id.clone();
+    f.app
+        .calendar
+        .update(&f.app.storage, |data| {
+            data.resources.extend(resources);
+            Ok(())
+        })
+        .unwrap();
+    for name in ["First.md", "Second.md", "Third.md"] {
+        f.app.storage.create_document(name, "Body").unwrap();
+        store::toggle_note_link(&f.app.storage, name, &linked).unwrap();
+    }
+    store::toggle_note_link(&f.app.storage, "First.md", &repeated).unwrap();
+    f.app.notes_revision += 1;
+    drive(&mut f.app, key(KeyCode::Null));
+    drive(&mut f.app, key(KeyCode::Null));
+    let mut view = f.app.calendar_view.take().unwrap();
+    view.select_resource(&mut f.app, &linked);
+    f.app.calendar_view = Some(view);
+    for display in ['m', 'w', 'd', 'A'] {
+        drive(&mut f.app, key(KeyCode::Char(display)));
+        let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut main = String::new();
+        let mut sidebar = String::new();
+        for y in 1..49 {
+            for x in 0..130 {
+                main.push_str(buffer[(x, y)].symbol());
+            }
+            main.push('\n');
+            for x in 131..200 {
+                sidebar.push_str(buffer[(x, y)].symbol());
+            }
+            sidebar.push('\n');
+        }
+        assert!(main.contains("Meet"), "{display}: {main}");
+        if display == 'm' {
+            assert!(
+                main.contains("First") && main.contains("+2 notes") && main.contains("+2 events"),
+                "{main}"
+            );
+            for hidden in ["Second", "Third", "Znotes", "Zevent", "Zlast"] {
+                assert!(!main.contains(hidden), "{main}");
+            }
+            let rows: Vec<_> = main.lines().collect();
+            for (title, count) in [("First", "+2 notes"), ("Meet", "+2 events")] {
+                let row = rows.iter().position(|row| row.contains(title)).unwrap();
+                assert!(rows[row + 1].contains(count));
+            }
+        } else {
+            for title in ["Notes", "Znotes", "Zevent", "Zlast"] {
+                assert!(main.contains(title), "{main}");
+            }
+            assert!(!main.contains("+2 notes") && !main.contains("+2 events"));
+        }
+        for name in [
+            "First.md",
+            "Second.md",
+            "Third.md",
+            "Meet",
+            "Notes",
+            "Znotes",
+            "Zevent",
+            "Zlast",
+        ] {
+            assert!(sidebar.contains(name), "{display}: {sidebar}");
+        }
+    }
+    for name in ["Second.md", "Third.md"] {
+        store::toggle_note_link(&f.app.storage, name, &linked).unwrap();
+    }
+    f.app.notes_revision += 1;
+    drive(&mut f.app, key(KeyCode::Null));
+    drive(&mut f.app, key(KeyCode::Null));
+    let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let text: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(!text.contains("+0 notes") && !text.contains("+1 notes"));
+    assert!(text.contains("Znotes"));
+}
+
+#[test]
 fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
     let mut f = Fixture::new();
     let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();

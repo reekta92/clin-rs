@@ -22,7 +22,7 @@ Choose **Schedule Note** with a Markdown note selected in Notes, then fill out i
 - Repeat accepts an RFC 5545 RRULE, for example `FREQ=WEEKLY;BYDAY=MO,WE`. Newly entered date-times are stored as UTC, so their recurrence follows UTC across daylight-saving changes. Imported IANA timezone recurrences retain their timezone when their schedule is unchanged.
 - Choose Local, or a discovered writable CalDAV collection. Sync once to discover remote choices. Existing events keep their calendar.
 
-Select a date and event, then press `a` to link or unlink a Markdown note. On an empty date, `a` chooses a note and opens a new event form. Several notes may link to one event. Press `o` or `Enter`, choose a linked note, and open it in the editor. Leaving that editor returns to Calendar.
+Select a date and event, then press `a` to link or unlink a Markdown note. On an empty date, `a` chooses a note and opens a new event form. Several notes may link to one event. When a date has multiple linked notes, Month cells show the first linked note’s name followed by `+N notes`, counting the remaining unique notes across that date’s events. Dates with multiple events likewise show the first event followed by `+N events`. Other tabs and the sidebar retain their complete lists. Press `o` or `Enter`, choose a linked note, and open it in the editor. Leaving that editor returns to Calendar.
 
 Links are stored in the note's frontmatter and survive native rename/move:
 

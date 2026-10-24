@@ -1076,6 +1076,30 @@ impl View {
         spans
     }
 
+    fn note_summary(&self, date: NaiveDate) -> Option<[String; 2]> {
+        let mut notes = std::collections::BTreeSet::new();
+        for note in self
+            .events
+            .iter()
+            .filter(|event| event.on_date(date))
+            .flat_map(|event| self.links.get(&event.resource).into_iter().flatten())
+        {
+            notes.insert(note);
+        }
+        if notes.len() < 2 {
+            return None;
+        }
+        let first = notes.first()?;
+        let name = std::path::Path::new(first)
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or(first);
+        Some([
+            crate::fsutil::sanitize_for_terminal(name).into_owned(),
+            format!("+{} notes", notes.len() - 1),
+        ])
+    }
+
     fn render_month(&mut self, frame: &mut Frame, area: Rect, app: &App) {
         let theme = &app.app_theme;
         let inner = calendar_pane(
@@ -1110,7 +1134,59 @@ impl View {
                 }
             ))];
             let capacity = rect.height.saturating_sub(1) as usize;
-            for e in items.iter().take(capacity) {
+            let summary = self.note_summary(*date);
+            let collapse_notes = summary.is_some();
+            let note_color = if current_month {
+                theme.subnote
+            } else {
+                crate::app_theme::mix_colors(theme.subnote, theme.muted, 0.65)
+            };
+            lines.extend(
+                summary
+                    .into_iter()
+                    .flatten()
+                    .take(capacity)
+                    .map(|text| Line::styled(text, Style::default().fg(note_color))),
+            );
+            let mut plain_events = items.iter().filter(|event| {
+                self.links
+                    .get(&event.resource)
+                    .is_none_or(|notes| notes.is_empty())
+            });
+            let first_event = plain_events.next();
+            let additional_events = plain_events.count();
+            let collapse_events = additional_events > 0;
+            if let Some(event) = first_event
+                && collapse_events
+            {
+                let color = if current_month {
+                    theme.accent
+                } else {
+                    crate::app_theme::mix_colors(theme.accent, theme.muted, 0.65)
+                };
+                for text in [
+                    if event.all_day {
+                        event.title.clone()
+                    } else {
+                        format!("{} {}", event_time(event), event.title)
+                    },
+                    format!("+{additional_events} events"),
+                ] {
+                    lines.push(Line::styled(text, Style::default().fg(color)));
+                }
+            }
+            let remaining = capacity.saturating_sub(lines.len() - 1);
+            for e in items
+                .iter()
+                .filter(|event| {
+                    let plain = self
+                        .links
+                        .get(&event.resource)
+                        .is_none_or(|notes| notes.is_empty());
+                    (!collapse_notes || plain) && (!collapse_events || !plain)
+                })
+                .take(remaining)
+            {
                 let color = self.event_color(e, theme);
                 let color = if current_month {
                     color
@@ -1130,6 +1206,7 @@ impl View {
                     Style::default().fg(color),
                 ));
             }
+            lines.truncate(capacity + 1);
             let mut style = if current_month {
                 calendar_section_style(theme, (index / 7 + index % 7) % 2 != 0, false)
                     .fg(theme.text)
