@@ -17,7 +17,7 @@ use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
 use std::collections::BTreeMap;
 
-const HELP: &str = "m/w/d/a  Month / Week / Day / Agenda\nhjkl / Arrows  Navigate dates/events    PgUp/PgDn  Previous/next period\nt  Today    J/K  Select event    Tab  Next view\nn  New event    e  Edit series    Delete  Delete series\nL  Link note (or schedule note on an empty date)\no / Enter  Open linked note    c  Resolve sync conflict\ny  Copy inline date/event reference\ni  Import .ics    E  Export .ics (new file only)\ns  Sync CalDAV    r  Reload from disk\nEsc  Return to Notes    ?  This help\n\nDate input: YYYY-MM-DD (all day; end date exclusive)\nTime input: YYYY-MM-DDTHH:MM (local), or RFC3339 with offset.\nRepeat: RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,WE\nEdits and deletes apply to the entire series.\nTimes display in your system timezone. Note links remain local.";
+const HELP: &str = "m/w/d/A  Month / Week / Day / Agenda\nhjkl / Arrows  Navigate dates/events    PgUp/PgDn  Previous/next period\nt  Today    J/K  Select event    Tab  Next view\nn  New event    e  Edit series    Delete  Delete series\na  Link note (or schedule note on an empty date)\no / Enter  Open linked note    c  Resolve sync conflict\ny  Copy inline date/event reference\ni  Import .ics    E  Export .ics (new file only)\ns  Sync CalDAV    r  Reload from disk\nEsc  Return to Notes    ?  This help\n\nDate input: YYYY-MM-DD (all day; end date exclusive)\nTime input: YYYY-MM-DDTHH:MM (local), or RFC3339 with offset.\nRepeat: RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,WE\nEdits and deletes apply to the entire series.\nTimes display in your system timezone. Note links remain local.";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Display {
@@ -732,7 +732,7 @@ impl View {
             KeyCode::Char('m') => self.display = Display::Month,
             KeyCode::Char('w') => self.display = Display::Week,
             KeyCode::Char('d') => self.display = Display::Day,
-            KeyCode::Char('a') => self.display = Display::Agenda,
+            KeyCode::Char('A') => self.display = Display::Agenda,
             KeyCode::Tab => self.display = self.display.next(),
             KeyCode::Left | KeyCode::Char('h') => days = -1,
             KeyCode::Right | KeyCode::Char('l') => days = 1,
@@ -780,7 +780,7 @@ impl View {
                     self.dialog = Some(Dialog::Delete(id));
                 }
             }
-            KeyCode::Char('L') => self.begin_notes(app, false),
+            KeyCode::Char('a') => self.begin_notes(app, false),
             KeyCode::Char('o') | KeyCode::Enter => self.begin_notes(app, true),
             KeyCode::Char('y') => {
                 let target = self.selected_event().map_or_else(
@@ -1329,7 +1329,7 @@ impl View {
         }
         if self.visible.is_empty() {
             frame.render_widget(
-                Paragraph::new("No events. n: new · l: schedule note")
+                Paragraph::new("No events. n: new · a: schedule note")
                     .style(Style::default().fg(theme.muted)),
                 inner,
             );
@@ -1405,7 +1405,7 @@ impl View {
                 lines.push(Line::from(event.description.clone()));
             }
             lines.push(Line::from(""));
-            lines.push(Line::from("Linked notes (l: link/unlink · o: open):"));
+            lines.push(Line::from("Linked notes (a: link/unlink · o: open):"));
             for note in self.links.get(&event.resource).into_iter().flatten() {
                 lines.push(Line::styled(
                     note.clone(),
@@ -1416,7 +1416,7 @@ impl View {
         } else {
             vec![
                 Line::from("Select a date or event."),
-                Line::from("n: create event · L: schedule note"),
+                Line::from("n: create event · a: schedule note"),
             ]
         };
         frame.render_widget(

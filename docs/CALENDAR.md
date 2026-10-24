@@ -22,7 +22,7 @@ Choose **Schedule Note** with a Markdown note selected in Notes, then fill out i
 - Repeat accepts an RFC 5545 RRULE, for example `FREQ=WEEKLY;BYDAY=MO,WE`. Newly entered date-times are stored as UTC, so their recurrence follows UTC across daylight-saving changes. Imported IANA timezone recurrences retain their timezone when their schedule is unchanged.
 - Choose Local, or a discovered writable CalDAV collection. Sync once to discover remote choices. Existing events keep their calendar.
 
-Select a date and event, then press `L` to link or unlink a Markdown note. On an empty date, `L` chooses a note and opens a new event form. Several notes may link to one event. Press `o` or `Enter`, choose a linked note, and open it in the editor. Leaving that editor returns to Calendar.
+Select a date and event, then press `a` to link or unlink a Markdown note. On an empty date, `a` chooses a note and opens a new event form. Several notes may link to one event. Press `o` or `Enter`, choose a linked note, and open it in the editor. Leaving that editor returns to Calendar.
 
 Links are stored in the note's frontmatter and survive native rename/move:
 
@@ -44,7 +44,7 @@ Use the editor's **Open Link Preview** binding (`Alt+l` by default) with the cur
 
 | Key | Action |
 | --- | --- |
-| `m`, `w`, `d`, `a` / `Tab` | Month, Week, Day, Agenda / next view |
+| `m`, `w`, `d`, `A` / `Tab` | Month, Week, Day, Agenda / next view |
 | `h`, `l` / Left/Right | Previous/next date |
 | `k`, `j` / Up/Down | Previous/next week in Month/Week; select event in Day/Agenda |
 | `PgUp`, `PgDn` | Previous/next displayed period |
@@ -52,7 +52,7 @@ Use the editor's **Open Link Preview** binding (`Alt+l` by default) with the cur
 | `J`, `K` | Next/previous event in any view |
 | `n`, `e` | New event / edit selected series |
 | `Delete` or `x` | Confirm deletion of the entire series |
-| `L`, `o` or `Enter` | Link/unlink note / open linked note |
+| `a`, `o` or `Enter` | Link/unlink note / open linked note |
 | `y` | Copy date/event reference |
 | `i`, `E` | Import / export iCalendar |
 | `s`, `r` | Sync CalDAV / reload from disk |

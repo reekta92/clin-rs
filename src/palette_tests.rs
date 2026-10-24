@@ -696,7 +696,7 @@ fn calendar_distinguishes_events_and_linked_notes_in_every_display() {
         let mut view = f.app.calendar_view.take().unwrap();
         view.select_resource(&mut f.app, &note_resource);
         f.app.calendar_view = Some(view);
-        for display in ['m', 'w', 'd', 'a'] {
+        for display in ['m', 'w', 'd', 'A'] {
             drive(&mut f.app, key(KeyCode::Char(display)));
             let mut terminal = Terminal::new(TestBackend::new(140, 40)).unwrap();
             terminal
@@ -755,8 +755,14 @@ fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() 
             Ok(ids)
         })
         .unwrap();
-    for display in ['m', 'w', 'd', 'a'] {
+    for display in ['m', 'w', 'd', 'A'] {
         drive(&mut f.app, key(KeyCode::Char(display)));
+        if display == 'A' {
+            assert_eq!(
+                f.app.calendar_view.as_ref().unwrap().display,
+                crate::calendar::view::Display::Agenda
+            );
+        }
         for (movement, arrow) in [
             ('h', KeyCode::Left),
             ('l', KeyCode::Right),
@@ -815,7 +821,7 @@ fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() 
                 .contains(&ids[0]))
         );
     }
-    drive(&mut f.app, key(KeyCode::Char('L')));
+    drive(&mut f.app, key(KeyCode::Char('a')));
     assert!(matches!(
         f.app.calendar_view.as_ref().unwrap().dialog,
         Some(crate::calendar::view::Dialog::Notes { .. })
@@ -889,7 +895,7 @@ fn calendar_form_retains_invalid_input_and_renders_all_views_at_small_sizes() {
             .source
             .contains("SUMMARY:Planning")
     );
-    for view in ['m', 'w', 'd', 'a'] {
+    for view in ['m', 'w', 'd', 'A'] {
         drive(&mut f.app, key(KeyCode::Char(view)));
         for (width, height) in [(100, 40), (40, 15), (28, 8), (12, 4), (1, 1)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -898,7 +904,7 @@ fn calendar_form_retains_invalid_input_and_renders_all_views_at_small_sizes() {
                 .unwrap();
         }
     }
-    drive(&mut f.app, key(KeyCode::Char('L')));
+    drive(&mut f.app, key(KeyCode::Char('a')));
     drive(&mut f.app, key(KeyCode::Enter));
     let id = &f.app.calendar.data().resources[0].id;
     assert_eq!(

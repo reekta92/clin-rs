@@ -283,7 +283,7 @@ fn hints(app: &App) -> Line<'_> {
         ViewMode::Calendar => vec![
             ("hjkl/Arrows".into(), "move"),
             ("n/e".into(), "new/edit"),
-            ("L/o".into(), "link/open note"),
+            ("a/o".into(), "link/open note"),
             ("s".into(), "sync"),
             ("Esc".into(), "back"),
         ],
