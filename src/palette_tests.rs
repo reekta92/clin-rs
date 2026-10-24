@@ -801,7 +801,9 @@ fn calendar_month_summarizes_notes_and_events_while_other_views_list_all() {
                 assert!(rows[row + 1].contains(count));
             }
         } else {
-            for title in ["Notes", "Znotes", "Zevent", "Zlast"] {
+            for title in [
+                "Notes", "Znotes", "Zevent", "Zlast", "First", "Second", "Third",
+            ] {
                 assert!(main.contains(title), "{main}");
             }
             assert!(!main.contains("+2 notes") && !main.contains("+2 events"));
@@ -819,6 +821,50 @@ fn calendar_month_summarizes_notes_and_events_while_other_views_list_all() {
             assert!(sidebar.contains(name), "{display}: {sidebar}");
         }
     }
+    drive(&mut f.app, key(KeyCode::Char('K')));
+    let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    let note_row = (2..49)
+        .find(|y| {
+            let text: String = (0..130).map(|x| buffer[(x, *y)].symbol()).collect();
+            text.contains("Second")
+        })
+        .unwrap();
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 3,
+            row: note_row,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    drive(&mut f.app, key(KeyCode::Char('y')));
+    assert!(
+        crate::text_edit::TEST_CLIPBOARD.with(|clipboard| clipboard
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .contains(&linked))
+    );
+    for _ in 0..5 {
+        drive(&mut f.app, key(KeyCode::Char('J')));
+    }
+    let mut short = Terminal::new(TestBackend::new(200, 8)).unwrap();
+    short
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let main: String = (2..7)
+        .flat_map(|y| (0..130).map(move |x| (x, y)))
+        .map(|position| short.backend().buffer()[position].symbol())
+        .collect();
+    assert!(
+        main.contains("Znotes"),
+        "selected event must remain visible: {main}"
+    );
     for name in ["Second.md", "Third.md"] {
         store::toggle_note_link(&f.app.storage, name, &linked).unwrap();
     }

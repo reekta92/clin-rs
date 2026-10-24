@@ -1052,28 +1052,40 @@ impl View {
         }
     }
 
-    fn event_list<'a>(
+    fn linked_note_lines(&self, event: &Occurrence, theme: &AppThemeColors) -> Vec<Line<'static>> {
+        self.links
+            .get(&event.resource)
+            .into_iter()
+            .flatten()
+            .map(|note| {
+                Line::styled(
+                    format!("  {}", note_label(note)),
+                    Style::default().fg(theme.subnote),
+                )
+            })
+            .collect()
+    }
+
+    fn event_lines<'a>(
         &self,
         events: impl Iterator<Item = &'a Occurrence>,
         theme: &AppThemeColors,
         timed: bool,
-    ) -> Vec<Span<'static>> {
-        let mut spans = Vec::new();
+    ) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
         for event in events {
-            if !spans.is_empty() {
-                spans.push(Span::raw(" · "));
-            }
             let title = if timed {
                 format!("{} {}", event.start.format("%H:%M"), event.title)
             } else {
                 event.title.clone()
             };
-            spans.push(Span::styled(
+            lines.push(Line::styled(
                 title,
                 Style::default().fg(self.event_color(event, theme)),
             ));
+            lines.extend(self.linked_note_lines(event, theme));
         }
-        spans
+        lines
     }
 
     fn note_summary(&self, date: NaiveDate) -> Option<[String; 2]> {
@@ -1090,14 +1102,7 @@ impl View {
             return None;
         }
         let first = notes.first()?;
-        let name = std::path::Path::new(first)
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .unwrap_or(first);
-        Some([
-            crate::fsutil::sanitize_for_terminal(name).into_owned(),
-            format!("+{} notes", notes.len() - 1),
-        ])
+        Some([note_label(first), format!("+{} notes", notes.len() - 1)])
     }
 
     fn render_month(&mut self, frame: &mut Frame, area: Rect, app: &App) {
@@ -1272,18 +1277,14 @@ impl View {
                 .events
                 .iter()
                 .filter(|e| e.on_date(date))
-                .flat_map(|e| {
-                    [
-                        Line::from(Span::styled(
-                            event_time(e),
-                            Style::default().fg(app.app_theme.muted),
-                        )),
-                        Line::styled(
-                            e.title.clone(),
-                            Style::default().fg(self.event_color(e, &app.app_theme)),
-                        ),
-                        Line::from(""),
-                    ]
+                .flat_map(|event| {
+                    let mut lines = vec![Line::styled(
+                        event_time(event),
+                        Style::default().fg(app.app_theme.muted),
+                    )];
+                    lines.extend(self.event_lines(std::iter::once(event), &app.app_theme, false));
+                    lines.push(Line::from(""));
+                    lines
                 })
                 .collect();
             frame.render_widget(
@@ -1304,27 +1305,32 @@ impl View {
             &app.app_theme,
             app.app_theme.bg_style(),
         );
-        let mut all_day = vec![Span::raw("All day  ")];
-        all_day.extend(
-            self.event_list(
+        let mut lines = vec![Line::from("All day")];
+        lines.extend(
+            self.event_lines(
                 self.events
                     .iter()
-                    .filter(|e| e.on_date(self.date) && e.all_day),
+                    .filter(|event| event.on_date(self.date) && event.all_day),
                 &app.app_theme,
                 false,
             ),
         );
-        let mut lines = vec![Line::from(all_day)];
         for hour in self.hour_scroll..24 {
-            let events = self.events.iter().filter(|e| {
-                !e.all_day
-                    && e.on_date(self.date)
-                    && (e.start.date() < self.date && hour == 0
-                        || e.start.date() == self.date && e.start.hour() == hour)
-            });
-            let mut spans = vec![Span::raw(format!("{hour:02}:00  "))];
-            spans.extend(self.event_list(events, &app.app_theme, true));
-            lines.push(Line::from(spans));
+            let mut events = self
+                .events
+                .iter()
+                .filter(|e| {
+                    !e.all_day
+                        && e.on_date(self.date)
+                        && (e.start.date() < self.date && hour == 0
+                            || e.start.date() == self.date && e.start.hour() == hour)
+                })
+                .peekable();
+            if events.peek().is_none() {
+                lines.push(Line::from(format!("{hour:02}:00")));
+            } else {
+                lines.extend(self.event_lines(events, &app.app_theme, true));
+            }
         }
         for (index, line) in lines.into_iter().take(inner.height as usize).enumerate() {
             frame.render_widget(
@@ -1358,42 +1364,61 @@ impl View {
             calendar_section_style(theme, false, sidebar),
         );
         let height = inner.height as usize;
-        let offset = self.selected.saturating_sub(height.saturating_sub(1));
-        for (row, (index, event)) in self
+        let event_height = |index: usize| {
+            1 + self
+                .links
+                .get(&self.events[index].resource)
+                .map_or(0, Vec::len)
+        };
+        let selected_row: usize = self
             .visible
             .iter()
-            .enumerate()
-            .skip(offset)
-            .take(height)
-            .map(|(i, index)| (i - offset, (i, &self.events[*index])))
-        {
+            .take(self.selected)
+            .map(|index| event_height(*index))
+            .sum();
+        let selected_height = self
+            .visible
+            .get(self.selected)
+            .map_or(1, |index| event_height(*index));
+        let offset =
+            selected_row.saturating_sub(height.saturating_sub(selected_height.min(height)));
+        let entries = self.visible.iter().enumerate().flat_map(|(index, event)| {
+            let event = &self.events[*event];
             let prefix = if dates {
                 format!("{} ", event.start.format("%m-%d"))
             } else {
                 String::new()
             };
+            let line = Line::from(vec![
+                Span::raw(format!("{prefix}{} ", event_time(event))),
+                Span::styled(
+                    event.title.clone(),
+                    Style::default().fg(self.event_color(event, theme)),
+                ),
+                Span::styled(
+                    if self
+                        .links
+                        .get(&event.resource)
+                        .is_some_and(|notes| !notes.is_empty())
+                    {
+                        " [notes]"
+                    } else {
+                        ""
+                    },
+                    Style::default().fg(theme.subnote),
+                ),
+            ]);
+            std::iter::once((index, line)).chain(
+                self.linked_note_lines(event, theme)
+                    .into_iter()
+                    .map(move |line| (index, line)),
+            )
+        });
+        let mut hits = Vec::with_capacity(height);
+        for (row, (index, line)) in entries.skip(offset).take(height).enumerate() {
             let rect = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
             frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    Span::raw(format!("{prefix}{} ", event_time(event))),
-                    Span::styled(
-                        event.title.clone(),
-                        Style::default().fg(self.event_color(event, theme)),
-                    ),
-                    Span::styled(
-                        if self
-                            .links
-                            .get(&event.resource)
-                            .is_some_and(|notes| !notes.is_empty())
-                        {
-                            " [notes]"
-                        } else {
-                            ""
-                        },
-                        Style::default().fg(theme.subnote),
-                    ),
-                ]))
-                .style(if index == self.selected {
+                Paragraph::new(line).style(if index == self.selected {
                     Style::default()
                         .bg(theme.highlight_bg)
                         .fg(theme.highlight_fg)
@@ -1402,8 +1427,9 @@ impl View {
                 }),
                 rect,
             );
-            self.rows.push((rect, index));
+            hits.push((rect, index));
         }
+        self.rows.extend(hits);
         if self.visible.is_empty() {
             frame.render_widget(
                 Paragraph::new("No events. n: new · a: schedule note")
@@ -1503,6 +1529,14 @@ impl View {
             inner,
         );
     }
+}
+
+fn note_label(note: &str) -> String {
+    let name = std::path::Path::new(note)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(note);
+    crate::fsutil::sanitize_for_terminal(name).into_owned()
 }
 
 fn calendar_section_style(theme: &AppThemeColors, alternate: bool, sidebar: bool) -> Style {
