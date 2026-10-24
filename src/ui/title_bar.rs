@@ -393,7 +393,7 @@ mod tests {
         let theme = AppThemeColors::default();
         let tabs = [
             ("First", None),
-            ("Very long 界界界 é 👩‍💻 saved view", None),
+            ("Very long 界界界 e\u{301} 👩\u{200d}💻 saved view", None),
             ("Last", None),
         ];
         for active in 0..tabs.len() {
@@ -431,32 +431,26 @@ mod tests {
                 assert!(hits.windows(2).all(|pair| pair[0].0.right() < pair[1].0.x));
             }
         }
-        assert_eq!(fit_tab_text("é👩‍💻界", 4), "é👩‍💻…");
+        assert_eq!(
+            fit_tab_text("e\u{301}👩\u{200d}💻界", 4),
+            "e\u{301}👩\u{200d}💻…"
+        );
         let mut terminal = Terminal::new(TestBackend::new(40, 1)).unwrap();
         terminal
             .draw(|frame| {
-                assert!(
-                    draw_header_tabs(
-                        frame,
-                        frame.area(),
-                        &theme,
-                        Line::from("Bases"),
-                        build_tab_spans(
-                            &tabs,
-                            0,
-                            None,
-                            &theme,
-                            false,
-                            crate::config::IconMode::None
-                        ),
-                        0,
-                        None,
-                        Some("Notice"),
-                        0,
-                        None
-                    )
-                    .is_empty()
+                let hits = draw_header_tabs(
+                    frame,
+                    frame.area(),
+                    &theme,
+                    Line::from("Bases"),
+                    build_tab_spans(&tabs, 0, None, &theme, false, crate::config::IconMode::None),
+                    0,
+                    None,
+                    Some("Notice"),
+                    0,
+                    None,
                 );
+                assert_eq!(hits, Vec::new());
             })
             .unwrap();
     }

@@ -490,12 +490,12 @@ fn saved_view_tabs_use_shared_headers_and_switch_without_writing_source() {
     );
     app.status = "Notice".into();
     render(&mut app);
-    assert!(app.header_tabs.is_empty());
+    assert_eq!(app.header_tabs, Vec::new());
     app.status = "Ready".into();
     app.bases_state.as_mut().unwrap().named_view = None;
     source(
         &mut app,
-        "views: [{type: table, name: First}, {type: list, name: '界界界 long é view'}, {type: list, name: Last}]\n",
+        "views: [{type: table, name: First}, {type: list, name: '界界界 long e\u{301} view'}, {type: list, name: Last}]\n",
     );
     for _ in 0..3 {
         key(&mut app, KeyCode::Tab);

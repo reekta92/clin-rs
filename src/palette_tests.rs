@@ -329,6 +329,103 @@ fn setup_has_no_host_bars_and_missing_views_keep_the_header() {
 }
 
 #[test]
+fn every_main_view_header_uses_global_templates_and_styles() {
+    use strum::IntoEnumIterator;
+    for mode in ViewMode::iter().filter(|mode| *mode != ViewMode::Setup) {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        f.app.status = "Ready".into();
+        f.app.config.statusline.header_left = Some("HOST HEADER".into());
+        f.app.config.statusline.header_right = Some("HOST RIGHT".into());
+        for style in crate::config::HintBarStyle::ALL {
+            f.app.app_theme.hint_bar_style = style;
+            let mut terminal = Terminal::new(TestBackend::new(240, 40)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let header: String = (0..240)
+                .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+                .collect();
+            assert!(
+                header.contains("HOST HEADER") && header.contains("HOST RIGHT"),
+                "{mode:?} {style:?}: {header}"
+            );
+            let mut ctx = crate::statusline::StatuslineContext::for_view(&f.app, mode);
+            ctx.area = Some(Rect::new(0, 0, 240, 1));
+            let (left, right) = crate::statusline::render_header(
+                &ctx,
+                &f.app.config.statusline,
+                mode,
+                &f.app.app_theme,
+            );
+            let left_width = left.width() as u16;
+            let right_width = right.as_ref().unwrap().width() as u16;
+            let mut expected = Terminal::new(TestBackend::new(240, 1)).unwrap();
+            expected
+                .draw(|frame| {
+                    crate::ui::draw_view_title_bar(
+                        frame,
+                        frame.area(),
+                        &f.app.app_theme,
+                        left.clone(),
+                        right.clone(),
+                        None,
+                        0,
+                    )
+                })
+                .unwrap();
+            for x in (0..left_width).chain(240 - right_width..240) {
+                assert_eq!(
+                    terminal.backend().buffer()[(x, 0)],
+                    expected.backend().buffer()[(x, 0)],
+                    "{mode:?} {style:?} at {x}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn canvas_contextual_footer_uses_the_selected_bar_style() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Canvas);
+    f.app.canvas_state.as_mut().unwrap().state.footer_hint = "Context action".into();
+    f.app.config.statusline.footer_left = Some("{hints}".into());
+    f.app.config.statusline.footer_right = Some(String::new());
+    for style in crate::config::HintBarStyle::ALL {
+        f.app.app_theme.hint_bar_style = style;
+        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let expected = crate::statusline::line_from_segments(
+            &[crate::statusline::Segment::Text("Context action".into())],
+            &f.app.app_theme,
+            false,
+            false,
+        );
+        let mut row = Terminal::new(TestBackend::new(100, 1)).unwrap();
+        row.draw(|frame| {
+            crate::ui::draw_status_bar(
+                frame,
+                frame.area(),
+                &f.app.app_theme,
+                expected.clone(),
+                None,
+            )
+        })
+        .unwrap();
+        for x in 0..100 {
+            assert_eq!(
+                terminal.backend().buffer()[(x, 39)],
+                row.backend().buffer()[(x, 0)],
+                "{style:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
     use crate::{calendar::view::Display, config::HintBarStyle};
     let mut f = Fixture::new();
@@ -395,6 +492,48 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
         f.app.calendar_view.as_ref().unwrap().display,
         Display::Month
     );
+    let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let target_date: chrono::NaiveDate = "2026-10-26".parse().unwrap();
+    let target =
+        crate::calendar::view::month_cells(Rect::new(1, 3, 63, 36), date, f.app.list.week_start)
+            .into_iter()
+            .find(|(_, date)| *date == target_date)
+            .unwrap()
+            .0;
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: target.x,
+            row: target.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_eq!(f.app.calendar_view.as_ref().unwrap().date, target_date);
+    for format in ["%Q", "%Y-%m-%d %H:%M"] {
+        let mut ctx = crate::statusline::StatuslineContext::for_view(&f.app, ViewMode::Calendar);
+        ctx.date_format = Some(format);
+        assert_eq!(
+            ctx.resolve("calendar_date").unwrap(),
+            target_date.to_string()
+        );
+    }
+    let mut draft = crate::calendar::ical::Draft::new(target_date);
+    draft.title = "Conflicted event".into();
+    let mut resource = crate::calendar::store::Resource::new(draft.build(None).unwrap(), None);
+    resource.conflict = Some(crate::calendar::store::Conflict { remote: None });
+    f.app
+        .calendar
+        .update(&f.app.storage, |data| {
+            data.resources.push(resource);
+            Ok(())
+        })
+        .unwrap();
+    let (detail, warning) = f.app.calendar_view.as_ref().unwrap().footer_detail(&f.app);
+    assert!(warning && detail.contains("1 sync conflict"));
     f.app.calendar_view.as_mut().unwrap().error = Some("Calendar warning".into());
     for style in HintBarStyle::ALL {
         f.app.app_theme.hint_bar_style = style;
@@ -416,7 +555,7 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
     terminal
         .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
         .unwrap();
-    assert!(f.app.header_tabs.is_empty());
+    assert_eq!(f.app.header_tabs, Vec::new());
     f.app.status = "Ready".into();
     f.app.app_theme.bg = None;
     let mut terminal = Terminal::new(TestBackend::new(140, 32)).unwrap();

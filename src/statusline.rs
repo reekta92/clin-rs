@@ -356,10 +356,13 @@ impl StatuslineContext<'_> {
                 self.calendar
                     .or_else(|| self.app.and_then(|app| app.calendar_view.as_ref()))
                     .map(|calendar| {
-                        calendar
-                            .date
-                            .format(self.date_format.unwrap_or("%Y-%m-%d"))
-                            .to_string()
+                        let mut text = String::new();
+                        let date = calendar.date.format(self.date_format.unwrap_or("%Y-%m-%d"));
+                        // Date-only values cannot satisfy time or timezone directives.
+                        if std::fmt::write(&mut text, format_args!("{date}")).is_err() {
+                            return calendar.date.to_string();
+                        }
+                        crate::fsutil::sanitize_for_terminal(&text).into_owned()
                     })
                     .unwrap_or_default()
                     .into(),

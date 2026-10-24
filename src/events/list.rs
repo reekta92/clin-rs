@@ -894,30 +894,28 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         && (app.status.trim().is_empty() || app.status == "Ready")
         && mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
         && mouse_event.row == terminal_area.y
-    {
-        if let Some(i) = app
+        && let Some(i) = app
             .header_tabs
             .iter()
             .find(|(rect, _)| rect.contains((mouse_event.column, mouse_event.row).into()))
             .map(|(_, index)| *index)
-        {
-            let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
-                3
-            } else {
-                2
-            };
-            let folder = if i == 1 {
-                crate::app::VIRTUAL_PINNED_PATH.to_string()
-            } else if i == 2 && app.config.features.smart_folders.is_enabled() {
-                crate::app::VIRTUAL_SMART_PATH.to_string()
-            } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
-                crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
-            } else {
-                String::new()
-            };
-            app.enter_list_directory(folder, 0);
-            return;
-        }
+    {
+        let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
+            3
+        } else {
+            2
+        };
+        let folder = if i == 1 {
+            crate::app::VIRTUAL_PINNED_PATH.to_string()
+        } else if i == 2 && app.config.features.smart_folders.is_enabled() {
+            crate::app::VIRTUAL_SMART_PATH.to_string()
+        } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
+            crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
+        } else {
+            String::new()
+        };
+        app.enter_list_directory(folder, 0);
+        return;
     }
     if app.list.notes_layout == crate::config::NotesLayout::Grid {
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
