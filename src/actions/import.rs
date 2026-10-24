@@ -15,6 +15,13 @@ mod process;
 pub(super) const MAX_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[derive(Debug)]
+pub(crate) struct ConvertedImport {
+    pub title: String,
+    pub content: String,
+    pub warning: Option<String>,
+}
+
 pub struct ImportAction {
     pub source: ImportSource,
     pub target: ImportTarget,
@@ -436,10 +443,11 @@ fn convert_json_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(Strin
 }
 
 pub fn convert_url(url: &str) -> Result<(String, String)> {
-    convert_url_cancellable(url, &AtomicBool::new(false))
+    let converted = convert_url_cancellable(url, &AtomicBool::new(false))?;
+    Ok((converted.title, converted.content))
 }
 
-fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(String, String)> {
+fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<ConvertedImport> {
     let url = reqwest::Url::parse(source).context("Invalid import URL")?;
     anyhow::ensure!(
         matches!(url.scheme(), "http" | "https"),
@@ -495,34 +503,69 @@ fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(Stri
         .unwrap_or_else(|| url_fallback_title(source));
     crate::fsutil::atomic_write_with_mode(&downloaded, &bytes, 0o600)?;
     drop(bytes);
+    let mut extraction_error = None;
     if matches!(ext.to_ascii_lowercase().as_str(), "html" | "htm")
         && crate::fsutil::can_run("trafilatura")
     {
-        if let Ok((extracted_title, content)) = article::extract(&downloaded, &url, cancelled) {
-            return Ok(sanitized(extracted_title.unwrap_or(title), content));
+        match article::extract(&downloaded, &url, cancelled) {
+            Ok((extracted_title, content)) => {
+                let (title, content) = sanitized(extracted_title.unwrap_or(title), content);
+                return Ok(ConvertedImport {
+                    title,
+                    content,
+                    warning: None,
+                });
+            }
+            Err(error) => {
+                check_import(cancelled, 0)?;
+                extraction_error = Some(crate::fsutil::truncate_ellipsis(
+                    &crate::fsutil::sanitize_for_terminal(&format!("{error:#}")),
+                    400,
+                ));
+            }
         }
-        check_import(cancelled, 0)?;
     }
     // Convert the downloaded bytes once; title and body come from the same response.
-    let (_, content) = convert_file_cancellable(temp_path, cancelled)?;
-    Ok(sanitized(title, content))
+    let (_, content) = convert_file_cancellable(temp_path, cancelled).with_context(|| {
+        extraction_error.as_ref().map_or_else(
+            || "URL conversion failed".to_owned(),
+            |error| format!("Article extraction failed ({error}); general conversion also failed"),
+        )
+    })?;
+    let (title, content) = sanitized(title, content);
+    Ok(ConvertedImport {
+        title,
+        content,
+        warning: extraction_error.map(|error| {
+            format!("Imported with general conversion: article extraction failed ({error})")
+        }),
+    })
 }
 
 pub(crate) fn convert_source(
     source: ImportSource,
     input: &str,
     cancelled: &AtomicBool,
-) -> Result<(String, String)> {
+) -> Result<ConvertedImport> {
     anyhow::ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
     let result = match source {
-        ImportSource::File => convert_file_cancellable(input, cancelled),
-        ImportSource::Csv => convert_csv_cancellable(input, cancelled),
-        ImportSource::Json => convert_json_cancellable(input, cancelled),
-        ImportSource::Url => convert_url_cancellable(input, cancelled),
-        ImportSource::Clipboard => bail!("Clipboard imports do not use a prompt"),
-    }?;
+        ImportSource::Url => convert_url_cancellable(input, cancelled)?,
+        _ => {
+            let (title, content) = match source {
+                ImportSource::File => convert_file_cancellable(input, cancelled),
+                ImportSource::Csv => convert_csv_cancellable(input, cancelled),
+                ImportSource::Json => convert_json_cancellable(input, cancelled),
+                _ => bail!("Clipboard imports do not use a prompt"),
+            }?;
+            ConvertedImport {
+                title,
+                content,
+                warning: None,
+            }
+        }
+    };
     anyhow::ensure!(
-        result.1.len() <= MAX_IMPORT_BYTES,
+        result.content.len() <= MAX_IMPORT_BYTES,
         "Imported note exceeds 16 MiB safety limit"
     );
     Ok(result)

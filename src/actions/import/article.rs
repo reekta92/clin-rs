@@ -19,7 +19,12 @@ pub(super) fn extract(
     ]);
     command.current_dir(path.parent().context("article file has no parent")?);
     let output = process::run(command, Some(path), cancelled, COMMAND_TIMEOUT)?;
-    ensure!(output.status.success(), "Article extraction failed");
+    ensure!(
+        output.status.success(),
+        "Trafilatura {}: {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
     parse_output(std::str::from_utf8(&output.stdout)?, url)
 }
 

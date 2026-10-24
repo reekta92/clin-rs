@@ -95,7 +95,7 @@ File-format conversion uses `markitdown` when available, otherwise `pandoc`; URL
 
 URL downloads allow HTTP(S), at most five redirects, and at most 16 MiB.
 
-When `trafilatura` is installed, HTML URL imports extract the main article with its title, links, image references and tables. Relative links resolve against the final downloaded URL. Missing, failed or empty extraction falls back to MarkItDown/Pandoc; PDF and other document imports continue using those converters. The page is downloaded once. Article extraction is heuristic and can omit page content.
+When `trafilatura` is installed, HTML URL imports extract the main article with its title, links, image references and tables. Relative links resolve against the final downloaded URL. Missing, failed or empty extraction falls back to MarkItDown/Pandoc; PDF and other document imports continue using those converters. Failed or empty extraction shows a warning explaining why general conversion was used. The page is downloaded once. Article extraction is heuristic and can omit page content.
 
 The local HTTP fixture exercises successful imports, redirects, HTTP errors, forbidden redirect schemes, oversized responses and cancellation:
 

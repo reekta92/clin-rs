@@ -10,6 +10,15 @@ fn url_import_process_entry() -> anyhow::Result<()> {
         assert!(body.contains("article body"));
         let base = reqwest::Url::parse(&std::env::var("CLIN_IMPORT_E2E_URL")?)?;
         assert!(body.contains(base.join("/linked")?.as_str()));
+    } else if case == "both_broken" {
+        let message = format!("{:#}", result.expect_err("both converters must fail"));
+        assert!(message.contains("unsupported article"), "{message}");
+        assert!(
+            message.contains("general conversion also failed"),
+            "{message}"
+        );
+        assert!(message.contains("fallback converter failed"), "{message}");
+        assert!(!message.contains(['\u{1b}', '\u{7}']), "{message}");
     } else if case != "failure" {
         let (title, body) = result?;
         assert_eq!(title, "Résumé");
@@ -40,19 +49,28 @@ fn url_import_downloads_once_converts_local_bytes_and_checks_http_failures() -> 
     let markitdown = root.path().join("markitdown");
     fs::write(
         &markitdown,
-        "#!/bin/sh\nprintf m >> \"$CLIN_IMPORT_E2E_LOG\"\ntest -f \"$1\" || exit 3\nprintf 'converted body'\n",
+        "#!/bin/sh\nprintf m >> \"$CLIN_IMPORT_E2E_LOG\"\ntest -f \"$1\" || exit 3\nif test \"$CLIN_IMPORT_E2E_CASE\" = both_broken; then printf 'fallback converter failed' >&2; exit 1; fi\nprintf 'converted body'\n",
     )?;
     fs::set_permissions(&markitdown, fs::Permissions::from_mode(0o755))?;
-    for case in ["success", "failure", "article", "empty", "broken"] {
+    for case in [
+        "success",
+        "failure",
+        "article",
+        "empty",
+        "broken",
+        "both_broken",
+    ] {
         fs::write(&log, "")?;
-        if matches!(case, "article" | "empty" | "broken") {
+        if matches!(case, "article" | "empty" | "broken" | "both_broken") {
             let extractor = root.path().join("trafilatura");
             let script = match case {
                 "article" => {
                     "#!/bin/sh\nprintf t >> \"$CLIN_IMPORT_E2E_LOG\"\nIFS= read -r html || true\ncase \"$html\" in *Résumé*) ;; *) exit 3;; esac\nprintf '%s\\n' '---' 'title: Clipped Résumé' '---' 'article body [link](/linked)'\n"
                 }
                 "empty" => "#!/bin/sh\nprintf t >> \"$CLIN_IMPORT_E2E_LOG\"\n",
-                _ => "#!/bin/sh\nprintf t >> \"$CLIN_IMPORT_E2E_LOG\"\nexit 1\n",
+                _ => {
+                    "#!/bin/sh\nprintf t >> \"$CLIN_IMPORT_E2E_LOG\"\nprintf 'unsupported article\\033[31m\\007' >&2\nexit 1\n"
+                }
             };
             fs::write(&extractor, script)?;
             fs::set_permissions(&extractor, fs::Permissions::from_mode(0o755))?;
@@ -103,7 +121,7 @@ fn url_import_downloads_once_converts_local_bytes_and_checks_http_failures() -> 
             match case {
                 "failure" => "",
                 "article" => "t",
-                "empty" | "broken" => "tm",
+                "empty" | "broken" | "both_broken" => "tm",
                 _ => "m",
             }
         );
