@@ -71,8 +71,15 @@ impl App {
     }
 
     pub(crate) fn poll_calendar(&mut self) -> bool {
+        let mut changed = self.calendar.poll_events();
+        if self.mode == ViewMode::Calendar
+            && let Some(mut view) = self.calendar_view.take()
+        {
+            changed |= view.refresh(self);
+            self.calendar_view = Some(view);
+        }
         let Some(result) = self.calendar.poll(&self.storage) else {
-            return false;
+            return changed;
         };
         match result {
             Ok(message) => {

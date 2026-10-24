@@ -16,6 +16,8 @@ pub struct OutlineState {
     pub scroll_drag: Option<i32>,
     pub tree_scroll_offset: usize,
     pub tree_list_rect: ratatui::layout::Rect,
+    visible: Vec<usize>,
+    pub(crate) prefixes: Vec<String>,
 }
 
 impl OutlineState {
@@ -40,6 +42,8 @@ impl OutlineState {
             scroll_drag: None,
             tree_scroll_offset: 0,
             tree_list_rect: ratatui::layout::Rect::default(),
+            visible: Vec::new(),
+            prefixes: Vec::new(),
         }
     }
 
@@ -57,7 +61,7 @@ impl OutlineState {
                 expanded.insert(i); // default: all headers expanded
             }
         }
-        Self {
+        let mut state = Self {
             note_id,
             note_title: title.to_string(),
             nodes,
@@ -72,11 +76,23 @@ impl OutlineState {
             scroll_drag: None,
             tree_scroll_offset: 0,
             tree_list_rect: ratatui::layout::Rect::default(),
-        }
+            visible: Vec::new(),
+            prefixes: Vec::new(),
+        };
+        state.rebuild_visible();
+        state
     }
 
     /// Visible node indices given current `expanded`.
     pub fn visible_indices(&self) -> Vec<usize> {
+        self.visible.clone()
+    }
+
+    pub(crate) fn visible(&self) -> &[usize] {
+        &self.visible
+    }
+
+    fn rebuild_visible(&mut self) {
         let mut visible = Vec::new();
         let mut skip_until_depth = None;
 
@@ -97,7 +113,28 @@ impl OutlineState {
                 skip_until_depth = Some(n.depth);
             }
         }
-        visible
+        let mut next = Vec::new();
+        let mut prefixes = vec![String::new(); visible.len()];
+        for (position, &index) in visible.iter().enumerate().rev() {
+            let depth = self.nodes[index].depth;
+            next.resize(depth + 1, false);
+            let mut prefix = String::new();
+            for (level, sibling_below) in next.iter().enumerate().take(depth + 1).skip(1) {
+                if level < depth {
+                    prefix.push_str(if *sibling_below { "│   " } else { "    " });
+                } else if !*sibling_below {
+                    prefix.push_str("╰── ");
+                } else if position > 0 && self.nodes[visible[position - 1]].depth < depth {
+                    prefix.push_str("╭── ");
+                } else {
+                    prefix.push_str("├── ");
+                }
+            }
+            prefixes[position] = prefix;
+            next[depth] = true;
+        }
+        self.visible = visible;
+        self.prefixes = prefixes;
     }
 
     pub fn is_header(&self, i: usize) -> bool {
@@ -158,6 +195,7 @@ impl OutlineState {
                 self.expanded.insert(self.selected);
             }
         }
+        self.rebuild_visible();
     }
 
     pub fn expand_all(&mut self) {
@@ -166,6 +204,7 @@ impl OutlineState {
                 self.expanded.insert(i);
             }
         }
+        self.rebuild_visible();
     }
 
     pub fn collapse_all(&mut self) {
@@ -174,6 +213,7 @@ impl OutlineState {
         if !self.nodes.is_empty() {
             self.expanded.insert(0);
         }
+        self.rebuild_visible();
     }
 
     /// Mouse-wheel free-scroll by `delta` rows, keeping the selection visible.

@@ -816,6 +816,17 @@ fn process_watcher_events(app: &mut App) -> bool {
             break;
         }
         if !matches!(evt.event.kind, notify::EventKind::Access(_)) {
+            for path in &evt.event.paths {
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                app.list.image_cache.invalidate(path);
+                app.list.image_cache.invalidate(&canonical);
+                app.editor.image_cache.invalidate(path);
+                app.editor.image_cache.invalidate(&canonical);
+            }
+            if let Some(loader) = &mut app.list.preview_loader {
+                loader.invalidate();
+            }
+            app.list.pending_preview_update = true;
             template_config_changed |= evt.event.paths.iter().any(|path| {
                 path.starts_with(&app.storage.notes_dir)
                     && crate::templates::is_folder_template_config(path)
@@ -826,42 +837,20 @@ fn process_watcher_events(app: &mut App) -> bool {
     // Configs are UI items, not note summaries. Refresh them immediately, even
     // while note-catalog events wait for the debounce window.
     if template_config_changed {
-        let selected = app.list.visual_list.get(app.list.visual_index).cloned();
-        let mut selections = HashMap::new();
-        for index in &app.list.selected_indices {
-            if let Some(item) = app.list.visual_list.get(*index) {
-                *selections.entry(item.clone()).or_insert(0usize) += 1;
-            }
-        }
+        let selection = app.capture_list_selection();
         app.refresh_visual_list();
         // Config rows can shift visual indices. Keep bulk selection attached
         // to the same items, in linear time, rather than to their old positions.
-        app.list.selected_indices = app
-            .list
-            .visual_list
-            .iter()
-            .enumerate()
-            .filter_map(|(index, item)| {
-                let count = selections.get_mut(item)?;
-                if *count == 0 {
-                    return None;
-                }
-                *count -= 1;
-                Some(index)
-            })
-            .collect();
-        if let Some(selected) = selected
-            && let Some(index) = app
-                .list
-                .visual_list
-                .iter()
-                .position(|item| *item == selected)
-        {
-            app.list.visual_index = index;
-        }
+        app.restore_list_selection(selection);
     }
 
     if overflow {
+        app.list.image_cache.clear();
+        app.editor.image_cache.clear();
+        if let Some(loader) = &mut app.list.preview_loader {
+            loader.invalidate();
+        }
+        app.list.pending_preview_update = true;
         app.watcher_pending_events.clear();
         app.request_notes_reconcile();
         app.watcher_window_start = None;
@@ -1212,9 +1201,8 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 /// overlay view, collapsing a burst of drag events into one later render.
 /// Called only after the loop has already dispatched a `Drag` event, so during an
 /// active pan the queue contains only further `Drag`/`Up` mouse events.
-/// Non-mouse events break the loop (vanishingly rare during an active drag; the
-/// single read event is dropped rather than re-queued because crossterm cannot
-/// push back). Results from drained events are discarded — a mouse Drag/Up never
+/// Non-mouse events break the loop and are retained for the next dispatch.
+/// Results from drained events are discarded — a mouse Drag/Up never
 fn drain_queued_mouse_events<V: OverlayView>(
     view: &mut V,
     app: &mut App,
@@ -1226,7 +1214,10 @@ fn drain_queued_mouse_events<V: OverlayView>(
             ev @ Event::Mouse(_) => {
                 let _ = view.overlay_handle_event(ev, app, term_area)?;
             }
-            _ => break,
+            event => {
+                events.prepend([event]);
+                break;
+            }
         }
     }
     Ok(())
@@ -1355,8 +1346,7 @@ where
     }
 
     let mut focus = EditFocus::Body;
-    let mut list_dirty = true;
-    let mut graph_dirty = true;
+    let mut dirty = true;
     let mut prev_mode = app.mode;
 
     while !app.should_quit {
@@ -1364,22 +1354,20 @@ where
             app.should_quit = true;
             break;
         }
+        app.suspend_inactive_work();
         if app.poll_import() {
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
         }
         if app.mode == ViewMode::Edit {
             crate::editor_session::run_editor_session(terminal, app, events, &mut |_| false)?;
-            prev_mode = app.mode;
+            dirty = true;
             continue;
         }
         if app.poll_calendar() {
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
         }
         if app.poll_bases() {
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
         }
         // Background source handoffs must enter Edit before polling another input event.
         if app.mode == ViewMode::Edit {
@@ -1390,43 +1378,35 @@ where
             app.messages.push(msg.text, msg.severity);
         }
         if app.messages.messages.len() != msgs_before {
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
         }
         if app.messages.tick_expirations() {
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
         }
 
         if app.mode != prev_mode {
-            match app.mode {
-                ViewMode::List => list_dirty = true,
-                ViewMode::Graph => graph_dirty = true,
-                _ => {}
-            }
+            dirty = true;
             prev_mode = app.mode;
         }
 
-        while let Ok(evt) = app.catalog_event_rx.try_recv() {
-            app.handle_catalog_event(evt);
-            if app.mode == ViewMode::List {
-                list_dirty = true;
-            }
+        let catalog_events: Vec<_> = app.catalog_event_rx.try_iter().collect();
+        if !catalog_events.is_empty() {
+            app.handle_catalog_events(catalog_events);
+            dirty = true;
         }
         app.retry_catalog_reconcile();
         if app.handle_search_events() && app.mode == ViewMode::List {
-            list_dirty = true;
+            dirty = true;
         }
         if process_watcher_events(app) && app.mode == ViewMode::List {
-            list_dirty = true;
+            dirty = true;
         }
 
-        if app.tick_status() {
-            if app.mode == ViewMode::List {
-                list_dirty = true;
-            } else if app.mode == ViewMode::Graph {
-                graph_dirty = true;
-            }
+        dirty |= app.tick_status();
+        dirty |= app.poll_renderers();
+        dirty |= app.poll_editor_image_results();
+        if let Some(canvas) = &mut app.canvas_state {
+            dirty |= canvas.poll_images();
         }
 
         if let Some(ref idx) = app.note_index
@@ -1435,15 +1415,14 @@ where
         {
             app.rebuild_note_index();
             if app.mode == ViewMode::List {
-                list_dirty = true;
+                dirty = true;
             }
         }
 
         if app.needs_full_redraw {
             terminal.clear()?;
             app.needs_full_redraw = false;
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
         }
 
         if app.mode == ViewMode::List
@@ -1454,14 +1433,14 @@ where
             && app.graph_preview.is_some()
             && app.graph_preview_steps < 100
         {
-            list_dirty = true;
+            dirty = true;
         }
 
         // Apply update ticks for continuous views before rendering
         if app.mode == ViewMode::Graph
             && let Some(graf) = &mut app.graph_plugin
         {
-            graf.overlay_update(&mut app.config);
+            dirty |= graf.overlay_update(&mut app.config);
         }
 
         let graph_active = app
@@ -1473,13 +1452,7 @@ where
                 !st.is_settled || st.physics_worker_active
             });
 
-        let should_draw = if app.mode == ViewMode::List {
-            list_dirty
-        } else if app.mode == ViewMode::Graph {
-            graph_dirty || graph_active
-        } else {
-            true
-        };
+        let should_draw = dirty || (app.mode == ViewMode::Graph && graph_active);
 
         if should_draw {
             if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
@@ -1495,91 +1468,61 @@ where
             let elapsed = now.duration_since(app.last_frame_time).as_secs_f64();
             app.fps = app.fps * 0.9 + (1.0 / elapsed.max(0.001)) * 0.1;
             app.last_frame_time = now;
-            if app.mode == ViewMode::List {
-                list_dirty = false;
-            }
-            if app.mode == ViewMode::Graph {
-                graph_dirty = false;
-            }
+            dirty = false;
         }
 
         let active_catalog = app.catalog_status.is_some();
         let active_search = app.search_status.is_some() || app.search_debounce_deadline.is_some();
 
-        let poll_timeout = if app.mode == ViewMode::Graph {
-            let graph_idle = !graph_dirty && !graph_active;
-            if graph_idle {
-                Duration::from_millis(50)
-            } else {
-                Duration::from_millis(16)
+        let animated = (app.mode == ViewMode::Graph && graph_active)
+            || (app.mode == ViewMode::List
+                && app.graph_preview.is_some()
+                && app.graph_preview_steps < 100
+                && app
+                    .list
+                    .sections
+                    .contains(&crate::config::NotesSection::Graf));
+        let renderer_pending = match app.mode {
+            ViewMode::List => {
+                matches!(&app.list.preview_content, Some(crate::list_view::PreviewContent::Markdown(renderer)) if renderer.is_pending())
+                    || app.list.pending_markdown_resize.is_some()
+                    || app.list.image_cache.is_pending()
+                    || app
+                        .list
+                        .preview_loader
+                        .as_ref()
+                        .is_some_and(crate::app::preview_load::PreviewLoader::is_pending)
+                    || app.list.pending_preview_update
             }
-        } else if app.mode == ViewMode::Setup {
-            Duration::from_millis(250)
-        } else if app.mode == ViewMode::Draw {
-            Duration::from_millis(16)
-        } else if app.mode == ViewMode::Canvas {
-            Duration::from_millis(100)
-        } else if active_catalog
+            ViewMode::Setup => app.setup_state.as_ref().is_some_and(|state| {
+                state.preview_renderer.is_pending() || state.pending_preview_resize.is_some()
+            }),
+            ViewMode::Graph => app
+                .graph_plugin
+                .as_ref()
+                .is_some_and(|graph| graph.preview_pending()),
+            ViewMode::Canvas => app.image_picker.is_some(),
+            _ => false,
+        };
+        let poll_timeout = if animated
+            || renderer_pending
+            || active_catalog
             || active_search
             || app.base_embeds.is_loading()
             || app.import_task.is_some()
+            || app.calendar.render_pending()
+            || app
+                .calendar_view
+                .as_ref()
+                .is_some_and(crate::calendar::view::View::render_pending)
         {
-            Duration::from_millis(32)
-        } else if matches!(
-            app.list.preview_content,
-            Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
-        ) || app
-            .editor
-            .md_preview_renderer
-            .as_ref()
-            .is_some_and(|r| r.is_pending())
-        {
-            Duration::from_millis(50)
+            Duration::from_millis(16)
         } else {
             Duration::from_millis(200)
         };
 
-        let mut need_redraw = app.poll_renderers();
-
-        // Drain completed image decode jobs into local Vec to avoid borrow conflict
-        let decoded_results: Vec<anyhow::Result<crate::image_render::worker::DecodedImage>> =
-            match &app.image_decode_rx {
-                Some(rx) => std::iter::from_fn(|| rx.try_recv().ok()).collect(),
-                None => Vec::new(),
-            };
-        for res in decoded_results {
-            match res {
-                Ok(img) => {
-                    app.install_image(img);
-                }
-                Err(e) => {
-                    let text = format!("Image decode failed: {e}");
-                    app.set_temporary_status(&text);
-                    app.messages
-                        .push(text, crate::app::messages::MessageSeverity::Warning);
-                }
-            }
-            need_redraw = true;
-        }
-
-        if app.mode != ViewMode::List && need_redraw {
-            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
-                return Err(e.into());
-            }
-            let now = std::time::Instant::now();
-            if app.mode == ViewMode::Graph
-                && let Some(graph_state) = &mut app.graph_plugin
-                && graph_state.config_errors.is_empty()
-            {
-                graph_state.record_frame(now);
-            }
-        } else if app.mode == ViewMode::List && need_redraw {
-            list_dirty = true;
-        }
-
         if events.poll(poll_timeout).context("event poll failed")? {
-            list_dirty = true;
-            graph_dirty = true;
+            dirty = true;
             let size = terminal.size().context("failed to get terminal size")?;
             let _area = Rect::new(0, 0, size.width, size.height);
             let mut pending: Vec<crossterm::event::Event> = Vec::with_capacity(8);
@@ -1591,11 +1534,14 @@ where
             for ev in pending {
                 let is_moved = matches!(&ev, Event::Mouse(m)
                     if m.kind == ratatui::crossterm::event::MouseEventKind::Moved);
-                if is_moved
-                    && batch.last().is_some_and(|e| {
-                        matches!(e, Event::Mouse(m)
+                let repeated_resize = matches!(&ev, Event::Resize(_, _))
+                    && matches!(batch.last(), Some(Event::Resize(_, _)));
+                if repeated_resize
+                    || is_moved
+                        && batch.last().is_some_and(|e| {
+                            matches!(e, Event::Mouse(m)
                             if m.kind == ratatui::crossterm::event::MouseEventKind::Moved)
-                    })
+                        })
                 {
                     if let Some(last) = batch.last_mut() {
                         *last = ev;
@@ -1604,8 +1550,14 @@ where
                     batch.push(ev);
                 }
             }
-            for ev in batch {
+            let mut batch = batch.into_iter();
+            while let Some(ev) = batch.next() {
+                let previous_mode = app.mode;
                 dispatch_event(events, app, ev, &mut focus, terminal)?;
+                if app.mode != previous_mode || app.should_quit {
+                    events.prepend(batch);
+                    break;
+                }
             }
         }
     }
@@ -1931,3 +1883,6 @@ mod tests {
         assert_eq!(draw_count, 2);
     }
 }
+
+#[cfg(test)]
+mod view_perf_tests;

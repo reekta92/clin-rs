@@ -148,7 +148,7 @@ fn selected_counts(document: &crate::editor_document::EditorDocument) -> Option<
 
 #[derive(Default)]
 pub(crate) struct EditMemo {
-    pub(crate) content: Option<String>,
+    pub(crate) content: Option<std::sync::Arc<str>>,
     markdown_counts: Option<crate::markdown::structure::Counts>,
     selected_counts: std::cell::OnceCell<Option<(usize, usize)>>,
 }
@@ -158,7 +158,7 @@ impl EditMemo {
     }
     pub(crate) fn content<'a>(&'a mut self, app: &'a crate::app::App) -> &'a str {
         self.content
-            .get_or_insert_with(|| app.editor.body.lines().join("\n"))
+            .get_or_insert_with(|| app.editor.body.snapshot())
     }
     fn markdown_counts(&mut self, app: &crate::app::App) -> crate::markdown::structure::Counts {
         if let Some(counts) = self.markdown_counts {
@@ -952,37 +952,44 @@ impl StatuslineContext<'_> {
                     "cursor_line" => (app.editor.body.cursor().row + 1).to_string(),
                     "cursor_col" => (app.editor.body.cursor().col + 1).to_string(),
                     "modified" => {
-                        let now = std::time::Instant::now();
+                        let baseline = app.editor.frontmatter_baseline();
+                        let source_identity = baseline.map_or_else(
+                            || {
+                                app.editor
+                                    .template_source
+                                    .as_ref()
+                                    .map_or(0, |source| source.as_ptr() as usize)
+                            },
+                            |source| source.source().as_ptr() as usize,
+                        );
+                        let key = (app.editor.live_note_revision(), source_identity);
                         let mut cache = app.editor.modified_status_cache.borrow_mut();
-                        if cache
-                            .map(|(t, _)| {
-                                now.duration_since(t) >= std::time::Duration::from_millis(500)
-                            })
-                            .unwrap_or(true)
-                        {
-                            let is_mod = app.editor.header_pending()
-                                || if let Some(id) = &app.editor.editing_id {
-                                    if let Ok(note) = app.storage.load_note(id) {
-                                        let current_title =
-                                            crate::events::get_title_text(&app.editor.title_editor);
-                                        let mut memo = self.edit_memo.borrow_mut();
-                                        let content = memo.content(app);
-                                        current_title != note.title || content != note.content
-                                    } else {
-                                        false
-                                    }
-                                } else if let Some(path) = &app.editor.template_edit_path {
-                                    if let Ok(orig_content) = std::fs::read_to_string(path) {
-                                        let mut memo = self.edit_memo.borrow_mut();
-                                        let content = memo.content(app);
-                                        content != orig_content
-                                    } else {
-                                        false
-                                    }
+                        if cache.as_ref().is_none_or(|(cached, _)| *cached != key) {
+                            let modified = app.editor.header_pending()
+                                || if let Some(document) = &app.editor.public_document {
+                                    app.editor
+                                        .public_document_source()
+                                        .is_some_and(|source| source != document.source())
+                                } else if let Some(baseline) = &app.editor.note_baseline {
+                                    let (frontmatter, body) =
+                                        crate::frontmatter::parse(baseline.source());
+                                    let title = frontmatter.title.unwrap_or_else(|| {
+                                        std::path::Path::new(baseline.id())
+                                            .file_stem()
+                                            .and_then(|stem| stem.to_str())
+                                            .unwrap_or("Untitled note")
+                                            .to_owned()
+                                    });
+                                    crate::events::get_title_text(&app.editor.title_editor).as_ref()
+                                        != title
+                                        || self.edit_memo.borrow_mut().content(app) != body
+                                } else if let Some(source) = &app.editor.template_source {
+                                    self.edit_memo.borrow_mut().content(app)
+                                        != source.replace("\r\n", "\n")
                                 } else {
                                     false
                                 };
-                            *cache = Some((now, is_mod));
+                            *cache = Some((key, modified));
                         }
                         (if cache.unwrap().1 { "on" } else { "off" }).to_string()
                     }

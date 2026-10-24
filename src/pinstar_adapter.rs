@@ -94,6 +94,7 @@ pub struct PinstarPlugin {
     image_rx: Option<std::sync::mpsc::Receiver<anyhow::Result<DecodedImage>>>,
     pub last_area: Rect,
     base_host_raw: String,
+    next_host_check: std::time::Instant,
     base_renderers: std::collections::HashMap<String, crate::markdown::MarkdownRenderer>,
 }
 
@@ -202,6 +203,7 @@ impl PinstarPlugin {
         Ok(Self {
             current_file,
             base_host_raw: state.raw_editor.lines().join("\n"),
+            next_host_check: std::time::Instant::now(),
             state,
             keybinds,
             seq_matcher,
@@ -211,15 +213,18 @@ impl PinstarPlugin {
         })
     }
 
-    fn poll_images(&mut self) {
+    pub(crate) fn poll_images(&mut self) -> bool {
         let Some(rx) = &self.image_rx else {
-            return;
+            return false;
         };
+        let mut changed = false;
         while let Ok(result) = rx.try_recv() {
+            changed = true;
             if let (Ok(img), Some(picker)) = (result, self.state.image_picker.as_ref()) {
                 self.state.image_cache.install_decoded(img, picker);
             }
         }
+        changed
     }
 
     fn draw_base_embeds(&mut self, frame: &mut Frame, area: Rect, app: &App) {
@@ -319,7 +324,13 @@ impl PinstarPlugin {
             || self.state.rename_popup.is_some()
             || self.state.drag_start_pos.is_some()
             || self.state.resizing_node_id.is_some()
-            || self.state.raw_editor.lines().join("\n") != self.base_host_raw
+            || !self
+                .state
+                .raw_editor
+                .lines()
+                .iter()
+                .map(String::as_str)
+                .eq(self.base_host_raw.split('\n'))
     }
     pub(crate) fn reload_base_host(&mut self) -> anyhow::Result<()> {
         self.state.reload()?;
@@ -334,7 +345,13 @@ impl PinstarPlugin {
             .base_renderers
             .values_mut()
             .fold(false, |dirty, renderer| renderer.poll() | dirty);
-        if self.state.format == pinstar::formats::SupportedFormat::Canvas
+        let now = std::time::Instant::now();
+        let check_host = now >= self.next_host_check;
+        if check_host {
+            self.next_host_check = now + std::time::Duration::from_millis(200);
+        }
+        if check_host
+            && self.state.format == pinstar::formats::SupportedFormat::Canvas
             && !self.base_host_has_pending_changes()
             && std::fs::metadata(&self.state.path)
                 .and_then(|metadata| metadata.modified())
@@ -422,7 +439,6 @@ impl PinstarPlugin {
 impl OverlayView for PinstarPlugin {
     fn overlay_render(&mut self, frame: &mut Frame, area: Rect, app: &mut App) {
         self.last_area = area;
-        self.poll_images();
 
         let theme = app.app_theme.clone();
         let mouse_pos = self.state.mouse_pos;

@@ -4,7 +4,13 @@ use crate::storage::Storage;
 use anyhow::{Context, Result, ensure};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs, io::Read, path::Path, sync::mpsc};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::Read,
+    path::Path,
+    sync::{Arc, mpsc},
+};
 
 const STORE_LIMIT: usize = 64 * 1024 * 1024;
 pub const NOTE_PROPERTY: &str = "calendar-events";
@@ -74,7 +80,7 @@ impl Default for Data {
 }
 
 pub struct Store {
-    pub data: Data,
+    pub data: Arc<Data>,
     baseline: Option<Vec<u8>>,
 }
 
@@ -117,7 +123,10 @@ impl Store {
             );
             ical::uid(&ical::parse(&r.source)?)?;
         }
-        Ok(Self { data, baseline })
+        Ok(Self {
+            data: Arc::new(data),
+            baseline,
+        })
     }
 
     /// Caller holds calendar_guard through read/modify/write, including a sync's network requests.
@@ -133,7 +142,7 @@ impl Store {
             &bytes,
             0o600,
         )?;
-        self.data = data;
+        self.data = Arc::new(data);
         self.baseline = Some(bytes);
         Ok(())
     }
@@ -144,12 +153,37 @@ pub struct Service {
     pub store: Option<Store>,
     cache: Option<(NaiveDate, NaiveDate, Vec<Occurrence>, Vec<String>)>,
     job: Option<mpsc::Receiver<Result<String>>>,
+    revision: u64,
+    event_job: Option<EventJob>,
+    event_error: Option<String>,
+}
+
+struct EventJob {
+    from: NaiveDate,
+    until: NaiveDate,
+    revision: u64,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    receiver: mpsc::Receiver<Result<EventResult>>,
+}
+
+struct EventResult {
+    events: Vec<Occurrence>,
+    warnings: Vec<String>,
+    initial_store: Option<Store>,
+}
+impl Drop for EventJob {
+    fn drop(&mut self) {
+        self.cancel
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl Service {
     pub fn ensure_loaded(&mut self, storage: &Storage) -> Result<()> {
         if self.store.is_none() {
             self.store = Some(Store::load(storage)?);
+            self.event_job = None;
+            self.event_error = None;
         }
         Ok(())
     }
@@ -162,6 +196,9 @@ impl Service {
         let store = Store::load(storage)?;
         self.store = Some(store);
         self.cache = None;
+        self.revision = self.revision.wrapping_add(1);
+        self.event_job = None;
+        self.event_error = None;
         Ok(())
     }
 
@@ -178,41 +215,112 @@ impl Service {
         self.ensure_loaded(storage)?;
         let _guard = storage.calendar_guard()?;
         let store = self.store.as_mut().expect("calendar loaded");
-        let mut data = store.data.clone();
+        let mut data = (*store.data).clone();
         let result = edit(&mut data)?;
         store.save_locked(storage, data)?;
         self.cache = None;
+        self.revision = self.revision.wrapping_add(1);
+        self.event_job = None;
+        self.event_error = None;
         Ok(result)
     }
 
-    pub fn events(
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub(crate) fn render_pending(&self) -> bool {
+        self.event_job.is_some()
+    }
+
+    pub(crate) fn poll_events(&mut self) -> bool {
+        let Some(job) = &self.event_job else {
+            return false;
+        };
+        let result = match job.receiver.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return false,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                Err(anyhow::anyhow!("Calendar rendering worker stopped"))
+            }
+        };
+        let job = self.event_job.take().expect("calendar request exists");
+        if job.revision == self.revision {
+            match result {
+                Ok(result) => {
+                    if let Some(store) = result.initial_store {
+                        self.store = Some(store);
+                    }
+                    self.cache = Some((job.from, job.until, result.events, result.warnings))
+                }
+                Err(error) => self.event_error = Some(format!("{error:#}")),
+            }
+        }
+        true
+    }
+
+    pub(crate) fn events_async(
         &mut self,
         storage: &Storage,
         from: NaiveDate,
         until: NaiveDate,
-    ) -> Result<(&[Occurrence], &[String])> {
-        self.ensure_loaded(storage)?;
-        if self
+        pool: &rayon::ThreadPool,
+    ) -> Result<Option<(&[Occurrence], &[String])>> {
+        let cached = self
             .cache
             .as_ref()
-            .is_none_or(|(a, b, _, _)| *a != from || *b != until)
-        {
-            let mut events = Vec::new();
-            let mut warnings = Vec::new();
-            for r in self.data().resources.iter().filter(|r| !r.deleted) {
-                match ical::occurrences(&r.source, &r.id, from, until) {
-                    Ok(items) => events.extend(items),
-                    Err(error) => warnings.push(format!(
-                        "{}: {error:#} (source retained; export available)",
-                        r.id
-                    )),
-                }
+            .is_some_and(|(a, b, _, _)| *a == from && *b == until);
+        if !cached {
+            if let Some(error) = &self.event_error {
+                anyhow::bail!("{error}");
             }
-            events.sort_by_key(|o| (o.start, !o.all_day, o.title.clone(), o.resource.clone()));
-            self.cache = Some((from, until, events, warnings));
+            if self
+                .event_job
+                .as_ref()
+                .is_none_or(|job| job.from != from || job.until != until)
+            {
+                let (sender, receiver) = mpsc::sync_channel(1);
+                let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let token = cancel.clone();
+                let storage = storage.clone();
+                let data = self.store.as_ref().map(|store| store.data.clone());
+                self.event_job = Some(EventJob {
+                    from,
+                    until,
+                    revision: self.revision,
+                    cancel,
+                    receiver,
+                });
+                pool.spawn(move || {
+                    let result = (|| {
+                        anyhow::ensure!(
+                            !token.load(std::sync::atomic::Ordering::Relaxed),
+                            "Calendar rendering cancelled"
+                        );
+                        let initial_store = if data.is_none() {
+                            Some(Store::load(&storage)?)
+                        } else {
+                            None
+                        };
+                        let snapshot = data
+                            .as_deref()
+                            .or_else(|| initial_store.as_ref().map(|store| store.data.as_ref()))
+                            .expect("calendar snapshot loaded");
+                        let (events, warnings) = expand_events(snapshot, from, until, &token)?;
+                        Ok(EventResult {
+                            events,
+                            warnings,
+                            initial_store,
+                        })
+                    })();
+                    if !token.load(std::sync::atomic::Ordering::Relaxed) {
+                        let _ = sender.send(result);
+                    }
+                });
+            }
+            return Ok(None);
         }
-        let (_, _, events, warnings) = self.cache.as_ref().expect("populated above");
-        Ok((events, warnings))
+        let (_, _, events, warnings) = self.cache.as_ref().expect("calendar cache checked");
+        Ok(Some((events, warnings)))
     }
 
     pub fn import(&mut self, storage: &Storage, path: &Path) -> Result<usize> {
@@ -332,8 +440,47 @@ impl Service {
     }
 }
 
+fn expand_events(
+    data: &Data,
+    from: NaiveDate,
+    until: NaiveDate,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<(Vec<Occurrence>, Vec<String>)> {
+    let mut events = Vec::new();
+    let mut warnings = Vec::new();
+    for resource in data.resources.iter().filter(|resource| !resource.deleted) {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            anyhow::bail!("Calendar rendering cancelled");
+        }
+        match ical::occurrences(&resource.source, &resource.id, from, until) {
+            Ok(items) => events.extend(items),
+            Err(error) => warnings.push(format!(
+                "{}: {error:#} (source retained; export available)",
+                resource.id
+            )),
+        }
+    }
+    events.sort_by_cached_key(|event| {
+        (
+            event.start,
+            !event.all_day,
+            event.title.clone(),
+            event.resource.clone(),
+        )
+    });
+    Ok((events, warnings))
+}
+
+#[cfg(test)]
 pub fn note_links(storage: &Storage) -> Result<BTreeMap<String, Vec<String>>> {
-    let metadata = storage.load_vault_metadata(&std::sync::atomic::AtomicBool::new(false))?;
+    note_links_cancelled(storage, &std::sync::atomic::AtomicBool::new(false))
+}
+
+pub(crate) fn note_links_cancelled(
+    storage: &Storage,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<BTreeMap<String, Vec<String>>> {
+    let metadata = storage.load_vault_metadata(cancel)?;
     let mut links: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for file in metadata.files() {
         if let Ok(properties) = file.properties()

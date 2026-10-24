@@ -368,9 +368,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             continue;
                         };
                         let key = path;
-                        if app.editor.image_cache.get_proto(&key).is_none() {
-                            app.editor.image_cache.request(key.clone(), 2048, decode_tx);
-                        }
+                        app.editor.image_cache.request(key.clone(), 2048, decode_tx);
 
                         if let Some(proto) = app.editor.image_cache.get_proto(&key) {
                             let row = inner.y + local_line_idx as u16;

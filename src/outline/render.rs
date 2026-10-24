@@ -8,6 +8,7 @@ use ratatui::{
     widgets::{Block, List, ListItem, Paragraph},
 };
 
+#[cfg(test)]
 fn get_outline_prefix(state: &OutlineState, visible: &[usize], p: usize) -> String {
     let idx = visible[p];
     let node = &state.nodes[idx];
@@ -90,12 +91,25 @@ pub fn draw_outline(
         let right_area = content_chunks[2];
 
         // Draw Left Tree list
-        let visible = state.visible_indices();
-        let mut items = Vec::new();
+        let visible = state.visible();
+        let content_len = visible.len();
+        let viewport_len = usize::from(left_area.height);
+        let selected_pos = visible.iter().position(|&index| index == state.selected);
+        let mut offset = state
+            .tree_scroll_offset
+            .min(content_len.saturating_sub(viewport_len));
+        if let Some(selected) = selected_pos {
+            if selected < offset {
+                offset = selected;
+            } else if selected >= offset + viewport_len {
+                offset = selected.saturating_add(1).saturating_sub(viewport_len);
+            }
+        }
+        let mut items = Vec::with_capacity(viewport_len);
 
-        for (p, &idx) in visible.iter().enumerate() {
+        for (p, &idx) in visible.iter().enumerate().skip(offset).take(viewport_len) {
             if let Some(node) = state.nodes.get(idx) {
-                let prefix = get_outline_prefix(state, &visible, p);
+                let prefix = state.prefixes[p].clone();
 
                 let mut spans = Vec::new();
                 if !prefix.is_empty() {
@@ -148,8 +162,12 @@ pub fn draw_outline(
             }
         }
 
-        let selected_pos = visible.iter().position(|&x| x == state.selected);
-        let mut list_state = crate::ui::list_state_selected(selected_pos, state.tree_scroll_offset);
+        let mut list_state = crate::ui::list_state_selected(
+            selected_pos
+                .and_then(|position| position.checked_sub(offset))
+                .filter(|position| *position < viewport_len),
+            0,
+        );
 
         let item_count = items.len();
         let list = List::new(items)
@@ -161,7 +179,7 @@ pub fn draw_outline(
                     .add_modifier(Modifier::BOLD),
             );
         frame.render_stateful_widget(list, left_area, &mut list_state);
-        state.tree_scroll_offset = list_state.offset();
+        state.tree_scroll_offset = offset;
         state.tree_list_rect = left_area;
         crate::ui::paint_list_hover(
             frame,
@@ -171,8 +189,7 @@ pub fn draw_outline(
             state.mouse_pos,
             theme.hover_style(),
         );
-        let content_len = visible.len();
-        let viewport_len = left_area.height as usize;
+
         let track = crate::ui::scrollbar::pane_track(left_area, Some(sep_area));
         state.last_tree_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
             track,
@@ -305,5 +322,38 @@ mod tests {
             true,
         );
         assert!(state.tree_scroll_offset > 0);
+    }
+}
+
+#[cfg(test)]
+mod performance_tests {
+    use super::*;
+    #[test]
+    fn cached_connectors_match_tree_walk_after_collapse_and_expand() {
+        let mut state = OutlineState::new(
+            "note.md".into(),
+            "Title",
+            "# One\npara\n## Child\ntext\n### Deep\n- item\n## Other\nbody\n# Two\nend",
+            crate::keybinds::Keybinds::default(),
+            crate::keybinds::KeyMatcher::default(),
+        );
+        for operation in 0..4 {
+            match operation {
+                1 => {
+                    state.selected = 1;
+                    state.toggle_collapse();
+                }
+                2 => state.collapse_all(),
+                3 => state.expand_all(),
+                _ => {}
+            }
+            let visible = state.visible_indices();
+            for position in 0..visible.len() {
+                assert_eq!(
+                    state.prefixes[position],
+                    get_outline_prefix(&state, &visible, position)
+                );
+            }
+        }
     }
 }

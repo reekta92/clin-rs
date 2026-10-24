@@ -33,7 +33,7 @@ impl App {
             let note = crate::storage::Note {
                 baseline: Some(baseline.clone()),
                 title: crate::events::get_title_text(&self.editor.title_editor).into_owned(),
-                content: self.editor.body.text(),
+                content: String::new(),
                 tags: Vec::new(),
                 updated_at: crate::ui::now_unix_secs(),
             };

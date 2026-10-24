@@ -1,16 +1,38 @@
 use anyhow::Result;
 use image::DynamicImage;
+use ratatui_image::{Resize, ResizeEncodeRender, protocol::StatefulProtocol};
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc::{self, Receiver, SyncSender},
+};
+
+pub enum ImageWork {
+    Decode(u32),
+    Encode {
+        protocol: Box<StatefulProtocol>,
+        resize: Resize,
+        size: ratatui::layout::Size,
+    },
+}
 
 pub struct ImageJob {
     pub key: PathBuf,
-    pub max_dim: u32,
+    pub request: u64,
+    pub cancel: Arc<AtomicBool>,
+    pub work: ImageWork,
+}
+
+pub enum ImageOutput {
+    Decoded(DynamicImage),
+    Encoded(Box<StatefulProtocol>),
 }
 
 pub struct DecodedImage {
     pub key: PathBuf,
-    pub image: DynamicImage,
+    pub request: u64,
+    pub result: Result<ImageOutput>,
 }
 
 /// Spawn the background image decode worker.
@@ -22,9 +44,9 @@ pub struct DecodedImage {
 /// 3. Send the result back (or an error).
 /// 4. Drain any additional immediately-available jobs for throughput.
 /// 5. Loop.
-pub fn spawn() -> (Sender<ImageJob>, Receiver<Result<DecodedImage>>) {
-    let (tx, rx) = mpsc::channel();
-    let (result_tx, result_rx) = mpsc::channel();
+pub fn spawn() -> (SyncSender<ImageJob>, Receiver<DecodedImage>) {
+    let (tx, rx) = mpsc::sync_channel(16);
+    let (result_tx, result_rx) = mpsc::sync_channel(2);
 
     std::thread::Builder::new()
         .name("clin-image-decode-worker".into())
@@ -50,12 +72,42 @@ pub fn spawn() -> (Sender<ImageJob>, Receiver<Result<DecodedImage>>) {
 
     (tx, result_rx)
 }
-fn process_job(job: ImageJob, result_tx: &Sender<Result<DecodedImage>>) {
-    let result = decode_image(&job.key, job.max_dim);
-    let _ = result_tx.send(result.map(|img| DecodedImage {
+pub(crate) fn process_job(job: ImageJob, result_tx: &SyncSender<DecodedImage>) {
+    if job.cancel.load(Ordering::Relaxed) {
+        return;
+    }
+    let result = match job.work {
+        ImageWork::Decode(max_dim) => decode_image(&job.key, max_dim).map(ImageOutput::Decoded),
+        ImageWork::Encode {
+            mut protocol,
+            resize,
+            size,
+        } => {
+            protocol.resize_encode(&resize, size);
+            protocol
+                .last_encoding_result()
+                .unwrap_or(Ok(()))
+                .map(|()| ImageOutput::Encoded(protocol))
+                .map_err(Into::into)
+        }
+    };
+    let mut response = DecodedImage {
         key: job.key,
-        image: img,
-    }));
+        request: job.request,
+        result,
+    };
+    loop {
+        if job.cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        match result_tx.try_send(response) {
+            Ok(()) | Err(mpsc::TrySendError::Disconnected(_)) => return,
+            Err(mpsc::TrySendError::Full(pending)) => {
+                response = pending;
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        }
+    }
 }
 
 fn decode_image(key: &PathBuf, max_dim: u32) -> Result<DynamicImage> {

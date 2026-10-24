@@ -294,6 +294,7 @@ pub struct GrafPlugin {
     pub mouse_pos: Option<(u16, u16)>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
     canvas_fps_sampler: CanvasFpsSampler,
+    physics_suspended: bool,
 }
 
 impl Drop for GrafPlugin {
@@ -373,6 +374,7 @@ impl GrafPlugin {
             preview_drag_last_pos: None,
             mouse_pos: None,
             canvas_fps_sampler: CanvasFpsSampler::default(),
+            physics_suspended: false,
         })
     }
 
@@ -589,7 +591,7 @@ impl GrafPlugin {
                         key.offset_y,
                     );
                     self.preview_content = Some(PreviewContent::DrawGrid {
-                        data: Box::new(data),
+                        data: std::sync::Arc::new(data),
                         grid,
                     });
                 }
@@ -616,7 +618,7 @@ impl GrafPlugin {
                             key.offset_y,
                         );
                         self.preview_content = Some(PreviewContent::CanvasGrid {
-                            data: Box::new(data),
+                            data: std::sync::Arc::new(data),
                             grid,
                         });
                     }
@@ -674,9 +676,32 @@ impl GrafPlugin {
         }
     }
 
-    pub fn overlay_update(&mut self, config: &mut ClinConfig) {
+    pub(crate) fn set_visible(&mut self, visible: bool, config: &ClinConfig) {
+        if !visible {
+            if let Some(kill) = self.graph_kill_tx.take() {
+                let _ = kill.send(());
+                self.physics_suspended = true;
+            }
+            if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content {
+                renderer.suspend();
+            }
+        } else if self.physics_suspended
+            && let Some(state) = &self.graph_state
+            && !state.read().physics_worker_active
+        {
+            self.graph_kill_tx = graf::start_physics(state.clone(), &self.settings_for(config));
+            self.physics_suspended = false;
+        }
+    }
+
+    pub(crate) fn preview_pending(&self) -> bool {
+        self.pending_markdown_resize.is_some()
+            || matches!(&self.preview_content, Some(PreviewContent::Markdown(renderer)) if renderer.is_pending())
+    }
+
+    pub fn overlay_update(&mut self, config: &mut ClinConfig) -> bool {
         self.sync_preview(config);
-        let _ = self.poll_renderers(config);
+        self.poll_renderers(config)
     }
 }
 

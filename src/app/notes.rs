@@ -9,7 +9,67 @@ use anyhow::{Context, Result};
 use std::borrow::Cow;
 use std::collections::HashSet;
 
+pub(crate) struct ListSelection {
+    cursor: Option<(SelectionKey, usize)>,
+    selected: HashSet<(SelectionKey, usize)>,
+}
+
 impl App {
+    pub(crate) fn capture_list_selection(&self) -> ListSelection {
+        let mut occurrences = HashMap::new();
+        let mut selection = ListSelection {
+            cursor: None,
+            selected: HashSet::new(),
+        };
+        let last = self
+            .list
+            .selected_indices
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .max(self.list.visual_index);
+        for (index, item) in self
+            .list
+            .visual_list
+            .iter()
+            .enumerate()
+            .take(last.saturating_add(1))
+        {
+            let key = item.selection_key(&self.notes);
+            let occurrence = occurrences.entry(key.clone()).or_insert(0);
+            if index == self.list.visual_index {
+                selection.cursor = Some((key.clone(), *occurrence));
+            }
+            if self.list.selected_indices.contains(&index) {
+                selection.selected.insert((key, *occurrence));
+            }
+            *occurrence += 1;
+        }
+        selection
+    }
+
+    pub(crate) fn restore_list_selection(&mut self, mut selection: ListSelection) {
+        let mut occurrences = HashMap::new();
+        self.list.selected_indices.clear();
+        for (index, item) in self.list.visual_list.iter().enumerate() {
+            let key = item.selection_key(&self.notes);
+            let occurrence = occurrences.entry(key.clone()).or_insert(0);
+            let identity = (key, *occurrence);
+            if selection.cursor.as_ref() == Some(&identity) {
+                self.list.visual_index = index;
+                selection.cursor = None;
+            }
+            if selection.selected.remove(&identity) {
+                self.list.selected_indices.insert(index);
+            }
+            *occurrence += 1;
+            if selection.cursor.is_none() && selection.selected.is_empty() {
+                break;
+            }
+        }
+    }
+
     pub fn request_notes_reconcile(&mut self) {
         self.invalidate_bases();
         let generation_num = self.catalog_generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -64,6 +124,43 @@ impl App {
     }
 
     pub fn handle_catalog_event(&mut self, event: crate::app::catalog::CatalogEvent) {
+        self.handle_catalog_events([event]);
+    }
+
+    pub(crate) fn handle_catalog_events(
+        &mut self,
+        events: impl IntoIterator<Item = crate::app::catalog::CatalogEvent>,
+    ) {
+        let selection = self.capture_list_selection();
+        let mut changed = false;
+        for event in events {
+            changed |= self.apply_catalog_event(event);
+        }
+        if changed {
+            if let Some(loader) = &mut self.list.preview_loader {
+                loader.invalidate();
+            }
+            self.list.preview_content_index = None;
+            self.sort_notes();
+            self.notes_revision += 1;
+            self.rebuild_note_index();
+            self.refresh_subnotes_view_cache();
+            self.refresh_visual_list();
+            self.restore_list_selection(selection);
+            self.request_preview_update();
+            if self.initial_load_done
+                && self
+                    .list
+                    .sections
+                    .contains(&crate::config::NotesSection::Graf)
+            {
+                self.ensure_graph_preview();
+            }
+        }
+    }
+
+    fn apply_catalog_event(&mut self, event: crate::app::catalog::CatalogEvent) -> bool {
+        let mut changed = false;
         use crate::app::catalog::CatalogEvent;
         let cur_gen = self.catalog_generation.load(Ordering::SeqCst);
         match event {
@@ -101,29 +198,25 @@ impl App {
                             self.note_stamps.remove(r);
                         }
 
-                        let upsert_map: HashMap<String, (NoteSummary, crate::storage::FileStamp)> =
-                            upserts
-                                .into_iter()
-                                .map(|(s, st)| (s.id.clone(), (s, st)))
-                                .collect();
-
-                        for (id, (summary, stamp)) in upsert_map {
-                            if let Some(pos) = self.notes.iter().position(|n| n.id == id) {
-                                self.notes[pos] = summary;
-                            } else {
-                                self.notes.push(summary);
+                        let mut upsert_map: HashMap<
+                            String,
+                            (NoteSummary, crate::storage::FileStamp),
+                        > = upserts
+                            .into_iter()
+                            .map(|(summary, stamp)| (summary.id.clone(), (summary, stamp)))
+                            .collect();
+                        for note in &mut self.notes {
+                            if let Some((summary, stamp)) = upsert_map.remove(&note.id) {
+                                self.note_stamps.insert(note.id.clone(), stamp);
+                                *note = summary;
                             }
+                        }
+                        for (id, (summary, stamp)) in upsert_map {
                             self.note_stamps.insert(id, stamp);
+                            self.notes.push(summary);
                         }
                     }
-
-                    if data_changed {
-                        self.sort_notes();
-                        self.refresh_visual_list();
-                        self.refresh_subnotes_view_cache();
-                        self.notes_revision += 1;
-                        self.rebuild_note_index();
-                    }
+                    changed |= data_changed;
 
                     self.set_default_status();
                 }
@@ -144,20 +237,9 @@ impl App {
                                 (note, (id, stamp))
                             })
                             .unzip();
-                        self.sort_notes();
-                        self.notes_revision += 1;
-                        self.rebuild_note_index();
-                        self.refresh_visual_list();
-                        self.refresh_subnotes_view_cache();
+                        changed = true;
                         self.initial_load_done = true;
                         self.catalog_status = None;
-                        if self
-                            .list
-                            .sections
-                            .contains(&crate::config::NotesSection::Graf)
-                        {
-                            self.ensure_graph_preview();
-                        }
                         if !warnings.is_empty() {
                             self.set_temporary_status(&format!(
                                 "Notes loaded with {} warning(s)",
@@ -205,6 +287,7 @@ impl App {
                 }
             }
         }
+        changed
     }
 
     pub fn refresh_subnotes_view_cache(&mut self) {
@@ -291,38 +374,39 @@ impl App {
     }
 
     pub(crate) fn sort_notes(&mut self) {
-        self.notes.sort_by(|a, b| {
-            if self.pinned_on_top {
-                let pin_cmp = b.pinned.cmp(&a.pinned);
-                if pin_cmp != std::cmp::Ordering::Equal {
-                    return pin_cmp;
-                }
+        let pinned = self.pinned_on_top;
+        let ascending = self.list.sort_order == SortOrder::Ascending;
+        if self.list.sort_field == SortField::Title {
+            if ascending {
+                self.notes.sort_by_cached_key(|note| {
+                    (
+                        !pinned || !note.pinned,
+                        note.id.ends_with(".clin"),
+                        note.file_stem().to_lowercase(),
+                    )
+                });
+            } else {
+                self.notes.sort_by_cached_key(|note| {
+                    (
+                        !pinned || !note.pinned,
+                        note.id.ends_with(".clin"),
+                        std::cmp::Reverse(note.file_stem().to_lowercase()),
+                    )
+                });
             }
-
-            let a_clin = a.id.ends_with(".clin");
-            let b_clin = b.id.ends_with(".clin");
-            let clin_cmp = b_clin.cmp(&a_clin);
-            if clin_cmp != std::cmp::Ordering::Equal {
-                return clin_cmp;
-            }
-
-            match self.list.sort_field {
-                SortField::Modified => match self.list.sort_order {
-                    SortOrder::Descending => b.updated_at.cmp(&a.updated_at),
-                    SortOrder::Ascending => a.updated_at.cmp(&b.updated_at),
-                },
-                SortField::Title => match self.list.sort_order {
-                    SortOrder::Ascending => a
-                        .file_stem()
-                        .to_lowercase()
-                        .cmp(&b.file_stem().to_lowercase()),
-                    SortOrder::Descending => b
-                        .file_stem()
-                        .to_lowercase()
-                        .cmp(&a.file_stem().to_lowercase()),
-                },
-            }
-        });
+        } else {
+            self.notes.sort_by(|a, b| {
+                let prefix = (!pinned || !a.pinned, a.id.ends_with(".clin"))
+                    .cmp(&(!pinned || !b.pinned, b.id.ends_with(".clin")));
+                prefix.then_with(|| {
+                    if ascending {
+                        a.updated_at.cmp(&b.updated_at)
+                    } else {
+                        b.updated_at.cmp(&a.updated_at)
+                    }
+                })
+            });
+        }
     }
 
     pub fn get_current_folder_context(&self) -> String {

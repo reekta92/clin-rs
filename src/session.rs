@@ -58,7 +58,31 @@ pub fn bootstrap_app(open_title: Option<String>, force_setup: bool) -> Result<Ap
 /// fs watcher init. Sets app.image_decode_tx/rx, app.fs_event_rx, app.fs_overflow.
 pub fn start_session(app: &mut App) -> SessionGuard {
     crate::fsutil::cleanup_orphaned_temp_files();
+    app.list.image_cache.set_limit(app.config.image.cache_size);
+    app.editor
+        .image_cache
+        .set_limit(app.config.image.cache_size);
 
+    ensure_signal_handlers();
+
+    // Recovery writes are started lazily when an editor first queues a draft.
+
+    // Spawn the background image decode worker (only when the feature is enabled).
+    if app.config.features.images.is_enabled() {
+        let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
+        app.image_decode_tx = Some(decode_tx);
+        app.image_decode_rx = Some(decode_rx);
+    }
+
+    start_watcher(app)
+}
+
+fn ensure_signal_handlers() {
+    static SIGNALS: std::sync::Once = std::sync::Once::new();
+    SIGNALS.call_once(register_signals);
+}
+
+fn register_signals() {
     let register_signal = |sig: std::os::raw::c_int| {
         let _ = unsafe {
             signal_hook::low_level::register(sig, || {
@@ -76,16 +100,9 @@ pub fn start_session(app: &mut App) -> SessionGuard {
         register_signal(signal_hook::consts::SIGHUP);
         register_signal(signal_hook::consts::SIGQUIT);
     }
+}
 
-    // Recovery writes are started lazily when an editor first queues a draft.
-
-    // Spawn the background image decode worker (only when the feature is enabled).
-    if app.config.features.images.is_enabled() {
-        let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
-        app.image_decode_tx = Some(decode_tx);
-        app.image_decode_rx = Some(decode_rx);
-    }
-
+fn start_watcher(app: &mut App) -> SessionGuard {
     // Initialize the optional file system watcher.
     let watcher = if app.config.core.auto_refresh {
         use notify::{EventKind, RecursiveMode, Watcher};
@@ -168,9 +185,46 @@ pub fn start_session(app: &mut App) -> SessionGuard {
 /// Stop session resources; editor persistence is flushed before returning.
 pub fn finish_session(app: &mut App, _guard: SessionGuard) -> Result<()> {
     app.flush_drafts()?;
+    app.list.image_cache.clear();
+    app.editor.image_cache.clear();
+    app.editor.image_decode_tx = None;
+    app.image_decode_tx = None;
+    app.image_decode_rx = None;
     Ok(())
 }
 
 pub fn finish_session_for_rebootstrap(app: &mut App, guard: SessionGuard) -> Result<()> {
     finish_session(app, guard)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn repeated_sessions_keep_first_signal_graceful() {
+        const CHILD: &str = "CLIN_SIGNAL_LIFETIME_TEST";
+        if std::env::var_os(CHILD).is_none() {
+            assert!(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "session::tests::repeated_sessions_keep_first_signal_graceful"
+                    ])
+                    .env(CHILD, "1")
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            return;
+        }
+        for _ in 0..100 {
+            ensure_signal_handlers();
+        }
+        signal_hook::low_level::raise(signal_hook::consts::SIGTERM).unwrap();
+        assert_eq!(crate::SIGNAL_COUNT.load(Ordering::SeqCst), 1);
+        assert!(crate::SHOULD_EXIT.load(Ordering::Acquire));
+        assert!(!crate::FORCE_QUIT.load(Ordering::Acquire));
+        signal_hook::low_level::raise(signal_hook::consts::SIGTERM).unwrap();
+        assert!(crate::FORCE_QUIT.load(Ordering::Acquire));
+    }
 }

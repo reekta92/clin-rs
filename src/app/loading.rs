@@ -1119,127 +1119,148 @@ impl App {
     }
 
     pub(crate) fn poll_editor_image_results(&mut self) -> bool {
-        let results: Vec<anyhow::Result<crate::image_render::worker::DecodedImage>> =
-            match &self.image_decode_rx {
-                Some(receiver) => std::iter::from_fn(|| receiver.try_recv().ok()).collect(),
-                None => Vec::new(),
-            };
-        let mut updated = false;
-        for result in results {
-            match result {
-                Ok(image) => self.install_image(image),
-                Err(error) => {
-                    let text = format!("Image decode failed: {error}");
-                    self.set_temporary_status(&text);
-                    self.messages
-                        .push(text, crate::app::messages::MessageSeverity::Warning);
+        let mut results = Vec::new();
+        let mut disconnected = false;
+        if let Some(receiver) = &self.image_decode_rx {
+            for _ in 0..2 {
+                match receiver.try_recv() {
+                    Ok(result) => results.push(result),
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        disconnected = true;
+                        break;
+                    }
                 }
             }
-            updated = true;
         }
-        updated
+        let updated = !results.is_empty();
+        for result in results {
+            self.install_image(result);
+        }
+        if disconnected {
+            self.list.image_cache.clear();
+            self.editor.image_cache.clear();
+            self.editor.image_decode_tx = None;
+            self.image_decode_tx = None;
+            self.image_decode_rx = None;
+            self.set_temporary_status("Image rendering worker stopped");
+        }
+        updated || disconnected
+    }
+
+    pub(crate) fn suspend_inactive_work(&mut self) {
+        if self.mode != ViewMode::Calendar
+            && let Some(view) = &mut self.calendar_view
+        {
+            view.suspend();
+        }
+        if self.mode != ViewMode::List {
+            if let Some(loader) = &mut self.list.preview_loader {
+                self.list.pending_preview_update |= loader.is_pending();
+                loader.cancel_pending();
+            }
+            if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content {
+                renderer.suspend();
+            }
+            self.list.image_cache.cancel_pending();
+        }
+        if self.mode != ViewMode::Edit {
+            for renderer in [
+                &mut self.editor.md_preview_renderer,
+                &mut self.editor.link_preview_renderer,
+                &mut self.editor.bases_sidebar_renderer,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                renderer.suspend();
+            }
+            self.editor.image_cache.cancel_pending();
+        }
+        if self.mode != ViewMode::Setup
+            && let Some(setup) = &mut self.setup_state
+        {
+            setup.preview_renderer.suspend();
+        }
+        if let Some(graph) = &mut self.graph_plugin {
+            graph.set_visible(self.mode == ViewMode::Graph, &self.config);
+        }
     }
 
     pub fn poll_renderers(&mut self) -> bool {
+        self.suspend_inactive_work();
+        if self.mode == ViewMode::Edit {
+            return self.poll_editor_renderers();
+        }
         let mut updated = false;
-
         // Check resize debounces
-        if let Some((_, inst)) = self.list.pending_markdown_resize
-            && inst.elapsed() >= Duration::from_millis(50)
-        {
-            self.list.pending_markdown_resize = None;
-            self.list.preview_content_width = None;
-            self.update_preview();
-            updated = true;
+        if self.mode == ViewMode::List {
+            if self.list.pending_preview_update {
+                self.update_preview();
+                self.list.pending_preview_update = false;
+                updated = true;
+            }
+            if self
+                .list
+                .preview_loader
+                .as_mut()
+                .is_some_and(super::preview_load::PreviewLoader::poll)
+            {
+                self.update_preview();
+                updated = true;
+            }
+            if let Some((_, instant)) = self.list.pending_markdown_resize
+                && instant.elapsed() >= Duration::from_millis(50)
+            {
+                self.list.pending_markdown_resize = None;
+                self.list.preview_content_width = None;
+                self.update_preview();
+                updated = true;
+            }
+            let list_active = self.list.preview_enabled || self.preview_fullscreen;
+            if list_active
+                && self.list.pending_markdown_resize.is_none()
+                && (self.list.preview_content_width != Some(self.desired_list_preview_width())
+                    || self.list.preview_content_height != Some(self.desired_list_preview_height())
+                    || self.list.preview_content_scale != Some(self.list.preview_scale)
+                    || self.list.preview_content_offset_x != Some(self.list.preview_offset_x)
+                    || self.list.preview_content_offset_y != Some(self.list.preview_offset_y))
+            {
+                self.update_preview();
+                updated = true;
+            }
+            // Poll renderers
+            if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content {
+                updated |= renderer.poll();
+            }
         }
-        if let Some((_, inst)) = self.editor.pending_markdown_resize
-            && inst.elapsed() >= Duration::from_millis(50)
+        if self.mode == ViewMode::Setup
+            && let Some(setup) = &mut self.setup_state
         {
-            self.editor.pending_markdown_resize = None;
-            self.editor.preview_content_width = None;
-            self.update_editor_markdown_preview();
-            updated = true;
+            if let Some((_, instant)) = setup.pending_preview_resize
+                && instant.elapsed() >= Duration::from_millis(50)
+            {
+                updated = true;
+            } // Trigger redraw so draw loop handles it
+            updated |= setup.preview_renderer.poll();
         }
-        if let Some(ref mut setup) = self.setup_state
-            && let Some((_, inst)) = setup.pending_preview_resize
-            && inst.elapsed() >= Duration::from_millis(50)
-        {
-            updated = true; // Trigger redraw so draw loop handles it
-        }
-
-        if let Some(last) = self.editor.last_editor_change
-            && last.elapsed() > Duration::from_millis(150)
-            && self.editor.pending_editor_preview_update
-        {
-            self.update_editor_markdown_preview();
-            self.editor.pending_editor_preview_update = false;
-            self.editor.last_editor_change = None;
-            updated = true;
-        }
-
-        let list_active = self.list.preview_enabled || self.preview_fullscreen;
-        if list_active
-            && self.list.pending_markdown_resize.is_none()
-            && (self.list.preview_content_width != Some(self.desired_list_preview_width())
-                || self.list.preview_content_height != Some(self.desired_list_preview_height())
-                || self.list.preview_content_scale != Some(self.list.preview_scale)
-                || self.list.preview_content_offset_x != Some(self.list.preview_offset_x)
-                || self.list.preview_content_offset_y != Some(self.list.preview_offset_y))
-        {
-            self.update_preview();
-            updated = true;
-        }
-        let edit_active = self.editor.editor_preview_enabled || self.preview_fullscreen;
-        if edit_active
-            && self.editor.pending_markdown_resize.is_none()
-            && (self.editor.preview_content_width != Some(self.desired_editor_preview_width())
-                || self.editor.preview_content_height != Some(self.desired_editor_preview_height()))
-        {
-            self.update_editor_markdown_preview();
-            updated = true;
-        }
-
-        // Poll renderers
-        if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content
-            && renderer.poll()
-        {
-            updated = true;
-        }
-        if let Some(renderer) = &mut self.editor.md_preview_renderer
-            && renderer.poll()
-        {
-            updated = true;
-        }
-        if let Some(renderer) = &mut self.editor.link_preview_renderer
-            && renderer.poll()
-        {
-            updated = true;
-        }
-        if let Some(ref mut setup) = self.setup_state
-            && setup.preview_renderer.poll()
-        {
-            updated = true;
-        }
-
         updated
     }
 
-    /// Install a completed decode into the active view's image cache.
+    /// Install a completed decode into the requesting view's image cache.
     pub fn install_image(&mut self, decoded: crate::image_render::worker::DecodedImage) {
-        let picker = match self.image_picker.as_ref() {
-            Some(p) => p,
-            None => return,
+        let (Some(picker), Some(tx)) = (&self.image_picker, &self.image_decode_tx) else {
+            return;
         };
-
-        match self.mode {
-            // Canvas decodes through its own plugin worker (pinstar_adapter).
-            crate::app::ViewMode::Edit => {
-                self.editor.image_cache.install_decoded(decoded, picker);
-            }
-            crate::app::ViewMode::List => {
-                self.list.image_cache.install_decoded(decoded, picker);
-            }
-            _ => {}
+        let error = if self.editor.image_cache.accepts(&decoded) {
+            self.editor.image_cache.install_decoded(decoded, picker, tx)
+        } else {
+            self.list.image_cache.install_decoded(decoded, picker, tx)
+        };
+        if let Some(error) = error {
+            self.set_temporary_status(&error);
+            self.messages
+                .push(error, crate::app::messages::MessageSeverity::Warning);
         }
     }
 
@@ -1248,10 +1269,24 @@ impl App {
         if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
         }
+        self.list.pending_preview_update = true;
+        self.list.last_selection_change = Some(Instant::now());
+    }
 
+    #[cfg(test)]
+    pub(crate) fn wait_for_preview_source(&mut self) {
         self.update_preview();
-        self.list.pending_preview_update = false;
-        self.list.last_selection_change = None;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while self
+            .list
+            .preview_loader
+            .as_ref()
+            .is_some_and(super::preview_load::PreviewLoader::is_pending)
+        {
+            assert!(Instant::now() < deadline, "preview source timed out");
+            self.poll_renderers();
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 
     pub fn request_editor_preview_update(&mut self) {
@@ -1453,8 +1488,44 @@ impl App {
             return;
         }
 
-        let item = self.list.visual_list.get(self.list.visual_index);
-        match item {
+        use super::preview_load::{Key, PreviewLoader, Source};
+        let item = self.list.visual_list.get(self.list.visual_index).cloned();
+        let key = match &item {
+            Some(VisualItem::Note { summary_idx, .. }) => {
+                let id = &self.notes[*summary_idx].id;
+                let image = std::path::Path::new(id)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(crate::storage::is_image_ext);
+                (!image && self.config.features.file_view_enabled(id))
+                    .then(|| Key::Note(id.clone()))
+            }
+            Some(VisualItem::TemplateConfig { folder, .. }) => Some(Key::Template(folder.clone())),
+            _ => None,
+        };
+        let source = if let Some(key) = key {
+            let loader = self
+                .list
+                .preview_loader
+                .get_or_insert_with(|| PreviewLoader::new(self.storage.clone()));
+            let source = loader.source(key);
+            if source.is_none() {
+                self.list.preview_content = None;
+                self.list.preview_content_index = None;
+                self.set_list_preview_geometry(
+                    self.desired_list_preview_width(),
+                    self.desired_list_preview_height(),
+                );
+                return;
+            }
+            source
+        } else {
+            if let Some(loader) = &mut self.list.preview_loader {
+                loader.cancel_pending();
+            }
+            None
+        };
+        match &item {
             Some(VisualItem::Note {
                 summary_idx,
                 is_draw,
@@ -1503,13 +1574,13 @@ impl App {
                         self.list.preview_content_index = Some(self.list.visual_index);
                         return;
                     }
-                    match self
-                        .storage
-                        .document_path(id)
-                        .and_then(|path| ::draw::DrawState::load(&path))
-                    {
-                        Ok(state) => {
-                            let data = state.data;
+                    match source
+                        .expect("loaded preview")
+                        .and_then(|source| match source {
+                            Source::Draw(data) => Ok(data),
+                            _ => Err("Invalid drawing preview".into()),
+                        }) {
+                        Ok(data) => {
                             let width = self.desired_list_preview_width();
                             let height = self.desired_list_preview_height();
                             let scale = self.list.preview_scale;
@@ -1525,10 +1596,8 @@ impl App {
                                 offset_x,
                                 offset_y,
                             );
-                            self.list.preview_content = Some(PreviewContent::DrawGrid {
-                                data: Box::new(data),
-                                grid,
-                            });
+                            self.list.preview_content =
+                                Some(PreviewContent::DrawGrid { data, grid });
                             self.set_list_preview_geometry(width, height);
                         }
                         Err(error) => {
@@ -1565,41 +1634,32 @@ impl App {
                         self.list.preview_content_index = Some(self.list.visual_index);
                         return;
                     }
-                    let path = self.storage.note_path(id);
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) => {
-                            match serde_json::from_str::<pinstar::data::CanvasData>(&content) {
-                                Ok(data) => {
-                                    let width = self.desired_list_preview_width();
-                                    let height = self.desired_list_preview_height();
-                                    let scale = self.list.preview_scale;
-                                    let offset_x = self.list.preview_offset_x;
-                                    let offset_y = self.list.preview_offset_y;
-                                    let grid = crate::snapshot::render_canvas_snapshot(
-                                        &data,
-                                        &self.app_theme,
-                                        self.config.ui.icon_mode,
-                                        width,
-                                        height,
-                                        scale,
-                                        offset_x,
-                                        offset_y,
-                                    );
-                                    self.list.preview_content = Some(PreviewContent::CanvasGrid {
-                                        data: Box::new(data),
-                                        grid,
-                                    });
-                                    self.set_list_preview_geometry(width, height);
-                                }
-                                Err(e) => {
-                                    self.list.preview_content = None;
-                                    self.status =
-                                        Cow::Owned(format!("Failed to parse canvas: {e}"));
-                                }
-                            }
+                    match source
+                        .expect("loaded preview")
+                        .and_then(|source| match source {
+                            Source::Canvas(data) => Ok(data),
+                            _ => Err("Invalid Canvas preview".into()),
+                        }) {
+                        Ok(data) => {
+                            let width = self.desired_list_preview_width();
+                            let height = self.desired_list_preview_height();
+                            let grid = crate::snapshot::render_canvas_snapshot(
+                                &data,
+                                &self.app_theme,
+                                self.config.ui.icon_mode,
+                                width,
+                                height,
+                                self.list.preview_scale,
+                                self.list.preview_offset_x,
+                                self.list.preview_offset_y,
+                            );
+                            self.list.preview_content =
+                                Some(PreviewContent::CanvasGrid { data, grid });
+                            self.set_list_preview_geometry(width, height);
                         }
-                        Err(_) => {
+                        Err(error) => {
                             self.list.preview_content = None;
+                            self.status = Cow::Owned(format!("Failed to load Canvas: {error}"));
                         }
                     }
                     self.list.preview_content_index = Some(self.list.visual_index);
@@ -1621,7 +1681,7 @@ impl App {
                     return;
                 }
 
-                if let Ok(note) = self.storage.load_note(id) {
+                if let Some(Ok(Source::Markdown(content))) = source {
                     let width = self.desired_list_preview_width();
                     let mut renderer = match self.list.preview_content.take() {
                         Some(PreviewContent::Markdown(r)) => *r,
@@ -1636,11 +1696,6 @@ impl App {
                         height: height as usize,
                     };
 
-                    let content = if id.ends_with(".base") {
-                        format!("![[{id}]]")
-                    } else {
-                        note.content
-                    };
                     let content_changed = renderer.is_changed(&content, &self.app_theme, &opts);
                     let mut should_render = false;
                     if content_changed || renderer.document().is_none() {
@@ -1677,12 +1732,13 @@ impl App {
                 }
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
-            Some(VisualItem::TemplateConfig { folder, .. }) => {
-                let folder = folder.clone();
-                let content = self
-                    .storage
-                    .folder_template_config_path(&folder)
-                    .and_then(|path| std::fs::read_to_string(path).map_err(anyhow::Error::from));
+            Some(VisualItem::TemplateConfig { .. }) => {
+                let content = source
+                    .expect("loaded preview")
+                    .and_then(|source| match source {
+                        Source::Template(content) => Ok(content),
+                        _ => Err("Invalid template preview".into()),
+                    });
                 match content {
                     Ok(content) => {
                         let fence_len = content
@@ -2465,7 +2521,7 @@ mod tests {
             .iter()
             .position(|item| matches!(item, VisualItem::Note { .. }))
             .unwrap();
-        app.update_preview();
+        app.wait_for_preview_source();
         assert!(matches!(
             app.list.preview_content,
             Some(crate::list_view::PreviewContent::DrawGrid { .. })

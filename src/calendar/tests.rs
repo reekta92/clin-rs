@@ -24,6 +24,69 @@ fn document(events: &str) -> String {
 }
 
 #[test]
+fn asynchronous_events_share_the_editing_snapshot_until_reload() {
+    let root = tempfile::tempdir().unwrap();
+    let storage = storage(root.path());
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(1)
+        .build()
+        .unwrap();
+    let from = date("2026-10-01");
+    let until = date("2026-11-01");
+    let mut external = store::Service::default();
+    let mut draft = ical::Draft::new(date("2026-10-23"));
+    draft.title = "Original".into();
+    external
+        .update(&storage, |data| {
+            data.resources
+                .push(store::Resource::new(draft.build(None)?, None));
+            Ok(())
+        })
+        .unwrap();
+    let mut service = store::Service::default();
+    let wait = |service: &mut store::Service, from, until| {
+        assert!(
+            service
+                .events_async(&storage, from, until, &pool)
+                .unwrap()
+                .is_none()
+        );
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while !service.poll_events() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::yield_now();
+        }
+        service
+            .events_async(&storage, from, until, &pool)
+            .unwrap()
+            .unwrap()
+            .0
+            .to_vec()
+    };
+    assert_eq!(wait(&mut service, from, until)[0].title, "Original");
+    assert!(
+        service.store.is_some(),
+        "initial async load must also install the editing snapshot"
+    );
+    external
+        .update(&storage, |data| {
+            draft.title = "External change".into();
+            data.resources[0].source = draft.build(None)?;
+            Ok(())
+        })
+        .unwrap();
+    let events = wait(&mut service, from.pred_opt().unwrap(), until);
+    assert_eq!(events[0].title, "Original");
+    assert!(
+        service.update(&storage, |_| Ok(())).is_err(),
+        "stale edits must still be rejected"
+    );
+    service.events_async(&storage, from, until, &pool).unwrap();
+    service.reload(&storage).unwrap();
+    assert_eq!(wait(&mut service, from, until)[0].title, "External change");
+}
+
+#[test]
 fn all_day_and_timed_events_validate_and_round_trip() {
     let mut draft = ical::Draft::new(date("2026-10-23"));
     draft.title = "Planning, notes; café 🦀".into();

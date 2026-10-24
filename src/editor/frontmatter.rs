@@ -127,7 +127,7 @@ impl NoteEditor {
             .frontmatter_baseline()
             .context("missing note baseline")?;
         let frame = PropertyFrame::parse(baseline.source())?;
-        let body = self.body.text();
+        let body = self.body.snapshot();
         if let Some(state) = &self.frontmatter {
             if state.input.is_some() {
                 bail!(
@@ -192,6 +192,10 @@ impl NoteEditor {
             .as_ref()
             .map(|state| state.raw.lines())
             .hash(&mut hash);
+        self.frontmatter
+            .as_ref()
+            .is_some_and(|state| state.input.is_some())
+            .hash(&mut hash);
         crate::events::get_title_text(&self.title_editor).hash(&mut hash);
         hash.finish()
     }
@@ -203,7 +207,7 @@ impl NoteEditor {
                 .frontmatter
                 .as_ref()
                 .map_or_else(|| frame.yaml().to_owned(), FrontmatterEditor::yaml);
-            let source = frame.with_yaml_and_body(&yaml, &self.body.text());
+            let source = frame.with_yaml_and_body(&yaml, &self.body.snapshot());
             let title = crate::events::get_title_text(&self.title_editor);
             if self
                 .frontmatter
