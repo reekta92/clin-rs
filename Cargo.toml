@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.14.0-rc.0"
+version = "0.14.0-rc.1"
 edition = "2024"
 rust-version = "1.90.0"
 description = "Feature-packed terminal note management app inspired by Obsidian"
@@ -97,7 +97,7 @@ assets = [
 [dependencies]
 draw = { package = "draw-rs", version = "0.1.2" }
 anyhow = "1.0"
-base64 = "0.22"
+base64 = "0.23"
 arboard = "3.6.1"
 bincode = { version = "2.0", default-features = false, features = ["std", "serde"] }
 clap = { version = "4", features = ["derive"] }
