@@ -66,3 +66,34 @@ impl Storage {
         Ok(file)
     }
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_lock_release_does_not_wait_for_duplicated_descriptors() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let storage = Storage {
+            data_dir: root.path().into(),
+            notes_dir: root.path().into(),
+            config_dir: root.path().into(),
+            templates_dir: root.path().into(),
+            skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
+        };
+        let guard = storage.write_guard()?;
+        // A forked child can retain the same open file description until it execs.
+        let duplicate = guard.try_clone()?;
+        assert!(storage.write_guard().is_err());
+        drop(guard);
+
+        let next = storage.write_guard()?;
+        assert!(storage.write_guard().is_err());
+        drop(duplicate);
+        assert!(storage.write_guard().is_err());
+        drop(next);
+        let _guard = storage.write_guard()?;
+        Ok(())
+    }
+}
