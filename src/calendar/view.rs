@@ -1040,6 +1040,42 @@ impl View {
         }
     }
 
+    fn event_color(&self, event: &Occurrence, theme: &AppThemeColors) -> Color {
+        if self
+            .links
+            .get(&event.resource)
+            .is_some_and(|notes| !notes.is_empty())
+        {
+            theme.subnote
+        } else {
+            theme.accent
+        }
+    }
+
+    fn event_list<'a>(
+        &self,
+        events: impl Iterator<Item = &'a Occurrence>,
+        theme: &AppThemeColors,
+        timed: bool,
+    ) -> Vec<Span<'static>> {
+        let mut spans = Vec::new();
+        for event in events {
+            if !spans.is_empty() {
+                spans.push(Span::raw(" · "));
+            }
+            let title = if timed {
+                format!("{} {}", event.start.format("%H:%M"), event.title)
+            } else {
+                event.title.clone()
+            };
+            spans.push(Span::styled(
+                title,
+                Style::default().fg(self.event_color(event, theme)),
+            ));
+        }
+        spans
+    }
+
     fn render_month(&mut self, frame: &mut Frame, area: Rect, app: &App) {
         let theme = &app.app_theme;
         let inner = calendar_pane(
@@ -1061,6 +1097,8 @@ impl View {
         let grid = Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1);
         self.cells = month_cells(grid, self.date, app.list.week_start);
         for (index, (rect, date)) in self.cells.iter().enumerate() {
+            let current_month =
+                date.month() == self.date.month() && date.year() == self.date.year();
             let items: Vec<_> = self.events.iter().filter(|e| e.on_date(*date)).collect();
             let mut lines = vec![Line::from(format!(
                 "{:>2}{}",
@@ -1073,18 +1111,25 @@ impl View {
             ))];
             let capacity = rect.height.saturating_sub(1) as usize;
             for e in items.iter().take(capacity) {
-                lines.push(Line::from(format!(
-                    "{} {}",
-                    if e.all_day {
-                        "·".into()
-                    } else {
-                        e.start.format("%H:%M").to_string()
-                    },
-                    e.title
-                )));
+                let color = self.event_color(e, theme);
+                let color = if current_month {
+                    color
+                } else {
+                    crate::app_theme::mix_colors(color, theme.muted, 0.65)
+                };
+                lines.push(Line::styled(
+                    format!(
+                        "{} {}",
+                        if e.all_day {
+                            "·".into()
+                        } else {
+                            e.start.format("%H:%M").to_string()
+                        },
+                        e.title
+                    ),
+                    Style::default().fg(color),
+                ));
             }
-            let current_month =
-                date.month() == self.date.month() && date.year() == self.date.year();
             let mut style = if current_month {
                 calendar_section_style(theme, (index / 7 + index % 7) % 2 != 0, false)
                     .fg(theme.text)
@@ -1154,9 +1199,12 @@ impl View {
                     [
                         Line::from(Span::styled(
                             event_time(e),
-                            Style::default().fg(app.app_theme.accent),
+                            Style::default().fg(app.app_theme.muted),
                         )),
-                        Line::from(e.title.clone()),
+                        Line::styled(
+                            e.title.clone(),
+                            Style::default().fg(self.event_color(e, &app.app_theme)),
+                        ),
                         Line::from(""),
                     ]
                 })
@@ -1179,28 +1227,27 @@ impl View {
             &app.app_theme,
             app.app_theme.bg_style(),
         );
-        let all_day = self
-            .events
-            .iter()
-            .filter(|e| e.on_date(self.date) && e.all_day)
-            .map(|e| e.title.as_str())
-            .collect::<Vec<_>>()
-            .join(" · ");
-        let mut lines = vec![Line::from(format!("All day  {all_day}"))];
+        let mut all_day = vec![Span::raw("All day  ")];
+        all_day.extend(
+            self.event_list(
+                self.events
+                    .iter()
+                    .filter(|e| e.on_date(self.date) && e.all_day),
+                &app.app_theme,
+                false,
+            ),
+        );
+        let mut lines = vec![Line::from(all_day)];
         for hour in self.hour_scroll..24 {
-            let names = self
-                .events
-                .iter()
-                .filter(|e| {
-                    !e.all_day
-                        && e.on_date(self.date)
-                        && (e.start.date() < self.date && hour == 0
-                            || e.start.date() == self.date && e.start.hour() == hour)
-                })
-                .map(|e| format!("{} {}", e.start.format("%H:%M"), e.title))
-                .collect::<Vec<_>>()
-                .join(" · ");
-            lines.push(Line::from(format!("{hour:02}:00  {names}")));
+            let events = self.events.iter().filter(|e| {
+                !e.all_day
+                    && e.on_date(self.date)
+                    && (e.start.date() < self.date && hour == 0
+                        || e.start.date() == self.date && e.start.hour() == hour)
+            });
+            let mut spans = vec![Span::raw(format!("{hour:02}:00  "))];
+            spans.extend(self.event_list(events, &app.app_theme, true));
+            lines.push(Line::from(spans));
         }
         for (index, line) in lines.into_iter().take(inner.height as usize).enumerate() {
             frame.render_widget(
@@ -1250,16 +1297,25 @@ impl View {
             };
             let rect = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
             frame.render_widget(
-                Paragraph::new(format!(
-                    "{prefix}{} {}{}",
-                    event_time(event),
-                    event.title,
-                    if self.links.contains_key(&event.resource) {
-                        " [notes]"
-                    } else {
-                        ""
-                    }
-                ))
+                Paragraph::new(Line::from(vec![
+                    Span::raw(format!("{prefix}{} ", event_time(event))),
+                    Span::styled(
+                        event.title.clone(),
+                        Style::default().fg(self.event_color(event, theme)),
+                    ),
+                    Span::styled(
+                        if self
+                            .links
+                            .get(&event.resource)
+                            .is_some_and(|notes| !notes.is_empty())
+                        {
+                            " [notes]"
+                        } else {
+                            ""
+                        },
+                        Style::default().fg(theme.subnote),
+                    ),
+                ]))
                 .style(if index == self.selected {
                     Style::default()
                         .bg(theme.highlight_bg)
@@ -1319,7 +1375,7 @@ impl View {
                 Line::from(Span::styled(
                     event.title.clone(),
                     Style::default()
-                        .fg(app.app_theme.accent)
+                        .fg(self.event_color(event, &app.app_theme))
                         .add_modifier(Modifier::BOLD),
                 )),
                 Line::from(calendar.to_owned()),
@@ -1351,7 +1407,10 @@ impl View {
             lines.push(Line::from(""));
             lines.push(Line::from("Linked notes (l: link/unlink · o: open):"));
             for note in self.links.get(&event.resource).into_iter().flatten() {
-                lines.push(Line::from(note.clone()));
+                lines.push(Line::styled(
+                    note.clone(),
+                    Style::default().fg(app.app_theme.subnote),
+                ));
             }
             lines
         } else {

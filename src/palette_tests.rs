@@ -662,6 +662,80 @@ fn calendar_checker_backgrounds_fill_days_and_mute_adjacent_months() {
 }
 
 #[test]
+fn calendar_distinguishes_events_and_linked_notes_in_every_display() {
+    use crate::calendar::{ical::Draft, store};
+    use ratatui::style::Color;
+    for timed in [false, true] {
+        let mut f = Fixture::new();
+        let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+        f.app.open_calendar_at(Some(date)).unwrap();
+        f.app.app_theme.accent = Color::Rgb(30, 170, 220);
+        f.app.app_theme.subnote = Color::Rgb(190, 110, 210);
+        let mut resources = Vec::new();
+        for title in ["Meet", "Todo"] {
+            let mut draft = Draft::new(date);
+            draft.title = title.into();
+            if timed {
+                draft.start = format!("{date}T10:00");
+                draft.end = format!("{date}T11:00");
+            }
+            resources.push(store::Resource::new(draft.build(None).unwrap(), None));
+        }
+        let note_resource = resources[1].id.clone();
+        f.app
+            .calendar
+            .update(&f.app.storage, |data| {
+                data.resources.extend(resources);
+                Ok(())
+            })
+            .unwrap();
+        store::toggle_note_link(&f.app.storage, "selected.md", &note_resource).unwrap();
+        f.app.notes_revision += 1;
+        drive(&mut f.app, key(KeyCode::Null));
+        drive(&mut f.app, key(KeyCode::Null));
+        let mut view = f.app.calendar_view.take().unwrap();
+        view.select_resource(&mut f.app, &note_resource);
+        f.app.calendar_view = Some(view);
+        for display in ['m', 'w', 'd', 'a'] {
+            drive(&mut f.app, key(KeyCode::Char(display)));
+            let mut terminal = Terminal::new(TestBackend::new(140, 40)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            for (text, color, minimum) in [
+                ("Meet", f.app.app_theme.accent, 2),
+                ("Todo", f.app.app_theme.subnote, 3),
+                ("selected.md", f.app.app_theme.subnote, 1),
+                ("[notes]", f.app.app_theme.subnote, 1),
+            ] {
+                let mut count = 0;
+                for y in 1..39 {
+                    for x in 0..140 - text.len() as u16 {
+                        if text.chars().enumerate().all(|(offset, c)| {
+                            buffer[(x + offset as u16, y)].symbol() == c.to_string()
+                        }) {
+                            count += 1;
+                            for offset in 0..text.len() as u16 {
+                                assert_eq!(
+                                    buffer[(x + offset, y)].fg,
+                                    color,
+                                    "{text} in {display}, timed={timed}"
+                                );
+                            }
+                        }
+                    }
+                }
+                assert!(
+                    count >= minimum,
+                    "missing {text} in {display}, timed={timed}: {count}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
     let mut f = Fixture::new();
     let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();
