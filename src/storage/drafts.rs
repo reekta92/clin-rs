@@ -1,5 +1,5 @@
 //! Coalesced recovery writes; durable flushes happen at save and session boundaries.
-use super::{Storage, documents::DocumentSnapshot};
+use super::{Storage, documents::DocumentSnapshot, write_guard::CoordinationGuard};
 use anyhow::{Result, anyhow};
 use std::{
     collections::HashMap,
@@ -21,7 +21,7 @@ enum Command {
 }
 
 pub(crate) struct DraftWorker {
-    _lease: std::fs::File,
+    _lease: CoordinationGuard,
     pending: Jobs,
     commands: mpsc::SyncSender<Command>,
     error: Arc<Mutex<Option<String>>>,

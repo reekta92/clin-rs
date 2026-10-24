@@ -3,29 +3,38 @@ use super::Storage;
 use anyhow::{Context, Result, bail};
 use std::fs;
 
+pub(crate) struct CoordinationGuard(fs::File);
+
+impl Drop for CoordinationGuard {
+    fn drop(&mut self) {
+        // Closing alone can retain the lock through a descriptor inherited by a child.
+        let _ = self.0.unlock();
+    }
+}
+
 impl Storage {
-    pub(crate) fn write_guard(&self) -> Result<fs::File> {
+    pub(crate) fn write_guard(&self) -> Result<CoordinationGuard> {
         let file = self.coordination_file("write.lock")?;
         file.try_lock()
             .context("another clin write is in progress; retry saving")?;
-        Ok(file)
+        Ok(CoordinationGuard(file))
     }
 
-    pub(crate) fn calendar_guard(&self) -> Result<fs::File> {
+    pub(crate) fn calendar_guard(&self) -> Result<CoordinationGuard> {
         let file = self.coordination_file("calendar.lock")?;
         file.try_lock()
             .context("calendar is busy in another write or sync; retry shortly")?;
-        Ok(file)
+        Ok(CoordinationGuard(file))
     }
 
-    pub(crate) fn recovery_guard(&self, exclusive: bool) -> Result<fs::File> {
+    pub(crate) fn recovery_guard(&self, exclusive: bool) -> Result<CoordinationGuard> {
         let file = self.coordination_file("recovery.lock")?;
         if exclusive {
             file.try_lock()?;
         } else {
             file.try_lock_shared()?;
         }
-        Ok(file)
+        Ok(CoordinationGuard(file))
     }
 
     fn coordination_file(&self, name: &str) -> Result<fs::File> {
@@ -84,7 +93,7 @@ mod tests {
         };
         let guard = storage.write_guard()?;
         // A forked child can retain the same open file description until it execs.
-        let duplicate = guard.try_clone()?;
+        let duplicate = guard.0.try_clone()?;
         assert!(storage.write_guard().is_err());
         drop(guard);
 
