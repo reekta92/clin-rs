@@ -18,10 +18,10 @@ pub(crate) fn content_area(area: Rect) -> Rect {
 
 pub(crate) fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
-    if area.height == 0 {
+    if area.height == 0 || app.mode == ViewMode::Setup {
         return;
     }
-    let area = Rect::new(area.x, area.bottom() - 1, area.width, 1);
+    let area = super::chrome::rows(area)[2];
     let theme = &app.app_theme;
     let mut ctx = StatuslineContext::for_view(app, app.mode);
     ctx.area = Some(area);
@@ -199,10 +199,15 @@ fn hints(app: &App) -> Line<'_> {
             if let Some(canvas) = &app.canvas_state
                 && !canvas.state.footer_hint.is_empty()
             {
-                return Line::from(Span::styled(
-                    canvas.state.footer_hint.clone(),
-                    Style::default().fg(theme.muted),
-                ));
+                return crate::statusline::line_from_segments(
+                    &[crate::statusline::Segment::Text(
+                        crate::fsutil::sanitize_for_terminal(&canvas.state.footer_hint)
+                            .into_owned(),
+                    )],
+                    theme,
+                    false,
+                    false,
+                );
             }
             vec![
                 (

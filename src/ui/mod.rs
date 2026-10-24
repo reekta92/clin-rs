@@ -12,6 +12,7 @@ use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
 pub(crate) mod braille;
+pub(crate) mod chrome;
 mod edit_view;
 mod footer;
 pub(crate) use footer::content_area as view_content_area;
@@ -138,6 +139,7 @@ fn background_images_visible(app: &App) -> bool {
 }
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
+    app.header_tabs.clear();
     app.refresh_command_palette();
     app.base_embeds.begin_frame();
     app.list.image_cache.begin_frame();
@@ -155,7 +157,27 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     let view_area = view_content_area(frame.area());
-    if view_area.height == 0 || view_area.width == 0 {
+    if app.mode != ViewMode::Setup && !(app.mode == ViewMode::Edit && app.zen_mode) {
+        let header = chrome::rows(frame.area())[0];
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, app.mode);
+        ctx.area = Some(header);
+        let (left, right) = crate::statusline::render_header(
+            &ctx,
+            &app.config.statusline,
+            app.mode,
+            &app.app_theme,
+        );
+        draw_view_title_bar(
+            frame,
+            header,
+            &app.app_theme,
+            left,
+            right,
+            Some(app.status.as_ref()),
+            app.load_spinner_tick,
+        );
+    }
+    if app.mode != ViewMode::Setup && (view_area.height == 0 || view_area.width == 0) {
         app.mouse_pos = popup_hover_pos;
         app.list.image_cache.end_frame();
         app.editor.image_cache.end_frame();
@@ -175,10 +197,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
         ViewMode::Graph => {
             if let Some(mut graf) = app.graph_plugin.take() {
-                let outer = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(view_area);
+                let outer = crate::ui::chrome::content_rows(view_area);
 
                 let banner = graf
                     .graph_state
@@ -256,31 +275,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         ViewMode::Draw => {
             if let Some(mut draw) = app.draw_state.take() {
-                let outer = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(view_area);
+                let outer = crate::ui::chrome::content_rows(view_area);
                 let icon_mode = app.config.ui.icon_mode;
                 let tabs_arr = crate::draw_adapter::draw_tool_tabs(icon_mode);
                 let tabs = tab_vec_from_array(&tabs_arr);
                 let active = crate::draw_adapter::draw_tool_tab_index(draw.state.active_tool);
                 draw.sync_header_status(app);
-                let hovered = app.mouse_pos.and_then(|(col, row)| {
-                    if row == outer[0].y {
-                        let region = crate::ui::title_bar_tabs_region(outer[0], "Draw");
-                        crate::ui::hit_test_tabs(
-                            &tabs,
-                            outer[0].x,
-                            outer[0].width,
-                            region.x,
-                            col,
-                            false,
-                            icon_mode,
-                        )
-                    } else {
-                        None
-                    }
-                });
+                let hovered = None;
                 let spans =
                     build_tab_spans(&tabs, active, hovered, &app.app_theme, false, icon_mode);
                 let mut ctx =
@@ -296,16 +297,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     ViewMode::Draw,
                     &app.app_theme,
                 );
-                draw_view_title_bar_with_tabs(
+                app.header_tabs = crate::ui::draw_header_tabs(
                     frame,
                     outer[0],
-                    "Draw",
                     &app.app_theme,
                     left_line,
                     spans,
+                    active,
                     right_line,
                     Some(app.status.as_ref()),
                     app.load_spinner_tick,
+                    app.mouse_pos,
                 );
                 draw.state.mouse_pos = app.mouse_pos;
                 draw.overlay_render(frame, outer[1], app);
@@ -314,10 +316,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
         ViewMode::Canvas => {
             if let Some(mut canvas) = app.canvas_state.take() {
-                let outer = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(view_area);
+                let outer = crate::ui::chrome::content_rows(view_area);
                 let mut ctx = crate::statusline::StatuslineContext::for_overlay(
                     &app.config,
                     ViewMode::Canvas,
@@ -355,10 +354,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         ViewMode::Outline => {
             if let Some(mut tree) = app.outline_state.take() {
-                let outer = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(view_area);
+                let outer = crate::ui::chrome::content_rows(view_area);
                 let mut ctx = crate::statusline::StatuslineContext::for_overlay(
                     &app.config,
                     ViewMode::Outline,

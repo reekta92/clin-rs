@@ -231,7 +231,7 @@ fn shared_footer_survives_missing_view_state_and_tiny_terminals() {
     f.app.config.statusline.footer_left = Some("F".into());
     f.app.config.statusline.footer_right = Some(String::new());
     f.app.app_theme.hint_bar_style = crate::config::HintBarStyle::Classic;
-    for mode in ViewMode::iter() {
+    for mode in ViewMode::iter().filter(|mode| *mode != ViewMode::Setup) {
         f.app.mode = mode;
         for (width, height) in [(1, 1), (12, 4), (80, 12)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -250,7 +250,7 @@ fn shared_footer_survives_missing_view_state_and_tiny_terminals() {
 #[test]
 fn every_view_has_the_host_footer_in_every_hint_style() {
     use strum::IntoEnumIterator;
-    for mode in ViewMode::iter() {
+    for mode in ViewMode::iter().filter(|mode| *mode != ViewMode::Setup) {
         let mut f = Fixture::new();
         f.enter(mode);
         f.app.config.statusline.footer_left = Some("{hints}".into());
@@ -288,6 +288,43 @@ fn every_view_has_the_host_footer_in_every_hint_style() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn setup_has_no_host_bars_and_missing_views_keep_the_header() {
+    use strum::IntoEnumIterator;
+    let mut f = Fixture::new();
+    f.app.config.statusline.header_left = Some("HOST HEADER".into());
+    f.app.config.statusline.header_right = Some(String::new());
+    f.app.config.statusline.footer_left = Some("HOST FOOTER".into());
+    f.app.config.statusline.footer_right = Some(String::new());
+    for mode in ViewMode::iter() {
+        f.app.mode = mode;
+        if mode == ViewMode::Setup {
+            f.enter(mode);
+        }
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert_eq!(
+            text.contains("HOST HEADER"),
+            mode != ViewMode::Setup,
+            "{mode:?}"
+        );
+        assert_eq!(
+            text.contains("HOST FOOTER"),
+            mode != ViewMode::Setup,
+            "{mode:?}"
+        );
     }
 }
 

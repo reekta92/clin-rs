@@ -233,19 +233,12 @@ impl OverlayView for DrawPlugin {
                     && mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && header.contains((mouse.column, mouse.row).into())
                 {
-                    let icon_mode = app.config.ui.icon_mode;
-                    let tabs_arr = draw_tool_tabs(icon_mode);
-                    let tabs = crate::ui::tab_vec_from_array(&tabs_arr);
-                    let region = crate::ui::title_bar_tabs_region(header, "Draw");
-                    if let Some(index) = crate::ui::hit_test_tabs(
-                        &tabs,
-                        header.x,
-                        header.width,
-                        region.x,
-                        mouse.column,
-                        false,
-                        icon_mode,
-                    ) {
+                    if let Some(index) = app
+                        .header_tabs
+                        .iter()
+                        .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
+                        .map(|(_, index)| *index)
+                    {
                         let tool = DRAW_TAB_TOOLS[index];
                         let action = match tool {
                             DrawTool::Draw if self.state.active_tool == DrawTool::Draw => {

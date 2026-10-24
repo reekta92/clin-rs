@@ -5,10 +5,7 @@ use crate::{
     overlay::{OverlayResult, OverlayView},
 };
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    text::Line,
-};
+use ratatui::{layout::Rect, text::Line};
 
 impl OverlayView for BasesState {
     fn overlay_render(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
@@ -123,10 +120,7 @@ impl OverlayView for BasesState {
 }
 impl BasesState {
     pub(crate) fn render_native(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &App) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(0)])
-            .split(area);
+        let chunks = crate::ui::chrome::content_rows(area);
         let view = self.loaded.as_ref().map_or("", |loaded| {
             loaded.document.config.views[loaded.view].name.as_str()
         });
