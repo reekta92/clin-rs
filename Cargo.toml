@@ -99,7 +99,7 @@ draw = { package = "draw-rs", version = "0.1.2" }
 anyhow = "1.0"
 base64 = "0.22"
 arboard = "3.6.1"
-bincode = { version = "2.0", features = ["serde"] }
+bincode = { version = "2.0", default-features = false, features = ["std", "serde"] }
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 chrono-tz = "0.10"
@@ -107,17 +107,17 @@ icalendar = { version = "0.17.15", features = ["recurrence"] }
 iso8601 = "0.6"
 csv = "1.3"
 crossterm = "0.29"
-directories = "5.0"
+directories = "6.0"
 fuzzy-matcher = "0.3.7"
 lru = "0.18.1"
-image = "0.25.10"
-ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm", "image-defaults"] }
+image = { version = "0.25.10", default-features = false, features = ["rayon", "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp"] }
+ratatui-image = { version = "11.0.6", default-features = false, features = ["crossterm"] }
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 graf = { package = "graf-rs", version = "1.1.0" }
-pinstar = { version = "1.1.2", features = ["images", "mermaid-preview"] }
+pinstar = { version = "1.1.4", default-features = false, features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 # Keep existing imports while using YAML Organization's maintained backend.
@@ -136,7 +136,7 @@ unicode-width = "0.2"
 unicode-segmentation = "1.13"
 notify = "8.2.0"
 same-file = "1"
-sha2 = "0.10.9"
+ring = "0.17.14"
 rayon = "1.12"
 regex = "1"
 quick-xml = "0.41"

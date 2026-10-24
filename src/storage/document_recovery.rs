@@ -1,6 +1,6 @@
 //! Private plaintext recovery for guarded documents. Legacy encrypted records stay untouched.
 
-use super::{Storage, documents::DocumentSnapshot};
+use super::{Storage, documents::DocumentSnapshot, write_guard::CoordinationGuard};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -36,7 +36,7 @@ pub(crate) struct EditorRecovery {
 type Entry = (String, String, String);
 pub(crate) struct DocumentTransaction {
     path: PathBuf,
-    _lease: fs::File,
+    _lease: CoordinationGuard,
 }
 
 fn sync_directory(path: &Path) -> Result<()> {
