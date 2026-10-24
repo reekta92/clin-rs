@@ -28,7 +28,7 @@ impl TreeNode {
 /// `title` = note title (becomes the depth-0 root).
 /// `content` = note body (already frontmatter-stripped by `Storage::load_note`).
 pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
-    use comrak::{Arena, nodes::NodeValue, parse_document};
+    use comrak::{Arena, arena_tree::NodeEdge, nodes::NodeValue, parse_document};
     let arena = Arena::new();
     let root = parse_document(&arena, content, &crate::markdown::structure::options());
     let mut nodes = vec![TreeNode {
@@ -41,8 +41,42 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
         has_children: false,
     }];
     let mut headings = Vec::new();
-    for node in root.descendants().skip(1) {
+    // Headings inside a list item or quote cannot change its parent's sections.
+    let mut heading_scopes = Vec::new();
+    let mut source_lines = None;
+    for edge in root.traverse() {
+        let node = match edge {
+            NodeEdge::Start(node) => node,
+            NodeEdge::End(node) => {
+                if matches!(
+                    node.data.borrow().value,
+                    NodeValue::Item(_) | NodeValue::TaskItem(_) | NodeValue::BlockQuote
+                ) && let Some(start) = heading_scopes.pop()
+                {
+                    headings.truncate(start);
+                }
+                continue;
+            }
+        };
         let data = node.data.borrow();
+        if matches!(
+            data.value,
+            NodeValue::Item(_) | NodeValue::TaskItem(_) | NodeValue::BlockQuote
+        ) {
+            heading_scopes.push(headings.len());
+        }
+        if !matches!(
+            data.value,
+            NodeValue::Heading(_)
+                | NodeValue::Item(_)
+                | NodeValue::TaskItem(_)
+                | NodeValue::Paragraph
+                | NodeValue::Table(_)
+                | NodeValue::HtmlBlock(_)
+                | NodeValue::CodeBlock(_)
+        ) {
+            continue;
+        }
         let list_depth = node
             .ancestors()
             .skip(1)
@@ -56,10 +90,13 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
         let mut depth = headings.len() + list_depth + 1;
         let kind = match &data.value {
             NodeValue::Heading(heading) => {
-                while headings.last().is_some_and(|level| *level >= heading.level) {
+                let scope_start = heading_scopes.last().copied().unwrap_or(0);
+                while headings.len() > scope_start
+                    && headings.last().is_some_and(|level| *level >= heading.level)
+                {
                     headings.pop();
                 }
-                depth = headings.len() + 1;
+                depth = headings.len() + list_depth + 1;
                 headings.push(heading.level);
                 NodeKind::Header {
                     level: heading.level,
@@ -69,7 +106,12 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
             NodeValue::Item(_) | NodeValue::TaskItem(_) => {
                 let mut text = node
                     .first_child()
-                    .filter(|child| matches!(child.data.borrow().value, NodeValue::Paragraph))
+                    .filter(|child| {
+                        matches!(
+                            child.data.borrow().value,
+                            NodeValue::Paragraph | NodeValue::Heading(_)
+                        )
+                    })
                     .map(inline_text)
                     .unwrap_or_default();
                 if let NodeValue::TaskItem(task) = data.value {
@@ -77,8 +119,9 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
                 }
                 NodeKind::ListItem { text }
             }
-            NodeValue::Paragraph => {
-                if node.previous_sibling().is_none()
+            NodeValue::Paragraph | NodeValue::Table(_) | NodeValue::HtmlBlock(_) => {
+                if matches!(data.value, NodeValue::Paragraph)
+                    && node.previous_sibling().is_none()
                     && node.parent().is_some_and(|parent| {
                         matches!(
                             parent.data.borrow().value,
@@ -88,7 +131,21 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
                 {
                     continue;
                 }
-                let full_text = inline_text(node);
+                let full_text = match &data.value {
+                    NodeValue::Table(_) => {
+                        let lines =
+                            source_lines.get_or_insert_with(|| content.lines().collect::<Vec<_>>());
+                        lines
+                            .get(
+                                data.sourcepos.start.line.saturating_sub(1)
+                                    ..data.sourcepos.end.line,
+                            )
+                            .unwrap_or_default()
+                            .join("\n")
+                    }
+                    NodeValue::HtmlBlock(block) => block.literal.trim_end_matches('\n').to_owned(),
+                    _ => inline_text(node),
+                };
                 let preview =
                     crate::fsutil::truncate_ellipsis(full_text.lines().next().unwrap_or(""), 60);
                 NodeKind::Paragraph { preview, full_text }
@@ -129,6 +186,41 @@ fn inline_text<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tables_and_html_blocks_remain_navigable() {
+        for source in [
+            "| A | B |\n|---|---|\n| x | y |\n",
+            "<div>\nUseful HTML content\n</div>\n",
+        ] {
+            let nodes = parse_outline("Note", &format!("# Section\n\n{source}"));
+            assert_eq!(nodes.len(), 3);
+            assert_eq!(nodes[2].line, 3);
+            assert_eq!(nodes[2].depth, 2);
+            assert_eq!(nodes[2].full_text(), source.trim_end_matches('\n'));
+        }
+    }
+
+    #[test]
+    fn container_headings_do_not_capture_following_blocks() {
+        for source in [
+            "# Outer\n\n- ## Inside\n\nOutside paragraph.\n",
+            "# Outer\n\n> # Inside\n>\n> Inside paragraph.\n\nOutside paragraph.\n",
+            "# Outer\n\n- ## Inside\n  - ### Nested\n\nOutside paragraph.\n",
+        ] {
+            let nodes = parse_outline("Note", source);
+            let outside = nodes.last().unwrap();
+            assert_eq!(outside.full_text(), "Outside paragraph.");
+            assert_eq!(outside.depth, 2);
+            assert!(nodes.iter().all(|node| !node.full_text().is_empty()));
+            for (index, node) in nodes.iter().enumerate() {
+                if matches!(node.kind, NodeKind::ListItem { .. }) {
+                    assert!(nodes[index + 1].depth > node.depth);
+                    assert!(node.has_children);
+                }
+            }
+        }
+    }
 
     #[test]
     fn commonmark_fences_headings_and_nested_lists_keep_source_lines() {

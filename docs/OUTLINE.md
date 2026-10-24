@@ -20,7 +20,7 @@ The outline parser (`src/outline/parse.rs`) uses the same Comrak syntax options 
 
 - **Header**: Matches ATX headers (`#` through `######`) and Setext headings (underlined with `=` or `-`). The header level determines hierarchy. Note titles are treated as the root (depth 0).
 - **ListItem**: Matches list item bullets (`-`, `*`, `+`) and ordered list numbers (`1.`, `2)`, etc.).
-- **Paragraph**: Blocks of prose. The parser keeps a preview of the first line (up to 60 characters with trailing ellipsis `…`).
+- **Paragraph**: Blocks of prose, tables and raw HTML blocks. The parser keeps a preview of the first line (up to 60 characters with trailing ellipsis `…`). Tables and HTML retain their source text.
 - **CodeBlock**: Collapses fenced or indented code into one node. Fence characters and lengths follow CommonMark; unfinished blocks remain navigable.
 
 ### Hierarchy & Depth Rules
@@ -30,6 +30,7 @@ The outline parser (`src/outline/parse.rs`) uses the same Comrak syntax options 
 - Non-header elements (paragraphs, lists, code blocks) under a header have `depth = parent_header_depth + 1`.
 - Any non-header elements appearing before the first header are attached directly under the note root (`depth = 1`).
 - Nested list items add their list nesting depth beneath the current header.
+- Headings inside list items or block quotes stay within that container; following outside blocks return to the enclosing section.
 
 ---
 
