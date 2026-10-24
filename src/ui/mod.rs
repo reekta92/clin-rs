@@ -1020,8 +1020,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     palette.item_preview(item, &app.app_theme),
                 ]);
                 if palette.state.selected() == Some(i) {
-                    list_item =
-                        list_item.style(app.app_theme.hover_style().add_modifier(Modifier::BOLD));
+                    list_item = list_item.style(app.app_theme.selected_style());
                 } else if Some(i) == hovered_cmd_idx {
                     list_item = list_item.style(app.app_theme.hover_style());
                 }

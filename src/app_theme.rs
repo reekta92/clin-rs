@@ -308,6 +308,13 @@ impl AppThemeColors {
             None => Style::default().bg(Color::DarkGray),
         }
     }
+
+    pub fn selected_style(&self) -> Style {
+        Style::default()
+            .fg(self.highlight_fg)
+            .bg(self.highlight_bg)
+            .add_modifier(ratatui::style::Modifier::BOLD)
+    }
 }
 
 fn derive_color(base: Option<Color>, delta: i16) -> Option<Color> {

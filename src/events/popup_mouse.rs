@@ -1100,9 +1100,27 @@ impl crate::popups::ActivePopup {
             }
 
             // === Group D: Info (display-only) ===
-            Info(p) => {
+            Info(mut p) => {
                 let popup_area =
-                    crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+                    crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => p.scroll_offset = p.scroll_offset.saturating_sub(3),
+                    MouseEventKind::ScrollDown => {
+                        p.scroll_offset = p.scroll_offset.saturating_add(3)
+                    }
+                    _ => {}
+                }
+                if let Some(meta) = p.last_scroll {
+                    let max = meta.content_len.saturating_sub(meta.viewport_len);
+                    if let Some(fraction) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                        mouse,
+                        meta,
+                        p.scroll_offset as f32 / max.max(1) as f32,
+                        &mut app.popups.scroll_drag,
+                    ) {
+                        p.scroll_offset = (fraction * max as f32).round() as usize;
+                    }
+                }
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && !contains_cell(popup_area, mouse.column, mouse.row)
                 {
@@ -1130,14 +1148,10 @@ impl crate::popups::ActivePopup {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Min(1), Constraint::Length(1)])
                     .split(popup_area)[0];
-                let main_chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Length(34), Constraint::Min(0)])
-                    .split(content);
-                let edit_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(3), Constraint::Min(0)])
-                    .split(main_chunks[1]);
+                let [list_area, title_area, body_area] =
+                    crate::ui::subnotes_layout(content, p.focus);
+                let main_chunks = [list_area];
+                let edit_chunks = [title_area, body_area];
                 if handle_popup_text_selection(
                     app,
                     mouse,
@@ -1276,11 +1290,11 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
         return false;
     };
 
-    let popup_width = (terminal_area.width / 2).clamp(30, 80);
+    let popup_width = crate::ui::header_dropdown_width(terminal_area);
     let x = terminal_area.x + (terminal_area.width.saturating_sub(popup_width)) / 2;
 
     let total_items = switcher.vaults.len() + 1; // + Add row
-    let max_visible_rows = 12usize;
+    let max_visible_rows = 12usize.min(terminal_area.height.saturating_sub(1) as usize);
     let scroll = switcher
         .selected
         .saturating_sub(max_visible_rows.saturating_sub(1))

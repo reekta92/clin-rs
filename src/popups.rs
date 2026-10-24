@@ -300,6 +300,8 @@ pub enum InfoItem {
 pub struct InfoPopup {
     pub title: String,
     pub items: Vec<InfoItem>,
+    pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

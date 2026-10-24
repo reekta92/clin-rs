@@ -348,7 +348,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
              is_selected,
              theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    Style::default().fg(theme.fg)
+                    theme.selected_style()
                 } else {
                     Style::default().fg(theme.highlight_fg)
                 };

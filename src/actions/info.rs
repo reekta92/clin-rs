@@ -119,6 +119,8 @@ impl Action for ShowInfoAction {
             app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
                 title: format!("Info: {}", note.title),
                 items,
+                scroll_offset: 0,
+                last_scroll: None,
             }));
             return Ok(());
         }
@@ -170,6 +172,8 @@ impl Action for ShowInfoAction {
             app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
                 title: format!("Info: {}", folder_name),
                 items,
+                scroll_offset: 0,
+                last_scroll: None,
             }));
             return Ok(());
         }

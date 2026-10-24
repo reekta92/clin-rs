@@ -10,6 +10,7 @@ use ratatui::{
 use crate::app_theme::AppThemeColors;
 use crate::events::handle_popup_text_input;
 use crate::keybinds::Keybinds;
+use unicode_width::UnicodeWidthStr;
 
 /// Unified quick search that replaces duplicated search/find implementations.
 /// Renders into the header bar with a dropdown for results.
@@ -56,6 +57,13 @@ impl<T> QuickSearch<T> {
     /// Safely extract the first line of the input text.
     pub fn query(&self) -> String {
         self.input.lines().first().cloned().unwrap_or_default()
+    }
+
+    fn visible_offset(&self, max_visible: usize) -> usize {
+        self.scroll_offset
+            .min(self.selected)
+            .max(self.selected.saturating_sub(max_visible.saturating_sub(1)))
+            .min(self.results.len().saturating_sub(max_visible))
     }
 
     pub fn scroll_to_selected(&mut self, max_visible: usize) {
@@ -152,6 +160,7 @@ pub fn draw_quick_search<T, F>(
 {
     let frame_area = frame.area();
     let result_count = popup.results.len();
+    let max_visible = max_visible.min(frame_area.height.saturating_sub(1) as usize);
     let query = popup.query();
     let has_query = !query.is_empty();
 
@@ -164,7 +173,7 @@ pub fn draw_quick_search<T, F>(
     // --- Icon + "Find:" label + centered input field ---
     let icon = crate::ui::icons::SEARCH.get(icon_mode);
     let label_text = format!("{} Find: ", icon);
-    let label_width = label_text.chars().count() as u16;
+    let label_width = (label_text.width() as u16).min(frame_area.width);
     let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
     let combo_width = label_width + input_width;
     let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
@@ -184,7 +193,7 @@ pub fn draw_quick_search<T, F>(
     if let Some(info) = &popup.info {
         let info_style = Style::default().fg(theme.highlight_fg).bg(theme.accent);
         let info_span = Span::styled(format!(" {}", info), info_style);
-        let info_width = info.len() as u16 + 1;
+        let info_width = info.width() as u16 + 1;
         let info_x = start_x + combo_width + 1;
         if info_x + info_width <= frame_area.right() {
             let info_area = Rect::new(info_x, frame_area.y, info_width, 1);
@@ -197,7 +206,7 @@ pub fn draw_quick_search<T, F>(
     let dropdown_height = if visible_count > 0 {
         visible_count
     } else if has_query {
-        1 // show "No matches"
+        usize::from(frame_area.height > 1) // show "No matches"
     } else {
         0
     };
@@ -225,7 +234,7 @@ pub fn draw_quick_search<T, F>(
             ));
             frame.render_widget(no_match, dropdown_area);
         } else {
-            let scroll_offset = popup.scroll_offset;
+            let scroll_offset = popup.visible_offset(max_visible);
             let items: Vec<ListItem<'static>> = popup
                 .results
                 .iter()
@@ -237,7 +246,7 @@ pub fn draw_quick_search<T, F>(
                     let line = render_item(item, is_selected, theme);
                     let mut list_item = ListItem::new(line);
                     if is_selected {
-                        list_item = list_item.style(Style::default().bg(theme.heading));
+                        list_item = list_item.style(theme.selected_style());
                     }
                     list_item
                 })
@@ -258,6 +267,8 @@ pub fn handle_quick_search_mouse<T>(
     icon_mode: crate::config::IconMode,
 ) -> Option<QuickSearchAction> {
     let result_count = popup.results.len();
+    let max_visible = max_visible.min(frame_area.height.saturating_sub(1) as usize);
+    popup.scroll_offset = popup.visible_offset(max_visible);
     let query = popup.query();
     let has_query = !query.is_empty();
 
@@ -265,7 +276,7 @@ pub fn handle_quick_search_mouse<T>(
 
     let icon = crate::ui::icons::SEARCH.get(icon_mode);
     let label_text = format!("{} Find: ", icon);
-    let label_width = label_text.chars().count() as u16;
+    let label_width = (label_text.width() as u16).min(frame_area.width);
     let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
     let combo_width = label_width + input_width;
     let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
@@ -276,7 +287,7 @@ pub fn handle_quick_search_mouse<T>(
     let dropdown_height = if visible_count > 0 {
         visible_count
     } else if has_query {
-        1 // show "No matches"
+        usize::from(frame_area.height > 1) // show "No matches"
     } else {
         0
     };

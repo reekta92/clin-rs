@@ -2,6 +2,9 @@ use super::*;
 use crate::app::{EditFocus, EditSidebar, HelpTab};
 use crate::config::{ClinConfig, ConfigTestGuard, HintBarStyle, IconMode, NotesLayout};
 use crate::list_view::VisualItem;
+use crate::ui::{
+    PopupHints, PopupSize, draw_popup_frame, draw_ui, subnotes_layout, truncate_cells,
+};
 use crate::ui::{format_keybind_hints, hit_test_tabs, icons, title_bar_tabs_region};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{Terminal, backend::TestBackend};
@@ -1290,4 +1293,97 @@ fn popup_scrollbars_share_borders_and_keep_corners_and_mouse_targets() {
     assert!(
         matches!(&app.popups.active, Some(crate::popups::ActivePopup::Subnotes(popup)) if popup.selected > 0)
     );
+}
+
+#[test]
+fn popup_hints_fit_and_preserve_save_and_cancel() {
+    let theme = AppThemeColors::default();
+    for width in [30, 40, 80] {
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw_popup_frame(
+                    frame,
+                    frame.area(),
+                    "界面",
+                    PopupSize::Large,
+                    PopupHints::Keybinds(&[
+                        ("Tab".into(), "navigate between all fields"),
+                        ("Enter".into(), "save"),
+                        ("Esc".into(), "cancel"),
+                    ]),
+                    &theme,
+                );
+            })
+            .unwrap();
+        let text = text_in(
+            terminal.backend().buffer(),
+            terminal.backend().buffer().area,
+        );
+        assert!(text.contains("Enter save"), "{width}: {text}");
+        assert!(text.contains("Esc cancel"), "{width}: {text}");
+        assert_eq!(truncate_cells("界e\u{301}界", 4), "界e\u{301}…");
+    }
+}
+
+#[test]
+fn info_scrolls_to_last_section_with_keyboard_and_mouse() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
+        title: "Information".into(),
+        items: vec![crate::popups::InfoItem::Text {
+            heading: "Long path".into(),
+            body: format!("{}\nLast evidence", "界面 ".repeat(100)),
+        }],
+        scroll_offset: 0,
+        last_scroll: None,
+    }));
+    let area = Rect::new(0, 0, 80, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(crate::events::handle_global_popups_and_palette(
+        &mut app,
+        crossterm::event::Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)),
+        area
+    ));
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(text_in(terminal.backend().buffer(), area).contains("Last evidence"));
+    let Some(crate::popups::ActivePopup::Info(popup)) = &app.popups.active else {
+        panic!("Info closed");
+    };
+    let end = popup.scroll_offset;
+    let track = popup.last_scroll.unwrap().track;
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(MouseEventKind::ScrollUp, track.x, track.y),
+        area,
+    );
+    assert!(
+        matches!(&app.popups.active, Some(crate::popups::ActivePopup::Info(p)) if p.scroll_offset < end)
+    );
+}
+
+#[test]
+fn subnotes_keeps_focused_editor_usable_in_narrow_windows() {
+    for width in [30, 48, 72, 100] {
+        let content = Rect::new(4, 3, width, 12);
+        let [list, title, body] =
+            subnotes_layout(content, crate::popups::SubnotesFocus::EditContent);
+        assert!(body.width >= 30);
+        assert!(content.contains(body.as_position()));
+        assert!(title.bottom() <= body.y);
+        if width < 60 {
+            assert!(list.is_empty());
+            assert_eq!(body.width, content.width);
+            assert_eq!(
+                subnotes_layout(content, crate::popups::SubnotesFocus::List)[0],
+                content
+            );
+        }
+    }
 }

@@ -1139,9 +1139,25 @@ pub fn handle_global_popups_and_palette(
     }
 
     // Info popup (display-only; Enter/Esc closes, any other key traps)
-    if matches!(app.popups.active, Some(crate::popups::ActivePopup::Info(_))) {
-        if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
-            app.popups.active = None;
+    if let Some(crate::popups::ActivePopup::Info(popup)) = app.popups.active.as_mut() {
+        let viewport = popup.last_scroll.map_or(1, |meta| meta.viewport_len.max(1));
+        match key.code {
+            KeyCode::Enter | KeyCode::Esc => app.popups.active = None,
+            KeyCode::Up | KeyCode::Char('k') => {
+                popup.scroll_offset = popup.scroll_offset.saturating_sub(1)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                popup.scroll_offset = popup.scroll_offset.saturating_add(1)
+            }
+            KeyCode::PageUp => popup.scroll_offset = popup.scroll_offset.saturating_sub(viewport),
+            KeyCode::PageDown => popup.scroll_offset = popup.scroll_offset.saturating_add(viewport),
+            KeyCode::Home => popup.scroll_offset = 0,
+            KeyCode::End => {
+                popup.scroll_offset = popup
+                    .last_scroll
+                    .map_or(0, |meta| meta.content_len.saturating_sub(meta.viewport_len))
+            }
+            _ => {}
         }
         return true;
     }

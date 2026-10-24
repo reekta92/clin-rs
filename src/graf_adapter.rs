@@ -1631,7 +1631,7 @@ fn draw_ui(
             max_visible,
             move |(_, title), is_selected, theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    ratatui::style::Style::default().fg(theme.fg)
+                    theme.selected_style()
                 } else {
                     ratatui::style::Style::default().fg(theme.highlight_fg)
                 };
