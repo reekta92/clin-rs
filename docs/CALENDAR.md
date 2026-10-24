@@ -1,6 +1,6 @@
 # Calendar
 
-Open **Open Calendar View** from the command palette (`F6` or `Ctrl+Space`), or click the Notes `calendar` widget. Clicking a day selects that date. The view offers Month, Week, Day, and a 30-day Agenda, with a selected-date event list and event details. Its shared footer follows `ui.hint_bar_style` and the global statusline footer templates. Times display in your system timezone; `week_start` follows the Notes setting.
+Open **Open Calendar View** from the command palette (`F6` or `Ctrl+Space`), or click the Notes `calendar` widget. Clicking a day selects that date. The view offers Month, Week, Day, and a 30-day Agenda, with a selected-date event list and event details. Its shared header and footer follow `ui.hint_bar_style` and the global statusline templates. Month/Week/Day/Agenda tabs share the header with the selected date; sync progress, conflicts and errors appear in the footer. Calendar panes are borderless, with a darker event sidebar derived from the active theme. Narrow headers keep the active tab visible. Times display in your system timezone; `week_start` follows the Notes setting.
 
 The widget highlights dates with events. The old note-activity heatmap remains available as `activity`:
 

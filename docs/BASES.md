@@ -60,7 +60,9 @@ Configuration's **Edit Bases source** opens the guarded public source editor,
 including when parsing or view validation fails. Another valid saved view remains
 usable and editable while an invalid view's settings remain preserved.
 All presets inherit the Bases map; custom `bases` bindings remain supported.
-Statusline variables: `{bases_rows}`, `{bases_matched}`, `{bases_selected}`,
+The header shows plain tabs for the document’s saved views and the document ID. Click a tab or use the existing next/previous-view keys; switching preserves each saved layout and does not rewrite the document. Narrow headers keep the active tab visible. The footer shows counts, selection, search and refresh status through `{detail}`. Both bars follow global statusline templates and `ui.hint_bar_style`.
+
+Statusline variables: `{bases_file}`, `{bases_rows}`, `{bases_matched}`, `{bases_selected}`,
 `{bases_view}` and `{bases_property}`. Legacy count/selection/index variables use
 public query state in Bases, separate from the ordinary note catalog.
 
