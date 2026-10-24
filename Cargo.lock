@@ -551,7 +551,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "clin-rs"
-version = "0.14.0-rc.0"
+version = "0.14.0-rc.1"
 dependencies = [
  "anyhow",
  "arboard",
@@ -600,6 +600,7 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "uuid",
+ "which",
  "winresource",
  "yaml-edit",
  "yaml_serde",
@@ -4996,6 +4997,15 @@ dependencies = [
  "lazy_static",
  "serde",
  "wezterm-dynamic",
+]
+
+[[package]]
+name = "which"
+version = "8.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bae2f2b2b816647a1cab1acc91f5bd20812d53cb344382635ec2181940c8034f"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

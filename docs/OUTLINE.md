@@ -14,21 +14,23 @@ The Outline view provides a nested outline of a selected note's body, helping yo
 
 ## Nested Outline Parsing
 
-The outline parser (`src/outline/parse.rs`) reads the Markdown content line-by-line in a single pass to produce a flat list of `TreeNode`s, each annotated with a `depth` and a source `line` number.
+The outline parser (`src/outline/parse.rs`) uses the same Comrak syntax options as the Markdown preview to produce a flat list of `TreeNode`s, each annotated with a `depth` and a source `line` number. Source positions come from Comrak, including Setext headings and nested lists.
 
 ### Node Kinds
 
-- **Header**: Matches ATX headers (`#` through `######`). The header level determines hierarchy. Note titles are treated as the root (depth 0).
+- **Header**: Matches ATX headers (`#` through `######`) and Setext headings (underlined with `=` or `-`). The header level determines hierarchy. Note titles are treated as the root (depth 0).
 - **ListItem**: Matches list item bullets (`-`, `*`, `+`) and ordered list numbers (`1.`, `2)`, etc.).
-- **Paragraph**: Blocks of prose. The parser keeps a preview of the first line (up to 60 characters with trailing ellipsis `…`).
-- **CodeBlock**: Collapses entire fenced code blocks (delimited by ```` ``` ```` or `~~~`) into a single node with the block's language specifier.
+- **Paragraph**: Blocks of prose, tables and raw HTML blocks. The parser keeps a preview of the first line (up to 60 characters with trailing ellipsis `…`). Tables and HTML retain their source text.
+- **CodeBlock**: Collapses fenced or indented code into one node. Fence characters and lengths follow CommonMark; unfinished blocks remain navigable.
 
 ### Hierarchy & Depth Rules
 
 - Note root is always at `depth = 0`.
-- Headers are placed at `depth = header_level`. They do not undergo level normalization.
+- Header depth follows the active heading hierarchy; skipped heading levels do not add empty tree levels.
 - Non-header elements (paragraphs, lists, code blocks) under a header have `depth = parent_header_depth + 1`.
 - Any non-header elements appearing before the first header are attached directly under the note root (`depth = 1`).
+- Nested list items add their list nesting depth beneath the current header.
+- Headings inside list items or block quotes stay within that container; following outside blocks return to the enclosing section.
 
 ---
 

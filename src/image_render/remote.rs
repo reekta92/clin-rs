@@ -6,11 +6,8 @@ use reqwest::{
 };
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::{Duration, Instant},
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
 };
 
 struct PublicDns;
@@ -106,7 +103,7 @@ fn public_client() -> Result<reqwest::Client> {
 async fn transfer(source: &str, client: &reqwest::Client) -> Result<Vec<u8>> {
     let mut url = validate_url(source)?;
     for redirect in 0..=3 {
-        let mut response = client
+        let response = client
             .get(url.clone())
             .header(reqwest::header::ACCEPT, "image/*")
             .send()
@@ -127,53 +124,17 @@ async fn transfer(source: &str, client: &reqwest::Client) -> Result<Vec<u8>> {
         response
             .error_for_status_ref()
             .context("remote image returned an error")?;
-        let limit = 8 * 1024 * 1024;
-        if response
-            .content_length()
-            .is_some_and(|size| size > limit as u64)
-        {
-            bail!("remote image exceeds 8 MiB preview limit");
-        }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await? {
-            if chunk.len() > limit - bytes.len() {
-                bail!("remote image exceeds 8 MiB preview limit");
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        return Ok(bytes);
+        return crate::http::read_bounded(response, 8 * 1024 * 1024).await;
     }
     unreachable!("redirect loop returns at bound")
 }
 pub(crate) fn load_remote_image(source: &str, cancelled: &AtomicBool) -> Result<Vec<u8>> {
     validate_url(source)?;
-    if cancelled.load(Ordering::Relaxed) {
-        bail!("remote image cancelled");
-    }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let deadline = Instant::now() + Duration::from_secs(8);
-    let result = runtime.block_on(async {
-        let client = public_client()?;
-        let mut future = Box::pin(transfer(source, &client));
-        loop {
-            if cancelled.load(Ordering::Relaxed) {
-                bail!("remote image cancelled");
-            }
-            if Instant::now() >= deadline {
-                bail!("remote image exceeds eight-second deadline");
-            }
-            if let Ok(result) =
-                tokio::time::timeout(Duration::from_millis(10), future.as_mut()).await
-            {
-                return result;
-            }
-        }
-    });
-    runtime.shutdown_timeout(Duration::from_millis(10));
-    result
+    crate::http::run(cancelled, Duration::from_secs(8), async {
+        transfer(source, &public_client()?).await
+    })
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,7 +193,7 @@ mod tests {
         for (response,expected) in [
             (b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nConnection: close\r\n\r\nPNG".to_vec(),"PNG"),
             (b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1/private\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(),"private or reserved"),
-            (b"HTTP/1.1 200 OK\r\nContent-Length: 8388609\r\nConnection: close\r\n\r\n".to_vec(),"8 MiB"),
+            (b"HTTP/1.1 200 OK\r\nContent-Length: 8388609\r\nConnection: close\r\n\r\n".to_vec(),"8388608 bytes"),
             (b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(),"returned an error"),
         ] {
             let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();

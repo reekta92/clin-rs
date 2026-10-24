@@ -1,6 +1,7 @@
 mod builtin;
 mod cache;
 mod source_highlight;
+pub(crate) mod structure;
 mod style;
 pub(crate) mod todotxt;
 mod widget;

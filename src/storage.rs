@@ -92,35 +92,9 @@ pub(crate) struct VaultScan {
 }
 
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
-    let mut links = Vec::new();
-    let mut seen = HashSet::new();
-    let mut cursor = 0;
-    while let Some(start_offset) = content[cursor..].find("[[") {
-        let absolute_start = cursor + start_offset;
-        let inner_start = absolute_start + 2;
-        if let Some(end_offset) = content[inner_start..].find("]]") {
-            let absolute_end = inner_start + end_offset;
-            let inner_text = &content[inner_start..absolute_end];
-
-            let link_part = match inner_text.find('|') {
-                Some(pipe_idx) => &inner_text[..pipe_idx],
-                None => inner_text,
-            };
-
-            let link_part = link_part.trim();
-            if !link_part.is_empty()
-                && !link_part.contains(']')
-                && seen.insert(link_part.to_owned())
-            {
-                links.push(link_part.to_owned());
-            }
-            cursor = absolute_end + 2;
-        } else {
-            break;
-        }
-    }
-    links
+    crate::markdown::structure::wikilinks(content)
 }
+
 pub fn is_image_ext(ext: &str) -> bool {
     matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "webp")
 }

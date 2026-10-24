@@ -149,6 +149,7 @@ fn selected_counts(document: &crate::editor_document::EditorDocument) -> Option<
 #[derive(Default)]
 pub(crate) struct EditMemo {
     pub(crate) content: Option<String>,
+    markdown_counts: Option<crate::markdown::structure::Counts>,
     selected_counts: std::cell::OnceCell<Option<(usize, usize)>>,
 }
 impl EditMemo {
@@ -158,6 +159,14 @@ impl EditMemo {
     pub(crate) fn content<'a>(&'a mut self, app: &'a crate::app::App) -> &'a str {
         self.content
             .get_or_insert_with(|| app.editor.body.lines().join("\n"))
+    }
+    fn markdown_counts(&mut self, app: &crate::app::App) -> crate::markdown::structure::Counts {
+        if let Some(counts) = self.markdown_counts {
+            return counts;
+        }
+        let counts = crate::markdown::structure::counts(self.content(app));
+        self.markdown_counts = Some(counts);
+        counts
     }
     fn selected_counts(&self, app: &crate::app::App) -> Option<(usize, usize)> {
         *self
@@ -921,11 +930,6 @@ impl StatuslineContext<'_> {
                     return Some("".into());
                 }
 
-                let title = self
-                    .note
-                    .map(|n| n.title.as_str())
-                    .unwrap_or("Untitled note");
-
                 let val = match name {
                     "word_count" => self.edit_memo.borrow_mut().counts(app).0.to_string(),
                     "word_count_display" | "char_count_display" => {
@@ -986,42 +990,20 @@ impl StatuslineContext<'_> {
                         let wc = self.edit_memo.borrow_mut().counts(app).0;
                         ((wc as f64 / 200.0).ceil() as usize).to_string()
                     }
-                    "header_count" => {
-                        let mut memo = self.edit_memo.borrow_mut();
-                        let content = memo.content(app);
-                        crate::outline::parse::parse_outline(title, content)
-                            .len()
-                            .saturating_sub(1)
-                            .to_string()
-                    }
-                    "task_count" => {
-                        let mut memo = self.edit_memo.borrow_mut();
-                        let content = memo.content(app);
-                        let count = content
-                            .lines()
-                            .filter(|l| {
-                                let t = l.trim_start();
-                                t.starts_with("- [ ] ")
-                                    || t.starts_with("- [x] ")
-                                    || t.starts_with("* [ ] ")
-                                    || t.starts_with("* [x] ")
-                            })
-                            .count();
-                        count.to_string()
-                    }
+                    "header_count" => self
+                        .edit_memo
+                        .borrow_mut()
+                        .markdown_counts(app)
+                        .headings
+                        .to_string(),
+                    "task_count" => self
+                        .edit_memo
+                        .borrow_mut()
+                        .markdown_counts(app)
+                        .tasks
+                        .to_string(),
                     "has_tasks" => {
-                        let mut memo = self.edit_memo.borrow_mut();
-                        let content = memo.content(app);
-                        let count = content
-                            .lines()
-                            .filter(|l| {
-                                let t = l.trim_start();
-                                t.starts_with("- [ ] ")
-                                    || t.starts_with("- [x] ")
-                                    || t.starts_with("* [ ] ")
-                                    || t.starts_with("* [x] ")
-                            })
-                            .count();
+                        let count = self.edit_memo.borrow_mut().markdown_counts(app).tasks;
                         (if count > 0 { "on" } else { "off" }).to_string()
                     }
                     "has_frontmatter" => {
