@@ -1009,12 +1009,20 @@ impl View {
                 content,
             );
         } else {
-            let body = if area.width >= 76 {
-                Layout::horizontal([Constraint::Percentage(65), Constraint::Percentage(35)])
-                    .split(content)
+            let (body, divider) = if area.width >= 76 {
+                let [main, divider, sidebar] = Layout::horizontal([
+                    Constraint::Percentage(65),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ])
+                .areas(content);
+                ([main, sidebar], Some(divider))
             } else {
-                Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
-                    .split(content)
+                (
+                    Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
+                        .areas(content),
+                    None,
+                )
             };
             match self.display {
                 Display::Month => self.render_month(frame, body[0], app),
@@ -1023,6 +1031,9 @@ impl View {
                 Display::Agenda => self.render_agenda(frame, body[0], theme, true, false),
             }
             self.render_inspector(frame, body[1], app);
+            if let Some(divider) = divider {
+                crate::ui::draw_dim_vline(frame, divider, theme.muted);
+            }
         }
         if let Some(dialog) = &mut self.dialog {
             render_dialog(frame, area, dialog, self.error.as_deref(), &self.links, app);

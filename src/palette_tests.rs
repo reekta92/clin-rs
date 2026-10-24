@@ -460,6 +460,11 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
             );
             for y in 1..31 {
                 for x in 0..140 {
+                    if x == 91 {
+                        assert_eq!(buffer[(x, y)].symbol(), "│");
+                        assert_eq!(buffer[(x, y)].fg, f.app.app_theme.muted);
+                        continue;
+                    }
                     assert!(
                         !buffer[(x, y)]
                             .symbol()
@@ -480,6 +485,16 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
             );
         }
     }
+    let mut narrow = Terminal::new(TestBackend::new(40, 15)).unwrap();
+    narrow
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    for y in 1..14 {
+        assert!((0..40).all(|x| narrow.backend().buffer()[(x, y)].symbol() != "│"));
+    }
+    let mut wide = Terminal::new(TestBackend::new(140, 32)).unwrap();
+    wide.draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
     let rect = f
         .app
         .header_tabs
