@@ -408,3 +408,110 @@ fn seventh_help_tab_uses_bases_bindings_and_feature_visibility() {
             .all(|(tab, _, _)| *tab != HelpTab::Bases)
     );
 }
+
+#[test]
+fn saved_view_tabs_use_shared_headers_and_switch_without_writing_source() {
+    let (_root, mut app) = fixture();
+    let before = app
+        .storage
+        .load_document("board.base")
+        .unwrap()
+        .source()
+        .to_owned();
+    app.status = "Ready".into();
+    app.config.statusline.header_left = Some("{title}".into());
+    app.config.statusline.header_right = Some("{bases_file}".into());
+    for style in crate::config::HintBarStyle::ALL {
+        app.app_theme.hint_bar_style = style;
+        let mut terminal = Terminal::new(TestBackend::new(100, 28)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+            .unwrap();
+        let top: String = (0..100)
+            .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+            .collect();
+        assert!(
+            top.contains("Public") && top.contains("List") && top.contains("board.base"),
+            "{style:?}: {top}"
+        );
+        let mut expected = Terminal::new(TestBackend::new(100, 1)).unwrap();
+        let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::Bases);
+        let (left, _) = crate::statusline::render_header(
+            &ctx,
+            &app.config.statusline,
+            ViewMode::Bases,
+            &app.app_theme,
+        );
+        let width = left.width() as u16;
+        expected
+            .draw(|frame| {
+                crate::ui::draw_view_title_bar(
+                    frame,
+                    frame.area(),
+                    &app.app_theme,
+                    left.clone(),
+                    None,
+                    None,
+                    0,
+                )
+            })
+            .unwrap();
+        for x in 0..width {
+            assert_eq!(
+                terminal.backend().buffer()[(x, 0)],
+                expected.backend().buffer()[(x, 0)],
+                "{style:?}"
+            );
+        }
+    }
+    let target = app
+        .header_tabs
+        .iter()
+        .find(|(_, index)| *index == 1)
+        .unwrap()
+        .0;
+    event(
+        &mut app,
+        Event::Mouse(crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: target.x,
+            row: target.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    idle(&mut app);
+    assert_eq!(
+        app.bases_state.as_ref().unwrap().named_view.as_deref(),
+        Some("List")
+    );
+    assert_eq!(
+        app.storage.load_document("board.base").unwrap().source(),
+        before
+    );
+    app.status = "Notice".into();
+    render(&mut app);
+    assert!(app.header_tabs.is_empty());
+    app.status = "Ready".into();
+    app.bases_state.as_mut().unwrap().named_view = None;
+    source(
+        &mut app,
+        "views: [{type: table, name: First}, {type: list, name: '界界界 long é view'}, {type: list, name: Last}]\n",
+    );
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Tab);
+        idle(&mut app);
+        let active = app
+            .bases_state
+            .as_ref()
+            .unwrap()
+            .loaded
+            .as_ref()
+            .unwrap()
+            .view;
+        let mut terminal = Terminal::new(TestBackend::new(24, 12)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+            .unwrap();
+        assert!(app.header_tabs.iter().any(|(_, index)| *index == active));
+    }
+}

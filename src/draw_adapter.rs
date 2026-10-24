@@ -8,11 +8,7 @@ use crate::{
 };
 use ::draw::{DrawEventAction, DrawHints, DrawState, DrawTool, ThemeColors};
 use crossterm::event::{Event, KeyEvent, MouseButton, MouseEventKind};
-use ratatui::{
-    Frame,
-    layout::{Constraint, Layout, Rect},
-    style::Style,
-};
+use ratatui::{Frame, layout::Rect, style::Style};
 
 pub struct DrawPlugin {
     pub state: DrawState,
@@ -219,12 +215,7 @@ impl OverlayView for DrawPlugin {
         app: &mut App,
         term_area: Rect,
     ) -> anyhow::Result<OverlayResult> {
-        let [header, canvas, _footer] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
-        .areas(term_area);
+        let [header, canvas, _footer] = crate::ui::chrome::rows(term_area);
         self.state.set_canvas_area(canvas);
         let result = match event {
             Event::Key(key) => self.handle_key(key, app),

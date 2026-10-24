@@ -329,6 +329,107 @@ fn setup_has_no_host_bars_and_missing_views_keep_the_header() {
 }
 
 #[test]
+fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
+    use crate::{calendar::view::Display, config::HintBarStyle};
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    f.app.status = "Ready".into();
+    f.app.config.statusline = crate::config::StatuslineConfig::default();
+    f.app.date_format = "%d %b %Y".into();
+    f.app.app_theme.bg = Some(ratatui::style::Color::Rgb(40, 40, 40));
+    for (index, display) in [Display::Month, Display::Week, Display::Day, Display::Agenda]
+        .into_iter()
+        .enumerate()
+    {
+        f.app.calendar_view.as_mut().unwrap().display = display;
+        for style in HintBarStyle::ALL {
+            f.app.app_theme.hint_bar_style = style;
+            let mut terminal = Terminal::new(TestBackend::new(140, 32)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let header: String = (0..140).map(|x| buffer[(x, 0)].symbol()).collect();
+            assert!(
+                header.contains("24 Oct 2026"),
+                "{display:?} {style:?}: {header}"
+            );
+            assert!(
+                f.app
+                    .header_tabs
+                    .iter()
+                    .any(|(rect, tab)| rect.y == 0 && *tab == index)
+            );
+            for y in 1..31 {
+                for x in 0..140 {
+                    assert!(
+                        !buffer[(x, y)]
+                            .symbol()
+                            .chars()
+                            .any(|c| "│─┌┐└┘├┤┬┴┼".contains(c)),
+                        "{display:?} at {x},{y}"
+                    );
+                }
+                assert_eq!(buffer[(139, y)].bg, f.app.app_theme.preview_bg().unwrap());
+            }
+        }
+    }
+    let rect = f
+        .app
+        .header_tabs
+        .iter()
+        .find(|(_, index)| *index == 0)
+        .unwrap()
+        .0;
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_eq!(
+        f.app.calendar_view.as_ref().unwrap().display,
+        Display::Month
+    );
+    f.app.calendar_view.as_mut().unwrap().error = Some("Calendar warning".into());
+    for style in HintBarStyle::ALL {
+        f.app.app_theme.hint_bar_style = style;
+        let mut terminal = Terminal::new(TestBackend::new(48, 12)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let footer: String = (0..48)
+            .map(|x| terminal.backend().buffer()[(x, 11)].symbol())
+            .collect();
+        assert!(footer.contains("Calendar warning"), "{style:?}: {footer}");
+        assert!(
+            !footer.contains(env!("CARGO_PKG_VERSION")),
+            "version must yield to status: {footer}"
+        );
+    }
+    f.app.status = "Notice".into();
+    let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    assert!(f.app.header_tabs.is_empty());
+    f.app.status = "Ready".into();
+    f.app.app_theme.bg = None;
+    let mut terminal = Terminal::new(TestBackend::new(140, 32)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(139, 15)].bg,
+        ratatui::style::Color::Reset
+    );
+}
+
+#[test]
 fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
     let mut f = Fixture::new();
     let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();

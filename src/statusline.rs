@@ -191,6 +191,7 @@ pub struct StatuslineContext<'a> {
     pub outline: Option<&'a crate::outline::state::OutlineState>,
     pub canvas: Option<&'a pinstar::PinstarState>,
     pub bases: Option<&'a crate::bases::state::BasesState>,
+    pub calendar: Option<&'a crate::calendar::view::View>,
     pub setup: Option<&'a crate::setup::SetupState>,
 
     // selected/edited note summary:
@@ -224,6 +225,7 @@ impl<'a> StatuslineContext<'a> {
             outline: None,
             canvas: None,
             bases: None,
+            calendar: None,
             setup: None,
             note: None,
             preview_info: None,
@@ -253,6 +255,7 @@ impl<'a> StatuslineContext<'a> {
             outline: None,
             canvas: None,
             bases: None,
+            calendar: None,
             setup: None,
             note: None,
             preview_info: None,
@@ -319,6 +322,7 @@ impl StatuslineContext<'_> {
                         .unwrap_or(0)
                         .to_string(),
                 ),
+                "bases_file" => Some(state.map_or_else(String::new, |state| state.id.clone())),
                 "bases_view" => Some(
                     state
                         .and_then(|state| state.loaded.as_ref())
@@ -348,6 +352,18 @@ impl StatuslineContext<'_> {
             }
         }
         match name {
+            "calendar_date" => Some(
+                self.calendar
+                    .or_else(|| self.app.and_then(|app| app.calendar_view.as_ref()))
+                    .map(|calendar| {
+                        calendar
+                            .date
+                            .format(self.date_format.unwrap_or("%Y-%m-%d"))
+                            .to_string()
+                    })
+                    .unwrap_or_default()
+                    .into(),
+            ),
             // Global / App
             "view" => {
                 let s = match self.view {
@@ -1901,6 +1917,8 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
             match view {
                 ViewMode::Graph => "Nodes: {node_count} | Edges: {edge_count} | Selected: {selected_node} | Scale: {scale}× | FPS: {fps}   ".into(),
                 ViewMode::List => "{sort}  {detail}".into(),
+                ViewMode::Bases => "{bases_file}".into(),
+                ViewMode::Calendar => "{calendar_date}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),
                 ViewMode::Help => "Page {help_page}/{help_total_pages}".into(),
                 ViewMode::Edit => "{word_count_display}w {char_count_display}c {cursor_line}:{cursor_col}".into(),
@@ -1909,6 +1927,7 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
         }
         "footer_right" => match view {
             ViewMode::List => "{note_count} notes | {version}".into(),
+            ViewMode::Bases | ViewMode::Calendar => "{detail} | {version}".into(),
             _ => "{version}".into(),
         },
         _ => "".into(),
