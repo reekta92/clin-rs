@@ -10,9 +10,17 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+mod article;
 mod process;
 pub(super) const MAX_IMPORT_BYTES: usize = 16 * 1024 * 1024;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+
+#[derive(Debug)]
+pub(crate) struct ConvertedImport {
+    pub title: String,
+    pub content: String,
+    pub warning: Option<String>,
+}
 
 pub struct ImportAction {
     pub source: ImportSource,
@@ -256,7 +264,7 @@ fn convert_file_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(Strin
         );
     };
 
-    let output = process::run(cmd, cancelled, COMMAND_TIMEOUT)?;
+    let output = process::run(cmd, None, cancelled, COMMAND_TIMEOUT)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -435,76 +443,129 @@ fn convert_json_cancellable(path: &str, cancelled: &AtomicBool) -> Result<(Strin
 }
 
 pub fn convert_url(url: &str) -> Result<(String, String)> {
-    convert_url_cancellable(url, &AtomicBool::new(false))
+    let converted = convert_url_cancellable(url, &AtomicBool::new(false))?;
+    Ok((converted.title, converted.content))
 }
 
-fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<(String, String)> {
+fn convert_url_cancellable(source: &str, cancelled: &AtomicBool) -> Result<ConvertedImport> {
     let url = reqwest::Url::parse(source).context("Invalid import URL")?;
     anyhow::ensure!(
         matches!(url.scheme(), "http" | "https"),
         "URL imports require HTTP(S)"
     );
-    let ext = Path::new(url.path())
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .filter(|ext| ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
-        .unwrap_or("html");
+    let (url, content_type, bytes) = crate::http::run(cancelled, Duration::from_secs(30), async {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.previous().len() > 5 {
+                    attempt.error("URL import exceeds five redirects")
+                } else if !matches!(attempt.url().scheme(), "http" | "https") {
+                    attempt.error("URL imports require HTTP(S) redirects")
+                } else {
+                    attempt.follow()
+                }
+            }))
+            .build()?;
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(reqwest::Error::without_url)?;
+        response
+            .error_for_status_ref()
+            .map_err(reqwest::Error::without_url)?;
+        let url = response.url().clone();
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .to_owned();
+        let bytes = crate::http::read_bounded(response, MAX_IMPORT_BYTES).await?;
+        Ok((url, content_type, bytes))
+    })?;
+    let ext = match content_type.split(';').next().unwrap_or("").trim() {
+        "text/html" | "application/xhtml+xml" => "html",
+        "application/pdf" => "pdf",
+        _ => Path::new(url.path())
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .filter(|ext| ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+            .unwrap_or("html"),
+    };
     let directory = process::ImportDirectory::new()?;
     let downloaded = directory.path.join(format!("download.{ext}"));
     let temp_path = downloaded.to_str().context("temp path is not UTF-8")?;
-    let mut command = Command::new("curl");
-    command.args([
-        "--fail",
-        "--location",
-        "--silent",
-        "--show-error",
-        "--connect-timeout",
-        "5",
-        "--max-time",
-        "30",
-        "--max-redirs",
-        "5",
-        "--max-filesize",
-        "16777216",
-        "--proto",
-        "=http,https",
-        "--proto-redir",
-        "=http,https",
-        "--url",
-        url.as_str(),
-    ]);
-    let output = process::run(command, cancelled, COMMAND_TIMEOUT)?;
-    anyhow::ensure!(
-        output.status.success(),
-        "curl failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let title = std::str::from_utf8(&output.stdout)
+    let title = std::str::from_utf8(&bytes)
         .ok()
         .and_then(extract_html_title)
         .unwrap_or_else(|| url_fallback_title(source));
-    crate::fsutil::atomic_write_with_mode(&downloaded, &output.stdout, 0o600)?;
-    drop(output);
+    crate::fsutil::atomic_write_with_mode(&downloaded, &bytes, 0o600)?;
+    drop(bytes);
+    let mut extraction_error = None;
+    if matches!(ext.to_ascii_lowercase().as_str(), "html" | "htm")
+        && crate::fsutil::can_run("trafilatura")
+    {
+        match article::extract(&downloaded, &url, cancelled) {
+            Ok((extracted_title, content)) => {
+                let (title, content) = sanitized(extracted_title.unwrap_or(title), content);
+                return Ok(ConvertedImport {
+                    title,
+                    content,
+                    warning: None,
+                });
+            }
+            Err(error) => {
+                check_import(cancelled, 0)?;
+                extraction_error = Some(crate::fsutil::truncate_ellipsis(
+                    &crate::fsutil::sanitize_for_terminal(&format!("{error:#}")),
+                    400,
+                ));
+            }
+        }
+    }
     // Convert the downloaded bytes once; title and body come from the same response.
-    let (_, content) = convert_file_cancellable(temp_path, cancelled)?;
-    Ok(sanitized(title, content))
+    let (_, content) = convert_file_cancellable(temp_path, cancelled).with_context(|| {
+        extraction_error.as_ref().map_or_else(
+            || "URL conversion failed".to_owned(),
+            |error| format!("Article extraction failed ({error}); general conversion also failed"),
+        )
+    })?;
+    let (title, content) = sanitized(title, content);
+    Ok(ConvertedImport {
+        title,
+        content,
+        warning: extraction_error.map(|error| {
+            format!("Imported with general conversion: article extraction failed ({error})")
+        }),
+    })
 }
 
 pub(crate) fn convert_source(
     source: ImportSource,
     input: &str,
     cancelled: &AtomicBool,
-) -> Result<(String, String)> {
+) -> Result<ConvertedImport> {
     anyhow::ensure!(!cancelled.load(Ordering::Relaxed), "Import cancelled");
     let result = match source {
-        ImportSource::File => convert_file_cancellable(input, cancelled),
-        ImportSource::Csv => convert_csv_cancellable(input, cancelled),
-        ImportSource::Json => convert_json_cancellable(input, cancelled),
-        ImportSource::Url => convert_url_cancellable(input, cancelled),
-        ImportSource::Clipboard => bail!("Clipboard imports do not use a prompt"),
-    }?;
+        ImportSource::Url => convert_url_cancellable(input, cancelled)?,
+        _ => {
+            let (title, content) = match source {
+                ImportSource::File => convert_file_cancellable(input, cancelled),
+                ImportSource::Csv => convert_csv_cancellable(input, cancelled),
+                ImportSource::Json => convert_json_cancellable(input, cancelled),
+                _ => bail!("Clipboard imports do not use a prompt"),
+            }?;
+            ConvertedImport {
+                title,
+                content,
+                warning: None,
+            }
+        }
+    };
     anyhow::ensure!(
-        result.1.len() <= MAX_IMPORT_BYTES,
+        result.content.len() <= MAX_IMPORT_BYTES,
         "Imported note exceeds 16 MiB safety limit"
     );
     Ok(result)
@@ -531,6 +592,24 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    #[ignore = "requires the local imports Postman simulation"]
+    fn url_download_can_cancel_a_pending_response() -> Result<()> {
+        let base = std::env::var("CLIN_IMPORT_SIMULATION_URL")?;
+        let cancelled = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(Duration::from_millis(200));
+                cancelled.store(true, Ordering::Relaxed);
+            });
+            let started = std::time::Instant::now();
+            let error = convert_url_cancellable(&format!("{base}/slow"), &cancelled).unwrap_err();
+            assert!(error.to_string().contains("cancelled"));
+            assert!(started.elapsed() < Duration::from_secs(1));
+        });
+        Ok(())
+    }
 
     #[test]
     fn html_titles_allow_unicode_before_and_inside_tags() {

@@ -17,7 +17,7 @@ use std::sync::{Arc, LazyLock};
 use comrak::nodes::{
     AstNode, ListType, NodeCodeBlock, NodeHeading, NodeList, NodeTable, NodeValue, TableAlignment,
 };
-use comrak::{Arena, Options, parse_document};
+use comrak::{Arena, parse_document};
 use ratatui::style::{Modifier, Style};
 use unicode_width::UnicodeWidthChar;
 
@@ -87,14 +87,7 @@ pub(crate) fn render_layout(
         return None;
     }
 
-    let mut options = Options::default();
-    options.extension.strikethrough = true;
-    options.extension.table = true;
-    options.extension.tasklist = true;
-    options.extension.footnotes = true;
-    options.extension.autolink = true;
-    options.extension.wikilinks_title_after_pipe = true;
-    options.extension.description_lists = true;
+    let options = crate::markdown::structure::options();
 
     let arena = Arena::new();
     let root = parse_document(&arena, content, &options);
@@ -900,10 +893,8 @@ fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtIt
                     ctx.push_str(t, ctx.theme.todotxt_completed, margin);
                     ctx.push(' ', ctx.theme.todotxt_completed, margin);
                 }
-                TodoTxtSpan::Tag(k, v) => {
-                    ctx.push_str(k, ctx.theme.todotxt_completed, margin);
-                    ctx.push(':', ctx.theme.todotxt_completed, margin);
-                    ctx.push_str(v, ctx.theme.todotxt_completed, margin);
+                TodoTxtSpan::Tag(word) => {
+                    ctx.push_str(word, ctx.theme.todotxt_completed, margin);
                     ctx.push(' ', ctx.theme.todotxt_completed, margin);
                 }
             }
@@ -935,7 +926,8 @@ fn render_todotxt_item(ctx: &mut Ctx, item: &crate::markdown::todotxt::TodoTxtIt
                 ctx.push_str(t, ctx.theme.todotxt_context, margin);
                 ctx.push(' ', ctx.theme.paragraph, margin);
             }
-            TodoTxtSpan::Tag(k, v) => {
+            TodoTxtSpan::Tag(word) => {
+                let (k, v) = word.split_once(':').expect("parsed todo.txt tag");
                 ctx.push_str(k, ctx.theme.todotxt_tag, margin);
                 ctx.push(':', ctx.theme.paragraph, margin);
                 ctx.push_str(v, ctx.theme.paragraph, margin);

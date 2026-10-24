@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 pub(crate) struct ImportTask {
-    result: Receiver<anyhow::Result<(String, String)>>,
+    result: Receiver<anyhow::Result<crate::actions::import::ConvertedImport>>,
     cancelled: Arc<AtomicBool>,
     target: ImportTarget,
     note_id: Option<String>,
@@ -149,28 +149,41 @@ impl App {
             Err(TryRecvError::Disconnected) => Err(anyhow::anyhow!("Import worker stopped")),
         };
         let task = self.import_task.take().expect("import task is present");
-        let result = result.and_then(|(title, content)| match task.target {
-            ImportTarget::NewNote => {
-                let id = std::path::Path::new(&task.folder).join(self.storage.new_note_id());
-                let id = id
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("Invalid import destination"))?;
-                let note = crate::storage::Note {
-                    baseline: None,
-                    title,
-                    content,
-                    tags: Vec::new(),
-                    updated_at: crate::ui::now_unix_secs(),
-                };
-                let saved = self.storage.save_note(id, &note)?;
-                self.refresh_note_single(None, &saved);
-                self.load_and_open_note(&saved, None);
-                self.set_temporary_status_static("Imported note saved");
-                Ok(())
+        let result = result.and_then(|converted| {
+            let crate::actions::import::ConvertedImport {
+                title,
+                content,
+                warning,
+            } = converted;
+            match task.target {
+                ImportTarget::NewNote => {
+                    let id = std::path::Path::new(&task.folder).join(self.storage.new_note_id());
+                    let id = id
+                        .to_str()
+                        .ok_or_else(|| anyhow::anyhow!("Invalid import destination"))?;
+                    let note = crate::storage::Note {
+                        baseline: None,
+                        title,
+                        content,
+                        tags: Vec::new(),
+                        updated_at: crate::ui::now_unix_secs(),
+                    };
+                    let saved = self.storage.save_note(id, &note)?;
+                    self.refresh_note_single(None, &saved);
+                    self.load_and_open_note(&saved, None);
+                    self.set_temporary_status_static("Imported note saved");
+                    Ok(())
+                }
+                ImportTarget::AppendCurrent => {
+                    self.insert_content(task.target, task.note_id.as_deref(), title, content)
+                }
+            }?;
+            if let Some(warning) = warning {
+                self.set_temporary_status(&warning);
+                self.messages
+                    .push(warning, crate::app::messages::MessageSeverity::Warning);
             }
-            ImportTarget::AppendCurrent => {
-                self.insert_content(task.target, task.note_id.as_deref(), title, content)
-            }
+            Ok(())
         });
         if let Err(error) = result {
             let message = format!("Import failed: {error:#}");
@@ -203,6 +216,53 @@ mod tests {
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         })
         .unwrap()
+    }
+
+    #[test]
+    fn fallback_warnings_reach_saved_and_appended_imports() -> anyhow::Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        for target in [ImportTarget::NewNote, ImportTarget::AppendCurrent] {
+            let root = tempfile::tempdir()?;
+            let mut app = fixture(root.path());
+            if target == ImportTarget::AppendCurrent {
+                app.storage.create_document("note.md", "original")?;
+                app.load_and_open_note("note.md", None);
+            }
+            let warning =
+                "Imported with general conversion: article extraction failed (empty article)";
+            let (sender, result) = channel();
+            sender.send(Ok(crate::actions::import::ConvertedImport {
+                title: "Imported".into(),
+                content: "converted body".into(),
+                warning: Some(warning.into()),
+            }))?;
+            app.import_task = Some(ImportTask {
+                result,
+                cancelled: Arc::new(AtomicBool::new(false)),
+                target,
+                note_id: (target == ImportTarget::AppendCurrent).then(|| "note.md".into()),
+                folder: String::new(),
+            });
+            assert!(app.poll_import());
+            let ids = app.storage.list_note_ids(false, false)?;
+            assert_eq!(ids.len(), 1);
+            let note = app.storage.load_note(&ids[0])?;
+            assert_eq!(
+                note.content,
+                if target == ImportTarget::AppendCurrent {
+                    "original\n\nconverted body"
+                } else {
+                    "converted body"
+                }
+            );
+            let message = app.messages.messages.last().unwrap();
+            assert_eq!(message.text, warning);
+            assert_eq!(
+                message.severity,
+                crate::app::messages::MessageSeverity::Warning
+            );
+        }
+        Ok(())
     }
 
     #[test]

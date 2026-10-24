@@ -1,0 +1,9 @@
+version: 1
+name: imports
+protocol: http
+port: 49149
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

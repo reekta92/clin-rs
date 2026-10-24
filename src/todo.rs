@@ -32,28 +32,15 @@ pub fn update_todo_state(storage: &crate::storage::Storage, state: &mut TodoStat
         return;
     };
 
-    // Strict parsing: lines must start with priority (e.g. `(A) `) or date (e.g. `2023-01-01 `)
-    // and MUST NOT start with `x ` (which marks completion).
-
+    // The widget intentionally shows only tasks with a priority or creation date.
     let mut tasks: Vec<(char, usize, String)> = content
         .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .filter(|l| !l.starts_with("x ") && !l.starts_with("X "))
-        .filter(|l| is_strict_todo_line(l))
+        .map(str::trim)
         .enumerate()
-        .map(|(orig_idx, l)| {
-            let priority = if l.len() >= 4 && l.starts_with('(') && l[2..4] == *") " {
-                let c = l.chars().nth(1).expect("len >= 4");
-                if c.is_ascii_uppercase() {
-                    c
-                } else {
-                    '~' // lowest priority fallback
-                }
-            } else {
-                '~' // lowest priority for no priority
-            };
-            (priority, orig_idx, l.to_string())
+        .filter_map(|(index, line)| {
+            let item = crate::markdown::todotxt::parse_todotxt_line(line);
+            (!item.completed && (item.priority.is_some() || item.creation_date.is_some()))
+                .then(|| (item.priority.unwrap_or('~'), index, line.to_owned()))
         })
         .collect();
 
@@ -65,116 +52,35 @@ pub fn update_todo_state(storage: &crate::storage::Storage, state: &mut TodoStat
     state.last_modified = modified;
 }
 
-/// True if `l` starts with a todo.txt priority `(A) ` or date `YYYY-MM-DD `.
-fn is_strict_todo_line(l: &str) -> bool {
-    let b = l.as_bytes();
-    if b.len() >= 4
-        && b[0] == b'('
-        && b[1].is_ascii_uppercase()
-        && b[2] == b')'
-        && b[3].is_ascii_whitespace()
-    {
-        return true;
-    }
-    b.len() >= 11
-        && b[4] == b'-'
-        && b[7] == b'-'
-        && b[10].is_ascii_whitespace()
-        && b[..4].iter().all(u8::is_ascii_digit)
-        && b[5..7].iter().all(u8::is_ascii_digit)
-        && b[8..10].iter().all(u8::is_ascii_digit)
-}
-
 fn highlight_todo_task<'a>(task: &'a str, theme: &AppThemeColors) -> Line<'a> {
-    let chars: Vec<char> = task.chars().collect();
-    if chars.is_empty() {
-        return Line::default();
-    }
-    let mut styles = vec![Style::default().fg(theme.text); chars.len()];
-
-    let mut i = 0;
-    if i + 3 < chars.len()
-        && chars[i] == '('
-        && chars[i + 2] == ')'
-        && chars[i + 3] == ' '
-        && chars[i + 1].is_ascii_uppercase()
-    {
-        let p_style = Style::default().fg(theme.warning);
-        styles[i] = p_style;
-        styles[i + 1] = p_style;
-        styles[i + 2] = p_style;
-        styles[i + 3] = p_style;
-        i += 4;
-    }
-
-    for _ in 0..2 {
-        if i + 10 <= chars.len() {
-            let is_date = chars[i..i + 10]
-                .iter()
-                .all(|&c| c.is_ascii_digit() || c == '-')
-                && chars[i + 4] == '-'
-                && chars[i + 7] == '-';
-            let is_valid_end = i + 10 == chars.len() || chars[i + 10].is_whitespace();
-            if is_date && is_valid_end {
-                i += 10;
-                if i < chars.len() && chars[i].is_whitespace() {
-                    i += 1;
-                }
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-
-    while i < chars.len() {
-        if chars[i].is_whitespace() {
-            i += 1;
-            continue;
-        }
-        let start = i;
-        while i < chars.len() && !chars[i].is_whitespace() {
-            i += 1;
-        }
-        let word_len = i - start;
-        if word_len > 1 {
-            let word_style = if chars[start] == '+' {
-                Style::default().fg(theme.success)
-            } else if chars[start] == '@' {
-                Style::default().fg(theme.accent)
-            } else if let Some(colon_pos) = chars[start..i].iter().position(|&c| c == ':') {
-                if colon_pos > 0 && colon_pos < word_len - 1 {
-                    Style::default().fg(theme.tag)
-                } else {
-                    Style::default().fg(theme.text)
-                }
-            } else {
-                Style::default().fg(theme.text)
-            };
-
-            if word_style != Style::default().fg(theme.text) {
-                for style in &mut styles[start..i] {
-                    *style = word_style;
-                }
-            }
-        }
-    }
-
+    use crate::markdown::todotxt::{TodoTxtSpan, parse_todotxt_line};
+    let item = parse_todotxt_line(task);
     let mut spans = Vec::new();
-    let mut current_style = styles[0];
-    let mut current_text = String::new();
-    for (c, s) in chars.iter().zip(styles.iter()) {
-        if *s == current_style {
-            current_text.push(*c);
-        } else {
-            spans.push(Span::styled(current_text.clone(), current_style));
-            current_style = *s;
-            current_text = c.to_string();
-        }
+    let mut cursor = 0;
+    if item.priority.is_some() {
+        spans.push(Span::styled(&task[..4], Style::default().fg(theme.warning)));
+        cursor = 4;
     }
-    spans.push(Span::styled(current_text, current_style));
-
+    for token in item.spans {
+        let word = token.text();
+        let start = word.as_ptr() as usize - task.as_ptr() as usize;
+        spans.push(Span::styled(
+            &task[cursor..start],
+            Style::default().fg(theme.text),
+        ));
+        let color = match token {
+            TodoTxtSpan::Text(_) => theme.text,
+            TodoTxtSpan::Project(_) => theme.success,
+            TodoTxtSpan::Context(_) => theme.accent,
+            TodoTxtSpan::Tag(_) => theme.tag,
+        };
+        spans.push(Span::styled(word, Style::default().fg(color)));
+        cursor = start + word.len();
+    }
+    spans.push(Span::styled(
+        &task[cursor..],
+        Style::default().fg(theme.text),
+    ));
     Line::from(spans)
 }
 
@@ -224,4 +130,46 @@ pub fn draw_todo(
         .wrap(Wrap { trim: true });
 
     frame.render_widget(paragraph, content_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn widget_preserves_task_order_filter_and_unicode_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: dir.path().into(),
+            config_dir: dir.path().into(),
+            notes_dir: dir.path().into(),
+            templates_dir: dir.path().into(),
+            skip_dir_patterns: vec![],
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
+        };
+        std::fs::write(dir.path().join("todo.txt"),
+            "plain task\nx (A) completed\n(é) malformed\n2024-02-30 invalid\n(B) later\n(A) 家  +项目 @iş due:yarın\n(A) second\n2024-02-29 dated\n").unwrap();
+        let mut state = TodoState::default();
+        update_todo_state(&storage, &mut state);
+        assert_eq!(
+            state.items,
+            [
+                "(A) 家  +项目 @iş due:yarın",
+                "(A) second",
+                "(B) later",
+                "2024-02-29 dated"
+            ]
+        );
+        let line = highlight_todo_task(&state.items[0], &AppThemeColors::default());
+        assert_eq!(
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            state.items[0]
+        );
+        let theme = AppThemeColors::default();
+        let dated = highlight_todo_task("2024-02-29 dated", &theme);
+        assert_eq!(dated.spans[0].style.fg, Some(theme.text));
+    }
 }
