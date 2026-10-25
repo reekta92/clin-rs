@@ -1327,6 +1327,32 @@ fn popup_hints_fit_and_preserve_save_and_cancel() {
 }
 
 #[test]
+fn search_hints_keep_the_current_action_and_cancel_visible() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.begin_search();
+    for width in [40, 80, 120] {
+        for (focus, action) in [
+            (crate::popups::SearchFocus::Input, "Enter close"),
+            (crate::popups::SearchFocus::Results, "Enter jump"),
+        ] {
+            let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active else {
+                panic!("search popup should remain open");
+            };
+            popup.focus = focus;
+            popup.title_result_ids = vec!["root.md".into()];
+            let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+            terminal
+                .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+                .unwrap();
+            let text = text_in(terminal.backend().buffer(), Rect::new(0, 0, width, 24));
+            assert!(text.contains(action), "{width}: {text}");
+            assert!(text.contains("Esc cancel"), "{width}: {text}");
+        }
+    }
+}
+
+#[test]
 fn info_scrolls_to_last_section_with_keyboard_and_mouse() {
     let _guard = ConfigTestGuard::lock();
     let (_temp, mut app) = fixture();

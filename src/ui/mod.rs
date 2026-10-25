@@ -1236,6 +1236,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             "SEARCH",
             PopupSize::Large,
             PopupHints::Keybinds(&[
+                (
+                    "Enter".to_string(),
+                    if popup.focus == crate::popups::SearchFocus::Results {
+                        "jump"
+                    } else {
+                        "close"
+                    },
+                ),
+                ("Esc".to_string(), "cancel"),
+                ("Tab".to_string(), "switch focus"),
+                ("↑↓".to_string(), "navigate results"),
                 ("f:".to_string(), "folder"),
                 ("p:".to_string(), "pinned"),
                 ("t:".to_string(), "tag"),

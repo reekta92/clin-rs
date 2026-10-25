@@ -166,7 +166,7 @@ fn rename_hints_follow_host_bindings_and_ignore_main_footer_style() {
             let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
             terminal
                 .draw(|frame| plugin.overlay_render(frame, frame.area(), &mut app))
-                .unwrap();
+                .expect("render the rename popup with the remapped hints");
             let text = terminal
                 .backend()
                 .buffer()
@@ -188,7 +188,7 @@ fn rename_hints_follow_host_bindings_and_ignore_main_footer_style() {
                     &mut app,
                     ratatui::layout::Rect::new(0, 0, 80, 24),
                 )
-                .unwrap();
+                .expect("cancel the rename popup with the remapped binding");
             assert!(plugin.state.rename_popup.is_none());
         }
     }
