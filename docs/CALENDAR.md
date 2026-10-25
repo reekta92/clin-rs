@@ -1,6 +1,6 @@
 # Calendar
 
-Open **Open Calendar View** from the command palette (`F6` or `Ctrl+Space`), or click the Notes `calendar` widget. Clicking a day selects that date. The view offers Month, Week, Day, and a 30-day Agenda, with a selected-date event list and event details. Its shared footer follows `ui.hint_bar_style` and the global statusline footer templates. Times display in your system timezone; `week_start` follows the Notes setting.
+Open **Open Calendar View** from the command palette (`F6` or `Ctrl+Space`), or click the Notes `calendar` widget. Clicking a day selects that date. The view offers Month, Week, Day, and a 30-day Agenda, with a selected-date event list and event details. Its shared header and footer follow `ui.hint_bar_style` and the global statusline templates. Month/Week/Day/Agenda tabs share the header with the selected date; sync progress, conflicts and errors appear in the footer. Calendar panes are borderless, with a darker event sidebar derived from the active theme. A muted divider matching preview panes separates the main calendar from the right sidebar on wide terminals. Month days use a checkerboard background; adjacent-month days have a muted background and text. Week days, day time slots, agenda rows and sidebar sections alternate subtle theme shades. Event titles use the theme accent; entries linked to notes, linked-note names and note markers use the theme subnote color across all displays. Narrow headers keep the active tab visible. Times display in your system timezone; `week_start` follows the Notes setting.
 
 The widget highlights dates with events. The old note-activity heatmap remains available as `activity`:
 
@@ -22,7 +22,7 @@ Choose **Schedule Note** with a Markdown note selected in Notes, then fill out i
 - Repeat accepts an RFC 5545 RRULE, for example `FREQ=WEEKLY;BYDAY=MO,WE`. Newly entered date-times are stored as UTC, so their recurrence follows UTC across daylight-saving changes. Imported IANA timezone recurrences retain their timezone when their schedule is unchanged.
 - Choose Local, or a discovered writable CalDAV collection. Sync once to discover remote choices. Existing events keep their calendar.
 
-Select a date and event, then press `L` to link or unlink a Markdown note. On an empty date, `L` chooses a note and opens a new event form. Several notes may link to one event. Press `o` or `Enter`, choose a linked note, and open it in the editor. Leaving that editor returns to Calendar.
+Select a date and event, then press `a` to link or unlink a Markdown note. On an empty date, `a` chooses a note and opens a new event form. Several notes may link to one event. When a date has multiple linked notes, Month cells show the first linked note’s name followed by `+N notes`, counting the remaining unique notes across that date’s events. Dates with multiple events likewise show the first event followed by `+N events`. Week, Day and Agenda show every linked note beneath its event, with each note on its own line. The sidebar event list does the same; selecting a note row selects its event. Press `o` or `Enter`, choose a linked note, and open it in the editor. Leaving that editor returns to Calendar.
 
 Links are stored in the note's frontmatter and survive native rename/move:
 
@@ -44,7 +44,7 @@ Use the editor's **Open Link Preview** binding (`Alt+l` by default) with the cur
 
 | Key | Action |
 | --- | --- |
-| `m`, `w`, `d`, `a` / `Tab` | Month, Week, Day, Agenda / next view |
+| `m`, `w`, `d`, `A` / `Tab` | Month, Week, Day, Agenda / next view |
 | `h`, `l` / Left/Right | Previous/next date |
 | `k`, `j` / Up/Down | Previous/next week in Month/Week; select event in Day/Agenda |
 | `PgUp`, `PgDn` | Previous/next displayed period |
@@ -52,7 +52,7 @@ Use the editor's **Open Link Preview** binding (`Alt+l` by default) with the cur
 | `J`, `K` | Next/previous event in any view |
 | `n`, `e` | New event / edit selected series |
 | `Delete` or `x` | Confirm deletion of the entire series |
-| `L`, `o` or `Enter` | Link/unlink note / open linked note |
+| `a`, `o` or `Enter` | Link/unlink note / open linked note |
 | `y` | Copy date/event reference |
 | `i`, `E` | Import / export iCalendar |
 | `s`, `r` | Sync CalDAV / reload from disk |

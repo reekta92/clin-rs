@@ -1,6 +1,6 @@
 use super::{
-    PreviewHeaderInfo, build_tab_spans, draw_dim_vline, draw_view_title_bar,
-    draw_view_title_bar_with_tabs, popup_hint_line, preview_spans,
+    PreviewHeaderInfo, build_tab_spans, draw_dim_vline, draw_view_title_bar, popup_hint_line,
+    preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -739,10 +739,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
     let area = frame.area();
     app.list.last_area = area;
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(5)])
-        .split(super::footer::content_area(area));
+    let chunks = crate::ui::chrome::content_rows(super::footer::content_area(area));
     let title = if app.layout_edit {
         "Notes - Editing Layout"
     } else {
@@ -856,22 +853,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             } else {
                 0
             };
-            let hovered = app.mouse_pos.and_then(|(col, row)| {
-                if row == chunks[0].y {
-                    let region = crate::ui::title_bar_tabs_region(chunks[0], title);
-                    crate::ui::hit_test_tabs(
-                        &tabs,
-                        chunks[0].x,
-                        chunks[0].width,
-                        region.x,
-                        col,
-                        app.config.ui.tab_icons_only,
-                        app.config.ui.icon_mode,
-                    )
-                } else {
-                    None
-                }
-            });
+            let hovered = None;
             let tab_spans = build_tab_spans(
                 &tabs,
                 selected_idx,
@@ -903,16 +885,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 &app.app_theme,
                 Some(chunks[0].right().saturating_sub(occupied)),
             );
-            draw_view_title_bar_with_tabs(
+            app.header_tabs = crate::ui::draw_header_tabs(
                 frame,
                 chunks[0],
-                title,
                 &app.app_theme,
                 left_line,
                 tab_spans,
+                selected_idx,
                 right_line,
                 Some(app.status.as_ref()),
                 app.load_spinner_tick,
+                app.mouse_pos,
             );
         } else {
             let left_line = crate::statusline::render_header_left(
@@ -1803,10 +1786,7 @@ pub(crate) fn list_view_layout(
     calendar_height: u16,
     calendar_position: crate::config::CalendarPosition,
 ) -> (Rect, Option<Rect>, Option<Rect>) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(5)])
-        .split(super::footer::content_area(area));
+    let chunks = crate::ui::chrome::content_rows(super::footer::content_area(area));
 
     if preview_fullscreen {
         return (chunks[1], Some(chunks[1]), None);

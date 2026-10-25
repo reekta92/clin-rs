@@ -78,7 +78,7 @@ pub fn draw_view_title_bar(
 pub fn draw_view_title_bar_with_tabs(
     frame: &mut Frame,
     area: Rect,
-    default_title: &str,
+    _default_title: &str,
     theme: &AppThemeColors,
     left: Line<'_>,
     tab_spans: Vec<Span<'static>>,
@@ -86,56 +86,110 @@ pub fn draw_view_title_bar_with_tabs(
     status: Option<&str>,
     tick: usize,
 ) {
-    // Override header when there's an active status notification
-    if let Some(st) = status
-        && !st.trim().is_empty()
-        && st != "Ready"
-    {
-        let st = crate::fsutil::sanitize_for_terminal(st);
-        let display = if st.starts_with("First time caching") {
-            format!("  {} {}  ", spinner_char(tick), st)
-        } else {
-            format!("  {}  ", st)
-        };
-        let span = Span::styled(
-            display,
-            Style::default()
-                .fg(theme.highlight_fg)
-                .add_modifier(Modifier::BOLD),
-        );
-        let bar = Paragraph::new(Line::from(vec![span]))
-            .style(Style::default().bg(theme.accent))
-            .alignment(Alignment::Center);
-        frame.render_widget(bar, area);
-        return;
-    }
-    frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
-
-    let total: u16 = tab_spans
-        .iter()
-        .map(|span| span.content.width() as u16)
-        .fold(0u16, u16::saturating_add);
-    let tabs_area = title_bar_tabs_rect(area, default_title, total);
-    frame.render_widget(
-        Paragraph::new(Line::from(tab_spans)).style(theme.title_bar_bg_style()),
-        tabs_area,
+    let _ = _default_title;
+    draw_header_tabs(
+        frame, area, theme, left, tab_spans, 0, right, status, tick, None,
     );
+}
 
-    let title_w = left.width() as u16;
-    let title_area = Rect::new(area.x, area.y, title_w, area.height);
-    frame.render_widget(Paragraph::new(left), title_area);
-
-    if let Some(r_text) = right {
-        let right_start = title_area.right().max(tabs_area.right());
-        let right_width = area.right().saturating_sub(right_start);
-        if right_width > 0 {
-            let right_rect = Rect::new(right_start, area.y, right_width, area.height);
-            frame.render_widget(
-                Paragraph::new(r_text).alignment(Alignment::Right),
-                right_rect,
-            );
-        }
+/// Draw and hit-test the same visible window, keeping the active tab reachable.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_header_tabs(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &AppThemeColors,
+    left: Line<'_>,
+    tab_spans: Vec<Span<'static>>,
+    active: usize,
+    right: Option<Line<'_>>,
+    status: Option<&str>,
+    tick: usize,
+    mouse: Option<(u16, u16)>,
+) -> Vec<(Rect, usize)> {
+    // Override header when there's an active status notification
+    if status.is_some_and(|s| !s.trim().is_empty() && s != "Ready") {
+        draw_view_title_bar(frame, area, theme, left, right, status, tick);
+        return Vec::new();
     }
+    let tabs: Vec<_> = tab_spans.into_iter().step_by(2).collect();
+    let active = active.min(tabs.len().saturating_sub(1));
+    let active_width = tabs.get(active).map_or(0, Span::width);
+    let title_width = left.width().min(
+        usize::from(area.width)
+            .saturating_sub(active_width.min(usize::from(area.width).div_ceil(2))),
+    );
+    let available = usize::from(area.width).saturating_sub(title_width);
+    let mut first = active;
+    let mut width = active_width.min(available);
+    while first > 0 && width + 1 + tabs[first - 1].width() <= available {
+        first -= 1;
+        width += 1 + tabs[first].width();
+    }
+    let mut end = (active + 1).min(tabs.len());
+    while end < tabs.len() && width + 1 + tabs[end].width() <= available {
+        width += 1 + tabs[end].width();
+        end += 1;
+    }
+    let start =
+        (area.x + area.width.saturating_sub(width as u16) / 2).max(area.x + title_width as u16);
+    frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
+    frame.render_widget(
+        Paragraph::new(left).style(theme.title_bar_bg_style()),
+        Rect::new(area.x, area.y, title_width as u16, area.height),
+    );
+    let mut x = start;
+    let mut hits = Vec::new();
+    for (index, mut span) in tabs.into_iter().enumerate().take(end).skip(first) {
+        let width = span
+            .width()
+            .min(usize::from(area.right().saturating_sub(x))) as u16;
+        let rect = Rect::new(x, area.y, width, area.height);
+        if !rect.is_empty() {
+            if index != active && mouse.is_some_and(|p| rect.contains(p.into())) {
+                span.style = span.style.patch(theme.hover_style());
+            }
+            span.content = fit_tab_text(&span.content, width as usize).into();
+            frame.render_widget(
+                Paragraph::new(Line::from(span)).style(theme.title_bar_bg_style()),
+                rect,
+            );
+            hits.push((rect, index));
+        }
+        x = x.saturating_add(width).saturating_add(1);
+    }
+    let right_x = hits
+        .last()
+        .map_or(start, |(rect, _)| rect.right())
+        .max(area.x + title_width as u16);
+    let right_area = Rect::new(
+        right_x,
+        area.y,
+        area.right().saturating_sub(right_x),
+        area.height,
+    );
+    draw_view_title_bar(frame, right_area, theme, Line::default(), right, None, tick);
+    hits
+}
+
+fn fit_tab_text(text: &str, width: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    if text.width() <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let mut result = String::new();
+    let mut used = 0;
+    for grapheme in text.graphemes(true) {
+        if used + grapheme.width() >= width {
+            break;
+        }
+        used += grapheme.width();
+        result.push_str(grapheme);
+    }
+    result.push('…');
+    result
 }
 
 pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
@@ -157,7 +211,7 @@ pub fn title_bar_tabs_rect(area: Rect, default_title: &str, spans_width: u16) ->
     Rect::new(
         start_x,
         area.y,
-        spans_width.min(tabs_region.width),
+        spans_width.min(area.right().saturating_sub(start_x)),
         area.height,
     )
 }
@@ -327,4 +381,77 @@ pub fn preview_spans<'a>(info: &PreviewHeaderInfo, theme: &AppThemeColors) -> Ve
         spans.push(Span::styled(")", Style::default().fg(theme.fg)));
     }
     spans
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn tab_window_keeps_active_unicode_tab_and_uses_only_visible_hit_targets() {
+        let theme = AppThemeColors::default();
+        let tabs = [
+            ("First", None),
+            ("Very long 界界界 e\u{301} 👩\u{200d}💻 saved view", None),
+            ("Last", None),
+        ];
+        for active in 0..tabs.len() {
+            for width in [1, 8, 28, 80] {
+                let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
+                let mut hits = Vec::new();
+                terminal
+                    .draw(|frame| {
+                        hits = draw_header_tabs(
+                            frame,
+                            frame.area(),
+                            &theme,
+                            Line::from("CUSTOM LONG TITLE"),
+                            build_tab_spans(
+                                &tabs,
+                                active,
+                                None,
+                                &theme,
+                                false,
+                                crate::config::IconMode::None,
+                            ),
+                            active,
+                            Some(Line::from("metadata")),
+                            None,
+                            0,
+                            None,
+                        );
+                    })
+                    .unwrap();
+                assert!(hits.iter().any(|(_, index)| *index == active));
+                for (rect, _) in &hits {
+                    assert!(rect.right() <= width);
+                    assert_eq!(rect.height, 1);
+                }
+                assert!(hits.windows(2).all(|pair| pair[0].0.right() < pair[1].0.x));
+            }
+        }
+        assert_eq!(
+            fit_tab_text("e\u{301}👩\u{200d}💻界", 4),
+            "e\u{301}👩\u{200d}💻…"
+        );
+        let mut terminal = Terminal::new(TestBackend::new(40, 1)).unwrap();
+        terminal
+            .draw(|frame| {
+                let hits = draw_header_tabs(
+                    frame,
+                    frame.area(),
+                    &theme,
+                    Line::from("Bases"),
+                    build_tab_spans(&tabs, 0, None, &theme, false, crate::config::IconMode::None),
+                    0,
+                    None,
+                    Some("Notice"),
+                    0,
+                    None,
+                );
+                assert_eq!(hits, Vec::new());
+            })
+            .unwrap();
+    }
 }

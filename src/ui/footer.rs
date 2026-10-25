@@ -11,17 +11,17 @@ use ratatui::{prelude::*, widgets::Paragraph};
 
 pub(crate) fn content_area(area: Rect) -> Rect {
     Rect {
-        height: area.height.saturating_sub(1),
+        height: super::chrome::rows(area)[2].y.saturating_sub(area.y),
         ..area
     }
 }
 
 pub(crate) fn draw(frame: &mut Frame, app: &App) {
     let area = frame.area();
-    if area.height == 0 {
+    if area.height == 0 || app.mode == ViewMode::Setup {
         return;
     }
-    let area = Rect::new(area.x, area.bottom() - 1, area.width, 1);
+    let area = super::chrome::rows(area)[2];
     let theme = &app.app_theme;
     let mut ctx = StatuslineContext::for_view(app, app.mode);
     ctx.area = Some(area);
@@ -30,7 +30,16 @@ pub(crate) fn draw(frame: &mut Frame, app: &App) {
     ctx.canvas = app.canvas_state.as_ref().map(|s| &s.state);
     ctx.outline = app.outline_state.as_ref();
     ctx.bases = app.bases_state.as_ref();
+    ctx.calendar = app.calendar_view.as_ref();
     ctx.setup = app.setup_state.as_ref();
+    if app.mode == ViewMode::Bases {
+        ctx.detail = app.bases_state.as_ref().map(|state| {
+            vec![Span::styled(
+                state.footer_detail(),
+                Style::default().fg(theme.muted),
+            )]
+        });
+    }
     let graph = app
         .graph_plugin
         .as_ref()
@@ -40,6 +49,19 @@ pub(crate) fn draw(frame: &mut Frame, app: &App) {
     if let Some(plugin) = &app.graph_plugin {
         ctx.graph_fps = plugin.canvas_fps();
         ctx.graph_grid_visible = plugin.grid;
+    }
+    let mut footer_theme = theme.clone();
+    if app.mode == ViewMode::Calendar
+        && let Some(calendar) = &app.calendar_view
+    {
+        let (detail, warning) = calendar.footer_detail(app);
+        if warning {
+            footer_theme.accent = theme.warning;
+        }
+        ctx.detail = Some(vec![Span::styled(
+            detail,
+            Style::default().fg(if warning { theme.warning } else { theme.muted }),
+        )]);
     }
     let matcher = match app.mode {
         ViewMode::Graph => app.graph_plugin.as_ref().map(|s| &s.seq_matcher),
@@ -66,7 +88,7 @@ pub(crate) fn draw(frame: &mut Frame, app: &App) {
         ));
     }
     ctx.hints = Some(hints(app).spans);
-    let (left, right) = render_footer(&ctx, &app.config.statusline, app.mode, theme);
+    let (left, right) = render_footer(&ctx, &app.config.statusline, app.mode, &footer_theme);
     // Clear the entire reserved row, including when a view has no active state.
     frame.render_widget(Paragraph::new("").style(theme.hint_line_bg_style()), area);
     super::draw_status_bar(frame, area, theme, left, right);
@@ -199,10 +221,15 @@ fn hints(app: &App) -> Line<'_> {
             if let Some(canvas) = &app.canvas_state
                 && !canvas.state.footer_hint.is_empty()
             {
-                return Line::from(Span::styled(
-                    canvas.state.footer_hint.clone(),
-                    Style::default().fg(theme.muted),
-                ));
+                return crate::statusline::line_from_segments(
+                    &[crate::statusline::Segment::Text(
+                        crate::fsutil::sanitize_for_terminal(&canvas.state.footer_hint)
+                            .into_owned(),
+                    )],
+                    theme,
+                    false,
+                    false,
+                );
             }
             vec![
                 (
@@ -256,7 +283,7 @@ fn hints(app: &App) -> Line<'_> {
         ViewMode::Calendar => vec![
             ("hjkl/Arrows".into(), "move"),
             ("n/e".into(), "new/edit"),
-            ("L/o".into(), "link/open note"),
+            ("a/o".into(), "link/open note"),
             ("s".into(), "sync"),
             ("Esc".into(), "back"),
         ],

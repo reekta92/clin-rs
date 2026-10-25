@@ -167,18 +167,12 @@ pub fn handle_help_mouse(app: &mut App, mouse_event: MouseEvent, area: Rect) {
     let tab_bar_y = area.y;
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) && mouse_event.row == tab_bar_y {
         let tabs_data = crate::ui::help_tabs(app.config.ui.icon_mode, &app.config.features);
-        let tabs: Vec<(&str, Option<&str>)> = tabs_data.iter().map(|(_, l, i)| (*l, *i)).collect();
-        let region = crate::ui::title_bar_tabs_region(area, "Help");
-        if let Some((tab, _, _)) = crate::ui::hit_test_tabs(
-            &tabs,
-            area.x,
-            area.width,
-            region.x,
-            mouse_event.column,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
-        )
-        .and_then(|i| tabs_data.get(i))
+        if let Some((tab, _, _)) = app
+            .header_tabs
+            .iter()
+            .find(|(rect, _)| rect.contains((mouse_event.column, mouse_event.row).into()))
+            .map(|(_, index)| *index)
+            .and_then(|i| tabs_data.get(i))
         {
             app.switch_help_tab(*tab);
         }

@@ -894,56 +894,28 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         && (app.status.trim().is_empty() || app.status == "Ready")
         && mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
         && mouse_event.row == terminal_area.y
+        && let Some(i) = app
+            .header_tabs
+            .iter()
+            .find(|(rect, _)| rect.contains((mouse_event.column, mouse_event.row).into()))
+            .map(|(_, index)| *index)
     {
-        let mut tabs = vec![
-            (
-                "Vault",
-                Some(crate::ui::icons::FOLDER.get(app.config.ui.icon_mode)),
-            ),
-            (
-                "Pinned",
-                Some(crate::ui::icons::PIN.get(app.config.ui.icon_mode)),
-            ),
-        ];
-        if app.config.features.smart_folders.is_enabled() {
-            tabs.push((
-                "Smart",
-                Some(crate::ui::icons::FILTER.get(app.config.ui.icon_mode)),
-            ));
-        }
-        if app.config.features.subnotes.is_enabled() {
-            tabs.push((
-                "Subnotes",
-                Some(crate::ui::icons::SUBNOTES.get(app.config.ui.icon_mode)),
-            ));
-        }
-        let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
-        if let Some(i) = crate::ui::hit_test_tabs(
-            &tabs,
-            terminal_area.x,
-            terminal_area.width,
-            region.x, // min_x: don't overlap the title badge
-            mouse_event.column,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
-        ) {
-            let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
-                3
-            } else {
-                2
-            };
-            let folder = if i == 1 {
-                crate::app::VIRTUAL_PINNED_PATH.to_string()
-            } else if i == 2 && app.config.features.smart_folders.is_enabled() {
-                crate::app::VIRTUAL_SMART_PATH.to_string()
-            } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
-                crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
-            } else {
-                String::new()
-            };
-            app.enter_list_directory(folder, 0);
-            return;
-        }
+        let subnotes_idx = if app.config.features.smart_folders.is_enabled() {
+            3
+        } else {
+            2
+        };
+        let folder = if i == 1 {
+            crate::app::VIRTUAL_PINNED_PATH.to_string()
+        } else if i == 2 && app.config.features.smart_folders.is_enabled() {
+            crate::app::VIRTUAL_SMART_PATH.to_string()
+        } else if i == subnotes_idx && app.config.features.subnotes.is_enabled() {
+            crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
+        } else {
+            String::new()
+        };
+        app.enter_list_directory(folder, 0);
+        return;
     }
     if app.list.notes_layout == crate::config::NotesLayout::Grid {
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {

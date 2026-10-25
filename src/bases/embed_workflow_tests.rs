@@ -111,7 +111,7 @@ fn embedded_layouts_hide_bars_use_full_region_and_restore_fullscreen_bars() {
             app.invalidate_bases();
             let renderer = markdown(&source, Some("public.md"));
             let output = rendered(&mut app, &renderer, "public.md");
-            assert!(!output.contains("Bases ·"), "{layout}/{inline}: {output}");
+            assert!(!output.contains("Bases"), "{layout}/{inline}: {output}");
             assert!(!output.contains("Esc back"), "{layout}/{inline}: {output}");
             if layout == "list" {
                 for index in 0..7 {
@@ -121,7 +121,7 @@ fn embedded_layouts_hide_bars_use_full_region_and_restore_fullscreen_bars() {
             expand_first(&mut app, &renderer);
             assert_eq!(app.mode, ViewMode::Bases);
             let fullscreen = render(&mut app);
-            assert!(fullscreen.contains("Bases ·"));
+            assert!(fullscreen.contains("Bases"));
             assert!(fullscreen.contains("Esc back"));
             crate::finish_overlay_event(
                 &mut app,
@@ -129,7 +129,7 @@ fn embedded_layouts_hide_bars_use_full_region_and_restore_fullscreen_bars() {
                 OverlayResult::Exit,
             );
             let restored = screen(&mut app, &renderer);
-            assert!(!restored.contains("Bases ·"));
+            assert!(!restored.contains("Bases"));
             assert!(!restored.contains("Esc back"));
         }
     }
