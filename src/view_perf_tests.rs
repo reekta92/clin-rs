@@ -246,6 +246,22 @@ fn static_views_do_not_redraw_while_idle() {
     ] {
         let (_root, mut app) = fixture(0);
         enter(&mut app, mode);
+        if mode == ViewMode::Calendar {
+            // Initial event and note-link loads can complete on separate frames.
+            app.poll_calendar();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while app.calendar.render_pending()
+                || app
+                    .calendar_view
+                    .as_ref()
+                    .is_some_and(crate::calendar::view::View::render_pending)
+            {
+                assert!(Instant::now() < deadline, "calendar rendering timed out");
+                std::thread::sleep(Duration::from_millis(1));
+                app.poll_calendar();
+            }
+            assert!(!app.poll_calendar(), "loaded calendar must remain idle");
+        }
         let (sender, receiver) = std::sync::mpsc::channel();
         let driver = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(650));
