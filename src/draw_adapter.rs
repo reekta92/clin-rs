@@ -11,7 +11,6 @@ use crossterm::event::{Event, KeyEvent, MouseButton, MouseEventKind};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::Style,
 };
 
 pub struct DrawPlugin {
@@ -182,12 +181,11 @@ pub(crate) fn theme_colors(theme: &crate::app_theme::AppThemeColors) -> ThemeCol
     ThemeColors {
         bg: theme.bg,
         accent: theme.accent,
+        heading: theme.heading,
         muted: theme.muted,
         text: theme.text,
         popup_bg: theme.preview_bg(),
-        selected: Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.highlight_bg),
+        selected: theme.selected_style(),
         hover: theme.hover_style(),
     }
 }

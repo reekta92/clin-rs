@@ -140,6 +140,61 @@ const AREA: ratatui::layout::Rect = ratatui::layout::Rect {
 };
 
 #[test]
+fn rename_hints_follow_host_bindings_and_ignore_main_footer_style() {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
+    let (mut plugin, _) = make_plugin(r#"{"nodes":[],"edges":[]}"#);
+    let mut app = test_app();
+    plugin.keybinds.canvas.insert(
+        CanvasAction::RenameConfirm,
+        vec![clin::keybinds::KeyCombo::simple(KeyCode::F(7))],
+    );
+    plugin.keybinds.canvas.insert(
+        CanvasAction::RenameCancel,
+        vec![clin::keybinds::KeyCombo::simple(KeyCode::F(8))],
+    );
+    for background in [
+        clin::config::Background::Solid,
+        clin::config::Background::Transparent,
+    ] {
+        app.config.ui.background = background;
+        for hint_style in clin::config::HintBarStyle::ALL {
+            app.config.ui.hint_bar_style = hint_style;
+            app.app_theme =
+                clin::app_theme::AppThemeColors::from_config(&app.config.ui, &mut Vec::new());
+            plugin.state.rename_popup = Some(ratatui_textarea::TextArea::default());
+            let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+            terminal
+                .draw(|frame| plugin.overlay_render(frame, frame.area(), &mut app))
+                .unwrap();
+            let text = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect::<String>();
+            assert!(
+                text.contains("RENAME NODE")
+                    && text.contains("F7 confirm")
+                    && text.contains("F8 cancel"),
+                "{text}"
+            );
+            assert_eq!(text.matches("confirm").count(), 1);
+            assert!(!text.contains("Enter"));
+            plugin
+                .overlay_handle_event(
+                    Event::Key(KeyEvent::new(KeyCode::F(8), KeyModifiers::NONE)),
+                    &mut app,
+                    ratatui::layout::Rect::new(0, 0, 80, 24),
+                )
+                .unwrap();
+            assert!(plugin.state.rename_popup.is_none());
+        }
+    }
+}
+
+#[test]
 fn zoom_key_dispatches_to_lib_apply_action() {
     let (mut plugin, _) = make_plugin(r#"{"nodes":[],"edges":[]}"#);
     let mut app = test_app();

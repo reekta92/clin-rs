@@ -200,6 +200,7 @@ pub fn clin_theme(
             .unwrap_or(ratatui::style::Color::Reset),
     );
     t.menu_shortcut_color = Some(app_theme.muted);
+    t.menu_hover = app_theme.hover_style();
     t
 }
 
