@@ -5,10 +5,7 @@ use crate::{
     overlay::{OverlayResult, OverlayView},
 };
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    text::Line,
-};
+use ratatui::layout::Rect;
 
 impl OverlayView for BasesState {
     fn overlay_render(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
@@ -44,6 +41,17 @@ impl OverlayView for BasesState {
                 }
             }
             Event::Mouse(mouse) => {
+                if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                    && (app.status.trim().is_empty() || app.status == "Ready")
+                    && let Some(index) = app
+                        .header_tabs
+                        .iter()
+                        .find(|(rect, _)| rect.contains((mouse.column, mouse.row).into()))
+                        .map(|(_, index)| *index)
+                {
+                    self.select_view(app, index);
+                    return Ok(OverlayResult::Continue);
+                }
                 let maximum = self.items.len().saturating_sub(1);
                 if let Some(fraction) = crate::ui::scrollbar::handle_scrollbar_mouse(
                     &mouse,
@@ -122,48 +130,51 @@ impl OverlayView for BasesState {
     }
 }
 impl BasesState {
-    pub(crate) fn render_native(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &App) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(0)])
-            .split(area);
-        let view = self.loaded.as_ref().map_or("", |loaded| {
-            loaded.document.config.views[loaded.view].name.as_str()
-        });
-        let title = format!(
-            "Bases · {} · {}{}{}",
-            crate::fsutil::sanitize_for_terminal(&self.id),
-            crate::fsutil::sanitize_for_terminal(view),
-            if self.search_text.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " · search: {}",
-                    crate::fsutil::sanitize_for_terminal(&self.search_text)
-                )
-            },
-            if self.loading {
-                " · refreshing…"
-            } else {
-                ""
-            }
+    pub(crate) fn render_native(&mut self, frame: &mut ratatui::Frame, area: Rect, app: &mut App) {
+        let chunks = crate::ui::chrome::content_rows(area);
+        let mut ctx =
+            crate::statusline::StatuslineContext::for_view(app, crate::app::ViewMode::Bases);
+        ctx.area = Some(chunks[0]);
+        ctx.bases = Some(self);
+        let (left, right) = crate::statusline::render_header(
+            &ctx,
+            &app.config.statusline,
+            crate::app::ViewMode::Bases,
+            &app.app_theme,
         );
-        let count = self.result().map_or_else(String::new, |result| {
-            format!(
-                "{} / {} files · {} selected",
-                result.rows.len(),
-                result.matched,
-                self.selected_ids.len()
-            )
-        });
-        crate::ui::draw_view_title_bar(
+        let labels: Vec<_> = self
+            .loaded
+            .as_ref()
+            .map(|loaded| {
+                loaded
+                    .document
+                    .config
+                    .views
+                    .iter()
+                    .map(|view| crate::fsutil::sanitize_for_terminal(&view.name).into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let tabs: Vec<_> = labels.iter().map(|label| (label.as_str(), None)).collect();
+        let active = self.loaded.as_ref().map_or(0, |loaded| loaded.view);
+        app.header_tabs = crate::ui::draw_header_tabs(
             frame,
             chunks[0],
             &app.app_theme,
-            Line::from(title),
-            Some(Line::from(count)),
+            left,
+            crate::ui::build_tab_spans(
+                &tabs,
+                active,
+                None,
+                &app.app_theme,
+                false,
+                app.config.ui.icon_mode,
+            ),
+            active,
+            right,
             Some(app.status.as_ref()),
             app.load_spinner_tick,
+            app.mouse_pos,
         );
         super::render::render(frame, chunks[1], self, app);
         if self.embedded_request.is_none() || app.mode == crate::app::ViewMode::Bases {
@@ -225,14 +236,14 @@ impl BasesState {
             BasesAction::NextView | BasesAction::PreviousView => {
                 if let Some(loaded) = &self.loaded {
                     let length = loaded.document.config.views.len();
-                    let index = if matches!(action, BasesAction::NextView) {
-                        (loaded.view + 1) % length
-                    } else {
-                        (loaded.view + length - 1) % length
-                    };
-                    self.named_view = Some(loaded.document.config.views[index].name.clone());
-                    self.environment.random_seed = rand::random();
-                    self.refresh(app, false);
+                    if length > 0 {
+                        let index = if matches!(action, BasesAction::NextView) {
+                            (loaded.view + 1) % length
+                        } else {
+                            (loaded.view + length - 1) % length
+                        };
+                        self.select_view(app, index);
+                    }
                 }
             }
             BasesAction::ToggleSelect => {
@@ -365,6 +376,40 @@ impl BasesState {
             .saturating_sub(1)
             .max(1)
     }
+    fn select_view(&mut self, app: &mut App, index: usize) {
+        if self.write_task.is_some() {
+            return;
+        }
+        let Some(view) = self
+            .loaded
+            .as_ref()
+            .and_then(|loaded| loaded.document.config.views.get(index))
+        else {
+            return;
+        };
+        self.named_view = Some(view.name.clone());
+        self.environment.random_seed = rand::random();
+        self.refresh(app, false);
+    }
+
+    pub(crate) fn footer_detail(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(result) = self.result() {
+            parts.push(format!("{} / {} files", result.rows.len(), result.matched));
+            parts.push(format!("{} selected", self.selected_ids.len()));
+        }
+        if !self.search_text.is_empty() {
+            parts.push(format!(
+                "search: {}",
+                crate::fsutil::sanitize_for_terminal(&self.search_text)
+            ));
+        }
+        if self.loading {
+            parts.push("refreshing…".into());
+        }
+        parts.join(" | ")
+    }
+
     pub fn refresh(&mut self, app: &mut App, invalidate: bool) {
         if self.creating {
             app.bases_refresh_requested = false;

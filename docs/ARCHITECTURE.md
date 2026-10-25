@@ -54,7 +54,7 @@ Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). G
 
 ## Shared footer
 
-`ui::draw_ui` owns the final terminal row and renders `ui::footer` after every view and before global popups. View rendering uses `ui::view_content_area`; overlay renderers receive the rectangle above the footer. Views must not reserve or paint another application footer. The shared renderer supplies each view's hints, sequence prefix, statusline context, and `hint_bar_style`, including Calendar, Setup, and missing/loading view state. Zen mode and Graph's legacy status toggle cannot remove the application footer.
+`ui::chrome` owns the header/body/footer row geometry; the footer takes precedence on a one-row terminal. `ui::draw_ui` paints a fallback header and renders `ui::footer` after the active view and before global popups. View rendering uses `ui::view_content_area`; overlay renderers receive the rectangle above the footer. Views must not reserve or paint another application footer. Shared title-bar and statusline renderers apply `hint_bar_style`, including Calendar, Bases, and missing/loading view state. Header tabs publish their visible hit rectangles to the host, so rendering, clipping, hover and clicks agree. Setup uses the full terminal without application bars; editor Zen mode keeps its hidden header and visible footer. Graph's legacy status toggle cannot remove the application footer.
 
 Adding a `ViewMode` requires an exhaustive hint choice in `ui::footer`; drawing the footer needs no new view-specific call. The acceptance test iterates every `ViewMode` and every hint style, so newly added variants join the check automatically. View-specific errors and sync details remain in view content; popup hints retain their own classic style.
 

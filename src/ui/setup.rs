@@ -53,7 +53,6 @@ pub(crate) struct SetupLayout {
 }
 
 pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
-    let area = super::footer::content_area(area);
     let total_w = COL_WIDTH + 2 + PREVIEW_WIDTH;
     let actual_w = total_w.min(area.width);
 

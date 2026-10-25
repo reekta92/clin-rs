@@ -17,7 +17,7 @@ use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
 use std::collections::BTreeMap;
 
-const HELP: &str = "m/w/d/a  Month / Week / Day / Agenda\nhjkl / Arrows  Navigate dates/events    PgUp/PgDn  Previous/next period\nt  Today    J/K  Select event    Tab  Next view\nn  New event    e  Edit series    Delete  Delete series\nL  Link note (or schedule note on an empty date)\no / Enter  Open linked note    c  Resolve sync conflict\ny  Copy inline date/event reference\ni  Import .ics    E  Export .ics (new file only)\ns  Sync CalDAV    r  Reload from disk\nEsc  Return to Notes    ?  This help\n\nDate input: YYYY-MM-DD (all day; end date exclusive)\nTime input: YYYY-MM-DDTHH:MM (local), or RFC3339 with offset.\nRepeat: RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,WE\nEdits and deletes apply to the entire series.\nTimes display in your system timezone. Note links remain local.";
+const HELP: &str = "m/w/d/A  Month / Week / Day / Agenda\nhjkl / Arrows  Navigate dates/events    PgUp/PgDn  Previous/next period\nt  Today    J/K  Select event    Tab  Next view\nn  New event    e  Edit series    Delete  Delete series\na  Link note (or schedule note on an empty date)\no / Enter  Open linked note    c  Resolve sync conflict\ny  Copy inline date/event reference\ni  Import .ics    E  Export .ics (new file only)\ns  Sync CalDAV    r  Reload from disk\nEsc  Return to Notes    ?  This help\n\nDate input: YYYY-MM-DD (all day; end date exclusive)\nTime input: YYYY-MM-DDTHH:MM (local), or RFC3339 with offset.\nRepeat: RFC 5545 RRULE, e.g. FREQ=WEEKLY;BYDAY=MO,WE\nEdits and deletes apply to the entire series.\nTimes display in your system timezone. Note links remain local.";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Display {
@@ -69,7 +69,6 @@ pub struct View {
     visible: Vec<usize>,
     cells: Vec<(Rect, NaiveDate)>,
     rows: Vec<(Rect, usize)>,
-    tabs: Vec<(Rect, Display)>,
     links: BTreeMap<String, Vec<String>>,
     links_revision: Option<u64>,
     links_job: Option<LinksJob>,
@@ -163,7 +162,6 @@ impl View {
             visible: Vec::new(),
             cells: Vec::new(),
             rows: Vec::new(),
-            tabs: Vec::new(),
             links: BTreeMap::new(),
             links_revision: None,
             links_job: None,
@@ -768,7 +766,7 @@ impl View {
             KeyCode::Char('m') => self.display = Display::Month,
             KeyCode::Char('w') => self.display = Display::Week,
             KeyCode::Char('d') => self.display = Display::Day,
-            KeyCode::Char('a') => self.display = Display::Agenda,
+            KeyCode::Char('A') => self.display = Display::Agenda,
             KeyCode::Tab => self.display = self.display.next(),
             KeyCode::Left | KeyCode::Char('h') => days = -1,
             KeyCode::Right | KeyCode::Char('l') => days = 1,
@@ -816,7 +814,7 @@ impl View {
                     self.dialog = Some(Dialog::Delete(id));
                 }
             }
-            KeyCode::Char('L') => self.begin_notes(app, false),
+            KeyCode::Char('a') => self.begin_notes(app, false),
             KeyCode::Char('o') | KeyCode::Enter => self.begin_notes(app, true),
             KeyCode::Char('y') => {
                 let target = self.selected_event().map_or_else(
@@ -923,8 +921,14 @@ impl OverlayView for View {
             Event::Mouse(mouse) => {
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     let position = Position::new(mouse.column, mouse.row);
-                    if let Some((_, display)) =
-                        self.tabs.iter().find(|(rect, _)| rect.contains(position))
+                    if (app.status.trim().is_empty() || app.status == "Ready")
+                        && let Some((_, index)) = app
+                            .header_tabs
+                            .iter()
+                            .find(|(rect, _)| rect.contains(position))
+                        && let Some(display) =
+                            [Display::Month, Display::Week, Display::Day, Display::Agenda]
+                                .get(*index)
                     {
                         self.display = *display;
                     } else if let Some((_, date)) =
@@ -974,119 +978,99 @@ fn event_time(e: &Occurrence) -> String {
 }
 
 impl View {
-    fn render(&mut self, frame: &mut Frame, area: Rect, app: &App) {
+    pub(crate) fn footer_detail(&self, app: &App) -> (String, bool) {
+        if let Some(error) = &self.error {
+            return (
+                crate::fsutil::sanitize_for_terminal(error).into_owned(),
+                true,
+            );
+        }
+        let conflicts = app
+            .calendar
+            .data()
+            .resources
+            .iter()
+            .filter(|r| r.conflict.is_some())
+            .count();
+        let mut details = Vec::new();
+        if conflicts > 0 {
+            details.push(format!("{conflicts} sync conflict(s): c to resolve"));
+        }
+        if app.calendar.busy() {
+            details.push("Syncing…".into());
+        }
+        (details.join(" | "), conflicts > 0)
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, app: &mut App) {
         let theme = &app.app_theme;
-        frame.render_widget(Block::default().style(theme.bg_style()), area);
+        let [header, content] = crate::ui::chrome::content_rows(area);
+        frame.render_widget(Block::default().style(theme.bg_style()), content);
         self.cells.clear();
         self.rows.clear();
-        self.tabs.clear();
-        if area.width < 28 || area.height < 8 {
-            frame.render_widget(
-                Paragraph::new("Calendar needs 28 columns × 8 rows; Esc returns.")
-                    .style(theme.bg_style()),
-                area,
-            );
-            return;
-        }
-        let layout = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(area);
-        let mut ctx =
-            crate::statusline::StatuslineContext::for_overlay(&app.config, ViewMode::Calendar);
-        ctx.app = Some(app);
-        ctx.app_status = Some(app.status.as_ref());
-        ctx.area = Some(layout[0]);
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Calendar);
+        ctx.calendar = Some(self);
+        ctx.area = Some(header);
         let (left, right) = crate::statusline::render_header(
             &ctx,
             &app.config.statusline,
             ViewMode::Calendar,
             theme,
         );
-        crate::ui::draw_view_title_bar(
+        let displays = [Display::Month, Display::Week, Display::Day, Display::Agenda];
+        let tabs: Vec<_> = displays
+            .iter()
+            .map(|display| (display.label(), None))
+            .collect();
+        let active = displays
+            .iter()
+            .position(|display| *display == self.display)
+            .unwrap_or(0);
+        app.header_tabs = crate::ui::draw_header_tabs(
             frame,
-            layout[0],
+            header,
             theme,
             left,
+            crate::ui::build_tab_spans(&tabs, active, None, theme, false, app.config.ui.icon_mode),
+            active,
             right,
             Some(app.status.as_ref()),
             app.load_spinner_tick,
+            app.mouse_pos,
         );
-        let mut x = layout[1].x;
-        for display in [Display::Month, Display::Week, Display::Day, Display::Agenda] {
-            let width = display.label().len() as u16 + 2;
-            let rect = Rect::new(
-                x,
-                layout[1].y,
-                width.min(layout[1].right().saturating_sub(x)),
-                1,
+        if area.width < 28 || content.height < 5 {
+            frame.render_widget(
+                Paragraph::new("Calendar needs 28 columns × 7 rows; Esc returns.")
+                    .style(theme.bg_style()),
+                content,
             );
-            let style = if self.display == display {
-                Style::default().fg(theme.highlight_fg).bg(theme.accent)
+        } else {
+            let (body, divider) = if area.width >= 76 {
+                let [main, divider, sidebar] = Layout::horizontal([
+                    Constraint::Percentage(65),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ])
+                .areas(content);
+                ([main, sidebar], Some(divider))
             } else {
-                Style::default().fg(theme.muted)
+                (
+                    Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
+                        .areas(content),
+                    None,
+                )
             };
-            frame.render_widget(
-                Paragraph::new(format!(" {} ", display.label())).style(style),
-                rect,
-            );
-            self.tabs.push((rect, display));
-            x = x.saturating_add(width);
+            match self.display {
+                Display::Month => self.render_month(frame, body[0], app),
+                Display::Week => self.render_week(frame, body[0], app),
+                Display::Day => self.render_day(frame, body[0], app),
+                Display::Agenda => self.render_agenda(frame, body[0], theme, true, false),
+            }
+            self.render_inspector(frame, body[1], app);
+            if let Some(divider) = divider {
+                crate::ui::draw_dim_vline(frame, divider, theme.muted);
+            }
         }
-        if layout[1].right() > x {
-            frame.render_widget(
-                Paragraph::new(format!(
-                    "  {}{}",
-                    self.date.format("%B %Y"),
-                    if app.calendar.busy() {
-                        "  Syncing…"
-                    } else {
-                        ""
-                    }
-                ))
-                .style(Style::default().fg(theme.text)),
-                Rect::new(x, layout[1].y, layout[1].right() - x, 1),
-            );
-        }
-        let body = if area.width >= 76 {
-            Layout::horizontal([Constraint::Percentage(65), Constraint::Percentage(35)])
-                .split(layout[2])
-        } else {
-            Layout::vertical([Constraint::Percentage(55), Constraint::Percentage(45)])
-                .split(layout[2])
-        };
-        match self.display {
-            Display::Month => self.render_month(frame, body[0], app),
-            Display::Week => self.render_week(frame, body[0], app),
-            Display::Day => self.render_day(frame, body[0], app),
-            Display::Agenda => self.render_agenda(frame, body[0], theme, true),
-        }
-        self.render_inspector(frame, body[1], app);
-        let conflicts = app.calendar.store.as_ref().map_or(0, |s| {
-            s.data
-                .resources
-                .iter()
-                .filter(|r| r.conflict.is_some())
-                .count()
-        });
-        let details = if conflicts > 0 {
-            format!("{conflicts} sync conflict(s): c to resolve. {}", app.status)
-        } else {
-            format!("{}  {}", self.date.format("%A, %d %B %Y"), app.status)
-        };
-        frame.render_widget(
-            Paragraph::new(self.error.as_deref().unwrap_or(&details)).style(Style::default().fg(
-                if self.error.is_some() {
-                    theme.warning
-                } else {
-                    theme.muted
-                },
-            )),
-            layout[3],
-        );
         if let Some(dialog) = &mut self.dialog {
             render_dialog(
                 frame,
@@ -1100,13 +1084,80 @@ impl View {
         }
     }
 
+    fn event_color(&self, event: &Occurrence, theme: &AppThemeColors) -> Color {
+        if self
+            .links
+            .get(&event.resource)
+            .is_some_and(|notes| !notes.is_empty())
+        {
+            theme.subnote
+        } else {
+            theme.accent
+        }
+    }
+
+    fn linked_note_lines(&self, event: &Occurrence, theme: &AppThemeColors) -> Vec<Line<'static>> {
+        self.links
+            .get(&event.resource)
+            .into_iter()
+            .flatten()
+            .map(|note| {
+                Line::styled(
+                    format!("  {}", note_label(note)),
+                    Style::default().fg(theme.subnote),
+                )
+            })
+            .collect()
+    }
+
+    fn event_lines<'a>(
+        &self,
+        events: impl Iterator<Item = &'a Occurrence>,
+        theme: &AppThemeColors,
+        timed: bool,
+    ) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        for event in events {
+            let title = if timed {
+                format!("{} {}", event.start.format("%H:%M"), event.title)
+            } else {
+                event.title.clone()
+            };
+            lines.push(Line::styled(
+                title,
+                Style::default().fg(self.event_color(event, theme)),
+            ));
+            lines.extend(self.linked_note_lines(event, theme));
+        }
+        lines
+    }
+
+    fn note_summary(&self, date: NaiveDate) -> Option<[String; 2]> {
+        let mut notes = std::collections::BTreeSet::new();
+        for note in self
+            .events
+            .iter()
+            .filter(|event| event.on_date(date))
+            .flat_map(|event| self.links.get(&event.resource).into_iter().flatten())
+        {
+            notes.insert(note);
+        }
+        if notes.len() < 2 {
+            return None;
+        }
+        let first = notes.first()?;
+        Some([note_label(first), format!("+{} notes", notes.len() - 1)])
+    }
+
     fn render_month(&mut self, frame: &mut Frame, area: Rect, app: &App) {
         let theme = &app.app_theme;
-        let block = Block::bordered()
-            .title(format!(" {} ", self.date.format("%B %Y")))
-            .border_style(Style::default().fg(theme.muted));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let inner = calendar_pane(
+            frame,
+            area,
+            &self.date.format("%B %Y").to_string(),
+            theme,
+            theme.bg_style(),
+        );
         if inner.height < 2 {
             return;
         }
@@ -1118,7 +1169,9 @@ impl View {
         );
         let grid = Rect::new(inner.x, inner.y + 1, inner.width, inner.height - 1);
         self.cells = month_cells(grid, self.date, app.list.week_start);
-        for (rect, date) in &self.cells {
+        for (index, (rect, date)) in self.cells.iter().enumerate() {
+            let current_month =
+                date.month() == self.date.month() && date.year() == self.date.year();
             let items: Vec<_> = self.events.iter().filter(|e| e.on_date(*date)).collect();
             let mut lines = vec![Line::from(format!(
                 "{:>2}{}",
@@ -1130,29 +1183,105 @@ impl View {
                 }
             ))];
             let capacity = rect.height.saturating_sub(1) as usize;
-            for e in items.iter().take(capacity) {
-                lines.push(Line::from(format!(
-                    "{} {}",
-                    if e.all_day {
-                        "·".into()
-                    } else {
-                        e.start.format("%H:%M").to_string()
-                    },
-                    e.title
-                )));
-            }
-            let mut style = Style::default().fg(if date.month() == self.date.month() {
-                theme.text
+            let summary = self.note_summary(*date);
+            let collapse_notes = summary.is_some();
+            let note_color = if current_month {
+                theme.subnote
             } else {
-                theme.muted
+                crate::app_theme::mix_colors(theme.subnote, theme.muted, 0.65)
+            };
+            lines.extend(
+                summary
+                    .into_iter()
+                    .flatten()
+                    .take(capacity)
+                    .map(|text| Line::styled(text, Style::default().fg(note_color))),
+            );
+            let mut plain_events = items.iter().filter(|event| {
+                self.links
+                    .get(&event.resource)
+                    .is_none_or(|notes| notes.is_empty())
             });
+            let first_event = plain_events.next();
+            let additional_events = plain_events.count();
+            let collapse_events = additional_events > 0;
+            if let Some(event) = first_event
+                && collapse_events
+            {
+                let color = if current_month {
+                    theme.accent
+                } else {
+                    crate::app_theme::mix_colors(theme.accent, theme.muted, 0.65)
+                };
+                for text in [
+                    if event.all_day {
+                        event.title.clone()
+                    } else {
+                        format!("{} {}", event_time(event), event.title)
+                    },
+                    format!("+{additional_events} events"),
+                ] {
+                    lines.push(Line::styled(text, Style::default().fg(color)));
+                }
+            }
+            let remaining = capacity.saturating_sub(lines.len() - 1);
+            for e in items
+                .iter()
+                .filter(|event| {
+                    let plain = self
+                        .links
+                        .get(&event.resource)
+                        .is_none_or(|notes| notes.is_empty());
+                    (!collapse_notes || plain) && (!collapse_events || !plain)
+                })
+                .take(remaining)
+            {
+                let color = self.event_color(e, theme);
+                let color = if current_month {
+                    color
+                } else {
+                    crate::app_theme::mix_colors(color, theme.muted, 0.65)
+                };
+                lines.push(Line::styled(
+                    format!(
+                        "{} {}",
+                        if e.all_day {
+                            "·".into()
+                        } else {
+                            e.start.format("%H:%M").to_string()
+                        },
+                        e.title
+                    ),
+                    Style::default().fg(color),
+                ));
+            }
+            lines.truncate(capacity + 1);
+            let mut style = if current_month {
+                calendar_section_style(theme, (index / 7 + index % 7) % 2 != 0, false)
+                    .fg(theme.text)
+            } else {
+                let mut style = theme.preview_bg_style().fg(theme.muted);
+                if let Some(bg) = theme.bg
+                    && theme.preview_bg() == Some(bg)
+                {
+                    style = style.bg(crate::app_theme::mix_colors(bg, theme.muted, 0.12));
+                }
+                style
+            };
             if *date == Local::now().date_naive() {
                 style = style.fg(theme.success).add_modifier(Modifier::BOLD);
             }
             if *date == self.date {
-                style = style.bg(theme.accent).fg(theme.highlight_fg);
+                style = style.bg(theme.highlight_bg).fg(theme.highlight_fg);
             }
-            frame.render_widget(Paragraph::new(lines).style(style), *rect);
+            frame.render_widget(Block::default().style(style), *rect);
+            frame.render_widget(
+                Paragraph::new(lines).style(style),
+                Rect {
+                    width: rect.width.saturating_sub(1),
+                    ..*rect
+                },
+            );
         }
     }
 
@@ -1166,50 +1295,72 @@ impl View {
                 .checked_add_signed(Duration::days(i64::from(col)))
                 .unwrap_or(start);
             self.cells.push((rect, date));
-            let block = Block::bordered()
-                .title(date.format("%a %d").to_string())
-                .border_style(Style::default().fg(if date == self.date {
-                    app.app_theme.accent
-                } else {
-                    app.app_theme.muted
-                }));
-            let inner = block.inner(rect);
-            frame.render_widget(block, rect);
+            let inner = calendar_pane(
+                frame,
+                rect,
+                &date.format("%a %d").to_string(),
+                &app.app_theme,
+                calendar_section_style(&app.app_theme, col % 2 != 0, false),
+            );
+            if date == self.date {
+                frame.render_widget(
+                    Paragraph::new(date.format("%a %d").to_string()).style(
+                        Style::default()
+                            .fg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Rect::new(
+                        rect.x + u16::from(rect.width > 0),
+                        rect.y,
+                        rect.width.saturating_sub(2),
+                        rect.height.min(1),
+                    ),
+                );
+            }
             let lines: Vec<_> = self
                 .events
                 .iter()
                 .filter(|e| e.on_date(date))
-                .flat_map(|e| {
-                    [
-                        Line::from(Span::styled(
-                            event_time(e),
-                            Style::default().fg(app.app_theme.accent),
-                        )),
-                        Line::from(e.title.clone()),
-                        Line::from(""),
-                    ]
+                .flat_map(|event| {
+                    let mut lines = vec![Line::styled(
+                        event_time(event),
+                        Style::default().fg(app.app_theme.muted),
+                    )];
+                    lines.extend(self.event_lines(std::iter::once(event), &app.app_theme, false));
+                    lines.push(Line::from(""));
+                    lines
                 })
                 .collect();
-            frame.render_widget(Paragraph::new(lines).style(app.app_theme.bg_style()), inner);
+            frame.render_widget(
+                Paragraph::new(lines).style(
+                    calendar_section_style(&app.app_theme, col % 2 != 0, false)
+                        .fg(app.app_theme.text),
+                ),
+                inner,
+            );
         }
     }
 
     fn render_day(&mut self, frame: &mut Frame, area: Rect, app: &App) {
-        let block = Block::bordered()
-            .title(format!(" {} · local time ", self.date.format("%a %d %b")))
-            .border_style(Style::default().fg(app.app_theme.muted));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        let all_day = self
-            .events
-            .iter()
-            .filter(|e| e.on_date(self.date) && e.all_day)
-            .map(|e| e.title.as_str())
-            .collect::<Vec<_>>()
-            .join(" · ");
-        let mut lines = vec![Line::from(format!("All day  {all_day}"))];
+        let inner = calendar_pane(
+            frame,
+            area,
+            &format!("{} · local time", self.date.format("%a %d %b")),
+            &app.app_theme,
+            app.app_theme.bg_style(),
+        );
+        let mut lines = vec![Line::from("All day")];
+        lines.extend(
+            self.event_lines(
+                self.events
+                    .iter()
+                    .filter(|event| event.on_date(self.date) && event.all_day),
+                &app.app_theme,
+                false,
+            ),
+        );
         for hour in self.hour_scroll..24 {
-            let names = self
+            let mut events = self
                 .events
                 .iter()
                 .filter(|e| {
@@ -1218,12 +1369,22 @@ impl View {
                         && (e.start.date() < self.date && hour == 0
                             || e.start.date() == self.date && e.start.hour() == hour)
                 })
-                .map(|e| format!("{} {}", e.start.format("%H:%M"), e.title))
-                .collect::<Vec<_>>()
-                .join(" · ");
-            lines.push(Line::from(format!("{hour:02}:00 │ {names}")));
+                .peekable();
+            if events.peek().is_none() {
+                lines.push(Line::from(format!("{hour:02}:00")));
+            } else {
+                lines.extend(self.event_lines(events, &app.app_theme, true));
+            }
         }
-        frame.render_widget(Paragraph::new(lines).style(app.app_theme.bg_style()), inner);
+        for (index, line) in lines.into_iter().take(inner.height as usize).enumerate() {
+            frame.render_widget(
+                Paragraph::new(line).style(
+                    calendar_section_style(&app.app_theme, index % 2 != 0, false)
+                        .fg(app.app_theme.text),
+                ),
+                Rect::new(inner.x, inner.y + index as u16, inner.width, 1),
+            );
+        }
     }
 
     fn render_agenda(
@@ -1232,55 +1393,90 @@ impl View {
         area: Rect,
         theme: &AppThemeColors,
         dates: bool,
+        sidebar: bool,
     ) {
-        let block = Block::bordered()
-            .title(if dates {
-                " Agenda · next 30 days ".to_owned()
-            } else {
-                format!(" {} ", self.date.format("%a %d %b"))
-            })
-            .border_style(Style::default().fg(theme.muted));
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let title = if dates {
+            "Agenda · next 30 days".to_owned()
+        } else {
+            self.date.format("%a %d %b").to_string()
+        };
+        let inner = calendar_pane(
+            frame,
+            area,
+            &title,
+            theme,
+            calendar_section_style(theme, false, sidebar),
+        );
         let height = inner.height as usize;
-        let offset = self.selected.saturating_sub(height.saturating_sub(1));
-        for (row, (index, event)) in self
+        let event_height = |index: usize| {
+            1 + self
+                .links
+                .get(&self.events[index].resource)
+                .map_or(0, Vec::len)
+        };
+        let selected_row: usize = self
             .visible
             .iter()
-            .enumerate()
-            .skip(offset)
-            .take(height)
-            .map(|(i, index)| (i - offset, (i, &self.events[*index])))
-        {
+            .take(self.selected)
+            .map(|index| event_height(*index))
+            .sum();
+        let selected_height = self
+            .visible
+            .get(self.selected)
+            .map_or(1, |index| event_height(*index));
+        let offset =
+            selected_row.saturating_sub(height.saturating_sub(selected_height.min(height)));
+        let entries = self.visible.iter().enumerate().flat_map(|(index, event)| {
+            let event = &self.events[*event];
             let prefix = if dates {
                 format!("{} ", event.start.format("%m-%d"))
             } else {
                 String::new()
             };
-            let rect = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
-            frame.render_widget(
-                Paragraph::new(format!(
-                    "{prefix}{} {}{}",
-                    event_time(event),
-                    event.title,
-                    if self.links.contains_key(&event.resource) {
+            let line = Line::from(vec![
+                Span::raw(format!("{prefix}{} ", event_time(event))),
+                Span::styled(
+                    event.title.clone(),
+                    Style::default().fg(self.event_color(event, theme)),
+                ),
+                Span::styled(
+                    if self
+                        .links
+                        .get(&event.resource)
+                        .is_some_and(|notes| !notes.is_empty())
+                    {
                         " [notes]"
                     } else {
                         ""
-                    }
-                ))
-                .style(if index == self.selected {
-                    Style::default().bg(theme.accent).fg(theme.highlight_fg)
+                    },
+                    Style::default().fg(theme.subnote),
+                ),
+            ]);
+            std::iter::once((index, line)).chain(
+                self.linked_note_lines(event, theme)
+                    .into_iter()
+                    .map(move |line| (index, line)),
+            )
+        });
+        let mut hits = Vec::with_capacity(height);
+        for (row, (index, line)) in entries.skip(offset).take(height).enumerate() {
+            let rect = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
+            frame.render_widget(
+                Paragraph::new(line).style(if index == self.selected {
+                    Style::default()
+                        .bg(theme.highlight_bg)
+                        .fg(theme.highlight_fg)
                 } else {
-                    theme.bg_style()
+                    calendar_section_style(theme, index % 2 != 0, sidebar).fg(theme.text)
                 }),
                 rect,
             );
-            self.rows.push((rect, index));
+            hits.push((rect, index));
         }
+        self.rows.extend(hits);
         if self.visible.is_empty() {
             frame.render_widget(
-                Paragraph::new("No events. n: new · l: schedule note")
+                Paragraph::new("No events. n: new · a: schedule note")
                     .style(Style::default().fg(theme.muted)),
                 inner,
             );
@@ -1295,12 +1491,16 @@ impl View {
             chunks[0],
             &app.app_theme,
             self.display == Display::Agenda,
+            true,
         );
-        let block = Block::bordered()
-            .title(" Event / notes ")
-            .border_style(Style::default().fg(app.app_theme.muted));
-        let inner = block.inner(chunks[1]);
-        frame.render_widget(block, chunks[1]);
+        let detail_style = calendar_section_style(&app.app_theme, true, true);
+        let inner = calendar_pane(
+            frame,
+            chunks[1],
+            "Event / notes",
+            &app.app_theme,
+            detail_style,
+        );
         let lines = if let Some(event) = self.selected_event() {
             let resource = app
                 .calendar
@@ -1322,7 +1522,7 @@ impl View {
                 Line::from(Span::styled(
                     event.title.clone(),
                     Style::default()
-                        .fg(app.app_theme.accent)
+                        .fg(self.event_color(event, &app.app_theme))
                         .add_modifier(Modifier::BOLD),
                 )),
                 Line::from(calendar.to_owned()),
@@ -1352,24 +1552,74 @@ impl View {
                 lines.push(Line::from(event.description.clone()));
             }
             lines.push(Line::from(""));
-            lines.push(Line::from("Linked notes (l: link/unlink · o: open):"));
+            lines.push(Line::from("Linked notes (a: link/unlink · o: open):"));
             for note in self.links.get(&event.resource).into_iter().flatten() {
-                lines.push(Line::from(note.clone()));
+                lines.push(Line::styled(
+                    note.clone(),
+                    Style::default().fg(app.app_theme.subnote),
+                ));
             }
             lines
         } else {
             vec![
                 Line::from("Select a date or event."),
-                Line::from("n: create event · L: schedule note"),
+                Line::from("n: create event · a: schedule note"),
             ]
         };
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
-                .style(app.app_theme.bg_style()),
+                .style(detail_style.fg(app.app_theme.text)),
             inner,
         );
     }
+}
+
+fn note_label(note: &str) -> String {
+    let name = std::path::Path::new(note)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or(note);
+    crate::fsutil::sanitize_for_terminal(name).into_owned()
+}
+
+fn calendar_section_style(theme: &AppThemeColors, alternate: bool, sidebar: bool) -> Style {
+    let base = if sidebar {
+        theme.preview_bg()
+    } else {
+        theme.bg
+    };
+    base.map_or_else(Style::default, |bg| {
+        Style::default().bg(if alternate {
+            crate::app_theme::mix_colors(bg, theme.text, 0.04)
+        } else {
+            bg
+        })
+    })
+}
+
+fn calendar_pane(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    theme: &AppThemeColors,
+    style: Style,
+) -> Rect {
+    let block = Block::default()
+        .style(style)
+        .padding(Padding::new(1, 1, 1, 0));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(
+        Paragraph::new(title.to_owned()).style(style.fg(theme.muted).add_modifier(Modifier::BOLD)),
+        Rect::new(
+            area.x + u16::from(area.width > 0),
+            area.y,
+            area.width.saturating_sub(2),
+            area.height.min(1),
+        ),
+    );
+    inner
 }
 
 fn weekday_header(frame: &mut Frame, area: Rect, start: WeekStart, theme: &AppThemeColors) {

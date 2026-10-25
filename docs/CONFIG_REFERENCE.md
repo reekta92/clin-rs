@@ -126,7 +126,7 @@ The **Select Notes Layout** command opens a searchable list with the current lay
 
 Directory layouts (`grid`, `list`, `multi`) navigate into folders. In List and Multi, Enter or Right opens a folder; Left returns to its parent. Grid keeps its tile-navigation shortcuts. Multi shows the selected folder's children in the right column; clicking a child enters that folder and selects the child. A browser narrower than 24 cells uses one column.
 
-Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Every view shares a footer controlled by `hint_bar_style` and the statusline templates, including Calendar, Setup, and Zen mode. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
+Scrollbars share adjacent pane dividers in Notes, Edit (preview or sidebar), and Outline, and share popup list borders while preserving their corners. Scrollbar colors stay unchanged on mouse hover. Layout editing resizes the preview by one terminal cell per horizontal keypress. Every main view except Setup shares header and footer bars controlled by `hint_bar_style` and the statusline templates. Zen mode keeps its hidden editor header and visible footer. Header tabs remain plain muted text with an accent selection; notifications temporarily replace the header and disable its tabs. Normal footer bars show at most five primary shortcuts; selection and layout-edit modes show their complete mode-specific controls. Crowded footers hide the clin version watermark first, then shorten with an ellipsis as needed, preserving status information and Powerline edges. Help side panes wrap to the available cells and support mouse-wheel scrolling, so their content remains reachable when larger fonts reduce the terminal size.
 
 ### `[editor]`
 
@@ -274,12 +274,24 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 
 ##### Bases View
 
-Bases uses the global statusline templates. `{bases_rows}` is the displayed public
+Bases uses the global statusline templates. Its header contains saved-view tabs and `{bases_file}` (the public document ID). Tabs switch saved views without rewriting the document; each view keeps its configured layout. Narrow headers keep the active tab visible; keyboard switching reaches every saved view. Footer `{detail}` contains public query counts, checked rows, active search and refresh status. `{bases_rows}` is the displayed public
 row count; `{bases_matched}` counts matches before the limit; `{bases_selected}`
 counts checked rows. `{bases_view}` and `{bases_property}` identify the selected
 saved view and displayed property. In Bases, `{visual_total}`, `{note_count}` and
 `{selected_count}` resolve to these public query counts. `{visual_index}` is the
 1-based result row, or zero on a group heading. Encrypted Notes context is absent.
+
+##### Calendar View
+
+Calendar uses the global statusline templates. `{calendar_date}` is the selected
+date formatted with `date_format` (invalid or time-only directives fall back to
+`YYYY-MM-DD`); the default header shows it beside plain
+Month/Week/Day/Agenda tabs. Footer `{detail}` shows errors, sync conflicts and
+sync progress, with errors taking priority. Warning information takes precedence
+over the version watermark on narrow terminals. Custom templates can place
+`{detail}` elsewhere or omit it. Calendar panes use borderless headings and the
+existing darker preview background for the event sidebar; transparent themes
+retain terminal transparency. Popup controls keep their existing styling.
 
 ##### Note Context (List + Edit views)
 - `{note_title}`: Title of the selected/edited note

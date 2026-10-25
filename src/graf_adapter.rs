@@ -723,14 +723,7 @@ fn graph_area(
     config: &ClinConfig,
     term_area: ratatui::layout::Rect,
 ) -> ratatui::layout::Rect {
-    let outer = ratatui::layout::Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([
-            ratatui::layout::Constraint::Length(1),
-            ratatui::layout::Constraint::Min(0),
-        ])
-        .split(crate::ui::view_content_area(term_area));
-    let content_area = outer[1];
+    let content_area = crate::ui::chrome::rows(term_area)[1];
     if app_state.preview_enabled {
         let (constraints, main_idx) = match config.list.preview_position {
             crate::config::PreviewPosition::Left => (

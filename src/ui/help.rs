@@ -1,7 +1,7 @@
 #![allow(clippy::vec_init_then_push)]
 use ratatui::{prelude::*, widgets::*};
 
-use super::{build_tab_spans, draw_dim_vline, draw_view_title_bar_with_tabs};
+use super::{build_tab_spans, draw_dim_vline};
 use crate::app::{App, HelpTab, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::help_meta::{self, HelpMeta};
@@ -183,10 +183,7 @@ fn help_item_row(
 
 pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(8)])
-        .split(super::footer::content_area(area));
+    let chunks = crate::ui::chrome::content_rows(super::footer::content_area(area));
     let tabs_data = help_tabs(app.config.ui.icon_mode, &app.config.features);
     let tabs: Vec<(&str, Option<&str>)> = tabs_data.iter().map(|(_, l, i)| (*l, *i)).collect();
     let selected_idx = tabs_data
@@ -194,22 +191,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .position(|(t, _, _)| *t == app.help_tab)
         .unwrap_or(0);
 
-    let hovered = app.mouse_pos.and_then(|(col, row)| {
-        if row == chunks[0].y {
-            let region = crate::ui::title_bar_tabs_region(chunks[0], "Help");
-            crate::ui::hit_test_tabs(
-                &tabs,
-                chunks[0].x,
-                chunks[0].width,
-                region.x,
-                col,
-                app.config.ui.tab_icons_only,
-                app.config.ui.icon_mode,
-            )
-        } else {
-            None
-        }
-    });
+    let hovered = None;
     let tab_spans = build_tab_spans(
         &tabs,
         selected_idx,
@@ -234,16 +216,17 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ViewMode::Help,
         &app.app_theme,
     );
-    draw_view_title_bar_with_tabs(
+    app.header_tabs = crate::ui::draw_header_tabs(
         frame,
         chunks[0],
-        "Help",
         &app.app_theme,
         left_line,
         tab_spans,
+        selected_idx,
         right_line,
         Some(app.status.as_ref()),
         app.load_spinner_tick,
+        app.mouse_pos,
     );
 
     let body_area = chunks[1];

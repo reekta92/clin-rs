@@ -77,11 +77,11 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     let theme: &AppThemeColors = &app.app_theme;
     let mut lines: Vec<(String, String)> = match app.mode {
         ViewMode::Calendar => [
-            ("m / w / d / a", "Month / week / day / agenda"),
+            ("m / w / d / A", "Month / week / day / agenda"),
             ("n / e / Delete", "New / edit / delete event"),
             ("hjkl / Arrows", "Navigate dates / events"),
             ("J / K", "Next / previous event"),
-            ("L / o", "Link / open note"),
+            ("a / o", "Link / open note"),
             ("s / i / E", "Sync / import / export"),
             ("?", "Calendar help"),
             ("Esc", "Back to Notes"),

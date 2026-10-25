@@ -231,7 +231,7 @@ fn shared_footer_survives_missing_view_state_and_tiny_terminals() {
     f.app.config.statusline.footer_left = Some("F".into());
     f.app.config.statusline.footer_right = Some(String::new());
     f.app.app_theme.hint_bar_style = crate::config::HintBarStyle::Classic;
-    for mode in ViewMode::iter() {
+    for mode in ViewMode::iter().filter(|mode| *mode != ViewMode::Setup) {
         f.app.mode = mode;
         for (width, height) in [(1, 1), (12, 4), (80, 12)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -250,7 +250,7 @@ fn shared_footer_survives_missing_view_state_and_tiny_terminals() {
 #[test]
 fn every_view_has_the_host_footer_in_every_hint_style() {
     use strum::IntoEnumIterator;
-    for mode in ViewMode::iter() {
+    for mode in ViewMode::iter().filter(|mode| *mode != ViewMode::Setup) {
         let mut f = Fixture::new();
         f.enter(mode);
         f.app.config.statusline.footer_left = Some("{hints}".into());
@@ -292,6 +292,601 @@ fn every_view_has_the_host_footer_in_every_hint_style() {
 }
 
 #[test]
+fn setup_has_no_host_bars_and_missing_views_keep_the_header() {
+    use strum::IntoEnumIterator;
+    let mut f = Fixture::new();
+    f.app.config.statusline.header_left = Some("HOST HEADER".into());
+    f.app.config.statusline.header_right = Some(String::new());
+    f.app.config.statusline.footer_left = Some("HOST FOOTER".into());
+    f.app.config.statusline.footer_right = Some(String::new());
+    for mode in ViewMode::iter() {
+        f.app.mode = mode;
+        if mode == ViewMode::Setup {
+            f.enter(mode);
+        }
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect();
+        assert_eq!(
+            text.contains("HOST HEADER"),
+            mode != ViewMode::Setup,
+            "{mode:?}"
+        );
+        assert_eq!(
+            text.contains("HOST FOOTER"),
+            mode != ViewMode::Setup,
+            "{mode:?}"
+        );
+    }
+}
+
+#[test]
+fn every_main_view_header_uses_global_templates_and_styles() {
+    use strum::IntoEnumIterator;
+    for mode in ViewMode::iter().filter(|mode| *mode != ViewMode::Setup) {
+        let mut f = Fixture::new();
+        f.enter(mode);
+        f.app.status = "Ready".into();
+        f.app.config.statusline.header_left = Some("HOST HEADER".into());
+        f.app.config.statusline.header_right = Some("HOST RIGHT".into());
+        for style in crate::config::HintBarStyle::ALL {
+            f.app.app_theme.hint_bar_style = style;
+            let mut terminal = Terminal::new(TestBackend::new(240, 40)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let header: String = (0..240)
+                .map(|x| terminal.backend().buffer()[(x, 0)].symbol())
+                .collect();
+            assert!(
+                header.contains("HOST HEADER") && header.contains("HOST RIGHT"),
+                "{mode:?} {style:?}: {header}"
+            );
+            let mut ctx = crate::statusline::StatuslineContext::for_view(&f.app, mode);
+            ctx.area = Some(Rect::new(0, 0, 240, 1));
+            let (left, right) = crate::statusline::render_header(
+                &ctx,
+                &f.app.config.statusline,
+                mode,
+                &f.app.app_theme,
+            );
+            let left_width = left.width() as u16;
+            let right_width = right.as_ref().unwrap().width() as u16;
+            let mut expected = Terminal::new(TestBackend::new(240, 1)).unwrap();
+            expected
+                .draw(|frame| {
+                    crate::ui::draw_view_title_bar(
+                        frame,
+                        frame.area(),
+                        &f.app.app_theme,
+                        left.clone(),
+                        right.clone(),
+                        None,
+                        0,
+                    )
+                })
+                .unwrap();
+            for x in (0..left_width).chain(240 - right_width..240) {
+                assert_eq!(
+                    terminal.backend().buffer()[(x, 0)],
+                    expected.backend().buffer()[(x, 0)],
+                    "{mode:?} {style:?} at {x}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn canvas_contextual_footer_uses_the_selected_bar_style() {
+    let mut f = Fixture::new();
+    f.enter(ViewMode::Canvas);
+    f.app.canvas_state.as_mut().unwrap().state.footer_hint = "Context action".into();
+    f.app.config.statusline.footer_left = Some("{hints}".into());
+    f.app.config.statusline.footer_right = Some(String::new());
+    for style in crate::config::HintBarStyle::ALL {
+        f.app.app_theme.hint_bar_style = style;
+        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let expected = crate::statusline::line_from_segments(
+            &[crate::statusline::Segment::Text("Context action".into())],
+            &f.app.app_theme,
+            false,
+            false,
+        );
+        let mut row = Terminal::new(TestBackend::new(100, 1)).unwrap();
+        row.draw(|frame| {
+            crate::ui::draw_status_bar(
+                frame,
+                frame.area(),
+                &f.app.app_theme,
+                expected.clone(),
+                None,
+            )
+        })
+        .unwrap();
+        for x in 0..100 {
+            assert_eq!(
+                terminal.backend().buffer()[(x, 39)],
+                row.backend().buffer()[(x, 0)],
+                "{style:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
+    use crate::{calendar::view::Display, config::HintBarStyle};
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    f.app.status = "Ready".into();
+    f.app.config.statusline = crate::config::StatuslineConfig::default();
+    f.app.date_format = "%d %b %Y".into();
+    f.app.app_theme.bg = Some(ratatui::style::Color::Rgb(40, 40, 40));
+    for (index, display) in [Display::Month, Display::Week, Display::Day, Display::Agenda]
+        .into_iter()
+        .enumerate()
+    {
+        f.app.calendar_view.as_mut().unwrap().display = display;
+        for style in HintBarStyle::ALL {
+            f.app.app_theme.hint_bar_style = style;
+            let mut terminal = Terminal::new(TestBackend::new(140, 32)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let header: String = (0..140).map(|x| buffer[(x, 0)].symbol()).collect();
+            assert!(
+                header.contains("24 Oct 2026"),
+                "{display:?} {style:?}: {header}"
+            );
+            assert!(
+                f.app
+                    .header_tabs
+                    .iter()
+                    .any(|(rect, tab)| rect.y == 0 && *tab == index)
+            );
+            for y in 1..31 {
+                for x in 0..140 {
+                    if x == 91 {
+                        assert_eq!(buffer[(x, y)].symbol(), "│");
+                        assert_eq!(buffer[(x, y)].fg, f.app.app_theme.muted);
+                        continue;
+                    }
+                    assert!(
+                        !buffer[(x, y)]
+                            .symbol()
+                            .chars()
+                            .any(|c| "│─┌┐└┘├┤┬┴┼".contains(c)),
+                        "{display:?} at {x},{y}"
+                    );
+                }
+            }
+            assert_eq!(buffer[(139, 1)].bg, f.app.app_theme.preview_bg().unwrap());
+            assert_eq!(
+                buffer[(139, 30)].bg,
+                crate::app_theme::mix_colors(
+                    f.app.app_theme.preview_bg().unwrap(),
+                    f.app.app_theme.text,
+                    0.04
+                )
+            );
+        }
+    }
+    let mut narrow = Terminal::new(TestBackend::new(40, 15)).unwrap();
+    narrow
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    for y in 1..14 {
+        assert!((0..40).all(|x| narrow.backend().buffer()[(x, y)].symbol() != "│"));
+    }
+    let mut wide = Terminal::new(TestBackend::new(140, 32)).unwrap();
+    wide.draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let rect = f
+        .app
+        .header_tabs
+        .iter()
+        .find(|(_, index)| *index == 0)
+        .unwrap()
+        .0;
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_eq!(
+        f.app.calendar_view.as_ref().unwrap().display,
+        Display::Month
+    );
+    let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let target_date: chrono::NaiveDate = "2026-10-26".parse().unwrap();
+    let target =
+        crate::calendar::view::month_cells(Rect::new(1, 3, 63, 36), date, f.app.list.week_start)
+            .into_iter()
+            .find(|(_, date)| *date == target_date)
+            .unwrap()
+            .0;
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: target.x,
+            row: target.y,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    assert_eq!(f.app.calendar_view.as_ref().unwrap().date, target_date);
+    for format in ["%Q", "%Y-%m-%d %H:%M"] {
+        let mut ctx = crate::statusline::StatuslineContext::for_view(&f.app, ViewMode::Calendar);
+        ctx.date_format = Some(format);
+        assert_eq!(
+            ctx.resolve("calendar_date").unwrap(),
+            target_date.to_string()
+        );
+    }
+    let mut draft = crate::calendar::ical::Draft::new(target_date);
+    draft.title = "Conflicted event".into();
+    let mut resource = crate::calendar::store::Resource::new(draft.build(None).unwrap(), None);
+    resource.conflict = Some(crate::calendar::store::Conflict { remote: None });
+    f.app
+        .calendar
+        .update(&f.app.storage, |data| {
+            data.resources.push(resource);
+            Ok(())
+        })
+        .unwrap();
+    let (detail, warning) = f.app.calendar_view.as_ref().unwrap().footer_detail(&f.app);
+    assert!(warning && detail.contains("1 sync conflict"));
+    f.app.calendar_view.as_mut().unwrap().error = Some("Calendar warning".into());
+    for style in HintBarStyle::ALL {
+        f.app.app_theme.hint_bar_style = style;
+        let mut terminal = Terminal::new(TestBackend::new(48, 12)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let footer: String = (0..48)
+            .map(|x| terminal.backend().buffer()[(x, 11)].symbol())
+            .collect();
+        assert!(footer.contains("Calendar warning"), "{style:?}: {footer}");
+        assert!(
+            !footer.contains(env!("CARGO_PKG_VERSION")),
+            "version must yield to status: {footer}"
+        );
+    }
+    f.app.status = "Notice".into();
+    let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    assert_eq!(f.app.header_tabs, Vec::new());
+    f.app.status = "Ready".into();
+    f.app.app_theme.bg = None;
+    let mut terminal = Terminal::new(TestBackend::new(140, 32)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    assert_eq!(
+        terminal.backend().buffer()[(139, 15)].bg,
+        ratatui::style::Color::Reset
+    );
+}
+
+#[test]
+fn calendar_checker_backgrounds_fill_days_and_mute_adjacent_months() {
+    use crate::calendar::view::Display;
+    use ratatui::style::Color;
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    f.app.status = "Ready".into();
+    for bg in [
+        Color::Rgb(40, 40, 40),
+        Color::Rgb(230, 230, 230),
+        Color::Black,
+    ] {
+        f.app.app_theme.bg = Some(bg);
+        f.app.calendar_view.as_mut().unwrap().display = Display::Month;
+        let mut terminal = Terminal::new(TestBackend::new(100, 40)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let cells = crate::calendar::view::month_cells(
+            Rect::new(1, 3, 63, 36),
+            date,
+            f.app.list.week_start,
+        );
+        for (index, (rect, day)) in cells.iter().enumerate() {
+            if *day == date {
+                continue;
+            }
+            let expected = if day.format("%Y-%m").to_string() != "2026-10" {
+                let muted = f.app.app_theme.preview_bg().unwrap();
+                if muted == bg {
+                    crate::app_theme::mix_colors(bg, f.app.app_theme.muted, 0.12)
+                } else {
+                    muted
+                }
+            } else if (index / 7 + index % 7) % 2 == 0 {
+                bg
+            } else {
+                crate::app_theme::mix_colors(bg, f.app.app_theme.text, 0.04)
+            };
+            assert_eq!(
+                terminal.backend().buffer()[(rect.x, rect.y)].bg,
+                expected,
+                "{day}"
+            );
+            assert_eq!(
+                terminal.backend().buffer()[(rect.right() - 1, rect.bottom() - 1)].bg,
+                expected,
+                "whole cell: {day}"
+            );
+        }
+        for display in [Display::Week, Display::Day] {
+            f.app.calendar_view.as_mut().unwrap().display = display;
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let (first, second) = if display == Display::Week {
+                ((1, 2), (10, 2))
+            } else {
+                ((1, 2), (1, 3))
+            };
+            assert_ne!(
+                terminal.backend().buffer()[first].bg,
+                terminal.backend().buffer()[second].bg,
+                "{display:?} {bg:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn calendar_distinguishes_events_and_linked_notes_in_every_display() {
+    use crate::calendar::{ical::Draft, store};
+    use ratatui::style::Color;
+    for timed in [false, true] {
+        let mut f = Fixture::new();
+        let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+        f.app.open_calendar_at(Some(date)).unwrap();
+        f.app.app_theme.accent = Color::Rgb(30, 170, 220);
+        f.app.app_theme.subnote = Color::Rgb(190, 110, 210);
+        let mut resources = Vec::new();
+        for title in ["Meet", "Todo"] {
+            let mut draft = Draft::new(date);
+            draft.title = title.into();
+            if timed {
+                draft.start = format!("{date}T10:00");
+                draft.end = format!("{date}T11:00");
+            }
+            resources.push(store::Resource::new(draft.build(None).unwrap(), None));
+        }
+        let note_resource = resources[1].id.clone();
+        f.app
+            .calendar
+            .update(&f.app.storage, |data| {
+                data.resources.extend(resources);
+                Ok(())
+            })
+            .unwrap();
+        store::toggle_note_link(&f.app.storage, "selected.md", &note_resource).unwrap();
+        f.app.notes_revision += 1;
+        drive(&mut f.app, key(KeyCode::Null));
+        drive(&mut f.app, key(KeyCode::Null));
+        let mut view = f.app.calendar_view.take().unwrap();
+        view.select_resource(&mut f.app, &note_resource);
+        f.app.calendar_view = Some(view);
+        for display in ['m', 'w', 'd', 'A'] {
+            drive(&mut f.app, key(KeyCode::Char(display)));
+            let mut terminal = Terminal::new(TestBackend::new(140, 40)).unwrap();
+            terminal
+                .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            for (text, color, minimum) in [
+                ("Meet", f.app.app_theme.accent, 2),
+                ("Todo", f.app.app_theme.subnote, 3),
+                ("selected.md", f.app.app_theme.subnote, 1),
+                ("[notes]", f.app.app_theme.subnote, 1),
+            ] {
+                let mut count = 0;
+                for y in 1..39 {
+                    for x in 0..140 - text.len() as u16 {
+                        if text.chars().enumerate().all(|(offset, c)| {
+                            buffer[(x + offset as u16, y)].symbol() == c.to_string()
+                        }) {
+                            count += 1;
+                            for offset in 0..text.len() as u16 {
+                                assert_eq!(
+                                    buffer[(x + offset, y)].fg,
+                                    color,
+                                    "{text} in {display}, timed={timed}"
+                                );
+                            }
+                        }
+                    }
+                }
+                assert!(
+                    count >= minimum,
+                    "missing {text} in {display}, timed={timed}: {count}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn calendar_month_summarizes_notes_and_events_while_other_views_list_all() {
+    use crate::calendar::{ical::Draft, store};
+    let mut f = Fixture::new();
+    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    f.app.open_calendar_at(Some(date)).unwrap();
+    let mut resources = Vec::new();
+    for title in ["Meet", "Notes", "Znotes", "Zevent", "Zlast"] {
+        let mut draft = Draft::new(date);
+        draft.title = title.into();
+        resources.push(store::Resource::new(draft.build(None).unwrap(), None));
+    }
+    let linked = resources[1].id.clone();
+    let repeated = resources[2].id.clone();
+    f.app
+        .calendar
+        .update(&f.app.storage, |data| {
+            data.resources.extend(resources);
+            Ok(())
+        })
+        .unwrap();
+    for name in ["First.md", "Second.md", "Third.md"] {
+        f.app.storage.create_document(name, "Body").unwrap();
+        store::toggle_note_link(&f.app.storage, name, &linked).unwrap();
+    }
+    store::toggle_note_link(&f.app.storage, "First.md", &repeated).unwrap();
+    f.app.notes_revision += 1;
+    drive(&mut f.app, key(KeyCode::Null));
+    drive(&mut f.app, key(KeyCode::Null));
+    let mut view = f.app.calendar_view.take().unwrap();
+    view.select_resource(&mut f.app, &linked);
+    f.app.calendar_view = Some(view);
+    for display in ['m', 'w', 'd', 'A'] {
+        drive(&mut f.app, key(KeyCode::Char(display)));
+        let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut main = String::new();
+        let mut sidebar = String::new();
+        for y in 1..49 {
+            for x in 0..130 {
+                main.push_str(buffer[(x, y)].symbol());
+            }
+            main.push('\n');
+            for x in 131..200 {
+                sidebar.push_str(buffer[(x, y)].symbol());
+            }
+            sidebar.push('\n');
+        }
+        assert!(main.contains("Meet"), "{display}: {main}");
+        if display == 'm' {
+            assert!(
+                main.contains("First") && main.contains("+2 notes") && main.contains("+2 events"),
+                "{main}"
+            );
+            for hidden in ["Second", "Third", "Znotes", "Zevent", "Zlast"] {
+                assert!(!main.contains(hidden), "{main}");
+            }
+            let rows: Vec<_> = main.lines().collect();
+            for (title, count) in [("First", "+2 notes"), ("Meet", "+2 events")] {
+                let row = rows.iter().position(|row| row.contains(title)).unwrap();
+                assert!(rows[row + 1].contains(count));
+            }
+        } else {
+            for title in [
+                "Notes", "Znotes", "Zevent", "Zlast", "First", "Second", "Third",
+            ] {
+                assert!(main.contains(title), "{main}");
+            }
+            assert!(!main.contains("+2 notes") && !main.contains("+2 events"));
+        }
+        for name in [
+            "First.md",
+            "Second.md",
+            "Third.md",
+            "Meet",
+            "Notes",
+            "Znotes",
+            "Zevent",
+            "Zlast",
+        ] {
+            assert!(sidebar.contains(name), "{display}: {sidebar}");
+        }
+    }
+    drive(&mut f.app, key(KeyCode::Char('K')));
+    let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let buffer = terminal.backend().buffer();
+    let note_row = (2..49)
+        .find(|y| {
+            let text: String = (0..130).map(|x| buffer[(x, *y)].symbol()).collect();
+            text.contains("Second")
+        })
+        .unwrap();
+    drive(
+        &mut f.app,
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 3,
+            row: note_row,
+            modifiers: KeyModifiers::NONE,
+        }),
+    );
+    drive(&mut f.app, key(KeyCode::Char('y')));
+    assert!(
+        crate::text_edit::TEST_CLIPBOARD.with(|clipboard| clipboard
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .contains(&linked))
+    );
+    for _ in 0..5 {
+        drive(&mut f.app, key(KeyCode::Char('J')));
+    }
+    let mut short = Terminal::new(TestBackend::new(200, 8)).unwrap();
+    short
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let main: String = (2..7)
+        .flat_map(|y| (0..130).map(move |x| (x, y)))
+        .map(|position| short.backend().buffer()[position].symbol())
+        .collect();
+    assert!(
+        main.contains("Znotes"),
+        "selected event must remain visible: {main}"
+    );
+    for name in ["Second.md", "Third.md"] {
+        store::toggle_note_link(&f.app.storage, name, &linked).unwrap();
+    }
+    f.app.notes_revision += 1;
+    drive(&mut f.app, key(KeyCode::Null));
+    drive(&mut f.app, key(KeyCode::Null));
+    let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
+        .unwrap();
+    let text: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(ratatui::buffer::Cell::symbol)
+        .collect();
+    assert!(!text.contains("+0 notes") && !text.contains("+1 notes"));
+    assert!(text.contains("Znotes"));
+}
+
+#[test]
 fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
     let mut f = Fixture::new();
     let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();
@@ -311,8 +906,14 @@ fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() 
             Ok(ids)
         })
         .unwrap();
-    for display in ['m', 'w', 'd', 'a'] {
+    for display in ['m', 'w', 'd', 'A'] {
         drive(&mut f.app, key(KeyCode::Char(display)));
+        if display == 'A' {
+            assert_eq!(
+                f.app.calendar_view.as_ref().unwrap().display,
+                crate::calendar::view::Display::Agenda
+            );
+        }
         for (movement, arrow) in [
             ('h', KeyCode::Left),
             ('l', KeyCode::Right),
@@ -371,7 +972,7 @@ fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() 
                 .contains(&ids[0]))
         );
     }
-    drive(&mut f.app, key(KeyCode::Char('L')));
+    drive(&mut f.app, key(KeyCode::Char('a')));
     assert!(matches!(
         f.app.calendar_view.as_ref().unwrap().dialog,
         Some(crate::calendar::view::Dialog::Notes { .. })
@@ -445,7 +1046,7 @@ fn calendar_form_retains_invalid_input_and_renders_all_views_at_small_sizes() {
             .source
             .contains("SUMMARY:Planning")
     );
-    for view in ['m', 'w', 'd', 'a'] {
+    for view in ['m', 'w', 'd', 'A'] {
         drive(&mut f.app, key(KeyCode::Char(view)));
         for (width, height) in [(100, 40), (40, 15), (28, 8), (12, 4), (1, 1)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
@@ -454,7 +1055,7 @@ fn calendar_form_retains_invalid_input_and_renders_all_views_at_small_sizes() {
                 .unwrap();
         }
     }
-    drive(&mut f.app, key(KeyCode::Char('L')));
+    drive(&mut f.app, key(KeyCode::Char('a')));
     drive(&mut f.app, key(KeyCode::Enter));
     let id = &f.app.calendar.data().resources[0].id;
     assert_eq!(

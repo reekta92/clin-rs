@@ -63,13 +63,7 @@ pub(crate) fn render_editor_widget(
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
 
-    let outer_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // header
-            Constraint::Min(0),    // body
-        ])
-        .split(super::footer::content_area(area));
+    let outer_chunks = crate::ui::chrome::content_rows(super::footer::content_area(area));
 
     let preview_info = get_preview_info(app);
     let note = crate::statusline::active_note(app, ViewMode::Edit);

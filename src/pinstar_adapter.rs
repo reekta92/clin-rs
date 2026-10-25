@@ -491,12 +491,7 @@ impl OverlayView for PinstarPlugin {
         let area = if term_area == Rect::default() {
             self.last_area
         } else {
-            let content = crate::ui::view_content_area(term_area);
-            ratatui::layout::Layout::vertical([
-                ratatui::layout::Constraint::Length(1),
-                ratatui::layout::Constraint::Min(0),
-            ])
-            .split(content)[1]
+            crate::ui::chrome::rows(term_area)[1]
         };
         let modified = self.state.last_modified;
         let outcome = match event {
