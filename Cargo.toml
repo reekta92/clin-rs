@@ -95,7 +95,7 @@ assets = [
 ]
 
 [dependencies]
-draw = { package = "draw-rs", version = "0.1.2", git = "https://github.com/reekta92/draw-rs", rev = "e475c841911886f23052ca79f4efb900fc126997" }
+draw = { package = "draw-rs", version = "0.1.4" }
 anyhow = "1.0"
 base64 = "0.23"
 arboard = "3.6.1"
@@ -116,7 +116,7 @@ reqwest = { version = "0.12.28", default-features = false, features = ["rustls-t
 tokio = { version = "1", features = ["rt", "net", "time"] }
 rand = "0.10"
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
-graf = { package = "graf-rs", version = "1.1.0", git = "https://github.com/reekta92/graf", rev = "8ee98a768c99f59a570f558a08c3800dbaca9df8" }
+graf = { package = "graf-rs", version = "1.1.2" }
 pinstar = { version = "1.1.4", git = "https://github.com/reekta92/pinstar", rev = "490fb6e3acf8c3aede483b5124ddd5bbdaa206b2", default-features = false, features = ["images", "mermaid-preview"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }

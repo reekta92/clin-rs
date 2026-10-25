@@ -1002,8 +1002,9 @@ dependencies = [
 
 [[package]]
 name = "draw-rs"
-version = "0.1.3"
-source = "git+https://github.com/reekta92/draw-rs?rev=e475c841911886f23052ca79f4efb900fc126997#e475c841911886f23052ca79f4efb900fc126997"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88ffc4ce0d626e35afbfab0d4e34cc3f2910e5fec47c9f2f6d1d2f412f8ceef6"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -1417,8 +1418,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "graf-rs"
-version = "1.1.1"
-source = "git+https://github.com/reekta92/graf?rev=8ee98a768c99f59a570f558a08c3800dbaca9df8#8ee98a768c99f59a570f558a08c3800dbaca9df8"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d1a456a06d8a0fd463ddf4c6ad88262d7c7f91c19ddb9317a91fff715bdd18c"
 dependencies = [
  "anyhow",
  "chrono",
