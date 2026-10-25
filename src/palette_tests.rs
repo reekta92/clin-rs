@@ -3194,7 +3194,17 @@ fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host()
     terminal
         .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
         .unwrap();
-    let rect = Rect::new(21, 18, 58, 3);
+    let buffer = terminal.backend().buffer();
+    let (x, y) = (0..AREA.height)
+        .flat_map(|y| (0..AREA.width.saturating_sub(14)).map(move |x| (x, y)))
+        .find(|&(x, y)| {
+            "copy this text"
+                .chars()
+                .enumerate()
+                .all(|(offset, ch)| buffer[(x + offset as u16, y)].symbol() == ch.to_string())
+        })
+        .expect("rendered text editor content");
+    let rect = Rect::new(x, y, 4, 1);
     for (kind, col) in [
         (MouseEventKind::Down(MouseButton::Left), rect.x),
         (MouseEventKind::Drag(MouseButton::Left), rect.x + 4),
@@ -3212,4 +3222,69 @@ fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host()
     }
     crate::text_edit::TEST_CLIPBOARD
         .with(|clipboard| assert_eq!(clipboard.borrow().as_deref(), Some("copy")));
+}
+
+#[test]
+fn palette_selection_keeps_text_contrast_across_themes() {
+    let mut fixture = Fixture::new();
+    assert!(fixture.app.open_command_palette(None));
+    for theme in crate::setup::SETUP_THEMES {
+        for background in [
+            crate::config::Background::Solid,
+            crate::config::Background::Transparent,
+        ] {
+            fixture.app.config.ui.theme = (*theme).into();
+            fixture.app.config.ui.background = background;
+            fixture.app.app_theme = crate::app_theme::AppThemeColors::from_config(
+                &fixture.app.config.ui,
+                &mut Vec::new(),
+            );
+            let buffer = render_palette(&mut fixture.app);
+            let palette = fixture.app.command_palette.as_ref().unwrap();
+            let rect = palette.last_results_area.unwrap();
+            let y = rect.y
+                + 1
+                + 2 * palette
+                    .state
+                    .selected()
+                    .unwrap()
+                    .saturating_sub(palette.state.offset()) as u16;
+            for x in rect.x + 1..rect.right() - 1 {
+                let cell = &buffer[(x, y)];
+                if cell.symbol().trim().is_empty() {
+                    continue;
+                }
+                assert_eq!(
+                    cell.fg, fixture.app.app_theme.highlight_fg,
+                    "{theme}: {x},{y}"
+                );
+                assert_eq!(
+                    cell.bg, fixture.app.app_theme.highlight_bg,
+                    "{theme}: {x},{y}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn palette_errors_wrap_and_remain_visible_without_a_workflow() {
+    let mut fixture = Fixture::new();
+    assert!(fixture.app.open_command_palette(None));
+    fixture.app.command_palette.as_mut().unwrap().error = Some(format!(
+        "{} Check input and retry.",
+        "Invalid property value. ".repeat(4)
+    ));
+    let buffer = render_palette(&mut fixture.app);
+    let text = (0..buffer.area.height)
+        .map(|row| rendered_text(&buffer, row))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("Invalid property value."));
+    assert!(
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .contains("Check input and retry.")
+    );
 }

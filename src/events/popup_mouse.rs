@@ -1175,12 +1175,10 @@ impl crate::popups::ActivePopup {
                     .split(popup_area)[0];
                 let [list_area, title_area, body_area] =
                     crate::ui::subnotes_layout(content, p.focus);
-                let main_chunks = [list_area];
-                let edit_chunks = [title_area, body_area];
                 if handle_popup_text_selection(
                     app,
                     mouse,
-                    edit_chunks[0].inner(Margin {
+                    title_area.inner(Margin {
                         vertical: 1,
                         horizontal: 1,
                     }),
@@ -1196,7 +1194,7 @@ impl crate::popups::ActivePopup {
                 if handle_popup_text_selection(
                     app,
                     mouse,
-                    edit_chunks[1].inner(Margin {
+                    body_area.inner(Margin {
                         vertical: 1,
                         horizontal: 1,
                     }),
@@ -1212,11 +1210,11 @@ impl crate::popups::ActivePopup {
 
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     // Click in the list area (left pane)
-                    if contains_cell(main_chunks[0], mouse.column, mouse.row) {
+                    if contains_cell(list_area, mouse.column, mouse.row) {
                         if !p.subnotes.is_empty() {
                             let Some(clicked) = crate::ui::list_index_at(
                                 mouse.row,
-                                main_chunks[0].y + 1,
+                                list_area.y + 1,
                                 1,
                                 p.scroll_offset,
                                 p.subnotes.len(),
@@ -1236,9 +1234,9 @@ impl crate::popups::ActivePopup {
                                 p.content_input.insert_str(&p.subnotes[p.selected].content);
                             }
                         }
-                    } else if contains_cell(edit_chunks[0], mouse.column, mouse.row) {
+                    } else if contains_cell(title_area, mouse.column, mouse.row) {
                         p.focus = SubnotesFocus::EditTitle;
-                        let inner = edit_chunks[0].inner(Margin {
+                        let inner = title_area.inner(Margin {
                             vertical: 1,
                             horizontal: 1,
                         });
@@ -1252,9 +1250,9 @@ impl crate::popups::ActivePopup {
                             sr,
                             sc,
                         );
-                    } else if contains_cell(edit_chunks[1], mouse.column, mouse.row) {
+                    } else if contains_cell(body_area, mouse.column, mouse.row) {
                         p.focus = SubnotesFocus::EditContent;
-                        let inner = edit_chunks[1].inner(Margin {
+                        let inner = body_area.inner(Margin {
                             vertical: 1,
                             horizontal: 1,
                         });

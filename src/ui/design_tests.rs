@@ -1488,3 +1488,35 @@ fn header_overlays_render_safely_in_short_and_narrow_frames() {
             .unwrap();
     }
 }
+
+#[test]
+fn setup_confirmation_buttons_render_and_back_click_stays_in_setup() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Setup;
+    app.config.core.mouse_enabled = true;
+    app.setup_state = Some(crate::setup::SetupState::from_config(
+        &app.config,
+        &app.app_theme,
+        app.storage.notes_dir.clone(),
+        false,
+    ));
+    app.setup_state.as_mut().unwrap().confirm_exit = true;
+    let area = Rect::new(0, 0, 80, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    let text = text_in(terminal.backend().buffer(), area);
+    assert!(
+        text.contains("Save & exit") && text.contains("Discard changes") && text.contains("Back")
+    );
+    let back = crate::ui::setup::setup_confirm_buttons(area)[2];
+    crate::events::handle_setup_mouse(
+        &mut app,
+        mouse(MouseEventKind::Down(MouseButton::Left), back.x + 2, back.y),
+        area,
+    );
+    assert!(!app.setup_state.as_ref().unwrap().confirm_exit);
+    assert_eq!(app.mode, ViewMode::Setup);
+}

@@ -22,7 +22,12 @@ impl CommandPalette {
             _ => return large,
         };
         let available = crate::ui::centered_rect(large, area).height;
-        let height = self.input_height(available) as usize + usize::from(controls) + 2 + rows;
+        let width = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area).width;
+        let height = self.input_height(available) as usize
+            + usize::from(controls)
+            + self.status_height(width) as usize
+            + 1
+            + rows;
         if height <= available as usize || self.is_value_input() {
             crate::ui::PopupSize::Content(height.min(u16::MAX as usize) as u16)
         } else {
@@ -114,14 +119,21 @@ impl CommandPalette {
     }
 
     // Rendering and mouse routing must use the same optional bar/status rows.
+    fn status_height(&self, width: u16) -> u16 {
+        if self.workflow_hint().is_empty() {
+            return u16::from(self.is_value_input());
+        }
+        ratatui::widgets::Paragraph::new(self.workflow_hint())
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .line_count(width.max(1))
+            .min(3) as u16
+    }
+
     pub(crate) fn content_areas(&self, content: Rect, has_controls: bool) -> [Rect; 4] {
         let areas = Layout::vertical([
             Constraint::Length(self.input_height(content.height)),
             Constraint::Length(u16::from(self.workflow.is_none() || has_controls)),
-            Constraint::Length(u16::from(
-                (self.is_value_input() || !self.workflow_hint().is_empty())
-                    && self.workflow.is_some(),
-            )),
+            Constraint::Length(self.status_height(content.width)),
             Constraint::Min(0),
         ])
         .split(content);

@@ -252,7 +252,7 @@ pub fn draw_quick_search<T, F>(
                 })
                 .collect();
 
-            let list = List::new(items);
+            let list = List::new(items).style(Style::default().fg(theme.highlight_fg));
             frame.render_widget(list, dropdown_area);
         }
     }

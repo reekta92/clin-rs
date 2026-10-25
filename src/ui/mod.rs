@@ -978,13 +978,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             );
         }
         frame.render_widget(
-            Paragraph::new(palette.workflow_hint()).style(Style::default().fg(
-                if palette.error.is_some() {
+            Paragraph::new(palette.workflow_hint())
+                .wrap(Wrap { trim: false })
+                .style(Style::default().fg(if palette.error.is_some() {
                     app.app_theme.destructive
                 } else {
                     app.app_theme.muted
-                },
-            )),
+                })),
             chunks[2],
         );
         let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
@@ -1017,11 +1017,18 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         .add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
-                let mut list_item = ListItem::new(vec![
-                    Line::from(spans),
-                    palette.item_preview(item, &app.app_theme),
-                ]);
-                if palette.state.selected() == Some(i) {
+                let selected = palette.state.selected() == Some(i);
+                let mut preview = palette.item_preview(item, &app.app_theme);
+                if selected {
+                    for span in &mut spans {
+                        span.style.fg = Some(app.app_theme.highlight_fg);
+                    }
+                    if let Some(description) = preview.spans.last_mut() {
+                        description.style.fg = Some(app.app_theme.highlight_fg);
+                    }
+                }
+                let mut list_item = ListItem::new(vec![Line::from(spans), preview]);
+                if selected {
                     list_item = list_item.style(app.app_theme.selected_style());
                 } else if Some(i) == hovered_cmd_idx {
                     list_item = list_item.style(app.app_theme.hover_style());

@@ -1473,7 +1473,6 @@ pub fn draw_subnotes_popup(
     );
 
     let [list_area, title_area, body_area] = subnotes_layout(content, popup.focus);
-    let main_chunks = [list_area];
 
     let list_style = if popup.focus == crate::popups::SubnotesFocus::List {
         Style::default().fg(theme.heading)
@@ -1487,8 +1486,8 @@ pub fn draw_subnotes_popup(
         .style(theme.bg_style());
 
     if popup.subnotes.is_empty() {
-        frame.render_widget(list_block.clone(), main_chunks[0]);
-        let inner_area = list_block.inner(main_chunks[0]);
+        frame.render_widget(list_block.clone(), list_area);
+        let inner_area = list_block.inner(list_area);
         if inner_area.height > 0 {
             let text_area = Rect::new(
                 inner_area.x + 2,
@@ -1525,14 +1524,14 @@ pub fn draw_subnotes_popup(
 
         let mut list_state = ListState::default();
         list_state.select(Some(popup.selected));
-        frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
+        frame.render_stateful_widget(list, list_area, &mut list_state);
         popup.scroll_offset = list_state.offset();
         // Scrollbar for subnotes list
         let sub_list_inner = Rect {
-            x: main_chunks[0].x + 1,
-            y: main_chunks[0].y + 1,
-            width: main_chunks[0].width.saturating_sub(2),
-            height: main_chunks[0].height.saturating_sub(2),
+            x: list_area.x + 1,
+            y: list_area.y + 1,
+            width: list_area.width.saturating_sub(2),
+            height: list_area.height.saturating_sub(2),
         };
         paint_list_hover(
             frame,
@@ -1544,7 +1543,7 @@ pub fn draw_subnotes_popup(
         );
         let track = crate::ui::scrollbar::pane_track(
             sub_list_inner,
-            Some(crate::ui::scrollbar::track_rect(main_chunks[0])),
+            Some(crate::ui::scrollbar::track_rect(list_area)),
         );
         popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
             track,
@@ -1562,10 +1561,8 @@ pub fn draw_subnotes_popup(
         );
     }
 
-    let edit_chunks = [title_area, body_area];
-
     let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle
-        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(edit_chunks[0], x, y))
+        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(title_area, x, y))
     {
         Style::default().fg(theme.heading)
     } else {
@@ -1573,7 +1570,7 @@ pub fn draw_subnotes_popup(
     };
 
     let content_border_style = if popup.focus == crate::popups::SubnotesFocus::EditContent
-        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(edit_chunks[1], x, y))
+        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(body_area, x, y))
     {
         Style::default().fg(theme.heading)
     } else {
@@ -1594,7 +1591,7 @@ pub fn draw_subnotes_popup(
             .border_style(title_border_style)
             .style(theme.bg_style()),
     );
-    frame.render_widget(&title_input, edit_chunks[0]);
+    frame.render_widget(&title_input, title_area);
 
     let mut content_input = popup.content_input.clone();
     content_input.set_placeholder_text("Content...");
@@ -1610,7 +1607,7 @@ pub fn draw_subnotes_popup(
             .border_style(content_border_style)
             .style(theme.bg_style()),
     );
-    frame.render_widget(&content_input, edit_chunks[1]);
+    frame.render_widget(&content_input, body_area);
 }
 
 fn muted_color(c: Color) -> Color {
