@@ -15,7 +15,7 @@ This is not a claim of identical layouts or complete visual acceptance. Forms, c
 - Popup footers prioritize primary actions and dismissal before secondary shortcuts. They use the existing terminal-width fitter, keep the classic popup hint style independently of the main footer setting, and indicate omitted hints with an ellipsis.
 - A shared selected style supplies the theme's highlight foreground and background with bold text. Palette and Find selection use this pair; pointer hover remains distinct. Selected palette glyphs and descriptions no longer override it with low-contrast foregrounds. Color swatch previews retain their actual colors.
 - Popup text areas receive explicit theme text and cursor styles. This reaches short text prompts and other callers of the shared text-area constructor.
-- `PopupSize::Content` supports bounded content-sized dialogs. Short option lists and palette value workflows no longer require a large mostly empty shell. Rendering and mouse routing use the same sizing rules.
+- `PopupSize::Content` supports bounded content-sized value dialogs. Multiple-choice palette workflows use the same stable Large shell as Theme, with a scrollable results section. Standalone option lists also use Large geometry with an overflow scrollbar. Rendering and mouse routing use the same sizing rules.
 - Display-width and grapheme-aware fitting replace several character/byte-count assumptions. This improves wide-character paths, combining characters, menu padding, and wrapping.
 - Shared confirmation rendering wraps message and detail text into a scrollable viewport while keeping action buttons separate. Keyboard and mouse scrolling work for global, palette-owned, and nested confirmations.
 
@@ -31,18 +31,18 @@ At extremely small sizes, a terminal still cannot display every title, instructi
 | `Theme` | Shared footer fitting and input conventions. Its palette entry receives the palette selection and focus fixes. | Theme preview, custom marker, background toggles, and setup-owned toggle restrictions. |
 | `Info` | Replaced fixed section layouts with wrapped themed content, scroll state, and a scrollbar. Arrows/j/k, PageUp/PageDown, Home/End, wheel, and scrollbar handling expose long metrics, paths, tags, and final sections. Active border uses heading color. | Note and folder information retain their metrics and sections. |
 | `Tag` | Shared input/cursor and footer improvements. Layered tag deletion inherits wrapped, scrollable confirmation text. | Single/batch tagging, suggestions, and all-tags list. |
-| `IconMode` | Option-list height follows its four choices; mouse selection uses the same geometry and scroll offset. Shared footer fitting applies. | Nerd Font, Unicode, None, and Emoji choices. |
-| `HintBarStyle` | Content-sized shared option list and matching mouse routing; fitted popup instructions remain classic regardless of the selected main-footer style. | All hint styles and palette previews remain available. |
+| `IconMode` | Stable Large option-list shell; mouse selection uses the same geometry and scroll offset. Shared footer fitting applies. Palette entry matches Theme's size and scrollable section. | Nerd Font, Unicode, None, and Emoji choices. |
+| `HintBarStyle` | Large shared option list with overflow scrollbar and matching mouse routing; fitted popup instructions remain classic regardless of the selected main-footer style. Palette entry matches Theme's size. | All hint styles and palette previews remain available. |
 | `RemoveTags` | Explicit `[x]`/`[ ]` marks separate multiselection from the standard keyboard cursor highlight. Nested confirmation can wrap and scroll. | Counts, batch scope, and destructive action semantics. |
-| `KeybindPreset` | Content-sized option list, matching mouse routing, and shared footer improvements. | Default, Helix, Vim, and Emacs presets; existing title wording. |
-| `Sort` | Content-sized option list, matching mouse routing, and shared footer improvements. | Four existing sort choices. |
+| `KeybindPreset` | Large option list, matching mouse routing, and shared footer improvements. Palette entry matches Theme's size and scrolling design. | Default, Helix, Vim, and Emacs presets; existing title wording. |
+| `Sort` | Large option list, matching mouse routing, and shared footer improvements. Palette entry matches Theme's size and scrolling design. | Four existing sort choices. |
 | `Folder` | Shared themed text input/cursor and fitted create/rename instructions. | Existing compact create/rename prompt. |
 | `FolderPicker` | Normalized “No matching folders” state; shared footer/input improvements. | Move/copy operations for notes, folders, bulk and mixed selections; existing filter/results layout. |
 | `NoteRename` | Shared themed input/cursor and fitted instructions. | Existing target-filename preview and collision handling. |
 | `VaultRename` | Shared themed input/cursor and fitted instructions. Palette rename is also content-sized. | Existing vault display-name behavior. |
 | `CreateNote` | Shared input/cursor and fitted create/cancel instructions across Markdown, text, drawing, canvas, and Bases prompts. | Markdown/text filename previews and format-specific creation behavior. |
 | `Import` | Standalone input changed from Large to Prompt size; its active border now uses heading color. Shared themed input and fitted import/cancel instructions. | Source/target handling, append behavior, native file selection, and clipboard flow. |
-| `CreateFormat` | Five-choice list now sizes to its content and shares render/mouse geometry. | All five file formats. |
+| `CreateFormat` | Five-choice list uses the same Large standalone option shell and shared render/mouse geometry. | All five file formats. |
 | `Search` | Added focus-aware `Enter close` for input and `Enter jump` for results, plus Esc cancellation, Tab focus switching, and result-navigation guidance. Primary action/cancel survive before filter syntax when width is limited. | Title/path, folder/pinned/tag, grep and subnote modes, groups, truncation notices, and results layout. |
 | `TrashView` | Added an explicit “Trash is empty” state without highlighting a nonexistent item. Shared footer fitting applies. | Populated list, scrollbar, restoration, and permanent-deletion flows. |
 | `Goals` | Shared text-input/cursor and footer improvements; palette alternatives become content-sized value workflows. | Daily word and note goal validation and behavior. |
@@ -67,13 +67,13 @@ Every row below inherits wrapped/scrollable message and detail content, separate
 
 ## Command palette and every workflow
 
-The root palette now uses the standard selected color pair, distinct pointer hover, heading-colored active borders, and fitted instructions. Errors wrap into up to three status rows and appear even when no workflow is active. Input, controls, status, and result geometry are shared with mouse routing.
+The root palette now uses the standard selected color pair, distinct pointer hover, heading-colored active borders, and fitted instructions. Errors wrap into up to three status rows and appear even when no workflow is active. Empty status rows are omitted rather than leaving a dark strip between the input/current value and Apply. Nonempty status rows use the theme's surface background. This applies to URL import, both goals, document naming, vault rename, and Bases workflows through their shared renderer. Input, controls, status, and result geometry are shared with mouse routing.
 
 | Workflow | What changed |
 | --- | --- |
 | `Theme` | Standard selection and focus treatment while preserving actual swatches and background controls. Large browsing geometry remains stable while filtering. |
 | `Features` | Inherits selection, focus, hints, and error treatment; retains Large browsing geometry. |
-| `Options` | Content-aware height when choices fit, including the Apply row; larger lists retain the normal larger layout. Covers `Sort`, `Icon`, `Hint`, `Preset`, and `Layout`. |
+| `Options` | Stable Large shell matching Theme, including filter, current value, selected rows, previews, and scrolling. Size does not shrink with option count or filtering. Covers `Sort`, `Icon`, `Hint`, `Preset`, and `Layout`. |
 | `Goal` | Compact value workflow with space for status and Apply; covers word and note goals. |
 | `Create` | Compact naming/value presentation with space for Apply and errors; covers drawing, canvas, and Bases continuations. |
 | `Import` | Compact URL/value presentation with status and Apply; source, target, and progress handling remain intact. |
@@ -96,7 +96,7 @@ Bases configuration commands continue to reuse their existing prompt/choice owne
 | Bases search | Inherits Quick Search fixes; retains pending/results/count behavior. |
 | F2 keybind reference | Width-aware header and row fitting; bounded columns; safe tiny-frame arithmetic; “More shortcuts in Help” when not all columns fit. |
 | F3 Messages | Dropdown width is bounded by the frame. Ratatui wrapping replaces hand-split character wrapping; the message viewport scrolls across wrapped paragraphs. Severity colors and stripes remain. |
-| F4 Vaults | Frame-bounded width/height, standard selected fill, and display-width path truncation that retains the path suffix. Renderer and mouse share the visible window. |
+| F4 Vaults | Frame-bounded width/height, standard selected fill, and display-width path truncation that retains the path suffix. Ordinary rows now use the surface background rather than accent, which could equal the selection color. A `›` cursor identifies selection independently of color, including the Add row; selected path/details use the highlight foreground. The active-vault dot remains separate. Renderer and mouse share the visible window. |
 | Calendar `Form` | Shared banner/frame/footer; heading focus labels and themed selected cursor; errors have a separate wrapped destructive row. Existing new/edit event fields and form scrolling remain. |
 | Calendar `Path` | Compact shared path prompt for import/export, with the same focus, cursor, and separate error treatment. |
 | Calendar `Notes` | Inherits Quick Search changes; linked markers and link/open behavior remain. |
@@ -111,6 +111,8 @@ Bases configuration commands continue to reuse their existing prompt/choice owne
 | Embedded Bases dialogs | Reuse the same updated search and prompt renderers in note/editor/link previews and Canvas embeds. |
 
 The latest main-branch Calendar improvements were merged before final validation. This report describes the popup-specific delta against that updated main, not unrelated Calendar changes.
+
+Vault switching also fixes a state-loss bug: before a persistent switch, Clin now retains both the current storage path and destination in the configured vault list, deduplicating expanded paths. This preserves an implicit starting/default vault after adding and switching to a new vault, so switching back does not require re-adding it. The existing save-before-switch checks, rollback configuration, and session-only `--vault` behavior remain intact.
 
 ## Drawing, Graph, and Canvas dependency surfaces
 
@@ -151,7 +153,7 @@ These changes live in their owning libraries, with host adapters supplying the n
 
 ## Verification
 
-Final Clin source checks:
+Initial implementation source checks, before the follow-up corrections below:
 
 | Check | Result |
 | --- | --- |
@@ -167,6 +169,20 @@ Final Clin source checks:
 Tests exercise representative renderer families at 80×24, 120×40, and 40×12, with tiny header-overlay cases at 1×1 and 8×4. Coverage includes long Unicode content, narrow Subnotes editing, scrolling Info/confirmations/Calendar help, setup mouse targets, visible selection after resizing, and palette Apply-row/status geometry. Theme coverage checks all 19 built-in themes with solid/transparent backgrounds. Canvas Rename integration tests cover remapped F7/F8 bindings across all 13 hint styles and both background modes.
 
 These are family and behavior tests, not an independently captured screenshot of every variant. The 11 existing ignored tests were not enabled. No interactive terminal walkthrough or Windows/macOS native-dialog review was performed. Full tests used temporary XDG config/data directories to isolate application state.
+
+### Follow-up acceptance checks
+
+The reported selector sizes, empty status strip, missing starting vault, and invisible F4 selection were reproduced with failing regression tests before their fixes. The follow-up changes passed:
+
+| Check | Result |
+| --- | --- |
+| Palette suite | 70 passed, including five new regression tests. |
+| UI design suite | 31 passed. |
+| Existing vault-switcher event test | 1 passed. |
+| All-target Clippy with warnings denied | Passed. |
+| Formatting and diff whitespace checks | Passed. |
+
+The five regression tests cover all five palette option families and stable filtering geometry; overflow and mouse alignment in the standalone hint selector; omission of empty status rows and themed error backgrounds for URL import, both goals, drawing, canvas, and Bases creation; preservation of an implicit starting vault through rebootstrap and a return switch without duplicates; and F4 cursor/selection contrast on the vault and Add rows across all 19 built-in themes with solid and transparent backgrounds. No interactive terminal acceptance was performed for this follow-up. The earlier full suite and dependency/toolchain checks were not repeated because the focused affected suites and Clippy passed.
 
 ## Packaging limitation
 
@@ -187,5 +203,8 @@ Clin changes were split into conventional commits:
 7. `c9258c36` — preserve selected contrast and wrap palette errors.
 8. `59d5cf75` — merge current Calendar improvements before validation.
 9. `d7cb362` — expose Search actions before secondary filter hints.
+10. `fd9229ab` — record the initial implementation report and validation.
+11. `76b446c` — match option workflows to Theme and remove empty status rows.
+12. `2422a34` — retain the starting vault and make F4 selection visible.
 
-Library work was also split into conventional commits: Draw `f2b2a4f` and `e475c84`; Graph `1460a60` and `8ee98a7`; Pinstar `c806e3a` and `490fb6e`. The report itself is committed separately from implementation.
+Library work was also split into conventional commits: Draw `f2b2a4f` and `e475c84`; Graph `1460a60` and `8ee98a7`; Pinstar `c806e3a` and `490fb6e`. This follow-up report update is committed separately from implementation.
