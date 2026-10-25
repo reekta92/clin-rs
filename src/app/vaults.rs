@@ -91,8 +91,14 @@ impl App {
             crate::storage::Storage::init_with_config_at(&candidate, &path)
         } else {
             candidate.core.storage_path = Some(path.clone());
-            if !candidate.core.vaults.iter().any(|v| same_vault(v, &path)) {
-                candidate.core.vaults.push(path.clone());
+            for vault in [&self.storage.data_dir, &path] {
+                if !candidate
+                    .expanded_vaults()
+                    .iter()
+                    .any(|v| same_vault(v, vault))
+                {
+                    candidate.core.vaults.push(vault.clone());
+                }
             }
             crate::storage::Storage::init_with_config(&candidate)
         };

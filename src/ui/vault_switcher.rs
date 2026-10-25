@@ -11,8 +11,8 @@ use crate::app_theme::AppThemeColors;
 
 /// Render the vault switcher overlay: full-width accent header bar at row 0,
 /// centered title, half-width centered dropdown of vault rows plus a trailing
-/// `+ Add new vault…` row beneath. Alternating bg per vault; selected row uses
-/// the standard highlight pair. Passive suppression mirrors draw_quick_keybinds.
+/// `+ Add new vault…` row beneath. The selected row uses the standard highlight
+/// pair and a cursor marker. Passive suppression mirrors draw_quick_keybinds.
 pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
     let Some(switcher) = app.vault_switcher.as_ref() else {
         return;
@@ -94,10 +94,7 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
     let dropdown_area = Rect::new(x, frame_area.y + 1, popup_width, height);
 
     frame.render_widget(Clear, dropdown_area);
-    frame.render_widget(
-        Block::default().style(Style::default().bg(theme.accent)),
-        dropdown_area,
-    );
+    frame.render_widget(Block::default().style(theme.bg_style()), dropdown_area);
 
     const SEP: &str = " • ";
 
@@ -105,36 +102,37 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         let row_index = scroll + i;
         let row_y = dropdown_area.y + i as u16;
 
-        // Single accent bg for all rows; selection uses the quick-search
-        // convention (`heading` bg, `highlight_fg` text).
-        let (bg, fg) = if row_index == switcher.selected {
-            (theme.highlight_bg, theme.highlight_fg)
+        // Ordinary rows use the surface background so accent-colored highlights
+        // remain distinct; the cursor marker also identifies selection without color.
+        let selected = row_index == switcher.selected;
+        let style = if selected {
+            theme.selected_style()
         } else {
-            (theme.accent, theme.highlight_fg)
+            theme.bg_style().fg(theme.text)
+        };
+        let detail_style = if selected {
+            style
+        } else {
+            style.fg(theme.muted)
         };
 
         let full_row = Rect::new(dropdown_area.x, row_y, popup_width, 1);
         frame.render_widget(Clear, full_row);
-        frame.render_widget(Block::default().style(Style::default().bg(bg)), full_row);
+        frame.render_widget(Block::default().style(style), full_row);
 
-        let mut spans: Vec<Span> = Vec::new();
+        let mut spans = vec![Span::styled(if selected { "› " } else { "  " }, style)];
         if row_index == add_index {
-            spans.push(Span::styled(
-                add_label,
-                Style::default().fg(theme.muted).bg(bg),
-            ));
+            spans.push(Span::styled(add_label, detail_style));
         } else {
             let prefix = if *is_active { "● " } else { "  " };
-            spans.push(Span::styled(
-                prefix,
-                Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD),
-            ));
+            spans.push(Span::styled(prefix, style.add_modifier(Modifier::BOLD)));
             spans.push(Span::styled(
                 name.clone(),
-                Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD),
+                style.add_modifier(Modifier::BOLD),
             ));
-            spans.push(Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)));
-            let used = unicode_width::UnicodeWidthStr::width(prefix)
+            spans.push(Span::styled(SEP, detail_style));
+            let used = 2
+                + unicode_width::UnicodeWidthStr::width(prefix)
                 + unicode_width::UnicodeWidthStr::width(name.as_str())
                 + unicode_width::UnicodeWidthStr::width(SEP);
             let path_width = inner_width.saturating_sub(used + 1);
@@ -158,10 +156,7 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
             } else {
                 path.clone()
             };
-            spans.push(Span::styled(
-                path_display,
-                Style::default().fg(theme.muted).bg(bg),
-            ));
+            spans.push(Span::styled(path_display, detail_style));
         }
 
         let content_area = Rect::new(dropdown_area.x + 1, row_y, popup_width.saturating_sub(2), 1);

@@ -4018,3 +4018,75 @@ fn popup_followup_standalone_options_scroll_and_match_mouse_geometry() {
     };
     assert_eq!(popup.selected, offset);
 }
+
+#[test]
+fn popup_followup_vault_switch_keeps_the_implicit_starting_vault() {
+    let mut fixture = Fixture::new();
+    let original = fixture.app.storage.data_dir.clone();
+    fixture.app.config.core.storage_path = None;
+    let added = fixture.root.path().join("new-vault");
+    fs::create_dir_all(&added).unwrap();
+    fixture.app.config.core.vaults = vec![added.clone()];
+    fixture.app.config.save().unwrap();
+    fixture.app.switch_vault(added.clone());
+    let request = fixture
+        .app
+        .setup_rebootstrap
+        .take()
+        .expect("vault switch requested");
+    fixture.app = App::new(request.storage).unwrap();
+    fixture.app.open_vault_switcher();
+    let switcher = fixture.app.vault_switcher.as_ref().unwrap();
+    assert_eq!(switcher.vaults[0].path, added);
+    assert!(switcher.vaults.iter().any(|row| row.path == original));
+    let config = crate::config::ClinConfig::load().0.unwrap();
+    assert!(config.core.vaults.contains(&original));
+    fixture.app.switch_vault(original.clone());
+    let request = fixture
+        .app
+        .setup_rebootstrap
+        .take()
+        .expect("return switch requested");
+    fixture.app = App::new(request.storage).unwrap();
+    fixture.app.open_vault_switcher();
+    let switcher = fixture.app.vault_switcher.as_ref().unwrap();
+    assert_eq!(switcher.vaults[0].path, original);
+    assert_eq!(switcher.vaults.len(), 2);
+}
+
+#[test]
+fn popup_followup_f4_selection_is_distinct_and_moves_to_the_add_row() {
+    let mut fixture = Fixture::new();
+    fixture.app.open_vault_switcher();
+    for theme in crate::setup::SETUP_THEMES {
+        for background in [
+            crate::config::Background::Solid,
+            crate::config::Background::Transparent,
+        ] {
+            fixture.app.config.ui.theme = (*theme).into();
+            fixture.app.config.ui.background = background;
+            fixture.app.refresh_theme_from_config();
+            for selected in [0, 1] {
+                fixture.app.vault_switcher.as_mut().unwrap().selected = selected;
+                let mut terminal =
+                    Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+                terminal
+                    .draw(|frame| {
+                        crate::ui::vault_switcher::draw_vault_switcher(frame, &fixture.app)
+                    })
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                let left = (AREA.width - crate::ui::header_dropdown_width(AREA)) / 2;
+                let selected_row = selected as u16 + 1;
+                assert_eq!(buffer[(left + 1, selected_row)].symbol(), "›", "{theme}");
+                assert_eq!(
+                    buffer[(left + 1, selected_row)].fg,
+                    fixture.app.app_theme.highlight_fg
+                );
+                assert_ne!(buffer[(left, 1)].bg, buffer[(left, 2)].bg, "{theme}");
+                let other_row = if selected == 0 { 2 } else { 1 };
+                assert_eq!(buffer[(left + 1, other_row)].symbol(), " ");
+            }
+        }
+    }
+}
