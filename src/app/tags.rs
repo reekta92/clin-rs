@@ -297,6 +297,7 @@ impl App {
             confirm_label: "Delete".into(),
             is_destructive: true,
             selected_button: 0,
+            scroll_offset: 0,
         });
     }
 
@@ -480,6 +481,7 @@ impl App {
                 confirm_label: "Remove All".into(),
                 is_destructive: true,
                 selected_button: 1,
+                scroll_offset: 0,
             });
         }
     }

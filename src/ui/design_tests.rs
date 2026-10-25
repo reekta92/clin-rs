@@ -2,6 +2,9 @@ use super::*;
 use crate::app::{EditFocus, EditSidebar, HelpTab};
 use crate::config::{ClinConfig, ConfigTestGuard, HintBarStyle, IconMode, NotesLayout};
 use crate::list_view::VisualItem;
+use crate::ui::{
+    PopupHints, PopupSize, draw_popup_frame, draw_ui, subnotes_layout, truncate_cells,
+};
 use crate::ui::{format_keybind_hints, hit_test_tabs, icons, title_bar_tabs_region};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::{Terminal, backend::TestBackend};
@@ -716,7 +719,7 @@ fn confirmation_hover_and_clicks_match_only_the_visible_buttons() {
     let (_temp, mut app) = fixture();
     let area = Rect::new(0, 0, 120, 32);
     app.show_confirm(crate::popups::ConfirmAction::QuitApp);
-    let popup = app.popups.confirm.as_ref().unwrap();
+    let popup = app.popups.confirm.as_mut().unwrap();
     let (chunks, buttons) = crate::ui::confirm_popup_layout(area, &popup.confirm_label, true);
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
     terminal
@@ -1290,4 +1293,256 @@ fn popup_scrollbars_share_borders_and_keep_corners_and_mouse_targets() {
     assert!(
         matches!(&app.popups.active, Some(crate::popups::ActivePopup::Subnotes(popup)) if popup.selected > 0)
     );
+}
+
+#[test]
+fn popup_hints_fit_and_preserve_save_and_cancel() {
+    let theme = AppThemeColors::default();
+    for width in [30, 40, 80] {
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw_popup_frame(
+                    frame,
+                    frame.area(),
+                    "界面",
+                    PopupSize::Large,
+                    PopupHints::Keybinds(&[
+                        ("Tab".into(), "navigate between all fields"),
+                        ("Enter".into(), "save"),
+                        ("Esc".into(), "cancel"),
+                    ]),
+                    &theme,
+                );
+            })
+            .unwrap();
+        let text = text_in(
+            terminal.backend().buffer(),
+            terminal.backend().buffer().area,
+        );
+        assert!(text.contains("Enter save"), "{width}: {text}");
+        assert!(text.contains("Esc cancel"), "{width}: {text}");
+        assert_eq!(truncate_cells("界e\u{301}界", 4), "界e\u{301}…");
+    }
+}
+
+#[test]
+fn search_hints_keep_the_current_action_and_cancel_visible() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.begin_search();
+    for width in [40, 80, 120] {
+        for (focus, action) in [
+            (crate::popups::SearchFocus::Input, "Enter close"),
+            (crate::popups::SearchFocus::Results, "Enter jump"),
+        ] {
+            let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active else {
+                panic!("search popup should remain open");
+            };
+            popup.focus = focus;
+            popup.title_result_ids = vec!["root.md".into()];
+            let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+            terminal
+                .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+                .unwrap();
+            let text = text_in(terminal.backend().buffer(), Rect::new(0, 0, width, 24));
+            assert!(text.contains(action), "{width}: {text}");
+            assert!(text.contains("Esc cancel"), "{width}: {text}");
+        }
+    }
+}
+
+#[test]
+fn info_scrolls_to_last_section_with_keyboard_and_mouse() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
+        title: "Information".into(),
+        items: vec![crate::popups::InfoItem::Text {
+            heading: "Long path".into(),
+            body: format!("{}\nLast evidence", "界面 ".repeat(100)),
+        }],
+        scroll_offset: 0,
+        last_scroll: None,
+    }));
+    let area = Rect::new(0, 0, 80, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(crate::events::handle_global_popups_and_palette(
+        &mut app,
+        crossterm::event::Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)),
+        area
+    ));
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(text_in(terminal.backend().buffer(), area).contains("Last evidence"));
+    let Some(crate::popups::ActivePopup::Info(popup)) = &app.popups.active else {
+        panic!("Info closed");
+    };
+    let end = popup.scroll_offset;
+    let track = popup.last_scroll.unwrap().track;
+    crate::events::handle_global_popup_mouse(
+        &mut app,
+        &mouse(MouseEventKind::ScrollUp, track.x, track.y),
+        area,
+    );
+    assert!(
+        matches!(&app.popups.active, Some(crate::popups::ActivePopup::Info(p)) if p.scroll_offset < end)
+    );
+}
+
+#[test]
+fn subnotes_keeps_focused_editor_usable_in_narrow_windows() {
+    for width in [30, 48, 72, 100] {
+        let content = Rect::new(4, 3, width, 12);
+        let [list, title, body] =
+            subnotes_layout(content, crate::popups::SubnotesFocus::EditContent);
+        assert!(body.width >= 30);
+        assert!(content.contains(body.as_position()));
+        assert!(title.bottom() <= body.y);
+        if width < 60 {
+            assert!(list.is_empty());
+            assert_eq!(body.width, content.width);
+            assert_eq!(
+                subnotes_layout(content, crate::popups::SubnotesFocus::List)[0],
+                content
+            );
+        }
+    }
+}
+
+#[test]
+fn calendar_dialogs_share_chrome_and_help_remains_reachable() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    for (width, height) in [(80, 24), (120, 40), (40, 12)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        let mut view = crate::calendar::view::View::new(chrono::Local::now().date_naive());
+        view.dialog = Some(crate::calendar::view::Dialog::Help);
+        terminal
+            .draw(|frame| {
+                crate::overlay::OverlayView::overlay_render(&mut view, frame, area, &mut app)
+            })
+            .unwrap();
+        assert!(text_in(terminal.backend().buffer(), area).contains("CALENDAR HELP"));
+        crate::overlay::OverlayView::overlay_handle_event(
+            &mut view,
+            crossterm::event::Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)),
+            &mut app,
+            area,
+        )
+        .unwrap();
+        terminal
+            .draw(|frame| {
+                crate::overlay::OverlayView::overlay_render(&mut view, frame, area, &mut app)
+            })
+            .unwrap();
+        let text = text_in(terminal.backend().buffer(), area);
+        assert!(text.contains("local."), "{width}×{height}: {text}");
+        view.dialog = Some(crate::calendar::view::Dialog::Delete("event".into()));
+        terminal
+            .draw(|frame| {
+                crate::overlay::OverlayView::overlay_render(&mut view, frame, area, &mut app)
+            })
+            .unwrap();
+        let popup = crate::ui::centered_rect(PopupSize::Confirm, area);
+        assert_eq!(
+            terminal.backend().buffer()[(popup.x, popup.y)].fg,
+            app.app_theme.destructive
+        );
+    }
+}
+
+#[test]
+fn confirmation_scroll_preserves_cancel_selection_and_reveals_consequences() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.show_confirm(crate::popups::ConfirmAction::DeleteTemplate {
+        filename: "template.md".into(),
+        name: "Template".into(),
+    });
+    app.popups.confirm.as_mut().unwrap().message = "Long 界面 title ".repeat(50);
+    app.popups.confirm.as_mut().unwrap().detail = Some("Permanent removal. Last evidence".into());
+    let area = Rect::new(0, 0, 80, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    crate::events::handle_global_popups_and_palette(
+        &mut app,
+        crossterm::event::Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)),
+        area,
+    );
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(text_in(terminal.backend().buffer(), area).contains("Last evidence"));
+    let popup = app.popups.confirm.as_ref().unwrap();
+    assert_eq!(popup.selected_button, 1);
+    assert!(popup.scroll_offset > 0);
+}
+
+#[test]
+fn header_overlays_render_safely_in_short_and_narrow_frames() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    for (width, height) in [(1, 1), (8, 4), (40, 12), (80, 24), (120, 40)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        app.quick_keybinds_open = true;
+        terminal
+            .draw(|frame| crate::ui::quick_keybinds::draw_quick_keybinds(frame, &app))
+            .unwrap();
+        app.quick_keybinds_open = false;
+        app.messages.force_open = true;
+        app.messages.push(
+            "界面: a long message with combining e\u{301}".into(),
+            crate::app::messages::MessageSeverity::Warning,
+        );
+        terminal
+            .draw(|frame| {
+                crate::ui::message_overlay::draw_message_overlay(
+                    frame,
+                    &app,
+                    &app.app_theme,
+                    frame.area(),
+                )
+            })
+            .unwrap();
+    }
+}
+
+#[test]
+fn setup_confirmation_buttons_render_and_back_click_stays_in_setup() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.mode = ViewMode::Setup;
+    app.config.core.mouse_enabled = true;
+    app.setup_state = Some(crate::setup::SetupState::from_config(
+        &app.config,
+        &app.app_theme,
+        app.storage.notes_dir.clone(),
+        false,
+    ));
+    app.setup_state.as_mut().unwrap().confirm_exit = true;
+    let area = Rect::new(0, 0, 80, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    let text = text_in(terminal.backend().buffer(), area);
+    assert!(
+        text.contains("Save & exit") && text.contains("Discard changes") && text.contains("Back")
+    );
+    let back = crate::ui::setup::setup_confirm_buttons(area)[2];
+    crate::events::handle_setup_mouse(
+        &mut app,
+        mouse(MouseEventKind::Down(MouseButton::Left), back.x + 2, back.y),
+        area,
+    );
+    assert!(!app.setup_state.as_ref().unwrap().confirm_exit);
+    assert_eq!(app.mode, ViewMode::Setup);
 }

@@ -193,7 +193,28 @@ pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect)
     if app
         .setup_state
         .as_ref()
-        .is_some_and(|state| state.vault_modal.is_some() || state.confirm_exit)
+        .is_some_and(|state| state.confirm_exit)
+    {
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            && let Some(index) = crate::ui::setup::setup_confirm_buttons(terminal_area)
+                .iter()
+                .position(|rect| rect.contains((mouse.column, mouse.row).into()))
+        {
+            handle_setup_keys(
+                app,
+                KeyEvent::new(
+                    KeyCode::Char(['y', 'q', 'n'][index]),
+                    crossterm::event::KeyModifiers::NONE,
+                ),
+                terminal_area,
+            );
+        }
+        return;
+    }
+    if app
+        .setup_state
+        .as_ref()
+        .is_some_and(|state| state.vault_modal.is_some())
     {
         return;
     }

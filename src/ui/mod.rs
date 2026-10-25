@@ -106,11 +106,12 @@ pub fn tab_vec_from_array<'a>(arr: &[(&'a str, &'a str)]) -> Vec<(&'a str, Optio
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PopupSize {
-    Small,   // 40% width, 40% height. Max bounds: 60 cols x 20 rows
-    Medium,  // 50% width, 50% height. Max bounds: 80 cols x 30 rows
-    Large,   // 60% width, 60% height. Max bounds: 100 cols x 40 rows
-    Prompt,  // 50% width. Fixed 5 height. Max bounds: 80 cols wide
-    Confirm, // 50% width. Fixed 12 height. Max bounds: 80 cols wide
+    Small,        // 40% width, 40% height. Max bounds: 60 cols x 20 rows
+    Medium,       // 50% width, 50% height. Max bounds: 80 cols x 30 rows
+    Large,        // 60% width, 60% height. Max bounds: 100 cols x 40 rows
+    Prompt,       // 50% width. Fixed 5 height. Max bounds: 80 cols wide
+    Confirm,      // 50% width. Fixed 12 height. Max bounds: 80 cols wide
+    Content(u16), // 50% width, bounded content height.
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -605,23 +606,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     } else {
                         &format!("({count})")
                     };
-                    let label = format!("  {} {}", tag, count_label);
                     let is_selected = popup.selected.contains(&i);
-                    let is_cursor = i == popup.cursor;
-                    let style = if is_cursor && is_selected {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.accent)
-                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
-                    } else if is_cursor {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.heading)
-                    } else if is_selected {
-                        Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.accent)
-                            .add_modifier(Modifier::BOLD)
+                    let label = format!(
+                        "{} {tag} {count_label}",
+                        if is_selected { "[x]" } else { "[ ]" }
+                    );
+                    let style = if is_selected {
+                        Style::default().add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     };
@@ -686,7 +677,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             &app.app_theme,
         );
 
-        if let Some(confirm) = &popup.confirm {
+        if let Some(confirm) = &mut popup.confirm {
             draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme, true, None);
         }
     }
@@ -745,7 +736,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(&picker.input, chunks[0]);
 
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
-            crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
+            crate::ui::empty_list_item(&app.app_theme, "No matching folders")
         } else {
             picker
                 .filtered_folders
@@ -868,7 +859,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame,
             area,
             palette.workflow_title(),
-            PopupSize::Large,
+            palette.popup_size(area, !workflow_bar.is_empty()),
             PopupHints::Keybinds(&hints),
             &app.app_theme,
         );
@@ -879,7 +870,18 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.muted))
+                .border_style(
+                    Style::default().fg(
+                        if palette
+                            .bases_page()
+                            .is_some_and(crate::bases::palette::Page::is_destructive)
+                        {
+                            app.app_theme.destructive
+                        } else {
+                            app.app_theme.heading
+                        },
+                    ),
+                )
                 .title(if palette.is_value_input() {
                     "Value"
                 } else if palette.workflow.is_some() {
@@ -972,13 +974,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             );
         }
         frame.render_widget(
-            Paragraph::new(palette.workflow_hint()).style(Style::default().fg(
-                if palette.error.is_some() {
+            Paragraph::new(palette.workflow_hint())
+                .wrap(Wrap { trim: false })
+                .style(app.app_theme.bg_style().fg(if palette.error.is_some() {
                     app.app_theme.destructive
                 } else {
                     app.app_theme.muted
-                },
-            )),
+                })),
             chunks[2],
         );
         let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
@@ -1011,13 +1013,19 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         .add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
-                let mut list_item = ListItem::new(vec![
-                    Line::from(spans),
-                    palette.item_preview(item, &app.app_theme),
-                ]);
-                if palette.state.selected() == Some(i) {
-                    list_item =
-                        list_item.style(app.app_theme.hover_style().add_modifier(Modifier::BOLD));
+                let selected = palette.state.selected() == Some(i);
+                let mut preview = palette.item_preview(item, &app.app_theme);
+                if selected {
+                    for span in &mut spans {
+                        span.style.fg = Some(app.app_theme.highlight_fg);
+                    }
+                    if let Some(description) = preview.spans.last_mut() {
+                        description.style.fg = Some(app.app_theme.highlight_fg);
+                    }
+                }
+                let mut list_item = ListItem::new(vec![Line::from(spans), preview]);
+                if selected {
+                    list_item = list_item.style(app.app_theme.selected_style());
                 } else if Some(i) == hovered_cmd_idx {
                     list_item = list_item.style(app.app_theme.hover_style());
                 }
@@ -1030,7 +1038,18 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(app.app_theme.muted))
+                    .border_style(
+                        Style::default().fg(
+                            if palette
+                                .bases_page()
+                                .is_some_and(crate::bases::palette::Page::is_destructive)
+                            {
+                                app.app_theme.destructive
+                            } else {
+                                app.app_theme.heading
+                            },
+                        ),
+                    )
                     .title(""),
             )
             .highlight_style(Style::default())
@@ -1200,10 +1219,10 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_text_prompt_popup(
             frame,
             title,
-            PopupSize::Large,
+            PopupSize::Prompt,
             PopupHints::Keybinds(&text_input_hints("import")),
             &mut popup.input,
-            Style::default().fg(app.app_theme.muted),
+            Style::default().fg(app.app_theme.heading),
             &app.app_theme,
         );
     }
@@ -1217,6 +1236,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             "SEARCH",
             PopupSize::Large,
             PopupHints::Keybinds(&[
+                (
+                    "Enter".to_string(),
+                    if popup.focus == crate::popups::SearchFocus::Results {
+                        "jump"
+                    } else {
+                        "close"
+                    },
+                ),
+                ("Esc".to_string(), "cancel"),
+                ("Tab".to_string(), "switch focus"),
+                ("↑↓".to_string(), "navigate results"),
                 ("f:".to_string(), "folder"),
                 ("p:".to_string(), "pinned"),
                 ("t:".to_string(), "tag"),
@@ -1621,21 +1651,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.app_theme.heading
         };
 
-        let items: Vec<ListItem> = trash
-            .items
-            .iter()
-            .map(|item| {
-                let name = item.name.to_string_lossy();
-                let when = crate::statusline::list_relative_age(item.time_deleted as u64);
-                ListItem::new(Line::from(vec![
-                    Span::raw(name.to_string()),
-                    Span::styled(
-                        format!("  ({when})"),
-                        Style::default().fg(app.app_theme.muted),
-                    ),
-                ]))
-            })
-            .collect();
+        let items: Vec<ListItem> = if trash.items.is_empty() {
+            empty_list_item(&app.app_theme, "Trash is empty")
+        } else {
+            trash
+                .items
+                .iter()
+                .map(|item| {
+                    let name = item.name.to_string_lossy();
+                    let when = crate::statusline::list_relative_age(item.time_deleted as u64);
+                    ListItem::new(Line::from(vec![
+                        Span::raw(name.to_string()),
+                        Span::styled(
+                            format!("  ({when})"),
+                            Style::default().fg(app.app_theme.muted),
+                        ),
+                    ]))
+                })
+                .collect()
+        };
 
         let list = List::new(items)
             .block(
@@ -1657,7 +1691,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame,
             list,
             content,
-            Some(trash.selected),
+            (!trash.items.is_empty()).then_some(trash.selected),
             trash.scroll_offset,
         );
         trash.scroll_offset = state.offset();
@@ -1696,7 +1730,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Confirm popup
-    if let Some(popup) = &app.popups.confirm {
+    if let Some(popup) = &mut app.popups.confirm {
         let literal_yes_no =
             !matches!(&app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
         draw_confirm_popup(

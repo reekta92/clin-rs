@@ -14,6 +14,22 @@ use ratatui::{
 };
 
 impl CommandPalette {
+    pub(crate) fn popup_size(&self, area: Rect, controls: bool) -> crate::ui::PopupSize {
+        let large = crate::ui::PopupSize::Large;
+        if !self.is_value_input() {
+            return large;
+        }
+        let rows = self.items.len() * 2 + 2;
+        let available = crate::ui::centered_rect(large, area).height;
+        let width = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area).width;
+        let height = self.input_height(available) as usize
+            + usize::from(controls)
+            + self.status_height(width) as usize
+            + 1
+            + rows;
+        crate::ui::PopupSize::Content(height.min(u16::MAX as usize) as u16)
+    }
+
     pub(crate) fn workflow_bar(&self, app: &App) -> Vec<(Line<'static>, Option<ThemePopupFocus>)> {
         let current = match &self.workflow {
             Some(Workflow::Theme(popup, _)) => {
@@ -98,13 +114,21 @@ impl CommandPalette {
     }
 
     // Rendering and mouse routing must use the same optional bar/status rows.
+    fn status_height(&self, width: u16) -> u16 {
+        if self.workflow_hint().is_empty() {
+            return 0;
+        }
+        ratatui::widgets::Paragraph::new(self.workflow_hint())
+            .wrap(ratatui::widgets::Wrap { trim: false })
+            .line_count(width.max(1))
+            .min(3) as u16
+    }
+
     pub(crate) fn content_areas(&self, content: Rect, has_controls: bool) -> [Rect; 4] {
         let areas = Layout::vertical([
             Constraint::Length(self.input_height(content.height)),
             Constraint::Length(u16::from(self.workflow.is_none() || has_controls)),
-            Constraint::Length(u16::from(
-                !self.workflow_hint().is_empty() && self.workflow.is_some(),
-            )),
+            Constraint::Length(self.status_height(content.width)),
             Constraint::Min(0),
         ])
         .split(content);

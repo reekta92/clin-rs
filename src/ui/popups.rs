@@ -37,7 +37,8 @@ pub fn draw_template_popup(
         .split(content);
 
     let mut input = popup.input.clone();
-    input.set_style(theme.bg_style());
+    input.set_style(theme.bg_style().fg(theme.text));
+    input.set_cursor_style(theme.selected_style());
     input.set_block(
         Block::default()
             .style(theme.bg_style())
@@ -54,7 +55,7 @@ pub fn draw_template_popup(
     frame.render_widget(&input, chunks[0]);
 
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
-        empty_list_item(theme, "(no matching templates)")
+        empty_list_item(theme, "No matching templates")
     } else {
         popup
             .filtered_templates
@@ -144,141 +145,83 @@ pub fn draw_template_popup(
 }
 
 pub fn draw_info_popup(
-    frame: &mut ratatui::Frame,
-    area: ratatui::layout::Rect,
-    popup: &crate::popups::InfoPopup,
-    theme: &crate::app_theme::AppThemeColors,
+    frame: &mut Frame,
+    area: Rect,
+    popup: &mut crate::popups::InfoPopup,
+    theme: &AppThemeColors,
 ) {
-    let inner = crate::ui::draw_popup_frame(
+    let content = draw_popup_frame(
         frame,
         area,
         &popup.title,
-        crate::ui::PopupSize::Medium,
-        PopupHints::Keybinds(&[("Enter/Esc".to_string(), "close")]),
+        PopupSize::Medium,
+        PopupHints::Keybinds(&[("Enter/Esc".into(), "close"), ("↑/↓".into(), "scroll")]),
         theme,
     );
     // Inner border, background, and padding matching other popup styles
-    let block = Block::default()
+    let block = Block::bordered()
         .style(theme.bg_style())
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border))
+        .border_style(Style::default().fg(theme.heading))
         .padding(Padding::new(1, 1, 0, 0));
-    let content_area = block.inner(inner);
-    frame.render_widget(block, inner);
-
-    // Available width for text word-wrapping (inside the padded content area)
-    let width = content_area.width.saturating_sub(2).max(1) as usize;
-    // Build vertical layout constraints matching each InfoItem
-    let mut constraints: Vec<Constraint> = Vec::with_capacity(popup.items.len() + 1);
+    let inner = block.inner(content);
+    frame.render_widget(block, content);
+    let mut lines = Vec::new();
     for item in &popup.items {
         match item {
             crate::popups::InfoItem::Metrics(pairs) => {
-                constraints.push(Constraint::Length(pairs.len() as u16));
+                let width = pairs.iter().map(|(key, _)| key.width()).max().unwrap_or(0);
+                for (key, value) in pairs {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            format!("{key}{}", " ".repeat(width.saturating_sub(key.width()) + 2)),
+                            Style::default().fg(theme.accent),
+                        ),
+                        Span::styled(value, Style::default().fg(theme.text)),
+                    ]));
+                }
             }
-            crate::popups::InfoItem::Spacer => {
-                constraints.push(Constraint::Length(1));
-            }
-            crate::popups::InfoItem::Text { heading: _, body } => {
-                let body_lines: u16 = body
-                    .lines()
-                    .map(|line| {
-                        let line_len = line.chars().count();
-                        if line_len == 0 {
-                            1u16
-                        } else {
-                            (line_len / width) as u16 + 1
-                        }
-                    })
-                    .sum();
-                constraints.push(Constraint::Length(1 + body_lines));
-            }
-            crate::popups::InfoItem::Tags(tags) => {
-                let total: usize = tags.iter().map(|t| t.chars().count() + 2).sum();
-                let lines = if tags.is_empty() {
-                    1
-                } else {
-                    (total / width).max(1) as u16 + 1
-                };
-                constraints.push(Constraint::Length(1 + lines));
-            }
-        }
-    }
-    constraints.push(Constraint::Min(0)); // consume remaining space
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(constraints)
-        .split(content_area);
-
-    for (idx, item) in popup.items.iter().enumerate() {
-        let item_area = chunks[idx];
-        match item {
-            crate::popups::InfoItem::Metrics(pairs) => {
-                let max_key_len = pairs
-                    .iter()
-                    .map(|(k, _)| k.chars().count())
-                    .max()
-                    .unwrap_or(0) as u16;
-
-                let rows: Vec<Row> = pairs
-                    .iter()
-                    .map(|(key, value)| {
-                        Row::new(vec![
-                            Cell::from(key.as_str()).style(Style::default().fg(theme.accent)),
-                            Cell::from(value.as_str()).style(Style::default().fg(theme.fg)),
-                        ])
-                    })
-                    .collect();
-
-                let table = Table::new(
-                    rows,
-                    [Constraint::Length(max_key_len + 2), Constraint::Min(0)],
-                );
-                frame.render_widget(table, item_area);
-            }
-            crate::popups::InfoItem::Spacer => {}
+            crate::popups::InfoItem::Spacer => lines.push(Line::default()),
             crate::popups::InfoItem::Text { heading, body } => {
-                let text_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(item_area);
-
-                let heading_para =
-                    Paragraph::new(heading.as_str()).style(Style::default().fg(theme.accent));
-                frame.render_widget(heading_para, text_chunks[0]);
-
-                let body_para = Paragraph::new(body.as_str())
-                    .style(Style::default().fg(theme.fg))
-                    .wrap(Wrap { trim: true });
-                frame.render_widget(body_para, text_chunks[1]);
+                lines.push(Line::styled(heading, Style::default().fg(theme.accent)));
+                lines.extend(
+                    body.split('\n')
+                        .map(|line| Line::styled(line, Style::default().fg(theme.text))),
+                );
             }
             crate::popups::InfoItem::Tags(tags) => {
-                let text_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(item_area);
-                let heading_para = Paragraph::new("Tags").style(Style::default().fg(theme.accent));
-                frame.render_widget(heading_para, text_chunks[0]);
-                let body_line: Line<'_> = if tags.is_empty() {
-                    Line::from(Span::styled("(none)", Style::default().fg(theme.muted)))
+                lines.push(Line::styled("Tags", Style::default().fg(theme.accent)));
+                lines.push(if tags.is_empty() {
+                    Line::styled("No tags", Style::default().fg(theme.muted))
                 } else {
-                    let mut spans: Vec<Span<'_>> = Vec::new();
-                    for (i, tag) in tags.iter().enumerate() {
-                        if i > 0 {
-                            spans.push(Span::raw("  "));
-                        }
-                        spans.push(Span::styled(
-                            tag.as_str(),
-                            Style::default().fg(theme.tag).add_modifier(Modifier::BOLD),
-                        ));
-                    }
-                    Line::from(spans)
-                };
-                let body_para = Paragraph::new(body_line).wrap(Wrap { trim: true });
-                frame.render_widget(body_para, text_chunks[1]);
+                    Line::styled(tags.join("  "), Style::default().fg(theme.tag))
+                });
             }
         }
     }
+    // Available width for text word-wrapping (inside the padded content area)
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    let length = paragraph
+        .line_count(inner.width.max(1))
+        .min(u16::MAX as usize);
+    let viewport = inner.height as usize;
+    popup.scroll_offset = popup.scroll_offset.min(length.saturating_sub(viewport));
+    frame.render_widget(paragraph.scroll((popup.scroll_offset as u16, 0)), inner);
+    let track =
+        crate::ui::scrollbar::pane_track(inner, Some(crate::ui::scrollbar::track_rect(content)));
+    popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+        track,
+        content_len: length,
+        viewport_len: viewport,
+    });
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        track,
+        length,
+        viewport,
+        popup.scroll_offset,
+        length.saturating_sub(viewport),
+        theme,
+    );
 }
 
 pub fn draw_theme_popup(
@@ -480,7 +423,7 @@ pub fn draw_option_list_popup(
         frame,
         area,
         title,
-        PopupSize::Medium,
+        PopupSize::Large,
         PopupHints::Keybinds(&[
             (
                 keybinds.display_list(crate::keybinds::ListAction::MoveUp),
@@ -535,6 +478,19 @@ pub fn draw_option_list_popup(
         mouse_pos,
         theme.hover_style(),
     );
+    let inner = Block::bordered().inner(content_area);
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        crate::ui::scrollbar::pane_track(
+            inner,
+            Some(crate::ui::scrollbar::track_rect(content_area)),
+        ),
+        options.len(),
+        inner.height as usize,
+        selected,
+        options.len().saturating_sub(1),
+        theme,
+    );
 }
 
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
@@ -567,6 +523,7 @@ pub fn centered_rect(size: PopupSize, area: Rect) -> Rect {
         PopupSize::Large => (60, 60, 100, 40, None),
         PopupSize::Prompt => (50, 0, 80, 0, Some(5)),
         PopupSize::Confirm => (50, 0, 80, 0, Some(12)),
+        PopupSize::Content(height) => (50, 0, 80, 0, Some(height)),
     };
 
     let width = (area.width * width_pct / 100).clamp(30.min(area.width), max_w.min(area.width));
@@ -693,7 +650,8 @@ pub fn paint_list_hover(
 pub fn make_popup_textarea(theme: &AppThemeColors, placeholder: &str) -> TextArea<'static> {
     let mut input = TextArea::default();
     input.set_cursor_line_style(Style::default());
-    input.set_style(theme.bg_style());
+    input.set_style(theme.bg_style().fg(theme.text));
+    input.set_cursor_style(theme.selected_style());
     if !placeholder.is_empty() {
         input.set_placeholder_text(placeholder);
         input.set_placeholder_style(Style::default().fg(theme.muted));
@@ -1182,10 +1140,84 @@ pub fn popup_footer_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>) 
         )),
     }
 }
+
+fn fit_popup_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>, width: usize) -> Line<'a> {
+    let PopupHints::Keybinds(items) = hints else {
+        return popup_footer_hints(theme, hints);
+    };
+    let full = format_keybind_hints_classic(theme, items);
+    if full.width() <= width {
+        return full;
+    }
+    // Keep the way out and the primary action visible before secondary shortcuts.
+    let essential = |action: &str| {
+        matches!(
+            action,
+            "cancel"
+                | "close"
+                | "back/close"
+                | "save"
+                | "confirm"
+                | "select"
+                | "create"
+                | "import"
+                | "use template"
+                | "jump"
+        )
+    };
+    let mut kept = Vec::new();
+    for item in items
+        .iter()
+        .filter(|(_, action)| essential(action))
+        .chain(items.iter().filter(|(_, action)| !essential(action)))
+    {
+        let mut candidate = kept.clone();
+        candidate.push(item.clone());
+        if format_keybind_hints_classic(theme, &candidate).width() + 2 <= width || kept.is_empty() {
+            kept = candidate;
+        }
+    }
+    let mut line = format_keybind_hints_classic(theme, &kept);
+    if kept.len() < items.len() {
+        line.spans
+            .push(Span::styled(" …", Style::default().fg(theme.muted)));
+    }
+    line
+}
+
+pub(crate) fn truncate_cells(text: &str, width: usize) -> String {
+    use unicode_segmentation::UnicodeSegmentation;
+    if text.width() <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let mut result = String::new();
+    let mut used = 0;
+    for grapheme in text.graphemes(true) {
+        if used + grapheme.width() > width - 1 {
+            break;
+        }
+        result.push_str(grapheme);
+        used += grapheme.width();
+    }
+    result.push('…');
+    result
+}
+
+pub(crate) fn header_dropdown_width(area: Rect) -> u16 {
+    (area.width / 2).clamp(30.min(area.width), 80.min(area.width))
+}
 pub fn draw_popup_footer(frame: &mut Frame, area: Rect, theme: &AppThemeColors, hints: &Line<'_>) {
-    let footer = Paragraph::new(hints.clone())
-        .alignment(Alignment::Center)
-        .style(theme.hint_line_bg_style());
+    let footer = Paragraph::new(fit_footer_line(
+        hints.clone(),
+        area.width as usize,
+        theme,
+        true,
+    ))
+    .alignment(Alignment::Center)
+    .style(theme.hint_line_bg_style());
     frame.render_widget(footer, area);
 }
 
@@ -1204,7 +1236,7 @@ pub fn draw_popup_frame(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area);
-    let hint_line = popup_footer_hints(theme, hints);
+    let hint_line = fit_popup_hints(theme, hints, chunks[1].width as usize);
     draw_popup_footer(frame, chunks[1], theme, &hint_line);
     chunks[0]
 }
@@ -1238,7 +1270,7 @@ pub fn draw_confirm_popup_frame(
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Min(1), Constraint::Length(1)])
                 .split(popup_area);
-            let hint_line = popup_footer_hints(theme, h);
+            let hint_line = fit_popup_hints(theme, h, chunks[1].width as usize);
             draw_popup_footer(frame, chunks[1], theme, &hint_line);
             chunks[0]
         }
@@ -1264,7 +1296,8 @@ pub(crate) fn confirm_popup_layout(
     label: &str,
     literal_yes_no: bool,
 ) -> ([Rect; 4], [Rect; 2]) {
-    let popup = centered_rect(PopupSize::Confirm, area);
+    let mut popup = centered_rect(PopupSize::Confirm, area);
+    popup.height = popup.height.saturating_sub(1);
     let inner = Block::bordered().inner(popup);
     let chunks = Layout::vertical([
         Constraint::Length(2),
@@ -1296,7 +1329,7 @@ pub(crate) fn confirm_popup_layout(
 
 pub fn draw_confirm_popup(
     frame: &mut Frame,
-    popup: &ConfirmPopup,
+    popup: &mut ConfirmPopup,
     area: Rect,
     theme: &AppThemeColors,
     literal_yes_no: bool,
@@ -1308,22 +1341,44 @@ pub fn draw_confirm_popup(
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
-        None,
+        Some(PopupHints::Keybinds(&[
+            (if literal_yes_no { "y" } else { "Enter" }.into(), "confirm"),
+            (if literal_yes_no { "n" } else { "Esc" }.into(), "cancel"),
+            ("↑/↓".into(), "scroll"),
+        ])),
         theme,
     );
 
     let (chunks, button_areas) = confirm_popup_layout(area, &popup.confirm_label, literal_yes_no);
 
-    let message = Paragraph::new(popup.message.as_str()).alignment(Alignment::Center);
-    frame.render_widget(message, chunks[0]);
-
+    let text_area = Rect::new(
+        chunks[0].x,
+        chunks[0].y,
+        chunks[0].width,
+        chunks[3].y.saturating_sub(chunks[0].y + 1),
+    );
+    let mut lines = vec![Line::styled(
+        popup.message.as_str(),
+        Style::default().fg(theme.text),
+    )];
     if let Some(detail) = &popup.detail {
-        let detail_para = Paragraph::new(detail.as_str())
-            .style(Style::default().fg(theme.muted))
-            .alignment(Alignment::Center);
-        frame.render_widget(detail_para, chunks[1]);
+        lines.push(Line::default());
+        lines.extend(
+            detail
+                .lines()
+                .map(|line| Line::styled(line, Style::default().fg(theme.muted))),
+        );
     }
-
+    let paragraph = Paragraph::new(lines)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: false });
+    let length = paragraph
+        .line_count(text_area.width.max(1))
+        .min(u16::MAX as usize);
+    popup.scroll_offset = popup
+        .scroll_offset
+        .min(length.saturating_sub(text_area.height as usize) as u16);
+    frame.render_widget(paragraph.scroll((popup.scroll_offset, 0)), text_area);
     let (mut confirm_style, mut cancel_style) = if popup.selected_button == 0 {
         let confirm = if popup.is_destructive {
             Style::default()
@@ -1390,6 +1445,23 @@ pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     }
 }
 
+pub(crate) fn subnotes_layout(content: Rect, focus: crate::popups::SubnotesFocus) -> [Rect; 3] {
+    use crate::popups::SubnotesFocus;
+    let (list, editor) = if content.width < 60 {
+        if focus == SubnotesFocus::List {
+            (content, Rect::default())
+        } else {
+            (Rect::default(), content)
+        }
+    } else {
+        let chunks =
+            Layout::horizontal([Constraint::Percentage(35), Constraint::Min(30)]).split(content);
+        (chunks[0], chunks[1])
+    };
+    let fields = Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).split(editor);
+    [list, fields[0], fields[1]]
+}
+
 pub fn draw_subnotes_popup(
     frame: &mut Frame,
     popup: &mut crate::popups::SubnotesPopup,
@@ -1413,10 +1485,7 @@ pub fn draw_subnotes_popup(
         theme,
     );
 
-    let main_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(34), Constraint::Min(0)])
-        .split(content);
+    let [list_area, title_area, body_area] = subnotes_layout(content, popup.focus);
 
     let list_style = if popup.focus == crate::popups::SubnotesFocus::List {
         Style::default().fg(theme.heading)
@@ -1430,8 +1499,8 @@ pub fn draw_subnotes_popup(
         .style(theme.bg_style());
 
     if popup.subnotes.is_empty() {
-        frame.render_widget(list_block.clone(), main_chunks[0]);
-        let inner_area = list_block.inner(main_chunks[0]);
+        frame.render_widget(list_block.clone(), list_area);
+        let inner_area = list_block.inner(list_area);
         if inner_area.height > 0 {
             let text_area = Rect::new(
                 inner_area.x + 2,
@@ -1439,7 +1508,7 @@ pub fn draw_subnotes_popup(
                 inner_area.width.saturating_sub(4),
                 1,
             );
-            let placeholder = Paragraph::new("press n to create a new note")
+            let placeholder = Paragraph::new("No subnotes. Alt+N creates one.")
                 .style(
                     Style::default()
                         .fg(theme.muted)
@@ -1468,14 +1537,14 @@ pub fn draw_subnotes_popup(
 
         let mut list_state = ListState::default();
         list_state.select(Some(popup.selected));
-        frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
+        frame.render_stateful_widget(list, list_area, &mut list_state);
         popup.scroll_offset = list_state.offset();
         // Scrollbar for subnotes list
         let sub_list_inner = Rect {
-            x: main_chunks[0].x + 1,
-            y: main_chunks[0].y + 1,
-            width: main_chunks[0].width.saturating_sub(2),
-            height: main_chunks[0].height.saturating_sub(2),
+            x: list_area.x + 1,
+            y: list_area.y + 1,
+            width: list_area.width.saturating_sub(2),
+            height: list_area.height.saturating_sub(2),
         };
         paint_list_hover(
             frame,
@@ -1487,7 +1556,7 @@ pub fn draw_subnotes_popup(
         );
         let track = crate::ui::scrollbar::pane_track(
             sub_list_inner,
-            Some(crate::ui::scrollbar::track_rect(main_chunks[0])),
+            Some(crate::ui::scrollbar::track_rect(list_area)),
         );
         popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
             track,
@@ -1505,13 +1574,8 @@ pub fn draw_subnotes_popup(
         );
     }
 
-    let edit_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(main_chunks[1]);
-
     let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle
-        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(edit_chunks[0], x, y))
+        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(title_area, x, y))
     {
         Style::default().fg(theme.heading)
     } else {
@@ -1519,7 +1583,7 @@ pub fn draw_subnotes_popup(
     };
 
     let content_border_style = if popup.focus == crate::popups::SubnotesFocus::EditContent
-        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(edit_chunks[1], x, y))
+        || mouse_pos.is_some_and(|(x, y)| crate::events::contains_cell(body_area, x, y))
     {
         Style::default().fg(theme.heading)
     } else {
@@ -1540,7 +1604,7 @@ pub fn draw_subnotes_popup(
             .border_style(title_border_style)
             .style(theme.bg_style()),
     );
-    frame.render_widget(&title_input, edit_chunks[0]);
+    frame.render_widget(&title_input, title_area);
 
     let mut content_input = popup.content_input.clone();
     content_input.set_placeholder_text("Content...");
@@ -1556,7 +1620,7 @@ pub fn draw_subnotes_popup(
             .border_style(content_border_style)
             .style(theme.bg_style()),
     );
-    frame.render_widget(&content_input, edit_chunks[1]);
+    frame.render_widget(&content_input, body_area);
 }
 
 fn muted_color(c: Color) -> Color {
@@ -1637,11 +1701,12 @@ pub fn draw_header_dropdown(
         header_rect,
     );
 
-    let title_width = title.chars().count() as u16;
+    let title = truncate_cells(title, frame_area.width as usize);
+    let title_width = title.width() as u16;
     let title_x = frame_area.x + (frame_area.width.saturating_sub(title_width)) / 2;
     frame.render_widget(
         Paragraph::new(Span::styled(
-            title,
+            title.as_str(),
             Style::default().fg(theme.highlight_fg).bg(theme.accent),
         )),
         Rect::new(title_x, frame_area.y, title_width, 1),
@@ -1665,20 +1730,23 @@ pub fn draw_header_dropdown(
 
     let max_item_width = items
         .iter()
-        .map(|(l, _, c)| l.chars().count() + if c.is_some() { 3 } else { 0 })
+        .map(|(l, _, c)| l.width() + if c.is_some() { 3 } else { 0 })
         .max()
         .unwrap_or(0) as u16;
-    let dropdown_width = max_item_width + 4;
+    let dropdown_width = max_item_width.saturating_add(4).min(frame_area.width);
     let dropdown_x = frame_area.x + (frame_area.width.saturating_sub(dropdown_width)) / 2;
     let dropdown_y = frame_area.y + 1;
-    let dropdown_rect = Rect::new(dropdown_x, dropdown_y, dropdown_width, items.len() as u16);
+    let visible = items
+        .len()
+        .min(frame_area.height.saturating_sub(1) as usize);
+    let dropdown_rect = Rect::new(dropdown_x, dropdown_y, dropdown_width, visible as u16);
 
     frame.render_widget(Clear, dropdown_rect);
     frame.render_widget(
         Block::default().style(Style::default().bg(theme.accent)),
         dropdown_rect,
     );
-    for (i, (label, is_selected, color_hint)) in items.iter().enumerate() {
+    for (i, (label, is_selected, color_hint)) in items.iter().take(visible).enumerate() {
         let row_y = dropdown_y + i as u16;
         let is_hovered = mouse_pos.is_some_and(|(col, row)| {
             row == row_y && col >= dropdown_x && col < dropdown_x + dropdown_width

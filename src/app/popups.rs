@@ -451,6 +451,7 @@ template = """
             confirm_label,
             is_destructive,
             selected_button: 1,
+            scroll_offset: 0,
         });
     }
 

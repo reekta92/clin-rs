@@ -1,9 +1,9 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Block, Clear, Paragraph, Wrap},
 };
 
 use crate::app::messages::MessageSeverity;
@@ -24,6 +24,9 @@ pub fn draw_message_overlay(
     }
 
     let frame_area = frame.area();
+    if frame_area.is_empty() {
+        return;
+    }
 
     // --- Dynamic color: destructive (red) for fatal, warning (yellow) for non-fatal ---
     let base_color = if app.messages.has_fatal() {
@@ -38,7 +41,8 @@ pub fn draw_message_overlay(
     } else {
         " [F3] Messages "
     };
-    let title_width = title.chars().count() as u16;
+    let title = crate::ui::truncate_cells(title, frame_area.width as usize);
+    let title_width = unicode_width::UnicodeWidthStr::width(title.as_str()) as u16;
 
     // --- Full-width header bar at row 0, centered title ---
     let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
@@ -50,7 +54,7 @@ pub fn draw_message_overlay(
     let label_x = frame_area.x + (frame_area.width.saturating_sub(title_width)) / 2;
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
-            title,
+            title.as_str(),
             Style::default().fg(theme.highlight_fg).bg(base_color),
         ))),
         Rect::new(label_x, frame_area.y, title_width, 1),
@@ -75,111 +79,75 @@ pub fn draw_message_overlay(
     }
 
     // --- Compute popup width: ~half window, centered ---
-    let popup_width = (frame_area.width / 2).clamp(30, 80);
+    let popup_width = crate::ui::header_dropdown_width(frame_area);
     let inner_width = popup_width.saturating_sub(2) as usize;
 
-    // --- Pre-wrap messages, tracking which message each line belongs to ---
-    struct WrappedLine {
-        text: String,
-        fg: Color,
-        msg_idx: usize, // which message this line belongs to
-    }
-
-    let prefix_chars: usize = 2;
-    let mut wrapped_lines: Vec<WrappedLine> = Vec::new();
-
-    for (msg_idx, m) in visible.iter().enumerate() {
-        let fg = theme.highlight_fg;
-        let prefix = match m.severity {
-            MessageSeverity::Warning => "⚠ ",
-            MessageSeverity::Fatal => "✗ ",
-        };
-        let full_text = format!("{}{}", prefix, m.text);
-        let text_chars = full_text.chars().count();
-
-        if text_chars <= inner_width {
-            wrapped_lines.push(WrappedLine {
-                text: full_text,
-                fg,
-                msg_idx,
-            });
-        } else {
-            let first_width = inner_width;
-            let cont_width = inner_width.saturating_sub(prefix_chars);
-            let chars: Vec<char> = full_text.chars().collect();
-            let mut offset = 0;
-            let mut first = true;
-            while offset < chars.len() {
-                let width = if first { first_width } else { cont_width };
-                let end = (offset + width).min(chars.len());
-                let segment: String = chars[offset..end].iter().collect();
-                let display = if first {
-                    segment
-                } else {
-                    format!("  {}", segment)
-                };
-                wrapped_lines.push(WrappedLine {
-                    text: display,
-                    fg,
-                    msg_idx,
-                });
-                offset = end;
-                first = false;
-            }
-        }
-    }
-
-    let max_visible_rows = 12;
-    let max_scroll = wrapped_lines.len().saturating_sub(max_visible_rows);
-    let scroll = app.messages.scroll.min(max_scroll);
-    let total_rows = wrapped_lines.len().min(max_visible_rows);
-
-    // --- Center the dropdown horizontally ---
-    let x = frame_area.x + (frame_area.width.saturating_sub(popup_width)) / 2;
-    let height = (total_rows as u16).min(frame_area.height.saturating_sub(2).max(1));
-    let dropdown_area = Rect::new(x, frame_area.y + 1, popup_width, height);
-
-    frame.render_widget(Clear, dropdown_area);
-    frame.render_widget(
-        Block::default().style(Style::default().bg(base_color)),
-        dropdown_area,
-    );
-    // --- Render lines: alternating bg per MESSAGE, not per line ---
-    let alt_bg = crate::app_theme::darken(base_color, 36);
-
-    for (i, wl) in wrapped_lines
+    // Wrap with the same terminal-cell-aware layout used to paint each message.
+    let paragraphs: Vec<_> = visible
         .iter()
-        .skip(scroll)
-        .take(height as usize)
         .enumerate()
-    {
-        // Alternate based on message index: even msg_idx → base_color, odd → darkened
-        let bg = if wl.msg_idx % 2 == 0 {
-            base_color
-        } else {
-            alt_bg
-        };
-        let row_y = dropdown_area.y + i as u16;
-
-        let full_row = Rect::new(dropdown_area.x, row_y, popup_width, 1);
-        frame.render_widget(Clear, full_row);
-        frame.render_widget(Block::default().style(Style::default().bg(bg)), full_row);
-
-        let styled_line = if let Some(colon_pos) = wl.text.find(':') {
-            let prefix_end = colon_pos + 1; // include the colon
-            let bold_style = Style::default()
-                .fg(wl.fg)
-                .bg(bg)
-                .add_modifier(Modifier::BOLD);
-            let normal_style = Style::default().fg(wl.fg).bg(bg);
-            Line::from(vec![
-                Span::styled(&wl.text[..prefix_end], bold_style),
-                Span::styled(&wl.text[prefix_end..], normal_style),
-            ])
-        } else {
-            Line::from(Span::styled(&wl.text, Style::default().fg(wl.fg).bg(bg)))
-        };
-        let content_area = Rect::new(dropdown_area.x + 1, row_y, popup_width.saturating_sub(2), 1);
-        frame.render_widget(Paragraph::new(styled_line), content_area);
+        .map(|(index, message)| {
+            let prefix = match message.severity {
+                MessageSeverity::Warning => "⚠ ",
+                MessageSeverity::Fatal => "✗ ",
+            };
+            let text = format!("{prefix}{}", message.text);
+            let bg = if index % 2 == 0 {
+                base_color
+            } else {
+                crate::app_theme::darken(base_color, 36)
+            };
+            let style = Style::default().fg(theme.highlight_fg).bg(bg);
+            let line = if let Some(colon) = text.find(':') {
+                Line::from(vec![
+                    Span::styled(
+                        text[..=colon].to_owned(),
+                        style.add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(text[colon + 1..].to_owned(), style),
+                ])
+            } else {
+                Line::from(Span::styled(text, style))
+            };
+            (
+                Paragraph::new(line).style(style).wrap(Wrap { trim: false }),
+                style,
+            )
+        })
+        .collect();
+    if inner_width == 0 || frame_area.height < 2 {
+        return;
+    }
+    let heights: Vec<_> = paragraphs
+        .iter()
+        .map(|(p, _)| p.line_count(inner_width as u16))
+        .collect();
+    let content_len: usize = heights.iter().sum();
+    let viewport = 12.min(frame_area.height.saturating_sub(1) as usize);
+    let mut skip = app
+        .messages
+        .scroll
+        .min(content_len.saturating_sub(viewport));
+    let x = frame_area.x + frame_area.width.saturating_sub(popup_width) / 2;
+    let mut y = frame_area.y + 1;
+    let bottom = y + viewport as u16;
+    for ((paragraph, style), height) in paragraphs.into_iter().zip(heights) {
+        if skip >= height {
+            skip -= height;
+            continue;
+        }
+        let height = (height - skip).min((bottom - y) as usize) as u16;
+        let rect = Rect::new(x, y, popup_width, height);
+        frame.render_widget(Clear, rect);
+        frame.render_widget(Block::default().style(style), rect);
+        frame.render_widget(
+            paragraph.scroll((skip as u16, 0)),
+            Rect::new(x + 1, y, popup_width.saturating_sub(2), height),
+        );
+        skip = 0;
+        y += height;
+        if y >= bottom {
+            break;
+        }
     }
 }

@@ -1,8 +1,7 @@
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
-    PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_view_title_bar,
-    get_preview_info,
+    PopupHints, PopupSize, draw_dim_vline, draw_popup_frame, draw_view_title_bar, get_preview_info,
 };
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
@@ -423,17 +422,21 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
-        let popup = centered_rect(PopupSize::Small, area);
-        frame.render_widget(Clear, popup);
-        let text = Paragraph::new(app.status.as_ref())
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .title("Error"),
-            )
-            .wrap(Wrap { trim: true });
-        frame.render_widget(text, popup);
+        let inner = crate::ui::draw_confirm_popup_frame(
+            frame,
+            area,
+            "Error",
+            PopupSize::Small,
+            true,
+            None,
+            &app.app_theme,
+        );
+        frame.render_widget(
+            Paragraph::new(app.status.as_ref())
+                .style(Style::default().fg(app.app_theme.destructive))
+                .wrap(Wrap { trim: false }),
+            inner,
+        );
     }
     if app.editor.link_preview {
         draw_link_preview_popup(frame, area, app);
@@ -451,7 +454,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
              is_selected,
              theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    Style::default().fg(theme.fg)
+                    theme.selected_style()
                 } else {
                     Style::default().fg(theme.highlight_fg)
                 };
@@ -464,46 +467,32 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // --- Go-to-line popup ---
     if let Some(input) = &app.editor.go_to_line_input {
         let theme = &app.app_theme;
-        let popup_area =
-            crate::ui::popups::centered_rect(crate::ui::PopupSize::Prompt, frame.area());
-        let text = if input.is_empty() { "Line #" } else { input };
-        let (title, hints) = ("GO TO LINE", &[("Enter", "jump"), ("Esc", "cancel")][..]);
-        let clear = Clear;
-        frame.render_widget(clear, popup_area);
-        let block = Block::default()
-            .title(format!(" {title} "))
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme.highlight_fg))
-            .style(theme.bg_style());
-        frame.render_widget(&block, popup_area);
-        let inner = block.inner(popup_area);
-        let input_style = Style::default().fg(theme.highlight_fg).bg(theme.accent);
-        let paragraph = Paragraph::new(Span::styled(text.to_string(), input_style)).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.border)),
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "GO TO LINE",
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&[("Enter".into(), "jump"), ("Esc".into(), "cancel")]),
+            theme,
         );
-        frame.render_widget(paragraph, inner);
-        // Render hints
-        if inner.height >= 1 {
-            let hint_y = inner.y + inner.height.saturating_sub(1);
-            let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
-            let hint_line = Line::from(
-                hints
-                    .iter()
-                    .flat_map(|(k, v)| {
-                        let key = Span::styled(
-                            format!(" {k} "),
-                            Style::default().fg(theme.highlight_fg).bg(theme.accent),
-                        );
-                        let desc = Span::styled(format!(" {v} "), Style::default().fg(theme.text));
-                        [key, desc].into_iter()
-                    })
-                    .collect::<Vec<_>>(),
-            );
-            frame.render_widget(hint_line, hint_area);
-        }
+        let block = Block::bordered()
+            .border_style(Style::default().fg(theme.heading))
+            .style(theme.bg_style());
+        let inner = block.inner(content);
+        frame.render_widget(block, content);
+        let text = if input.is_empty() {
+            "Line number"
+        } else {
+            input
+        };
+        frame.render_widget(
+            Paragraph::new(text).style(Style::default().fg(if input.is_empty() {
+                theme.muted
+            } else {
+                theme.text
+            })),
+            inner,
+        );
     }
 }
 fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {

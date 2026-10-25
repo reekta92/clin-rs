@@ -200,6 +200,7 @@ pub fn clin_theme(
             .unwrap_or(ratatui::style::Color::Reset),
     );
     t.menu_shortcut_color = Some(app_theme.muted);
+    t.menu_hover = app_theme.hover_style();
     t
 }
 
@@ -270,6 +271,7 @@ pub struct GrafPlugin {
     pub notes: Vec<crate::storage::NoteSummary>,
     pub focus_note_ids: Option<std::collections::HashSet<String>>,
     pub config_errors: Vec<String>,
+    config_error_scroll: usize,
     pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
     pub show_legend: bool,
@@ -350,6 +352,7 @@ impl GrafPlugin {
             focus_note_ids: None,
 
             config_errors,
+            config_error_scroll: 0,
             search_popup: None,
             show_minimap: config.graf.visual.show_minimap,
             show_legend: config.graf.visual.show_legend,
@@ -1226,6 +1229,38 @@ fn handle_event(
     keybinds: &Keybinds,
     term_area: ratatui::layout::Rect,
 ) -> anyhow::Result<Option<EventAction>> {
+    if !app_state.config_errors.is_empty() {
+        match &ev {
+            crossterm::event::Event::Key(key) => match key.code {
+                KeyCode::Up => {
+                    app_state.config_error_scroll = app_state.config_error_scroll.saturating_sub(1)
+                }
+                KeyCode::Down => {
+                    app_state.config_error_scroll = app_state.config_error_scroll.saturating_add(1)
+                }
+                KeyCode::PageUp => {
+                    app_state.config_error_scroll = app_state.config_error_scroll.saturating_sub(5)
+                }
+                KeyCode::PageDown => {
+                    app_state.config_error_scroll = app_state.config_error_scroll.saturating_add(5)
+                }
+                KeyCode::Home => app_state.config_error_scroll = 0,
+                KeyCode::End => app_state.config_error_scroll = usize::MAX,
+                _ => return Ok(Some(EventAction::Quit)),
+            },
+            crossterm::event::Event::Mouse(mouse) => match mouse.kind {
+                crossterm::event::MouseEventKind::ScrollUp => {
+                    app_state.config_error_scroll = app_state.config_error_scroll.saturating_sub(3)
+                }
+                crossterm::event::MouseEventKind::ScrollDown => {
+                    app_state.config_error_scroll = app_state.config_error_scroll.saturating_add(3)
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        return Ok(None);
+    }
     match ev {
         crossterm::event::Event::Key(key) => {
             if app_state.search_popup.is_some() {
@@ -1588,11 +1623,15 @@ fn draw_ui(
     };
 
     if !state.config_errors.is_empty() {
-        draw_config_errors(frame, area, &state.config_errors, config);
+        draw_config_errors(
+            frame,
+            area,
+            &state.config_errors,
+            theme,
+            &mut state.config_error_scroll,
+        );
         return;
     }
-
-    let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {
         let guard = graph_state.read();
@@ -1624,7 +1663,7 @@ fn draw_ui(
             max_visible,
             move |(_, title), is_selected, theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    ratatui::style::Style::default().fg(theme.fg)
+                    theme.selected_style()
                 } else {
                     ratatui::style::Style::default().fg(theme.highlight_fg)
                 };
@@ -1640,11 +1679,17 @@ fn draw_ui(
     }
 
     if let Some(ref msg) = state.config_reload_msg {
-        draw_reload_notification(frame, area, msg, &colors, theme);
+        draw_reload_notification(frame, area, msg, theme);
     }
 }
 
-fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], _config: &ClinConfig) {
+fn draw_config_errors(
+    frame: &mut Frame,
+    area: Rect,
+    errors: &[String],
+    theme: &crate::app_theme::AppThemeColors,
+    scroll: &mut usize,
+) {
     let config_path = crate::config::ClinConfig::config_path()
         .unwrap_or_default()
         .display()
@@ -1660,26 +1705,26 @@ fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], _config:
     lines.push(format!("Fix: {config_path}"));
     lines.push("Press any key to close".to_string());
 
-    let text = lines.join("\n");
-    let paragraph = ratatui::widgets::Paragraph::new(text)
-        .block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .title("Config Error")
-                .border_type(ratatui::widgets::BorderType::Rounded),
-        )
-        .alignment(ratatui::layout::Alignment::Left);
-
-    let max_width = lines.iter().map(|l| l.len()).max().unwrap_or(0) + 4;
-    let height = lines.len() as u16 + 2;
-    let popup_area = ratatui::layout::Rect {
-        x: (area.width.saturating_sub(max_width as u16)) / 2,
-        y: (area.height.saturating_sub(height)) / 2,
-        width: max_width.min(area.width as usize) as u16,
-        height: height.min(area.height),
-    };
-
-    frame.render_widget(paragraph, popup_area);
+    let inner = crate::ui::draw_confirm_popup_frame(
+        frame,
+        area,
+        "Configuration error",
+        crate::ui::PopupSize::Large,
+        true,
+        Some(crate::ui::PopupHints::Keybinds(&[
+            ("Enter/Esc".into(), "close"),
+            ("↑/↓".into(), "scroll"),
+        ])),
+        theme,
+    );
+    let paragraph = ratatui::widgets::Paragraph::new(lines.join("\n"))
+        .style(theme.bg_style().fg(theme.text))
+        .wrap(ratatui::widgets::Wrap { trim: false });
+    let length = paragraph
+        .line_count(inner.width.max(1))
+        .min(u16::MAX as usize);
+    *scroll = (*scroll).min(length.saturating_sub(inner.height as usize));
+    frame.render_widget(paragraph.scroll((*scroll as u16, 0)), inner);
 }
 
 fn suggest_fix(err: &str) -> Option<String> {
@@ -1712,33 +1757,33 @@ fn draw_reload_notification(
     frame: &mut Frame,
     area: Rect,
     msg: &str,
-    colors: &crate::config::ThemeColors,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let width = (msg.len() as u16 + 4).min(area.width);
-    let height = 3u16;
-    let x = (area.width.saturating_sub(width)) / 2;
-    let y = area.height.saturating_sub(height) / 2;
-
-    let popup_area = ratatui::layout::Rect::new(x, y, width, height);
-
-    let is_error = msg.starts_with("Config error");
-    let border_color = if is_error {
-        theme.destructive
-    } else {
-        colors.border_color
-    };
-
+    let width = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area)
+        .width
+        .saturating_sub(2);
     let paragraph = ratatui::widgets::Paragraph::new(msg)
-        .style(ratatui::style::Style::default().fg(colors.label_color))
-        .alignment(ratatui::layout::Alignment::Center)
-        .block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(border_color)),
-        );
-
-    frame.render_widget(paragraph, popup_area);
+        .style(theme.bg_style().fg(theme.text))
+        .wrap(ratatui::widgets::Wrap { trim: false });
+    let height = paragraph
+        .line_count(width.max(1))
+        .saturating_add(2)
+        .min(u16::MAX as usize) as u16;
+    let error = msg.starts_with("Config error");
+    let inner = crate::ui::draw_confirm_popup_frame(
+        frame,
+        area,
+        if error {
+            "Configuration error"
+        } else {
+            "Configuration reloaded"
+        },
+        crate::ui::PopupSize::Content(height),
+        error,
+        None,
+        theme,
+    );
+    frame.render_widget(paragraph, inner);
 }
 
 fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafPlugin, config: &ClinConfig) {

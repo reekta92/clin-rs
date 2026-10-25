@@ -31,8 +31,13 @@ fn handle_list_popup_mouse(
             if !contains_cell(popup_area, mouse.column, mouse.row) {
                 return ListPopupMouseAction::Dismissed;
             }
+            let viewport = popup_area.height.saturating_sub(3) as usize;
+            if mouse.row <= popup_area.y || mouse.row >= popup_area.bottom().saturating_sub(2) {
+                return ListPopupMouseAction::None;
+            }
+            let offset = selected.saturating_sub(viewport.saturating_sub(1));
             let Some(clicked) =
-                crate::ui::list_index_at(mouse.row, popup_area.y + 1, 1, 0, item_count)
+                crate::ui::list_index_at(mouse.row, popup_area.y + 1, 1, offset, item_count)
             else {
                 return ListPopupMouseAction::Dismissed;
             };
@@ -181,12 +186,15 @@ pub(crate) fn handle_command_palette_mouse(
         return false;
     };
     app.mouse_pos = Some((mouse.column, mouse.row));
-    let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+    let workflow_bar = palette.workflow_bar(app);
+    let popup_area = crate::ui::centered_rect(
+        palette.popup_size(terminal_area, !workflow_bar.is_empty()),
+        terminal_area,
+    );
     let content = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area)[0];
-    let workflow_bar = palette.workflow_bar(app);
     let chunks = palette.content_areas(content, !workflow_bar.is_empty());
 
     // --- Scrollbar handling ---
@@ -408,7 +416,7 @@ impl crate::popups::ActivePopup {
         match self {
             // === Group A: Simple list-style popups ===
             CreateFormat(mut p) => {
-                let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(
                     mouse,
                     area,
@@ -427,7 +435,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             Sort(mut p) => {
-                let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(Sort(p));
@@ -441,7 +449,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             IconMode(mut p) => {
-                let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(IconMode(p));
@@ -455,7 +463,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             HintBarStyle(mut p) => {
-                let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(
                     mouse,
                     area,
@@ -479,7 +487,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             KeybindPreset(mut p) => {
-                let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected => {
                         app.popups.active = Some(KeybindPreset(p));
@@ -552,7 +560,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             Import(mut p) => {
-                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
                 if !handle_text_input_popup_mouse(
                     app,
                     mouse,
@@ -1100,9 +1108,27 @@ impl crate::popups::ActivePopup {
             }
 
             // === Group D: Info (display-only) ===
-            Info(p) => {
+            Info(mut p) => {
                 let popup_area =
-                    crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+                    crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => p.scroll_offset = p.scroll_offset.saturating_sub(3),
+                    MouseEventKind::ScrollDown => {
+                        p.scroll_offset = p.scroll_offset.saturating_add(3)
+                    }
+                    _ => {}
+                }
+                if let Some(meta) = p.last_scroll {
+                    let max = meta.content_len.saturating_sub(meta.viewport_len);
+                    if let Some(fraction) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                        mouse,
+                        meta,
+                        p.scroll_offset as f32 / max.max(1) as f32,
+                        &mut app.popups.scroll_drag,
+                    ) {
+                        p.scroll_offset = (fraction * max as f32).round() as usize;
+                    }
+                }
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && !contains_cell(popup_area, mouse.column, mouse.row)
                 {
@@ -1130,18 +1156,12 @@ impl crate::popups::ActivePopup {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Min(1), Constraint::Length(1)])
                     .split(popup_area)[0];
-                let main_chunks = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Length(34), Constraint::Min(0)])
-                    .split(content);
-                let edit_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(3), Constraint::Min(0)])
-                    .split(main_chunks[1]);
+                let [list_area, title_area, body_area] =
+                    crate::ui::subnotes_layout(content, p.focus);
                 if handle_popup_text_selection(
                     app,
                     mouse,
-                    edit_chunks[0].inner(Margin {
+                    title_area.inner(Margin {
                         vertical: 1,
                         horizontal: 1,
                     }),
@@ -1157,7 +1177,7 @@ impl crate::popups::ActivePopup {
                 if handle_popup_text_selection(
                     app,
                     mouse,
-                    edit_chunks[1].inner(Margin {
+                    body_area.inner(Margin {
                         vertical: 1,
                         horizontal: 1,
                     }),
@@ -1173,11 +1193,11 @@ impl crate::popups::ActivePopup {
 
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     // Click in the list area (left pane)
-                    if contains_cell(main_chunks[0], mouse.column, mouse.row) {
+                    if contains_cell(list_area, mouse.column, mouse.row) {
                         if !p.subnotes.is_empty() {
                             let Some(clicked) = crate::ui::list_index_at(
                                 mouse.row,
-                                main_chunks[0].y + 1,
+                                list_area.y + 1,
                                 1,
                                 p.scroll_offset,
                                 p.subnotes.len(),
@@ -1197,9 +1217,9 @@ impl crate::popups::ActivePopup {
                                 p.content_input.insert_str(&p.subnotes[p.selected].content);
                             }
                         }
-                    } else if contains_cell(edit_chunks[0], mouse.column, mouse.row) {
+                    } else if contains_cell(title_area, mouse.column, mouse.row) {
                         p.focus = SubnotesFocus::EditTitle;
-                        let inner = edit_chunks[0].inner(Margin {
+                        let inner = title_area.inner(Margin {
                             vertical: 1,
                             horizontal: 1,
                         });
@@ -1213,9 +1233,9 @@ impl crate::popups::ActivePopup {
                             sr,
                             sc,
                         );
-                    } else if contains_cell(edit_chunks[1], mouse.column, mouse.row) {
+                    } else if contains_cell(body_area, mouse.column, mouse.row) {
                         p.focus = SubnotesFocus::EditContent;
-                        let inner = edit_chunks[1].inner(Margin {
+                        let inner = body_area.inner(Margin {
                             vertical: 1,
                             horizontal: 1,
                         });
@@ -1276,17 +1296,19 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
         return false;
     };
 
-    let popup_width = (terminal_area.width / 2).clamp(30, 80);
-    let x = terminal_area.x + (terminal_area.width.saturating_sub(popup_width)) / 2;
+    let [label_area, input_area] =
+        crate::ui::quick_search::header_input_areas(terminal_area, app.config.ui.icon_mode);
+    let popup_width = label_area.width + input_area.width;
+    let x = label_area.x;
 
     let total_items = switcher.vaults.len() + 1; // + Add row
-    let max_visible_rows = 12usize;
+    let max_visible_rows = 12usize.min(terminal_area.height.saturating_sub(1) as usize);
     let scroll = switcher
         .selected
         .saturating_sub(max_visible_rows.saturating_sub(1))
         .min(total_items.saturating_sub(max_visible_rows));
     let total_rows = total_items.min(max_visible_rows);
-    let height = (total_rows as u16).min(terminal_area.height.saturating_sub(2).max(1));
+    let height = (total_rows as u16).min(terminal_area.height.saturating_sub(1));
     let dropdown_area = Rect::new(x, terminal_area.y + 1, popup_width, height);
     let header_rect = Rect::new(terminal_area.x, terminal_area.y, terminal_area.width, 1);
 
@@ -1332,6 +1354,19 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
 
 /// Top-level dispatch for active popups and command palettes (so that any
 pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
+    if let Some(popup) = super::active_confirmation(app) {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                popup.scroll_offset = popup.scroll_offset.saturating_sub(3);
+                return true;
+            }
+            MouseEventKind::ScrollDown => {
+                popup.scroll_offset = popup.scroll_offset.saturating_add(3);
+                return true;
+            }
+            _ => {}
+        }
+    }
     // 1. Confirm overlay (highest priority)
     if app.popups.confirm.is_some() {
         app.popups.text_selection = None;

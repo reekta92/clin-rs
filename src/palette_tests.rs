@@ -3795,7 +3795,17 @@ fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host()
     terminal
         .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
         .unwrap();
-    let rect = Rect::new(21, 18, 58, 3);
+    let buffer = terminal.backend().buffer();
+    let (x, y) = (0..AREA.height)
+        .flat_map(|y| (0..AREA.width.saturating_sub(14)).map(move |x| (x, y)))
+        .find(|&(x, y)| {
+            "copy this text"
+                .chars()
+                .enumerate()
+                .all(|(offset, ch)| buffer[(x + offset as u16, y)].symbol() == ch.to_string())
+        })
+        .expect("rendered text editor content");
+    let rect = Rect::new(x, y, 4, 1);
     for (kind, col) in [
         (MouseEventKind::Down(MouseButton::Left), rect.x),
         (MouseEventKind::Drag(MouseButton::Left), rect.x + 4),
@@ -3813,4 +3823,320 @@ fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host()
     }
     crate::text_edit::TEST_CLIPBOARD
         .with(|clipboard| assert_eq!(clipboard.borrow().as_deref(), Some("copy")));
+}
+
+#[test]
+fn palette_selection_keeps_text_contrast_across_themes() {
+    let mut fixture = Fixture::new();
+    assert!(fixture.app.open_command_palette(None));
+    for theme in crate::setup::SETUP_THEMES {
+        for background in [
+            crate::config::Background::Solid,
+            crate::config::Background::Transparent,
+        ] {
+            fixture.app.config.ui.theme = (*theme).into();
+            fixture.app.config.ui.background = background;
+            fixture.app.app_theme = crate::app_theme::AppThemeColors::from_config(
+                &fixture.app.config.ui,
+                &mut Vec::new(),
+            );
+            let buffer = render_palette(&mut fixture.app);
+            let palette = fixture.app.command_palette.as_ref().unwrap();
+            let rect = palette.last_results_area.unwrap();
+            let y = rect.y
+                + 1
+                + 2 * palette
+                    .state
+                    .selected()
+                    .unwrap()
+                    .saturating_sub(palette.state.offset()) as u16;
+            for x in rect.x + 1..rect.right() - 1 {
+                let cell = &buffer[(x, y)];
+                if cell.symbol().trim().is_empty() {
+                    continue;
+                }
+                assert_eq!(
+                    cell.fg, fixture.app.app_theme.highlight_fg,
+                    "{theme}: {x},{y}"
+                );
+                assert_eq!(
+                    cell.bg, fixture.app.app_theme.highlight_bg,
+                    "{theme}: {x},{y}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn palette_errors_wrap_and_remain_visible_without_a_workflow() {
+    let mut fixture = Fixture::new();
+    assert!(fixture.app.open_command_palette(None));
+    fixture.app.command_palette.as_mut().unwrap().error = Some(format!(
+        "{} Check input and retry.",
+        "Invalid property value. ".repeat(4)
+    ));
+    let buffer = render_palette(&mut fixture.app);
+    let text = (0..buffer.area.height)
+        .map(|row| rendered_text(&buffer, row))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("Invalid property value."));
+    assert!(
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .contains("Check input and retry.")
+    );
+}
+
+#[test]
+fn popup_followup_options_share_theme_geometry_and_scroll() {
+    for action in [
+        "settings.cycle_sort",
+        "settings.icon_mode",
+        "settings.hint_bar_style",
+        "keybind.preset",
+        "toggle_notes_layout",
+    ] {
+        let mut fixture = Fixture::new();
+        activate(&mut fixture.app, "switch_theme");
+        render_palette(&mut fixture.app);
+        let theme_results = fixture
+            .app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .last_results_area;
+        drive(&mut fixture.app, key(KeyCode::Esc));
+        activate(&mut fixture.app, action);
+        render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_mut().unwrap();
+        assert_eq!(palette.last_results_area, theme_results, "{action}");
+        palette.state.select(Some(palette.items.len() - 1));
+        render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_ref().unwrap();
+        let viewport = theme_results.unwrap().height.saturating_sub(2) as usize / 2;
+        if palette.items.len() > viewport {
+            assert!(palette.state.offset() > 0, "{action}");
+        }
+        replace_step_input(&mut fixture.app, "no matching option");
+        render_palette(&mut fixture.app);
+        assert_eq!(
+            fixture
+                .app
+                .command_palette
+                .as_ref()
+                .unwrap()
+                .last_results_area,
+            theme_results,
+            "filtered {action}"
+        );
+    }
+}
+
+#[test]
+fn popup_followup_value_workflows_omit_empty_status_rows() {
+    for action in [
+        "insert.url_new",
+        "settings.word_goal",
+        "settings.note_goal",
+        "draw.create",
+        "create_canvas",
+        "bases.create",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.app.config.ui.theme = "nord".into();
+        fixture.app.config.ui.background = crate::config::Background::Solid;
+        fixture.app.refresh_theme_from_config();
+        activate(&mut fixture.app, action);
+        render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_ref().unwrap();
+        let popup = crate::ui::centered_rect(
+            palette.popup_size(AREA, !palette.workflow_bar(&fixture.app).is_empty()),
+            AREA,
+        );
+        let content = Rect::new(popup.x, popup.y, popup.width, popup.height - 1);
+        let chunks = palette.content_areas(content, !palette.workflow_bar(&fixture.app).is_empty());
+        assert_eq!(chunks[2].height, 0, "{action}");
+        assert_eq!(chunks[3].y, chunks[1].bottom(), "{action}");
+
+        fixture.app.command_palette.as_mut().unwrap().error = Some("Check the value".into());
+        let buffer = render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_ref().unwrap();
+        let status_row = palette.last_results_area.unwrap().y - 1;
+        assert!(rendered_text(&buffer, status_row).contains("Check the value"));
+        let results = palette.last_results_area.unwrap();
+        for x in results.x..results.right() {
+            assert_eq!(
+                buffer[(x, status_row)].bg,
+                fixture.app.app_theme.bg.unwrap()
+            );
+        }
+    }
+}
+
+#[test]
+fn popup_followup_standalone_options_scroll_and_match_mouse_geometry() {
+    let mut fixture = Fixture::new();
+    fixture.app.begin_hint_bar_style_selection();
+    let count = crate::config::HintBarStyle::ALL.len();
+    let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = &mut fixture.app.popups.active
+    else {
+        panic!("standalone hint picker");
+    };
+    popup.selected = count - 1;
+    let area = Rect::new(0, 0, 40, 12);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut fixture.app, EditFocus::Body))
+        .unwrap();
+    let popup = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
+    assert_eq!(
+        terminal.backend().buffer()[(popup.x, popup.y)].symbol(),
+        "┌"
+    );
+    let viewport = popup.height.saturating_sub(3) as usize;
+    let offset = count - viewport;
+    let row = rendered_text(terminal.backend().buffer(), popup.y + 1);
+    assert!(
+        row.contains(crate::config::HintBarStyle::ALL[offset].name()),
+        "{row}"
+    );
+    assert!(crate::events::handle_global_popup_mouse(
+        &mut fixture.app,
+        &MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: popup.x + 2,
+            row: popup.y + 1,
+            modifiers: KeyModifiers::NONE,
+        },
+        area,
+    ));
+    let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = &fixture.app.popups.active else {
+        panic!("hint picker stays open after choosing a different row");
+    };
+    assert_eq!(popup.selected, offset);
+}
+
+#[test]
+fn popup_followup_vault_switch_keeps_the_implicit_starting_vault() {
+    let mut fixture = Fixture::new();
+    let original = fixture.app.storage.data_dir.clone();
+    fixture.app.config.core.storage_path = None;
+    let added = fixture.root.path().join("new-vault");
+    fs::create_dir_all(&added).unwrap();
+    fixture.app.config.core.vaults = vec![added.clone()];
+    fixture.app.config.save().unwrap();
+    fixture.app.switch_vault(added.clone());
+    let request = fixture
+        .app
+        .setup_rebootstrap
+        .take()
+        .expect("vault switch requested");
+    fixture.app = App::new(request.storage).unwrap();
+    fixture.app.open_vault_switcher();
+    let switcher = fixture.app.vault_switcher.as_ref().unwrap();
+    assert_eq!(switcher.vaults[0].path, added);
+    assert!(switcher.vaults.iter().any(|row| row.path == original));
+    let config = crate::config::ClinConfig::load().0.unwrap();
+    assert!(config.core.vaults.contains(&original));
+    fixture.app.switch_vault(original.clone());
+    let request = fixture
+        .app
+        .setup_rebootstrap
+        .take()
+        .expect("return switch requested");
+    fixture.app = App::new(request.storage).unwrap();
+    fixture.app.open_vault_switcher();
+    let switcher = fixture.app.vault_switcher.as_ref().unwrap();
+    assert_eq!(switcher.vaults[0].path, original);
+    assert_eq!(switcher.vaults.len(), 2);
+}
+
+#[test]
+fn popup_followup_f4_matches_find_overlay_design() {
+    let mut fixture = Fixture::new();
+    fixture.app.open_vault_switcher();
+    for theme in crate::setup::SETUP_THEMES {
+        for background in [
+            crate::config::Background::Solid,
+            crate::config::Background::Transparent,
+        ] {
+            fixture.app.config.ui.theme = (*theme).into();
+            fixture.app.config.ui.background = background;
+            fixture.app.refresh_theme_from_config();
+            for selected in [0, 1] {
+                fixture.app.vault_switcher.as_mut().unwrap().selected = selected;
+                let mut terminal =
+                    Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+                terminal
+                    .draw(|frame| {
+                        crate::ui::vault_switcher::draw_vault_switcher(frame, &fixture.app)
+                    })
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                let mut find =
+                    crate::ui::quick_search::QuickSearch::new("Find", &fixture.app.app_theme);
+                find.results = vec!["vault", "+ Add new vault…"];
+                find.selected = selected;
+                let mut reference =
+                    Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+                reference
+                    .draw(|frame| {
+                        crate::ui::quick_search::draw_quick_search(
+                            frame,
+                            frame.area(),
+                            &find,
+                            &fixture.app.app_theme,
+                            10,
+                            |name, selected, theme| {
+                                ratatui::text::Line::styled(
+                                    format!("{}{name}", if selected { "▸ " } else { "  " }),
+                                    if selected {
+                                        theme.selected_style()
+                                    } else {
+                                        ratatui::style::Style::default().fg(theme.highlight_fg)
+                                    },
+                                )
+                            },
+                            fixture.app.config.ui.icon_mode,
+                        );
+                    })
+                    .unwrap();
+                let reference = reference.backend().buffer();
+                let selected_row = selected as u16 + 1;
+                let left = (0..AREA.width)
+                    .find(|&x| reference[(x, selected_row)].symbol() == "▸")
+                    .unwrap();
+                let other_row = if selected == 0 { 2 } else { 1 };
+                assert_eq!(buffer[(left, selected_row)].symbol(), "▸", "{theme}");
+                for row in [selected_row, other_row] {
+                    for x in left..AREA.width - left {
+                        let actual = &buffer[(x, row)];
+                        let expected = &reference[(x, row)];
+                        assert_eq!(
+                            (actual.fg, actual.bg, actual.modifier),
+                            (expected.fg, expected.bg, expected.modifier),
+                            "{theme}: {x},{row}"
+                        );
+                    }
+                }
+                assert!(crate::events::handle_global_popup_mouse(
+                    &mut fixture.app,
+                    &MouseEvent {
+                        kind: MouseEventKind::Moved,
+                        column: left,
+                        row: other_row,
+                        modifiers: KeyModifiers::NONE,
+                    },
+                    AREA,
+                ));
+                assert_eq!(
+                    fixture.app.vault_switcher.as_ref().unwrap().selected,
+                    other_row as usize - 1,
+                );
+            }
+        }
+    }
 }

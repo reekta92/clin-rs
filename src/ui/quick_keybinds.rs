@@ -6,6 +6,7 @@ use ratatui::{
     widgets::{Block, Clear, Paragraph},
 };
 use strum::IntoEnumIterator;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -137,26 +138,22 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     }
 
     let frame_area = frame.area();
+    if frame_area.height < 2 || frame_area.width == 0 {
+        return;
+    }
 
     // --- Compute popup width from content ---
     const SEP: &str = " • ";
-    let max_key_width = lines
-        .iter()
-        .map(|(k, _)| k.chars().count())
-        .max()
-        .unwrap_or(0);
-    let max_action_width = lines
-        .iter()
-        .map(|(_, d)| d.chars().count())
-        .max()
-        .unwrap_or(0);
+    let max_key_width = lines.iter().map(|(k, _)| k.width()).max().unwrap_or(0);
+    let max_action_width = lines.iter().map(|(_, d)| d.width()).max().unwrap_or(0);
     let inner_pad: u16 = 1;
-    let content_width = (max_key_width + SEP.chars().count() + max_action_width) as u16;
+    let content_width = (max_key_width + SEP.width() + max_action_width) as u16;
     let title = format!(" Keybinds — {} ", view_name(app.mode));
-    let title_width = title.chars().count() as u16;
+    let title = crate::ui::truncate_cells(&title, frame_area.width as usize);
+    let title_width = title.width() as u16;
     let popup_width = content_width.max(title_width) + inner_pad * 2;
     let mut popup_width = popup_width.clamp(10, 60);
-    let margin: u16 = 2;
+    let margin = 2.min(frame_area.width.saturating_sub(1) / 2);
 
     // --- Full-width header bar at row 0, centered title (mirrors draw_quick_search) ---
     let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
@@ -177,21 +174,19 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     // --- Multi-column layout ---
     let avail_height = frame_area.height.saturating_sub(2);
     let rows_per_col = avail_height.max(1) as usize;
-    let num_cols = lines.len().div_ceil(rows_per_col).max(1);
     const COL_GAP: u16 = 1;
-    let total_width = num_cols as u16 * popup_width + (num_cols as u16 - 1) * COL_GAP;
-    let max_total = frame_area.width.saturating_sub(4);
-    if total_width > max_total {
-        let per_col = (max_total - (num_cols as u16 - 1) * COL_GAP) / num_cols as u16;
-        popup_width = per_col.max(10);
-    }
+    let max_total = frame_area.width.saturating_sub(margin * 2);
+    let max_cols = ((max_total as usize + 1) / 21).max(1);
+    let num_cols = lines.len().div_ceil(rows_per_col).max(1).min(max_cols);
+    let gaps = (num_cols.saturating_sub(1) as u16).saturating_mul(COL_GAP);
+    popup_width = popup_width.min(max_total.saturating_sub(gaps) / num_cols as u16);
 
     if lines.is_empty() {
         return;
     }
 
     // --- Multi-column dropdown, right-anchored ---
-    let columns: Vec<&[(String, String)]> = lines.chunks(rows_per_col).collect();
+    let columns: Vec<&[(String, String)]> = lines.chunks(rows_per_col).take(num_cols).collect();
     let num_cols_actual = columns.len();
     let avail_content_width = popup_width.saturating_sub(inner_pad * 2);
 
@@ -223,7 +218,10 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
             let content_area = Rect::new(col_area.x + inner_pad, row_y, avail_content_width, 1);
             let row = Line::from(vec![
                 Span::styled(
-                    format!("{:<width$}", keys, width = max_key_width),
+                    format!(
+                        "{keys}{}",
+                        " ".repeat(max_key_width.saturating_sub(keys.width()))
+                    ),
                     Style::default()
                         .fg(theme.highlight_fg)
                         .bg(bg)
@@ -232,7 +230,27 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
                 Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)),
                 Span::styled(desc.clone(), Style::default().fg(theme.highlight_fg).bg(bg)),
             ]);
-            frame.render_widget(Paragraph::new(row), content_area);
+            frame.render_widget(
+                Paragraph::new(crate::ui::fit_footer_line(
+                    row,
+                    content_area.width as usize,
+                    theme,
+                    true,
+                )),
+                content_area,
+            );
         }
+    }
+    if num_cols_actual * rows_per_col < lines.len() {
+        let x = dropdown_x + (num_cols_actual.saturating_sub(1) as u16) * (popup_width + COL_GAP);
+        let rect = Rect::new(x, frame_area.y + rows_per_col as u16, popup_width, 1);
+        frame.render_widget(
+            Paragraph::new(crate::ui::truncate_cells(
+                "… More shortcuts in Help",
+                rect.width as usize,
+            ))
+            .style(Style::default().fg(theme.highlight_fg).bg(theme.accent)),
+            rect,
+        );
     }
 }

@@ -121,6 +121,7 @@ impl Dialog {
                 );
             }
             Self::Prompt {
+                target,
                 title,
                 hint,
                 input,
@@ -128,26 +129,44 @@ impl Dialog {
                 bounds,
                 ..
             } => {
-                let inner = crate::ui::draw_popup_frame(
+                let inner = crate::ui::draw_confirm_popup_frame(
                     frame,
                     area,
                     title,
                     crate::ui::PopupSize::Medium,
-                    crate::ui::PopupHints::Text("Enter save · Esc cancel · Ctrl+v paste"),
+                    matches!(
+                        target,
+                        Target::Cell { clear: true, .. }
+                            | Target::Config {
+                                command: Command::RemoveView,
+                                ..
+                            }
+                    ),
+                    Some(crate::ui::PopupHints::Keybinds(&[
+                        ("Enter".into(), "save"),
+                        ("Esc".into(), "cancel"),
+                        ("Ctrl+v".into(), "paste"),
+                    ])),
                     &app.app_theme,
                 );
                 *bounds = crate::ui::centered_rect(crate::ui::PopupSize::Medium, area);
+                let hint_height = ratatui::widgets::Paragraph::new(hint.as_str())
+                    .wrap(ratatui::widgets::Wrap { trim: false })
+                    .line_count(inner.width.max(1))
+                    .min(inner.height.saturating_sub(1) as usize)
+                    as u16;
                 *input_area = Rect::new(
                     inner.x,
-                    inner.y.saturating_add(1),
+                    inner.y.saturating_add(hint_height),
                     inner.width,
-                    inner.height.saturating_sub(1),
+                    inner.height.saturating_sub(hint_height),
                 );
                 if inner.height > 0 {
                     frame.render_widget(
                         ratatui::widgets::Paragraph::new(hint.as_str())
-                            .style(Style::default().fg(app.app_theme.muted)),
-                        Rect::new(inner.x, inner.y, inner.width, 1),
+                            .style(Style::default().fg(app.app_theme.muted))
+                            .wrap(ratatui::widgets::Wrap { trim: false }),
+                        Rect::new(inner.x, inner.y, inner.width, hint_height),
                     );
                 }
                 input.set_style(app.app_theme.bg_style().fg(app.app_theme.text));

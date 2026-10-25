@@ -324,6 +324,20 @@ pub(crate) enum Page {
 }
 
 impl Page {
+    pub(crate) fn is_destructive(&self) -> bool {
+        matches!(
+            self,
+            Self::Prompt {
+                target: Target::Cell { clear: true, .. }
+                    | Target::Config {
+                        command: Command::RemoveView,
+                        ..
+                    },
+                ..
+            }
+        )
+    }
+
     pub(crate) fn title(&self) -> &str {
         match self {
             Self::Running { title, .. } => title,

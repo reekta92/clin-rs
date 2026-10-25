@@ -1051,11 +1051,31 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
     // Esc → confirm overlay.
     if state.confirm_exit {
-        draw_setup_confirm(frame, frame.area(), theme);
+        draw_setup_confirm(frame, frame.area(), theme, app.mouse_pos);
     }
 }
 
-fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
+pub(crate) fn setup_confirm_buttons(area: Rect) -> [Rect; 3] {
+    let popup = crate::ui::centered_rect(crate::ui::PopupSize::Confirm, area);
+    let inner = Block::bordered().inner(popup);
+    let rows = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Min(0),
+    ])
+    .margin(1)
+    .split(inner);
+    [rows[1], rows[2], rows[3]]
+}
+
+fn draw_setup_confirm(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &AppThemeColors,
+    mouse: Option<(u16, u16)>,
+) {
     let inner = crate::ui::draw_confirm_popup_frame(
         frame,
         area,
@@ -1076,16 +1096,26 @@ fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
         .split(inner);
     let msg = Paragraph::new("Save choices and exit, or discard?").alignment(Alignment::Center);
     frame.render_widget(msg, chunks[0]);
-    let detail = Paragraph::new("y = save & exit, q = discard changes, n = back")
-        .style(Style::default().fg(theme.muted))
-        .alignment(Alignment::Center);
-    frame.render_widget(detail, chunks[1]);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::NONE)
-            .style(theme.bg_style()),
-        chunks[2],
-    );
+    for (rect, label, color) in setup_confirm_buttons(area)
+        .into_iter()
+        .zip([
+            ("Save & exit (y/Enter)", theme.success),
+            ("Discard changes (q)", theme.destructive),
+            ("Back (n/Esc)", theme.text),
+        ])
+        .map(|(rect, (label, color))| (rect, label, color))
+    {
+        let mut style = Style::default().fg(color);
+        if mouse.is_some_and(|(x, y)| rect.contains((x, y).into())) {
+            style = style.patch(theme.hover_style());
+        }
+        frame.render_widget(
+            Paragraph::new(label)
+                .style(style)
+                .alignment(Alignment::Center),
+            rect,
+        );
+    }
 }
 
 #[cfg(test)]

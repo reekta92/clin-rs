@@ -457,9 +457,9 @@ impl OverlayView for PinstarPlugin {
             && let Some(popup) = self.state.rename_popup_rect
         {
             let hints_area = Rect::new(
-                popup.x,
+                popup.x.saturating_sub(1),
                 (popup.bottom() + 1).min(area.bottom().saturating_sub(1)),
-                popup.width,
+                popup.width.saturating_add(2).min(area.width),
                 1,
             );
             if hints_area.y < area.bottom() {
@@ -473,11 +473,11 @@ impl OverlayView for PinstarPlugin {
                         "cancel",
                     ),
                 ];
-                let hint = crate::ui::format_keybind_hints(&theme, &hints_items);
-                frame.render_widget(
-                    ratatui::widgets::Paragraph::new(hint).style(theme.bg_style()),
-                    hints_area,
+                let hint = crate::ui::popup_footer_hints(
+                    &theme,
+                    crate::ui::PopupHints::Keybinds(&hints_items),
                 );
+                crate::ui::draw_popup_footer(frame, hints_area, &theme, &hint);
             }
         }
     }

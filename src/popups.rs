@@ -40,6 +40,7 @@ pub struct ConfirmPopup {
     pub confirm_label: String,
     pub is_destructive: bool,
     pub selected_button: usize,
+    pub scroll_offset: u16,
 }
 
 pub struct TemplatePopup {
@@ -300,6 +301,8 @@ pub enum InfoItem {
 pub struct InfoPopup {
     pub title: String,
     pub items: Vec<InfoItem>,
+    pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

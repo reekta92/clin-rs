@@ -1002,9 +1002,9 @@ dependencies = [
 
 [[package]]
 name = "draw-rs"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e7eeab8ca154334e39122c9661cead3f9b5831683b964458752dc46d8f338d0"
+checksum = "88ffc4ce0d626e35afbfab0d4e34cc3f2910e5fec47c9f2f6d1d2f412f8ceef6"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -1418,9 +1418,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "graf-rs"
-version = "1.1.0"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a9d89765a09ae85e11bee9f3912aa723eaccfb2f7b14146374bc6ddd90fdc01"
+checksum = "5d1a456a06d8a0fd463ddf4c6ad88262d7c7f91c19ddb9317a91fff715bdd18c"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2964,8 +2964,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 [[package]]
 name = "pinstar"
 version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9860472f38518dec3f117f9435b61f045cb39a7d9831094eff9bfb90d0c4581a"
+source = "git+https://github.com/reekta92/pinstar?rev=490fb6e3acf8c3aede483b5124ddd5bbdaa206b2#490fb6e3acf8c3aede483b5124ddd5bbdaa206b2"
 dependencies = [
  "anyhow",
  "crossterm",
