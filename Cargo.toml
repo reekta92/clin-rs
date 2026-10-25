@@ -139,7 +139,7 @@ same-file = "1"
 ring = "0.17.14"
 rayon = "1.12"
 regex = "1"
-quick-xml = "0.41"
+quick-xml = "0.42"
 ryu-js = "1.0.3"
 rquickjs = { version = "0.14.0", default-features = false, features = ["std"] }
 strum = { version = "0.28", features = ["derive"] }
