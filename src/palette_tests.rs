@@ -4078,13 +4078,14 @@ fn popup_followup_f4_selection_is_distinct_and_moves_to_the_add_row() {
                 let buffer = terminal.backend().buffer();
                 let left = (AREA.width - crate::ui::header_dropdown_width(AREA)) / 2;
                 let selected_row = selected as u16 + 1;
+                let other_row = if selected == 0 { 2 } else { 1 };
+                assert_eq!(buffer[(left, other_row)].bg, fixture.app.app_theme.accent);
                 assert_eq!(buffer[(left + 1, selected_row)].symbol(), "›", "{theme}");
                 assert_eq!(
                     buffer[(left + 1, selected_row)].fg,
-                    fixture.app.app_theme.highlight_fg
+                    fixture.app.app_theme.accent
                 );
                 assert_ne!(buffer[(left, 1)].bg, buffer[(left, 2)].bg, "{theme}");
-                let other_row = if selected == 0 { 2 } else { 1 };
                 assert_eq!(buffer[(left + 1, other_row)].symbol(), " ");
             }
         }

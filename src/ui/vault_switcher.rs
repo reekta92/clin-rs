@@ -11,8 +11,8 @@ use crate::app_theme::AppThemeColors;
 
 /// Render the vault switcher overlay: full-width accent header bar at row 0,
 /// centered title, half-width centered dropdown of vault rows plus a trailing
-/// `+ Add new vault…` row beneath. The selected row uses the standard highlight
-/// pair and a cursor marker. Passive suppression mirrors draw_quick_keybinds.
+/// `+ Add new vault…` row beneath. Accent rows swap foreground/background for
+/// selection, with a cursor marker. Passive suppression mirrors draw_quick_keybinds.
 pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
     let Some(switcher) = app.vault_switcher.as_ref() else {
         return;
@@ -94,7 +94,10 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
     let dropdown_area = Rect::new(x, frame_area.y + 1, popup_width, height);
 
     frame.render_widget(Clear, dropdown_area);
-    frame.render_widget(Block::default().style(theme.bg_style()), dropdown_area);
+    frame.render_widget(
+        Block::default().style(Style::default().bg(theme.accent)),
+        dropdown_area,
+    );
 
     const SEP: &str = " • ";
 
@@ -102,13 +105,16 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         let row_index = scroll + i;
         let row_y = dropdown_area.y + i as u16;
 
-        // Ordinary rows use the surface background so accent-colored highlights
-        // remain distinct; the cursor marker also identifies selection without color.
+        // Swap the accent pair for selection so it stays distinct even when
+        // highlight_bg equals accent; the cursor marker also works without color.
         let selected = row_index == switcher.selected;
         let style = if selected {
-            theme.selected_style()
+            Style::default()
+                .fg(theme.accent)
+                .bg(theme.highlight_fg)
+                .add_modifier(Modifier::BOLD)
         } else {
-            theme.bg_style().fg(theme.text)
+            Style::default().fg(theme.highlight_fg).bg(theme.accent)
         };
         let detail_style = if selected {
             style
