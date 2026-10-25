@@ -3,8 +3,6 @@ pkg/
 development/
 .github/scripts/__pycache__/
 
-checks.md
-
 # nix
 .direnv/
 *-out/
