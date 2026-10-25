@@ -200,7 +200,9 @@ pub fn draw_info_popup(
     }
     // Available width for text word-wrapping (inside the padded content area)
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-    let length = paragraph.line_count(inner.width.max(1));
+    let length = paragraph
+        .line_count(inner.width.max(1))
+        .min(u16::MAX as usize);
     let viewport = inner.height as usize;
     popup.scroll_offset = popup.scroll_offset.min(length.saturating_sub(viewport));
     frame.render_widget(paragraph.scroll((popup.scroll_offset as u16, 0)), inner);
@@ -1281,7 +1283,8 @@ pub(crate) fn confirm_popup_layout(
     label: &str,
     literal_yes_no: bool,
 ) -> ([Rect; 4], [Rect; 2]) {
-    let popup = centered_rect(PopupSize::Confirm, area);
+    let mut popup = centered_rect(PopupSize::Confirm, area);
+    popup.height = popup.height.saturating_sub(1);
     let inner = Block::bordered().inner(popup);
     let chunks = Layout::vertical([
         Constraint::Length(2),
@@ -1313,7 +1316,7 @@ pub(crate) fn confirm_popup_layout(
 
 pub fn draw_confirm_popup(
     frame: &mut Frame,
-    popup: &ConfirmPopup,
+    popup: &mut ConfirmPopup,
     area: Rect,
     theme: &AppThemeColors,
     literal_yes_no: bool,
@@ -1325,22 +1328,44 @@ pub fn draw_confirm_popup(
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
-        None,
+        Some(PopupHints::Keybinds(&[
+            (if literal_yes_no { "y" } else { "Enter" }.into(), "confirm"),
+            (if literal_yes_no { "n" } else { "Esc" }.into(), "cancel"),
+            ("↑/↓".into(), "scroll"),
+        ])),
         theme,
     );
 
     let (chunks, button_areas) = confirm_popup_layout(area, &popup.confirm_label, literal_yes_no);
 
-    let message = Paragraph::new(popup.message.as_str()).alignment(Alignment::Center);
-    frame.render_widget(message, chunks[0]);
-
+    let text_area = Rect::new(
+        chunks[0].x,
+        chunks[0].y,
+        chunks[0].width,
+        chunks[3].y.saturating_sub(chunks[0].y + 1),
+    );
+    let mut lines = vec![Line::styled(
+        popup.message.as_str(),
+        Style::default().fg(theme.text),
+    )];
     if let Some(detail) = &popup.detail {
-        let detail_para = Paragraph::new(detail.as_str())
-            .style(Style::default().fg(theme.muted))
-            .alignment(Alignment::Center);
-        frame.render_widget(detail_para, chunks[1]);
+        lines.push(Line::default());
+        lines.extend(
+            detail
+                .lines()
+                .map(|line| Line::styled(line, Style::default().fg(theme.muted))),
+        );
     }
-
+    let paragraph = Paragraph::new(lines)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: false });
+    let length = paragraph
+        .line_count(text_area.width.max(1))
+        .min(u16::MAX as usize);
+    popup.scroll_offset = popup
+        .scroll_offset
+        .min(length.saturating_sub(text_area.height as usize) as u16);
+    frame.render_widget(paragraph.scroll((popup.scroll_offset, 0)), text_area);
     let (mut confirm_style, mut cancel_style) = if popup.selected_button == 0 {
         let confirm = if popup.is_destructive {
             Style::default()

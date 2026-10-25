@@ -681,7 +681,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             &app.app_theme,
         );
 
-        if let Some(confirm) = &popup.confirm {
+        if let Some(confirm) = &mut popup.confirm {
             draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme, true, None);
         }
     }
@@ -1716,7 +1716,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Confirm popup
-    if let Some(popup) = &app.popups.confirm {
+    if let Some(popup) = &mut app.popups.confirm {
         let literal_yes_no =
             !matches!(&app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
         draw_confirm_popup(

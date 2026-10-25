@@ -719,7 +719,7 @@ fn confirmation_hover_and_clicks_match_only_the_visible_buttons() {
     let (_temp, mut app) = fixture();
     let area = Rect::new(0, 0, 120, 32);
     app.show_confirm(crate::popups::ConfirmAction::QuitApp);
-    let popup = app.popups.confirm.as_ref().unwrap();
+    let popup = app.popups.confirm.as_mut().unwrap();
     let (chunks, buttons) = crate::ui::confirm_popup_layout(area, &popup.confirm_label, true);
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
     terminal
@@ -1429,4 +1429,33 @@ fn calendar_dialogs_share_chrome_and_help_remains_reachable() {
             app.app_theme.destructive
         );
     }
+}
+
+#[test]
+fn confirmation_scroll_preserves_cancel_selection_and_reveals_consequences() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    app.show_confirm(crate::popups::ConfirmAction::DeleteTemplate {
+        filename: "template.md".into(),
+        name: "Template".into(),
+    });
+    app.popups.confirm.as_mut().unwrap().message = "Long 界面 title ".repeat(50);
+    app.popups.confirm.as_mut().unwrap().detail = Some("Permanent removal. Last evidence".into());
+    let area = Rect::new(0, 0, 80, 24);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    crate::events::handle_global_popups_and_palette(
+        &mut app,
+        crossterm::event::Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)),
+        area,
+    );
+    terminal
+        .draw(|frame| draw_ui(frame, &mut app, EditFocus::Body))
+        .unwrap();
+    assert!(text_in(terminal.backend().buffer(), area).contains("Last evidence"));
+    let popup = app.popups.confirm.as_ref().unwrap();
+    assert_eq!(popup.selected_button, 1);
+    assert!(popup.scroll_offset > 0);
 }

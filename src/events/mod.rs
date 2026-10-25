@@ -756,6 +756,32 @@ enum ConfirmKeyAction {
     Unhandled,
 }
 
+fn active_confirmation(app: &mut App) -> Option<&mut crate::popups::ConfirmPopup> {
+    if let Some(popup) = app.popups.confirm.as_mut() {
+        return Some(popup);
+    }
+    match app.popups.active.as_mut() {
+        Some(crate::popups::ActivePopup::RemoveTags(popup)) => popup.confirm.as_mut(),
+        _ => None,
+    }
+}
+
+fn scroll_confirmation(app: &mut App, code: KeyCode) -> bool {
+    let Some(popup) = active_confirmation(app) else {
+        return false;
+    };
+    match code {
+        KeyCode::Up => popup.scroll_offset = popup.scroll_offset.saturating_sub(1),
+        KeyCode::Down => popup.scroll_offset = popup.scroll_offset.saturating_add(1),
+        KeyCode::PageUp => popup.scroll_offset = popup.scroll_offset.saturating_sub(5),
+        KeyCode::PageDown => popup.scroll_offset = popup.scroll_offset.saturating_add(5),
+        KeyCode::Home => popup.scroll_offset = 0,
+        KeyCode::End => popup.scroll_offset = u16::MAX,
+        _ => return false,
+    }
+    true
+}
+
 fn route_confirm_key(
     key: &KeyEvent,
     keybinds: &crate::keybinds::Keybinds,
@@ -825,6 +851,9 @@ pub(crate) fn handle_open_palette_event(
             crossterm::event::Event::Key(key)
                 if key.kind == crossterm::event::KeyEventKind::Press =>
             {
+                if scroll_confirmation(app, key.code) {
+                    return true;
+                }
                 match route_confirm_key(key, &app.keybinds, false) {
                     ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
                     ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
@@ -917,6 +946,9 @@ pub fn handle_global_popups_and_palette(
     };
     if key.kind != crossterm::event::KeyEventKind::Press {
         return false;
+    }
+    if scroll_confirmation(app, key.code) {
+        return true;
     }
     // Message overlay blockade — when a fatal message is active or the
     // overlay is force-opened, intercept most keys for scrolling / dismissal.
@@ -2426,6 +2458,7 @@ mod tests {
                 confirm_label: "Remove All".into(),
                 is_destructive: true,
                 selected_button: 1,
+                scroll_offset: 0,
             }),
             tag_counts: vec![],
             total_selected: 0,

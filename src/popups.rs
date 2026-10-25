@@ -40,6 +40,7 @@ pub struct ConfirmPopup {
     pub confirm_label: String,
     pub is_destructive: bool,
     pub selected_button: usize,
+    pub scroll_offset: u16,
 }
 
 pub struct TemplatePopup {

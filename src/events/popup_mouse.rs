@@ -1371,6 +1371,19 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
 
 /// Top-level dispatch for active popups and command palettes (so that any
 pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
+    if let Some(popup) = super::active_confirmation(app) {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                popup.scroll_offset = popup.scroll_offset.saturating_sub(3);
+                return true;
+            }
+            MouseEventKind::ScrollDown => {
+                popup.scroll_offset = popup.scroll_offset.saturating_add(3);
+                return true;
+            }
+            _ => {}
+        }
+    }
     // 1. Confirm overlay (highest priority)
     if app.popups.confirm.is_some() {
         app.popups.text_selection = None;
