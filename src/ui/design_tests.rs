@@ -1387,3 +1387,46 @@ fn subnotes_keeps_focused_editor_usable_in_narrow_windows() {
         }
     }
 }
+
+#[test]
+fn calendar_dialogs_share_chrome_and_help_remains_reachable() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    for (width, height) in [(80, 24), (120, 40), (40, 12)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        let area = Rect::new(0, 0, width, height);
+        let mut view = crate::calendar::view::View::new(chrono::Local::now().date_naive());
+        view.dialog = Some(crate::calendar::view::Dialog::Help);
+        terminal
+            .draw(|frame| {
+                crate::overlay::OverlayView::overlay_render(&mut view, frame, area, &mut app)
+            })
+            .unwrap();
+        assert!(text_in(terminal.backend().buffer(), area).contains("CALENDAR HELP"));
+        crate::overlay::OverlayView::overlay_handle_event(
+            &mut view,
+            crossterm::event::Event::Key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE)),
+            &mut app,
+            area,
+        )
+        .unwrap();
+        terminal
+            .draw(|frame| {
+                crate::overlay::OverlayView::overlay_render(&mut view, frame, area, &mut app)
+            })
+            .unwrap();
+        let text = text_in(terminal.backend().buffer(), area);
+        assert!(text.contains("local."), "{width}×{height}: {text}");
+        view.dialog = Some(crate::calendar::view::Dialog::Delete("event".into()));
+        terminal
+            .draw(|frame| {
+                crate::overlay::OverlayView::overlay_render(&mut view, frame, area, &mut app)
+            })
+            .unwrap();
+        let popup = crate::ui::centered_rect(PopupSize::Confirm, area);
+        assert_eq!(
+            terminal.backend().buffer()[(popup.x, popup.y)].fg,
+            app.app_theme.destructive
+        );
+    }
+}

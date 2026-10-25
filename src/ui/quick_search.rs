@@ -397,3 +397,53 @@ pub fn handle_quick_search_mouse<T>(
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn resized_results_keep_selected_row_visible_and_clickable() {
+        let theme = AppThemeColors::default();
+        for (width, height) in [(80, 24), (40, 4), (5, 2)] {
+            let mut popup = QuickSearch::new("Find", &theme);
+            popup.results = (0..100).collect();
+            popup.selected = 99;
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_quick_search(
+                        frame,
+                        frame.area(),
+                        &popup,
+                        &theme,
+                        10,
+                        |value, _, _| Line::from(value.to_string()),
+                        crate::config::IconMode::None,
+                    )
+                })
+                .unwrap();
+            let row = height.min(11) - 1;
+            let x = (width.saturating_sub(58)) / 2;
+            assert_eq!(terminal.backend().buffer()[(x, row)].bg, theme.highlight_bg);
+            let event = crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: x,
+                row,
+                modifiers: KeyModifiers::NONE,
+            };
+            assert!(matches!(
+                handle_quick_search_mouse(
+                    &mut popup,
+                    event,
+                    Rect::new(0, 0, width, height),
+                    10,
+                    crate::config::IconMode::None
+                ),
+                Some(QuickSearchAction::Submit)
+            ));
+            assert_eq!(popup.selected, 99);
+        }
+    }
+}

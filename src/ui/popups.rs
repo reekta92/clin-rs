@@ -37,7 +37,8 @@ pub fn draw_template_popup(
         .split(content);
 
     let mut input = popup.input.clone();
-    input.set_style(theme.bg_style());
+    input.set_style(theme.bg_style().fg(theme.text));
+    input.set_cursor_style(theme.selected_style());
     input.set_block(
         Block::default()
             .style(theme.bg_style())
@@ -54,7 +55,7 @@ pub fn draw_template_popup(
     frame.render_widget(&input, chunks[0]);
 
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
-        empty_list_item(theme, "(no matching templates)")
+        empty_list_item(theme, "No matching templates")
     } else {
         popup
             .filtered_templates
@@ -420,7 +421,7 @@ pub fn draw_option_list_popup(
         frame,
         area,
         title,
-        PopupSize::Medium,
+        PopupSize::Content(options.len().saturating_add(3).min(u16::MAX as usize) as u16),
         PopupHints::Keybinds(&[
             (
                 keybinds.display_list(crate::keybinds::ListAction::MoveUp),
@@ -507,6 +508,7 @@ pub fn centered_rect(size: PopupSize, area: Rect) -> Rect {
         PopupSize::Large => (60, 60, 100, 40, None),
         PopupSize::Prompt => (50, 0, 80, 0, Some(5)),
         PopupSize::Confirm => (50, 0, 80, 0, Some(12)),
+        PopupSize::Content(height) => (50, 0, 80, 0, Some(height)),
     };
 
     let width = (area.width * width_pct / 100).clamp(30.min(area.width), max_w.min(area.width));
@@ -633,7 +635,8 @@ pub fn paint_list_hover(
 pub fn make_popup_textarea(theme: &AppThemeColors, placeholder: &str) -> TextArea<'static> {
     let mut input = TextArea::default();
     input.set_cursor_line_style(Style::default());
-    input.set_style(theme.bg_style());
+    input.set_style(theme.bg_style().fg(theme.text));
+    input.set_cursor_style(theme.selected_style());
     if !placeholder.is_empty() {
         input.set_placeholder_text(placeholder);
         input.set_placeholder_style(Style::default().fg(theme.muted));
@@ -1468,7 +1471,7 @@ pub fn draw_subnotes_popup(
                 inner_area.width.saturating_sub(4),
                 1,
             );
-            let placeholder = Paragraph::new("press n to create a new note")
+            let placeholder = Paragraph::new("No subnotes. Alt+N creates one.")
                 .style(
                     Style::default()
                         .fg(theme.muted)

@@ -14,6 +14,22 @@ use ratatui::{
 };
 
 impl CommandPalette {
+    pub(crate) fn popup_size(&self, area: Rect, controls: bool) -> crate::ui::PopupSize {
+        let large = crate::ui::PopupSize::Large;
+        let rows = match &self.workflow {
+            Some(Workflow::Options(kind)) => kind.labels().len() * 2 + 2,
+            _ if self.is_value_input() => self.items.len() * 2 + 2,
+            _ => return large,
+        };
+        let available = crate::ui::centered_rect(large, area).height;
+        let height = self.input_height(available) as usize + usize::from(controls) + 2 + rows;
+        if height <= available as usize || self.is_value_input() {
+            crate::ui::PopupSize::Content(height.min(u16::MAX as usize) as u16)
+        } else {
+            large
+        }
+    }
+
     pub(crate) fn workflow_bar(&self, app: &App) -> Vec<(Line<'static>, Option<ThemePopupFocus>)> {
         let current = match &self.workflow {
             Some(Workflow::Theme(popup, _)) => {
@@ -103,7 +119,8 @@ impl CommandPalette {
             Constraint::Length(self.input_height(content.height)),
             Constraint::Length(u16::from(self.workflow.is_none() || has_controls)),
             Constraint::Length(u16::from(
-                !self.workflow_hint().is_empty() && self.workflow.is_some(),
+                (self.is_value_input() || !self.workflow_hint().is_empty())
+                    && self.workflow.is_some(),
             )),
             Constraint::Min(0),
         ])

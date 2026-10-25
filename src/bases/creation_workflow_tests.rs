@@ -132,7 +132,7 @@ fn format_picker_mouse_routes_base_row_and_quick_bindings_do_not_cover_bases_pop
     app.bases_state = None;
     app.mode = ViewMode::List;
     app.begin_create_select_format_in_folder(String::new());
-    let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, AREA);
+    let area = crate::ui::centered_rect(crate::ui::PopupSize::Content(8), AREA);
     let mouse = crossterm::event::MouseEvent {
         kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
         column: area.x + 1,

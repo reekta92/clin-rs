@@ -63,6 +63,7 @@ pub struct View {
     pub date: NaiveDate,
     pub display: Display,
     pub dialog: Option<Dialog>,
+    dialog_scroll: usize,
     selected: usize,
     events: Vec<Occurrence>,
     visible: Vec<usize>,
@@ -156,6 +157,7 @@ impl View {
             date,
             display: Display::Month,
             dialog: None,
+            dialog_scroll: 0,
             selected: 0,
             events: Vec::new(),
             visible: Vec::new(),
@@ -573,6 +575,38 @@ impl View {
         event: Event,
         dialog: &mut Dialog,
     ) -> Result<(OverlayResult, bool)> {
+        if matches!(
+            dialog,
+            Dialog::Help | Dialog::Conflict(_) | Dialog::Delete(_)
+        ) {
+            let delta = match &event {
+                Event::Key(key) => match key.code {
+                    KeyCode::Up => Some(-1),
+                    KeyCode::Down => Some(1),
+                    KeyCode::PageUp => Some(-5),
+                    KeyCode::PageDown => Some(5),
+                    KeyCode::Home => {
+                        self.dialog_scroll = 0;
+                        Some(0)
+                    }
+                    KeyCode::End => {
+                        self.dialog_scroll = usize::MAX;
+                        Some(0)
+                    }
+                    _ => None,
+                },
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::ScrollUp => Some(-3),
+                    MouseEventKind::ScrollDown => Some(3),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(delta) = delta {
+                self.dialog_scroll = self.dialog_scroll.saturating_add_signed(delta);
+                return Ok((OverlayResult::Continue, false));
+            }
+        }
         let mut close = false;
         let mut result = OverlayResult::Continue;
         if let Event::Key(key) = &event
@@ -872,6 +906,8 @@ impl OverlayView for View {
                 Ok((result, close)) => {
                     if !close {
                         self.dialog = Some(dialog);
+                    } else {
+                        self.dialog_scroll = 0;
                     }
                     Ok(result)
                 }
@@ -1052,7 +1088,15 @@ impl View {
             layout[3],
         );
         if let Some(dialog) = &mut self.dialog {
-            render_dialog(frame, area, dialog, self.error.as_deref(), &self.links, app);
+            render_dialog(
+                frame,
+                area,
+                dialog,
+                self.error.as_deref(),
+                &self.links,
+                app,
+                &mut self.dialog_scroll,
+            );
         }
     }
 
@@ -1350,6 +1394,7 @@ fn render_dialog(
     error: Option<&str>,
     links: &BTreeMap<String, Vec<String>>,
     app: &App,
+    scroll: &mut usize,
 ) {
     if let Dialog::Notes {
         popup, resource, ..
@@ -1381,11 +1426,10 @@ fn render_dialog(
         return;
     }
     let size = match dialog {
-        Dialog::Form(_) | Dialog::Help => crate::ui::PopupSize::Large,
-        _ => crate::ui::PopupSize::Medium,
+        Dialog::Path { .. } => crate::ui::PopupSize::Content(6),
+        Dialog::Delete(_) => crate::ui::PopupSize::Confirm,
+        _ => crate::ui::PopupSize::Large,
     };
-    let rect = crate::ui::centered_rect(size, area);
-    frame.render_widget(Clear, rect);
     let title = match dialog {
         Dialog::Form(form) => {
             if form.id.is_some() {
@@ -1406,64 +1450,157 @@ fn render_dialog(
         Dialog::Help => "Calendar help",
         Dialog::Notes { .. } => unreachable!(),
     };
-    let block = Block::bordered()
-        .title(format!(" {title} "))
-        .style(app.app_theme.bg_style())
-        .border_style(Style::default().fg(app.app_theme.accent));
-    let inner = block.inner(rect);
-    frame.render_widget(block, rect);
-    let parts = Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).split(inner);
-    let footer = match dialog {
-        Dialog::Form(_) => "Tab: next field · Ctrl+S: save · Esc: cancel",
-        Dialog::Path { .. } => "Enter: confirm · Esc: cancel",
-        Dialog::Delete(_) => "y: delete entire series · Esc: cancel",
-        Dialog::Conflict(_) => "l: keep local · r: use remote · Esc: cancel",
-        _ => "Any key: close",
+    let hints: Vec<(String, &str)> = match dialog {
+        Dialog::Form(_) => vec![
+            ("Ctrl+S".into(), "save"),
+            ("Esc".into(), "cancel"),
+            ("Tab".into(), "next field"),
+        ],
+        Dialog::Path { .. } => vec![("Enter".into(), "confirm"), ("Esc".into(), "cancel")],
+        Dialog::Delete(_) => vec![
+            ("y".into(), "delete series"),
+            ("Esc".into(), "cancel"),
+            ("↑/↓".into(), "scroll"),
+        ],
+        Dialog::Conflict(_) => vec![
+            ("l".into(), "keep local"),
+            ("r".into(), "use remote"),
+            ("Esc".into(), "cancel"),
+            ("↑/↓".into(), "scroll"),
+        ],
+        _ => vec![("Enter/Esc".into(), "close"), ("↑/↓".into(), "scroll")],
     };
-    frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(error.unwrap_or(footer)),
-            Line::from(if error.is_some() { footer } else { "" }),
-        ])
-        .style(Style::default().fg(if error.is_some() {
-            app.app_theme.warning
-        } else {
-            app.app_theme.muted
-        })),
-        parts[1],
+    let inner = crate::ui::draw_confirm_popup_frame(
+        frame,
+        area,
+        title,
+        size,
+        matches!(dialog, Dialog::Delete(_) | Dialog::Conflict(_)),
+        Some(crate::ui::PopupHints::Keybinds(&hints)),
+        &app.app_theme,
     );
+    let error_height = error.map_or(0, |error| {
+        Paragraph::new(error)
+            .wrap(Wrap { trim: false })
+            .line_count(inner.width.max(1))
+            .min((inner.height / 2).max(1) as usize) as u16
+    });
+    let parts =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(error_height)]).split(inner);
+    if let Some(error) = error {
+        frame.render_widget(
+            Paragraph::new(error)
+                .wrap(Wrap { trim: false })
+                .style(Style::default().fg(app.app_theme.destructive)),
+            parts[1],
+        );
+    }
     match dialog {
         Dialog::Form(form) => {
-            let labels = ["Title", "Start (date or local date-time)", "End (all-day end exclusive)", "Location", "Description", "Repeat (RRULE, blank = once)", "Calendar (Left/Right; Enter saves)"];
+            let labels = [
+                "Title",
+                "Start (date or local date-time)",
+                "End (all-day end exclusive)",
+                "Location",
+                "Description",
+                "Repeat (RRULE, blank = once)",
+                "Calendar (Left/Right; Enter saves)",
+            ];
             form.rects.clear();
             let capacity = (parts[0].height / 2).max(1) as usize;
             let offset = form.focus.saturating_sub(capacity.saturating_sub(1));
             for (row, index) in (offset..7).take(capacity).enumerate() {
-                let rect = Rect::new(parts[0].x, parts[0].y + row as u16 * 2, parts[0].width, 2.min(parts[0].bottom().saturating_sub(parts[0].y + row as u16 * 2)));
+                let rect = Rect::new(
+                    parts[0].x,
+                    parts[0].y + row as u16 * 2,
+                    parts[0].width,
+                    2.min(
+                        parts[0]
+                            .bottom()
+                            .saturating_sub(parts[0].y + row as u16 * 2),
+                    ),
+                );
                 form.rects.push((rect, index));
-                frame.render_widget(Paragraph::new(labels[index]).style(Style::default().fg(if form.focus == index { app.app_theme.accent } else { app.app_theme.muted })), Rect::new(rect.x, rect.y, rect.width, 1));
-                let input_rect = Rect::new(rect.x, rect.y + 1, rect.width, rect.height.saturating_sub(1));
+                frame.render_widget(
+                    Paragraph::new(labels[index]).style(Style::default().fg(
+                        if form.focus == index {
+                            app.app_theme.heading
+                        } else {
+                            app.app_theme.muted
+                        },
+                    )),
+                    Rect::new(rect.x, rect.y, rect.width, 1),
+                );
+                let input_rect = Rect::new(
+                    rect.x,
+                    rect.y + 1,
+                    rect.width,
+                    rect.height.saturating_sub(1),
+                );
                 if index < 6 {
                     let input = &mut form.inputs[index];
                     input.set_style(app.app_theme.bg_style());
-                    input.set_cursor_style(if form.focus == index { Style::default().add_modifier(Modifier::REVERSED) } else { app.app_theme.bg_style() });
+                    input.set_cursor_style(if form.focus == index {
+                        app.app_theme.selected_style()
+                    } else {
+                        app.app_theme.bg_style()
+                    });
                     frame.render_widget(&*input, input_rect);
-                } else { frame.render_widget(Paragraph::new(form.choices[form.collection].1.clone()).style(Style::default().fg(app.app_theme.text)), input_rect); }
+                } else {
+                    frame.render_widget(
+                        Paragraph::new(form.choices[form.collection].1.clone())
+                            .style(Style::default().fg(app.app_theme.text)),
+                        input_rect,
+                    );
+                }
             }
         }
         Dialog::Path { input, .. } => frame.render_widget(&*input, parts[0]),
-        Dialog::Delete(_) => frame.render_widget(Paragraph::new("Delete every occurrence of this event? Notes remain intact. A synced deletion reaches the server on the next sync.").wrap(Wrap { trim: false }).style(app.app_theme.bg_style()), parts[0]),
+        Dialog::Delete(_) => render_dialog_text(
+            frame,
+            parts[0],
+            "Delete every occurrence of this event? Notes remain intact. A synced deletion reaches the server on the next sync.",
+            scroll,
+            &app.app_theme,
+        ),
         Dialog::Conflict(id) => {
             let text = app.calendar.data().resources.iter().find(|r| &r.id == id).map_or_else(|| "Event unavailable".into(), |r| {
                 let local = Draft::from_source(&r.source).map_or_else(|_| r.id.clone(), |d| format!("{} · {} to {}", d.title, d.start, d.end));
                 let remote = r.conflict.as_ref().and_then(|c| c.remote.as_ref()).map_or_else(|| "Deleted remotely".into(), |r| Draft::from_source(&r.source).map_or_else(|_| "Remote source retained".into(), |d| format!("{} · {} to {}", d.title, d.start, d.end)));
                 format!("Local{}: {local}\n\nRemote: {remote}\n\nKeep local queues its version for the next sync. Use remote replaces the local event. Note links remain local.", if r.deleted { " (pending deletion)" } else { "" })
             });
-            frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }).style(app.app_theme.bg_style()), parts[0]);
+            render_dialog_text(frame, parts[0], &text, scroll, &app.app_theme);
         }
-        Dialog::Help => frame.render_widget(Paragraph::new(HELP).wrap(Wrap { trim: false }).style(app.app_theme.bg_style()), parts[0]),
+        Dialog::Help => render_dialog_text(frame, parts[0], HELP, scroll, &app.app_theme),
         Dialog::Notes { .. } => {}
     }
+}
+
+fn render_dialog_text(
+    frame: &mut Frame,
+    area: Rect,
+    text: &str,
+    scroll: &mut usize,
+    theme: &AppThemeColors,
+) {
+    let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
+    let paragraph = Paragraph::new(text)
+        .wrap(Wrap { trim: false })
+        .style(theme.bg_style().fg(theme.text));
+    let length = paragraph
+        .line_count(content.width.max(1))
+        .min(u16::MAX as usize);
+    *scroll = (*scroll).min(length.saturating_sub(content.height as usize));
+    frame.render_widget(paragraph.scroll((*scroll as u16, 0)), content);
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        crate::ui::scrollbar::track_rect(area),
+        length,
+        content.height as usize,
+        *scroll,
+        length.saturating_sub(content.height as usize),
+        theme,
+    );
 }
 
 pub fn draw_widget(frame: &mut Frame, rect: Rect, app: &mut App, bottom_border: bool, strip: Rect) {
