@@ -1296,8 +1296,10 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
         return false;
     };
 
-    let popup_width = crate::ui::header_dropdown_width(terminal_area);
-    let x = terminal_area.x + (terminal_area.width.saturating_sub(popup_width)) / 2;
+    let [label_area, input_area] =
+        crate::ui::quick_search::header_input_areas(terminal_area, app.config.ui.icon_mode);
+    let popup_width = label_area.width + input_area.width;
+    let x = label_area.x;
 
     let total_items = switcher.vaults.len() + 1; // + Add row
     let max_visible_rows = 12usize.min(terminal_area.height.saturating_sub(1) as usize);

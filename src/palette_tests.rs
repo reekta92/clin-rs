@@ -4055,7 +4055,7 @@ fn popup_followup_vault_switch_keeps_the_implicit_starting_vault() {
 }
 
 #[test]
-fn popup_followup_f4_selection_is_distinct_and_moves_to_the_add_row() {
+fn popup_followup_f4_matches_find_overlay_design() {
     let mut fixture = Fixture::new();
     fixture.app.open_vault_switcher();
     for theme in crate::setup::SETUP_THEMES {
@@ -4076,17 +4076,66 @@ fn popup_followup_f4_selection_is_distinct_and_moves_to_the_add_row() {
                     })
                     .unwrap();
                 let buffer = terminal.backend().buffer();
-                let left = (AREA.width - crate::ui::header_dropdown_width(AREA)) / 2;
+                let mut find =
+                    crate::ui::quick_search::QuickSearch::new("Find", &fixture.app.app_theme);
+                find.results = vec!["vault", "+ Add new vault…"];
+                find.selected = selected;
+                let mut reference =
+                    Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+                reference
+                    .draw(|frame| {
+                        crate::ui::quick_search::draw_quick_search(
+                            frame,
+                            frame.area(),
+                            &find,
+                            &fixture.app.app_theme,
+                            10,
+                            |name, selected, theme| {
+                                ratatui::text::Line::styled(
+                                    format!("{}{name}", if selected { "▸ " } else { "  " }),
+                                    if selected {
+                                        theme.selected_style()
+                                    } else {
+                                        ratatui::style::Style::default().fg(theme.highlight_fg)
+                                    },
+                                )
+                            },
+                            fixture.app.config.ui.icon_mode,
+                        );
+                    })
+                    .unwrap();
+                let reference = reference.backend().buffer();
                 let selected_row = selected as u16 + 1;
+                let left = (0..AREA.width)
+                    .find(|&x| reference[(x, selected_row)].symbol() == "▸")
+                    .unwrap();
                 let other_row = if selected == 0 { 2 } else { 1 };
-                assert_eq!(buffer[(left, other_row)].bg, fixture.app.app_theme.accent);
-                assert_eq!(buffer[(left + 1, selected_row)].symbol(), "›", "{theme}");
+                assert_eq!(buffer[(left, selected_row)].symbol(), "▸", "{theme}");
+                for row in [selected_row, other_row] {
+                    for x in left..AREA.width - left {
+                        let actual = &buffer[(x, row)];
+                        let expected = &reference[(x, row)];
+                        assert_eq!(
+                            (actual.fg, actual.bg, actual.modifier),
+                            (expected.fg, expected.bg, expected.modifier),
+                            "{theme}: {x},{row}"
+                        );
+                    }
+                }
+                assert!(crate::events::handle_global_popup_mouse(
+                    &mut fixture.app,
+                    &MouseEvent {
+                        kind: MouseEventKind::Moved,
+                        column: left,
+                        row: other_row,
+                        modifiers: KeyModifiers::NONE,
+                    },
+                    AREA,
+                ));
                 assert_eq!(
-                    buffer[(left + 1, selected_row)].fg,
-                    fixture.app.app_theme.accent
+                    fixture.app.vault_switcher.as_ref().unwrap().selected,
+                    other_row as usize - 1,
                 );
-                assert_ne!(buffer[(left, 1)].bg, buffer[(left, 2)].bg, "{theme}");
-                assert_eq!(buffer[(left + 1, other_row)].symbol(), " ");
             }
         }
     }

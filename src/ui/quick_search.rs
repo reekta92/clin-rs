@@ -140,6 +140,20 @@ pub fn handle_quick_search_keys<T>(
     }
 }
 
+pub(crate) fn header_input_areas(
+    frame_area: Rect,
+    icon_mode: crate::config::IconMode,
+) -> [Rect; 2] {
+    let icon = crate::ui::icons::SEARCH.get(icon_mode);
+    let label_width = (format!("{icon} Find: ").width() as u16).min(frame_area.width);
+    let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
+    let start_x = frame_area.x + (frame_area.width - label_width - input_width) / 2;
+    [
+        Rect::new(start_x, frame_area.y, label_width, 1),
+        Rect::new(start_x + label_width, frame_area.y, input_width, 1),
+    ]
+}
+
 /// Shared rendering for any quick search.
 ///
 /// Renders an accent-colored full-width header bar with a centered input field,
@@ -173,12 +187,9 @@ pub fn draw_quick_search<T, F>(
     // --- Icon + "Find:" label + centered input field ---
     let icon = crate::ui::icons::SEARCH.get(icon_mode);
     let label_text = format!("{} Find: ", icon);
-    let label_width = (label_text.width() as u16).min(frame_area.width);
-    let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
-    let combo_width = label_width + input_width;
-    let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
-    let label_area = Rect::new(start_x, frame_area.y, label_width, 1);
-    let input_area = Rect::new(start_x + label_width, frame_area.y, input_width, 1);
+    let [label_area, input_area] = header_input_areas(frame_area, icon_mode);
+    let combo_width = label_area.width + input_area.width;
+    let start_x = label_area.x;
 
     let label_style = Style::default().fg(theme.highlight_fg);
     let find_label = Paragraph::new(Line::from(Span::styled(label_text, label_style)));
@@ -274,14 +285,9 @@ pub fn handle_quick_search_mouse<T>(
 
     let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
 
-    let icon = crate::ui::icons::SEARCH.get(icon_mode);
-    let label_text = format!("{} Find: ", icon);
-    let label_width = (label_text.width() as u16).min(frame_area.width);
-    let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
-    let combo_width = label_width + input_width;
-    let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
-
-    let input_area = Rect::new(start_x + label_width, frame_area.y, input_width, 1);
+    let [label_area, input_area] = header_input_areas(frame_area, icon_mode);
+    let combo_width = label_area.width + input_area.width;
+    let start_x = label_area.x;
 
     let visible_count = result_count.min(max_visible);
     let dropdown_height = if visible_count > 0 {

@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
 };
@@ -10,9 +10,9 @@ use crate::app::App;
 use crate::app_theme::AppThemeColors;
 
 /// Render the vault switcher overlay: full-width accent header bar at row 0,
-/// centered title, half-width centered dropdown of vault rows plus a trailing
-/// `+ Add new vault…` row beneath. Accent rows swap foreground/background for
-/// selection, with a cursor marker. Passive suppression mirrors draw_quick_keybinds.
+/// centered title, Find-width dropdown of vault rows plus a trailing
+/// `+ Add new vault…` row beneath. Rows use Find's selection style and marker.
+/// Passive suppression mirrors draw_quick_keybinds.
 pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
     let Some(switcher) = app.vault_switcher.as_ref() else {
         return;
@@ -52,9 +52,11 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         Rect::new(label_x, frame_area.y, title_width, 1),
     );
 
-    // --- Dropdown: ~half window, centered (message overlay sizing) ---
-    let popup_width = crate::ui::header_dropdown_width(frame_area);
-    let inner_width = popup_width.saturating_sub(2) as usize;
+    // --- Dropdown: same centered width as Find ---
+    let [label_area, input_area] =
+        super::quick_search::header_input_areas(frame_area, app.config.ui.icon_mode);
+    let popup_width = label_area.width + input_area.width;
+    let inner_width = popup_width as usize;
 
     let data_dir = app.storage.data_dir.clone();
     let mut rows: Vec<(String, String, bool)> = switcher // (name, path, is_active)
@@ -89,7 +91,7 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         .min(rows.len().saturating_sub(max_visible_rows));
 
     let total_rows = rows.len().min(max_visible_rows);
-    let x = frame_area.x + (frame_area.width.saturating_sub(popup_width)) / 2;
+    let x = label_area.x;
     let height = (total_rows as u16).min(frame_area.height.saturating_sub(1));
     let dropdown_area = Rect::new(x, frame_area.y + 1, popup_width, height);
 
@@ -105,38 +107,26 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
         let row_index = scroll + i;
         let row_y = dropdown_area.y + i as u16;
 
-        // Swap the accent pair for selection so it stays distinct even when
-        // highlight_bg equals accent; the cursor marker also works without color.
+        // Use the same selection colors, weight, and marker as Find results.
         let selected = row_index == switcher.selected;
         let style = if selected {
-            Style::default()
-                .fg(theme.accent)
-                .bg(theme.highlight_fg)
-                .add_modifier(Modifier::BOLD)
+            theme.selected_style()
         } else {
             Style::default().fg(theme.highlight_fg).bg(theme.accent)
-        };
-        let detail_style = if selected {
-            style
-        } else {
-            style.fg(theme.muted)
         };
 
         let full_row = Rect::new(dropdown_area.x, row_y, popup_width, 1);
         frame.render_widget(Clear, full_row);
         frame.render_widget(Block::default().style(style), full_row);
 
-        let mut spans = vec![Span::styled(if selected { "› " } else { "  " }, style)];
+        let mut spans = vec![Span::styled(if selected { "▸ " } else { "  " }, style)];
         if row_index == add_index {
-            spans.push(Span::styled(add_label, detail_style));
+            spans.push(Span::styled(add_label, style));
         } else {
             let prefix = if *is_active { "● " } else { "  " };
-            spans.push(Span::styled(prefix, style.add_modifier(Modifier::BOLD)));
-            spans.push(Span::styled(
-                name.clone(),
-                style.add_modifier(Modifier::BOLD),
-            ));
-            spans.push(Span::styled(SEP, detail_style));
+            spans.push(Span::styled(prefix, style));
+            spans.push(Span::styled(name.clone(), style));
+            spans.push(Span::styled(SEP, style));
             let used = 2
                 + unicode_width::UnicodeWidthStr::width(prefix)
                 + unicode_width::UnicodeWidthStr::width(name.as_str())
@@ -162,10 +152,10 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
             } else {
                 path.clone()
             };
-            spans.push(Span::styled(path_display, detail_style));
+            spans.push(Span::styled(path_display, style));
         }
 
-        let content_area = Rect::new(dropdown_area.x + 1, row_y, popup_width.saturating_sub(2), 1);
+        let content_area = Rect::new(dropdown_area.x, row_y, popup_width, 1);
         frame.render_widget(Paragraph::new(Line::from(spans)), content_area);
     }
 }
