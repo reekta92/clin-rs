@@ -416,12 +416,7 @@ impl crate::popups::ActivePopup {
         match self {
             // === Group A: Simple list-style popups ===
             CreateFormat(mut p) => {
-                let area = crate::ui::centered_rect(
-                    crate::ui::PopupSize::Content(
-                        (crate::popups::CreateFormatPopup::COUNT + 3) as u16,
-                    ),
-                    terminal_area,
-                );
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(
                     mouse,
                     area,
@@ -440,10 +435,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             Sort(mut p) => {
-                let area = crate::ui::centered_rect(
-                    crate::ui::PopupSize::Content((4 + 3) as u16),
-                    terminal_area,
-                );
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(Sort(p));
@@ -457,10 +449,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             IconMode(mut p) => {
-                let area = crate::ui::centered_rect(
-                    crate::ui::PopupSize::Content((4 + 3) as u16),
-                    terminal_area,
-                );
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected | ListPopupMouseAction::None => {
                         app.popups.active = Some(IconMode(p));
@@ -474,12 +463,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             HintBarStyle(mut p) => {
-                let area = crate::ui::centered_rect(
-                    crate::ui::PopupSize::Content(
-                        (crate::config::HintBarStyle::ALL.len() + 3) as u16,
-                    ),
-                    terminal_area,
-                );
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(
                     mouse,
                     area,
@@ -503,8 +487,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             KeybindPreset(mut p) => {
-                let area =
-                    crate::ui::centered_rect(crate::ui::PopupSize::Content(7), terminal_area);
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
                     ListPopupMouseAction::Selected => {
                         app.popups.active = Some(KeybindPreset(p));

@@ -3889,3 +3889,132 @@ fn palette_errors_wrap_and_remain_visible_without_a_workflow() {
             .contains("Check input and retry.")
     );
 }
+
+#[test]
+fn popup_followup_options_share_theme_geometry_and_scroll() {
+    for action in [
+        "settings.cycle_sort",
+        "settings.icon_mode",
+        "settings.hint_bar_style",
+        "keybind.preset",
+        "toggle_notes_layout",
+    ] {
+        let mut fixture = Fixture::new();
+        activate(&mut fixture.app, "switch_theme");
+        render_palette(&mut fixture.app);
+        let theme_results = fixture
+            .app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .last_results_area;
+        drive(&mut fixture.app, key(KeyCode::Esc));
+        activate(&mut fixture.app, action);
+        render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_mut().unwrap();
+        assert_eq!(palette.last_results_area, theme_results, "{action}");
+        palette.state.select(Some(palette.items.len() - 1));
+        render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_ref().unwrap();
+        let viewport = theme_results.unwrap().height.saturating_sub(2) as usize / 2;
+        if palette.items.len() > viewport {
+            assert!(palette.state.offset() > 0, "{action}");
+        }
+        replace_step_input(&mut fixture.app, "no matching option");
+        render_palette(&mut fixture.app);
+        assert_eq!(
+            fixture
+                .app
+                .command_palette
+                .as_ref()
+                .unwrap()
+                .last_results_area,
+            theme_results,
+            "filtered {action}"
+        );
+    }
+}
+
+#[test]
+fn popup_followup_value_workflows_omit_empty_status_rows() {
+    for action in [
+        "insert.url_new",
+        "settings.word_goal",
+        "settings.note_goal",
+        "draw.create",
+        "create_canvas",
+        "bases.create",
+    ] {
+        let mut fixture = Fixture::new();
+        fixture.app.config.ui.theme = "nord".into();
+        fixture.app.config.ui.background = crate::config::Background::Solid;
+        fixture.app.refresh_theme_from_config();
+        activate(&mut fixture.app, action);
+        render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_ref().unwrap();
+        let popup = crate::ui::centered_rect(
+            palette.popup_size(AREA, !palette.workflow_bar(&fixture.app).is_empty()),
+            AREA,
+        );
+        let content = Rect::new(popup.x, popup.y, popup.width, popup.height - 1);
+        let chunks = palette.content_areas(content, !palette.workflow_bar(&fixture.app).is_empty());
+        assert_eq!(chunks[2].height, 0, "{action}");
+        assert_eq!(chunks[3].y, chunks[1].bottom(), "{action}");
+
+        fixture.app.command_palette.as_mut().unwrap().error = Some("Check the value".into());
+        let buffer = render_palette(&mut fixture.app);
+        let palette = fixture.app.command_palette.as_ref().unwrap();
+        let status_row = palette.last_results_area.unwrap().y - 1;
+        assert!(rendered_text(&buffer, status_row).contains("Check the value"));
+        let results = palette.last_results_area.unwrap();
+        for x in results.x..results.right() {
+            assert_eq!(
+                buffer[(x, status_row)].bg,
+                fixture.app.app_theme.bg.unwrap()
+            );
+        }
+    }
+}
+
+#[test]
+fn popup_followup_standalone_options_scroll_and_match_mouse_geometry() {
+    let mut fixture = Fixture::new();
+    fixture.app.begin_hint_bar_style_selection();
+    let count = crate::config::HintBarStyle::ALL.len();
+    let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = &mut fixture.app.popups.active
+    else {
+        panic!("standalone hint picker");
+    };
+    popup.selected = count - 1;
+    let area = Rect::new(0, 0, 40, 12);
+    let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
+    terminal
+        .draw(|frame| crate::ui::draw_ui(frame, &mut fixture.app, EditFocus::Body))
+        .unwrap();
+    let popup = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
+    assert_eq!(
+        terminal.backend().buffer()[(popup.x, popup.y)].symbol(),
+        "┌"
+    );
+    let viewport = popup.height.saturating_sub(3) as usize;
+    let offset = count - viewport;
+    let row = rendered_text(terminal.backend().buffer(), popup.y + 1);
+    assert!(
+        row.contains(crate::config::HintBarStyle::ALL[offset].name()),
+        "{row}"
+    );
+    assert!(crate::events::handle_global_popup_mouse(
+        &mut fixture.app,
+        &MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: popup.x + 2,
+            row: popup.y + 1,
+            modifiers: KeyModifiers::NONE,
+        },
+        area,
+    ));
+    let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = &fixture.app.popups.active else {
+        panic!("hint picker stays open after choosing a different row");
+    };
+    assert_eq!(popup.selected, offset);
+}

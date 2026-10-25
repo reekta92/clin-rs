@@ -976,7 +976,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(
             Paragraph::new(palette.workflow_hint())
                 .wrap(Wrap { trim: false })
-                .style(Style::default().fg(if palette.error.is_some() {
+                .style(app.app_theme.bg_style().fg(if palette.error.is_some() {
                     app.app_theme.destructive
                 } else {
                     app.app_theme.muted

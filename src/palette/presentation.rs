@@ -16,11 +16,10 @@ use ratatui::{
 impl CommandPalette {
     pub(crate) fn popup_size(&self, area: Rect, controls: bool) -> crate::ui::PopupSize {
         let large = crate::ui::PopupSize::Large;
-        let rows = match &self.workflow {
-            Some(Workflow::Options(kind)) => kind.labels().len() * 2 + 2,
-            _ if self.is_value_input() => self.items.len() * 2 + 2,
-            _ => return large,
-        };
+        if !self.is_value_input() {
+            return large;
+        }
+        let rows = self.items.len() * 2 + 2;
         let available = crate::ui::centered_rect(large, area).height;
         let width = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area).width;
         let height = self.input_height(available) as usize
@@ -28,11 +27,7 @@ impl CommandPalette {
             + self.status_height(width) as usize
             + 1
             + rows;
-        if height <= available as usize || self.is_value_input() {
-            crate::ui::PopupSize::Content(height.min(u16::MAX as usize) as u16)
-        } else {
-            large
-        }
+        crate::ui::PopupSize::Content(height.min(u16::MAX as usize) as u16)
     }
 
     pub(crate) fn workflow_bar(&self, app: &App) -> Vec<(Line<'static>, Option<ThemePopupFocus>)> {
@@ -121,7 +116,7 @@ impl CommandPalette {
     // Rendering and mouse routing must use the same optional bar/status rows.
     fn status_height(&self, width: u16) -> u16 {
         if self.workflow_hint().is_empty() {
-            return u16::from(self.is_value_input());
+            return 0;
         }
         ratatui::widgets::Paragraph::new(self.workflow_hint())
             .wrap(ratatui::widgets::Wrap { trim: false })

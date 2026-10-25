@@ -423,7 +423,7 @@ pub fn draw_option_list_popup(
         frame,
         area,
         title,
-        PopupSize::Content(options.len().saturating_add(3).min(u16::MAX as usize) as u16),
+        PopupSize::Large,
         PopupHints::Keybinds(&[
             (
                 keybinds.display_list(crate::keybinds::ListAction::MoveUp),
@@ -477,6 +477,19 @@ pub fn draw_option_list_popup(
         options.len(),
         mouse_pos,
         theme.hover_style(),
+    );
+    let inner = Block::bordered().inner(content_area);
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        crate::ui::scrollbar::pane_track(
+            inner,
+            Some(crate::ui::scrollbar::track_rect(content_area)),
+        ),
+        options.len(),
+        inner.height as usize,
+        selected,
+        options.len().saturating_sub(1),
+        theme,
     );
 }
 
