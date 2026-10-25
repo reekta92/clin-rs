@@ -1459,3 +1459,32 @@ fn confirmation_scroll_preserves_cancel_selection_and_reveals_consequences() {
     assert_eq!(popup.selected_button, 1);
     assert!(popup.scroll_offset > 0);
 }
+
+#[test]
+fn header_overlays_render_safely_in_short_and_narrow_frames() {
+    let _guard = ConfigTestGuard::lock();
+    let (_temp, mut app) = fixture();
+    for (width, height) in [(1, 1), (8, 4), (40, 12), (80, 24), (120, 40)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        app.quick_keybinds_open = true;
+        terminal
+            .draw(|frame| crate::ui::quick_keybinds::draw_quick_keybinds(frame, &app))
+            .unwrap();
+        app.quick_keybinds_open = false;
+        app.messages.force_open = true;
+        app.messages.push(
+            "界面: a long message with combining e\u{301}".into(),
+            crate::app::messages::MessageSeverity::Warning,
+        );
+        terminal
+            .draw(|frame| {
+                crate::ui::message_overlay::draw_message_overlay(
+                    frame,
+                    &app,
+                    &app.app_theme,
+                    frame.area(),
+                )
+            })
+            .unwrap();
+    }
+}

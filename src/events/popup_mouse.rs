@@ -1325,7 +1325,7 @@ fn handle_vault_switcher_mouse(app: &mut App, mouse: &MouseEvent, terminal_area:
         .saturating_sub(max_visible_rows.saturating_sub(1))
         .min(total_items.saturating_sub(max_visible_rows));
     let total_rows = total_items.min(max_visible_rows);
-    let height = (total_rows as u16).min(terminal_area.height.saturating_sub(2).max(1));
+    let height = (total_rows as u16).min(terminal_area.height.saturating_sub(1));
     let dropdown_area = Rect::new(x, terminal_area.y + 1, popup_width, height);
     let header_rect = Rect::new(terminal_area.x, terminal_area.y, terminal_area.width, 1);
 

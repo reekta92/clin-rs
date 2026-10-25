@@ -90,7 +90,7 @@ pub fn draw_vault_switcher(frame: &mut Frame, app: &App) {
 
     let total_rows = rows.len().min(max_visible_rows);
     let x = frame_area.x + (frame_area.width.saturating_sub(popup_width)) / 2;
-    let height = (total_rows as u16).min(frame_area.height.saturating_sub(2).max(1));
+    let height = (total_rows as u16).min(frame_area.height.saturating_sub(1));
     let dropdown_area = Rect::new(x, frame_area.y + 1, popup_width, height);
 
     frame.render_widget(Clear, dropdown_area);
