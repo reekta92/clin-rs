@@ -290,7 +290,7 @@ cp -r /Volumes/clin/clin.app /Applications/
 hdiutil detach /Volumes/clin
 
 # Or using .tar.gz
-tar -xzf clin-rs-aarch64-apple-darwin.tar.gz
+tar -xzf clin-rs-*-apple-darwin.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/
@@ -512,7 +512,7 @@ Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all proje
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned features and progress.
+See [ROADMAP.md](ROADMAP.md) for project ideas; these are not release commitments.
 
 ## Architecture
 

@@ -33,7 +33,7 @@ List  ──Enter──► Canvas  (on .canvas file)
 List  ──Enter──► Bases   (on .base file)
 Bases ──Back───► previous view
 Bases ──Enter──► public source editor / native image popup
-Edit  ──Esc───► List
+Edit  ──Esc───► return view (normally List)
 Graph ──Esc───► List
 Draw  ──Esc───► List
 Canvas──Esc───► List
@@ -43,8 +43,8 @@ List  ──palette──► Outline  (via command palette outline.open)
 List  ──palette──► Setup   (via setup_wizard)
 List/Edit ──palette or date reference──► Calendar
 Calendar ──open linked note──► Edit ──Esc──► Calendar
-Calendar ──Esc──► List
-Setup ──Esc───► List
+Calendar ──Esc──► return view (normally List)
+Setup ──Esc───► discard confirmation / caller
 Outline ──Esc───► List
 ```
 

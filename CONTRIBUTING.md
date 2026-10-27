@@ -120,11 +120,11 @@ workspace setup, coordinated changes and [release acceptance](docs/RELEASE_CHECK
 
 ## Bug Reports
 
-Use the [Bug Report](https://github.com/reekta92/clin-rs/issues/new?template=bug_report.md) issue template.
+Open a [bug report](https://github.com/reekta92/clin-rs/issues/new) with reproduction steps, Clin version, OS, terminal, and relevant configuration. Use a disposable example vault; omit private notes and credentials.
 
 ## Feature Requests
 
-Use the [Feature Request](https://github.com/reekta92/clin-rs/issues/new?template=feature_request.md) issue template.
+Open a [feature request](https://github.com/reekta92/clin-rs/issues/new) describing the use case and expected behavior.
 
 ## License
 

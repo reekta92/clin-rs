@@ -88,6 +88,7 @@ pub struct Template {
 pub struct RenderedTemplate {
     pub title: Option<String>,
     pub content: String,
+    pub missing_variables: Vec<String>,
 }
 ```
 

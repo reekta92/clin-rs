@@ -2,7 +2,7 @@
 
 ## Overview
 
-The help view provides a 3-pane layout: a left pane with a keybind table for the active scope, a right-top pane with the tab description and popup accordion, and a right-bottom pane with curated tips. `F1` opens contextual help outside Setup; `?` is a navigation-view help binding, not a global shortcut inside text inputs. Closing Help restores the previous view.
+The help view provides a 3-pane layout: a left pane with a keybind table for the active scope, a right-top pane with the tab description and popup accordion, and a right-bottom pane with curated tips. `F1` opens contextual help outside Setup (Calendar uses a view-local help dialog); `?` is a navigation-view help binding, not a global shortcut inside text inputs. Closing Help restores the previous view.
 
 **Source:** `src/ui/help.rs`, `src/ui/help_content.rs`, `src/events/help.rs`, `src/keybinds/help_meta.rs`
 

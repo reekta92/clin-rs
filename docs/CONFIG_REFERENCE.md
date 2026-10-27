@@ -113,7 +113,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
 | `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas/.base). Non-note files open in the OS default application |
-| `skip_dirs` | `array` | `[]` | Directory-name patterns to omit from the notes list |
+| `skip_dirs` | `array<String>` | `[]` | Regular expressions matched against directory names; invalid expressions are ignored |
 | `folders_first` | `bool` | `true` | Show subfolders before files in every notes layout |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
