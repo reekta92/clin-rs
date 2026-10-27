@@ -1028,10 +1028,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         description.style.fg = Some(app.app_theme.highlight_fg);
                     }
                 }
-                let mut list_item = ListItem::new(vec![Line::from(spans), preview]);
+                let mut title = Line::from(spans);
                 if item.category.is_some() {
-                    list_item = list_item.style(Style::default().fg(color));
+                    title = title.style(Style::default().fg(color));
                 }
+                let mut list_item = ListItem::new(vec![title, preview]);
                 if selected {
                     list_item = list_item.style(app.app_theme.selected_style());
                 } else if Some(i) == hovered_cmd_idx {
