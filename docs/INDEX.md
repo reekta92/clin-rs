@@ -4,7 +4,8 @@ Welcome to clin-rs technical documentation. This index lists all documentation f
 
 These documents are also available in the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki), automatically synced from `main`. Edit repository source files to update the wiki.
 
-For installation, quickstart, and general project info, see the [README.md](../README.md).
+For a quick start and project overview, see the [README.md](../README.md).
+See [Installation](INSTALLATION.md) for platform instructions and [CLI commands](CLI.md) for shell workflows.
 
 ---
 
@@ -39,7 +40,9 @@ For installation, quickstart, and general project info, see the [README.md](../R
 
 ## Configuration
 
-- [README.md](../README.md) — Quickstart, config example, keybind files, CLI commands
+- [README.md](../README.md) — Overview, installation choices, and quick start
+- [INSTALLATION.md](INSTALLATION.md) — Platform instructions, terminal setup, and optional tools
+- [CLI.md](CLI.md) — Commands, shell input, templates, and configuration paths
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — Full configuration reference: all config options, preset keybind files, graf config sections
 - [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — Keybind presets: Helix, Vim, and Emacs presets and sequence syntax
 ---
@@ -48,6 +51,8 @@ For installation, quickstart, and general project info, see the [README.md](../R
 
 ```
 docs/
+├── INSTALLATION.md       Platform instructions and optional tools
+├── CLI.md                Command reference and shell workflows
 ├── INDEX.md              ← You are here
 ├── ARCHITECTURE.md       System overview
 ├── DEPENDENCY_PATCHES.md Compatibility forks and dependency safety

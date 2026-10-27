@@ -1,534 +1,115 @@
 <div align="center">
-<img width="256" height="256" alt="clin logo" src="assets/icon.svg" />
 
-**A TUI reimagination of [Obsidian](https://obsidian.md/) — feature-packed note management in your terminal.**
+<img width="128" height="128" alt="clin logo" src="assets/icon.svg" />
 
-<div align="center">
- 
-[![Patreon](https://img.shields.io/badge/Patreon-Support%20clin-f96854.svg?logo=patreon&logoColor=white)](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358)
-[![GitHub Downloads](https://img.shields.io/github/downloads/reekta92/clin-rs/total?label=Source&color=2ea44f&logo=github)](https://github.com/reekta92/clin-rs/releases)
-[![Crates.io Downloads](https://img.shields.io/crates/d/clin-rs?label=crates.io&color=2ea44f&logo=rust)](https://crates.io/crates/clin-rs)
+# clin
 
-</div>
+**Your Markdown vault, in your terminal.**
 
-[![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
-[![Release](https://github.com/reekta92/clin-rs/actions/workflows/release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/release.yml)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-[![MSRV: 1.90.0](https://img.shields.io/badge/MSRV-1.90.0-orange.svg)](https://blog.rust-lang.org/2025/09/18/Rust-1.90.0/)
+A free, open-source note manager inspired by [Obsidian](https://obsidian.md/), built in Rust.
+Write, connect, organize, and schedule notes in one terminal app.
+
 [![GitHub release](https://img.shields.io/github/v/release/reekta92/clin-rs.svg?logo=github)](https://github.com/reekta92/clin-rs/releases)
-[![last commit](https://img.shields.io/github/last-commit/reekta92/clin-rs.svg)](https://github.com/reekta92/clin-rs/commits/main)
+[![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-
-<a href="https://terminaltrove.com/clin" title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal"><img src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/svg/terminal_trove_tool_of_the_week_green_on_dark_grey_bg.svg" alt="Terminal Trove Tool of The Week" height="60" /></a>
+[Features](#features) · [Install](#installation) · [Quick start](#quick-start) · [Wiki](https://github.com/reekta92/clin-rs/wiki)
 
 </div>
 
-## About
-`clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a single Rust binary, while keeping the UI approachable.
+![Notes view with a Markdown preview](https://github.com/user-attachments/assets/1de315ca-1585-4315-94b4-6e57c310b322)
 
-Open an existing Obsidian vault in `clin` to use public Markdown, Canvas and Bases workflows. Native image rendering uses `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; controlled by `[features] images = true`). See [Bases compatibility](docs/BASES.md) and [upgrade requirements](docs/UPGRADING.md) before migrating a vault. Obsidian plugins are not executed.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/1de315ca-1585-4315-94b4-6e57c310b322" alt="Notes view" width="100%"><br></td>
-    <td><img src="https://github.com/user-attachments/assets/a1f56629-9c40-4151-95b3-e35494106c43" alt="Graph view" width="100%"><br></td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/ac972010-3a15-4faf-869a-11ea475e4ee0" alt="Canvas view" width="100%"><br></td>
-    <td><img src="https://github.com/user-attachments/assets/ac3291f2-21a9-452a-b603-366f1d8bd3fe" alt="Editor view" width="100%"><br></td>
-  </tr>
-</table>
-
-<details>
-<summary><b>More screenshots</b></summary>
-<table>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/aa67af28-be2a-472d-ac08-6d50e31dcd1f" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/b15238a8-f5ca-4ca0-b476-ad949b9e7add" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/db546168-5f4d-45ed-a0b4-0187b090edb2" alt="clin screenshot" width="100%"></td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/5e252087-d056-4adf-85ca-f0a322053ba3" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/6cd3f836-674a-4c55-99c2-b286bc5c4245" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/e8c123dd-cc31-432b-a9ba-cd50300d79d8" alt="clin screenshot" width="100%"></td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/d6ae988e-6016-4508-800f-ca534770e4d4" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/720ef7c4-0ccb-4de8-a320-aed5f5e717ab" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/fda03fa8-0c2d-420a-98a9-978dfec55bce" alt="clin screenshot" width="100%"></td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/user-attachments/assets/a38e8cb8-7e85-447a-8389-e6ab2e5829c0" alt="clin screenshot" width="100%"></td>
-    <td><img src="https://github.com/user-attachments/assets/7bc4eadc-72a1-4b6c-8f68-5e6cdb849956" alt="clin screenshot" width="100%"></td>
-  </tr>
-</table>
-</details>
-
----
-
-## Highlights
-
-- **Calendar view** — month/week/day/agenda, note scheduling and inline date/event references, iCalendar import/export, and manual CalDAV sync with conflict handling. See [Calendar](docs/CALENDAR.md).
-- **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews; auto-refresh on external file changes; show-info popup with word/char/header metrics.
-- **Editor view** — title/body editing with optional Markdown preview, built-in find popup, soft-wrap toggle, sidebars with wikilink previews, mouse support, line numbers, undo/redo, editor context menu, external editor integration, insert-date action. See [EDITOR.md](docs/EDITOR.md).
-- **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
-- **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group/image nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, mouse-drag panning, zoom-to-cursor, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
-- **Draw view** — powered by the reusable [draw-rs](https://github.com/reekta92/draw-rs) engine and its standalone `draw` app; freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
-- **Outline view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
-- **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
-- **Subnotes** — virtual notes attached to physical notes, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
-- **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
-- **Command palette** (Ctrl+Space or F6) — contextual actions across all views, including theme switching, OCR paste, canvas/draw creation and navigation. Bindings are configurable. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
-- **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
-- **Custom themes** — drop-in TOML themes in the active configuration directory’s `themes/` subdirectory, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
-- **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
-
-- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, with image files displayed through terminal graphics or fallback placeholders. See [compatibility limits](docs/CANVAS.md#obsidian-compatibility).
-- **Templates** — TOML-based note templates with variable substitution (`{date}`, `{time}`, `{weekday}`, etc.). See [TEMPLATES.md](docs/TEMPLATES.md).
-- **Goals system** — daily word-count and note-count goals with in-app progress bars. Configurable via `[goals]` config section and command palette.
-- **Import & conversion** — import File/CSV/JSON/URL/Clipboard content as a new note or append to the current note. PDF, DOCX, HTML converted via external tools.
-
----
-
-## Dependencies
-These are highly recommended for the best experience:
-- **A Nerd Font** — recommended for `icon_mode = "nerd"`. `JetBrains Mono Nerd Font` works well; see [Nerd Fonts](https://www.nerdfonts.com/font-downloads). Use `"unicode"` for single-cell text symbols with a regular monospace font, `"emoji"` for emoji icons, or `"none"` for text labels without decorative icons. These modes also replace Powerline separators.
-- **A modern terminal** — such as `kitty`, `ghostty`, `alacritty`, `foot` etc. preferably a terminal with **image protocol support**. **Note that some shortcuts might conflict with a specific terminals shortcuts** in that case you can either customize the shortcuts of the `clin` or your terminal to avoid conflicts.
-
----
-
-## Optional Tools
-
-These tools are **optional** — clin works without them:
-
-| Tool | Purpose | Package |
-|---|---|---|
-| `tesseract` | OCR paste (clipboard image → text) | `tesseract-ocr` |
-| `wl-clipboard` | Clipboard access (Wayland) | `wl-clipboard` |
-| `xclip` or `xsel` | Clipboard access (X11) | `xclip` |
-| `markitdown` or `pandoc` | Convert PDF/DOCX/HTML and other imported files to Markdown | `pip install markitdown` / `pandoc` |
-| `trafilatura` | Extract article text and metadata for HTML URL imports; falls back to the general converters | `pip install trafilatura` |
-
----
-
-## Installation
-
-
-
-| Platform | Method | Command |
-|---|---|---|
-| Any (from source) | Cargo build | `cargo build --release` |
-| Any | Cargo install | `cargo install clin-rs` |
-| Debian/Ubuntu (amd64) | `.deb` | `sudo dpkg -i clin-rs_*_amd64.deb` |
-| Debian/Ubuntu (arm64) | `.deb` | `sudo dpkg -i clin-rs_*_arm64.deb` |
-| Fedora/RHEL (x86_64) | `.rpm` | `sudo rpm -i clin-rs-*.x86_64.rpm` |
-| Fedora/RHEL (aarch64) | `.rpm` | `sudo rpm -i clin-rs-*.aarch64.rpm` |
-| Arch (local) | PKGBUILD | `makepkg -si` |
-| Arch | AUR | `yay -S clin-rs-bin` |
-| Nix | Flakes | `nix run github:reekta92/clin-rs` |
-| Linux (portable x86_64) | AppImage | `./clin-*-x86_64.AppImage` |
-| Linux (tar.gz x86_64) | binary | see details |
-| Linux (tar.gz aarch64) | binary | see details |
-| Windows | `.zip` | `Expand-Archive …` |
-| macOS (Apple Silicon) | `.dmg`/`.tar.gz` | see details |
-
-<details>
-<summary><b>Source & Cargo</b> (cargo build + cargo install)</summary>
-
-### From Source
-```bash
-git clone https://github.com/reekta92/clin-rs.git
-cd clin-rs
-cargo build --release
-```
-
-### With Cargo
-```bash
-cargo install clin-rs
-```
-
-</details>
-
-<details>
-<summary><b>Debian / Ubuntu</b> (.deb, amd64 + arm64)</summary>
-
-### Debian/Ubuntu (.deb)
-Download the latest `.deb` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-sudo dpkg -i clin-rs_*_amd64.deb
-```
-
-### Debian/Ubuntu (aarch64)
-Download the latest `.deb` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-sudo dpkg -i clin-rs_*_arm64.deb
-```
-
-</details>
-
-<details>
-<summary><b>Fedora / RHEL</b> (.rpm, x86_64 + aarch64)</summary>
-
-### Fedora/RHEL (.rpm)
-Download the latest `.rpm` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-sudo rpm -i clin-rs-*.x86_64.rpm
-```
-
-### Fedora/RHEL (aarch64)
-Download the latest `.rpm` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-sudo rpm -i clin-rs-*.aarch64.rpm
-```
-
-</details>
-
-<details>
-<summary><b>Arch Linux</b> (PKGBUILD + AUR)</summary>
-
-### Arch Linux (PKGBUILD)
-A `PKGBUILD` is included in the root of the repository.
-```bash
-git clone https://github.com/reekta92/clin-rs.git
-cd clin-rs
-makepkg -si
-```
-
-### Arch Linux (AUR)
-```bash
-yay -S clin-rs-bin
-```
-
-</details>
-
-<details>
-<summary><b>Nix</b> (Flakes)</summary>
-
-### Nix (Flakes)
-*Note: Requires `nix-command` and `flakes` experimental features enabled.*
-
-Run directly:
-```bash
-nix run github:reekta92/clin-rs --extra-experimental-features "nix-command flakes"
-```
-Install to profile:
-```bash
-nix profile install github:reekta92/clin-rs
-```
-Add to your flake `inputs`:
-```nix
-{
-  inputs.clin.url = "github:reekta92/clin-rs";
-}
-```
-Then include `inputs.clin.packages.${system}.default` in your `environment.systemPackages` or `home.packages`.
-
-</details>
-
-<details>
-<summary><b>AppImage</b> (portable x86_64)</summary>
-
-### AppImage
-Download the latest `.AppImage` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-chmod +x clin-*-x86_64.AppImage
-./clin-*-x86_64.AppImage
-```
-
-</details>
-
-<details>
-<summary><b>Linux</b> (tar.gz, x86_64 + aarch64)</summary>
-
-### Other
-Download the latest `.tar.gz` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-tar -xzf clin-rs-x86_64-unknown-linux-gnu.tar.gz
-chmod +x clin
-mkdir -p ~/.local/bin
-mv clin ~/.local/bin/
-```
-
-### Other (aarch64)
-Download the latest `.tar.gz` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```bash
-tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
-chmod +x clin
-mkdir -p ~/.local/bin
-mv clin ~/.local/bin/
-```
-
-</details>
-
-<details>
-<summary><b>Windows</b> (.zip)</summary>
-
-### Windows
-Download the latest `.zip` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-```powershell
-Expand-Archive -Path clin-rs-x86_64-pc-windows-msvc.zip -DestinationPath clin
-cd clin
-.\clin.exe
-```
-
-Windows builds are provided but TUI glyph rendering depends on your terminal. [Windows Terminal](https://apps.microsoft.com/detail/9n0dx20hk701) is recommended for the best experience.
-
-</details>
-
-<details>
-<summary><b>macOS</b> (Apple Silicon)</summary>
-
-### macOS (Apple Silicon)
-Download the latest `.dmg` (or `.tar.gz`) from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
-
-```bash
-# Using .dmg
-hdiutil attach clin-rs-aarch64-apple-darwin.dmg
-cp -r /Volumes/clin/clin.app /Applications/
-hdiutil detach /Volumes/clin
-
-# Or using .tar.gz
-tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
-chmod +x clin
-mkdir -p ~/.local/bin
-mv clin ~/.local/bin/
-```
-
-Apple Silicon only (no Intel build ships).
-The included `clin.app` opens clin in Terminal and uses the application icon in Finder.
-
-</details>
-
-> **Rust not installed?** Run `curl https://sh.rustup.rs -sSf | sh` to install Rust.
-
----
-
-## Quick Start
-
-```bash
-# Launch the interactive TUI
-clin
-
-# Create a quick note
-clin notes quick "Meeting notes from today" "standup-2026-06-13"
-
-# Initialize templates, then create a note using its display name
-clin templates init
-clin notes new --template "Meeting Notes" "Weekly Standup"
-
-# Open a specific note
-clin notes open "my-note"
-```
-
-Once inside the TUI (default preset): navigate with `j`/`k`, open notes with `Enter`, open the command palette with `:` or `Ctrl+P`, and view the graph with `Ctrl+G`. Press `?` or `F1` for help, `F2` for quick keybinds, `F3` for messages, and `F4` to switch vaults. In Editor, `Ctrl+P` toggles Markdown preview instead of opening the palette.
-
-CLI templates currently insert the literal body without variable substitution or the template title; use the TUI template picker for rendered variables. See [Templates](docs/TEMPLATES.md).
-
----
+Browse your vault and preview notes without leaving the terminal.
 
 ## Features
 
-**Plaintext-only:** backup and encryption features have been removed. Existing encrypted notes and recovery records require the previous release; files and keys are preserved. Read [Upgrading](docs/UPGRADING.md) before opening an encrypted vault.
-
-| View | Purpose | Key Actions |
+| Workflow | What you can do | Guide |
 |---|---|---|
-| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete; Subnotes grid + radial graph |
-| **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
-| **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
-| **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
-| **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
-| **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
-| **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
+| **Notes & editor** | Browse folders, search, tag, pin, and edit Markdown with previews, wikilinks, and an external editor. | [Notes](docs/LIST_VIEW.md) · [Editor](docs/EDITOR.md) |
+| **Graph** | Explore connections between notes through an interactive, force-directed wikilink graph. | [Graph](docs/GRAPH_VIEW.md) |
+| **Canvas** | Arrange text, files, links, and images on an infinite canvas using Obsidian's `.canvas` format. | [Canvas](docs/CANVAS.md) |
+| **Bases** | Query and organize note properties in tables, lists, cards, and Kanban layouts. | [Bases](docs/BASES.md) |
+| **Calendar** | Schedule linked notes, switch month/week/day/agenda views, import/export iCalendar, and sync manually with CalDAV. | [Calendar](docs/CALENDAR.md) |
+| **Drawing** | Sketch freehand, add shapes and text, and pan or zoom your drawings. | [Draw](docs/DRAW.md) |
+| **Themes** | Choose from 19 built-in themes or supply a custom TOML theme; customize colors, icons, and status lines. | [Themes](docs/THEME_SYSTEM.md) |
 
-| Feature | Description |
+Also includes [templates](docs/TEMPLATES.md), [outlines](docs/OUTLINE.md), [subnotes](docs/SUBNOTES.md), daily writing goals, and file/URL imports with optional conversion and OCR tools.
+
+<details>
+<summary>See graph, canvas, and editor screenshots</summary>
+
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/a1f56629-9c40-4151-95b3-e35494106c43" alt="Graph view showing connections between notes" width="100%"><br><b>Graph:</b> explore your wikilinks.</td>
+    <td><img src="https://github.com/user-attachments/assets/ac972010-3a15-4faf-869a-11ea475e4ee0" alt="Canvas view with connected nodes" width="100%"><br><b>Canvas:</b> arrange connected ideas.</td>
+  </tr>
+</table>
+
+![Built-in editor view](https://github.com/user-attachments/assets/ac3291f2-21a9-452a-b603-366f1d8bd3fe)
+
+**Editor:** write and revise notes in the terminal.
+
+</details>
+
+## Installation
+
+Download a package from [Releases](https://github.com/reekta92/clin-rs/releases), or use your preferred package manager:
+
+| Platform | Install |
 |---|---|
-| **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
-| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/Emoji/None icon modes, 13 hint-bar styles |
-| **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
-| **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
-| **Keybinds** | Fully customizable through active-preset keybind files, with navigation-only Helix/Vim/Emacs presets (not modal body editing) |
-| **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
+| Linux, Windows, macOS (from source) | `cargo install clin-rs --locked` — Rust 1.90.0+ |
+| Arch Linux | `yay -S clin-rs-bin` |
+| Nix | `nix run github:reekta92/clin-rs` — flakes enabled |
+| Debian / Ubuntu | `.deb` for amd64 or arm64 |
+| Fedora / RHEL | `.rpm` for x86_64 or aarch64 |
+| Other Linux | Archives for x86_64/aarch64; AppImage for x86_64 |
+| Windows | x86_64 `.zip` |
+| macOS | Apple Silicon `.dmg` or archive; no Intel prebuilt binary |
 
----
+See the [installation guide](docs/INSTALLATION.md) for platform commands, source builds, and optional tools. A modern terminal is recommended; native images depend on terminal support. Nerd Fonts are optional: use Unicode, emoji, or text-only icons with a regular font.
 
-## Configuration
+> **Upgrading an encrypted vault?** This release uses plaintext and no longer provides encryption or backups. Preserve your originals and keys; use the previous release to decrypt notes and recover legacy drafts. Read [Upgrading](docs/UPGRADING.md) first.
 
-Run `clin config show` to print the active configuration file path. Active-preset keybinds live at `<config-dir>/keybinds/<preset>.toml`.
+## Quick start
 
-See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all available options and [keybind presets](docs/KEYBIND_PRESETS.md) for editor-style presets.
-
-### config.toml example
-
-```toml
-[features]
-images = true
-calendar = true
-
-[core]
-storage_path = "/path/to/your/vault"
-mouse_enabled = true
-confirm_on_delete = true
-confirm_on_quit = false
-
-[ui]
-theme = "tokyo_night"
-background = "transparent"
-show_status_bar = true
-icon_mode = "nerd"
-hint_bar_style = "classic"
-# accent = "#ff6600"
-
-[list]
-preview_enabled = true
-preview_position = "right"
-show_file_size = false
-date_format = "%Y-%m-%d"
-density = "comfortable"
-default_view = "grid" # grid, tree, list, multi
-section_tabs = false # true: section tabs in every layout; false: section folders
-# default_sort_field = "title"
-# default_sort_order = "ascending"
-pinned_on_top = false
-
-[editor]
-external_command = "nvim"
-external_enabled = false
-preview_enabled = false
-show_line_numbers = true
+```sh
+clin                                         # Launch; first run opens setup
+clin --vault /path/to/vault                   # Open an existing vault
+clin notes quick "Meeting notes" "Standup"    # Save a note without opening the TUI
 ```
 
+With the default keybind preset:
 
-See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md) for theme options and [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for all options and sections.
+| Key | Action |
+|---|---|
+| `j` / `k`, arrows | Move through the notes list |
+| `Enter` | Open the selected note |
+| `Ctrl+Space` / `F6` | Open the contextual command palette |
+| `Ctrl+G` | Open the graph from Notes |
+| `?` / `F1` | Open help from Notes |
+| `F2` | Show current keybindings |
+| `F4` | Switch vaults |
 
-### keybinds/<preset>.toml example
+Use [setup](docs/SETUP.md) to choose your layout, features, appearance, and keybind preset. Open an existing Obsidian vault for Markdown, Canvas, and Bases workflows; Obsidian plugins are not executed. Review [Canvas](docs/CANVAS.md#obsidian-compatibility) and [Bases](docs/BASES.md) compatibility before relying on those workflows.
 
-See the [full keybinds reference](docs/CONFIG_REFERENCE.md) for all available actions and defaults.
+## CLI commands
 
-```toml
-[list]
-move_up = ["Up", "k"]
-move_down = ["Down", "j"]
-open = ["Enter"]
-delete = ["d", "Delete"]
-quit = ["q"]
-help = ["?", "F1"]
-open_command_palette = [":", "Ctrl+p"]
-# ... see CONFIG_REFERENCE.md for full list
-
-[edit]
-back = ["Esc"]
-cycle_focus = ["Ctrl+t"]
-copy = ["Ctrl+c"]
-# ... see CONFIG_REFERENCE.md
-
-[graph]
-quit = ["Esc"]
-pan_up = ["Up", "k"]
-# ... see CONFIG_REFERENCE.md
-```
-
----
-
-## CLI Commands
-
-```
-clin                              Launch interactive TUI (default)
-clin notes list                   List note titles
-clin notes new [OPTIONS] [TITLE]  Create a note (supports --body, --no-tui)
-clin notes open <TITLE>           Open a note by title
-clin notes cat <TITLE>            Print a note's body to stdout
-clin notes quick <CONTENT> [TITLE] Quick note, then exit
-clin notes search <QUERY>         Search notes by title and content
-
-clin storage show                 Show storage path
-clin storage set <PATH>           Set a custom (absolute) storage path
-clin storage reset                Reset to default storage path
-clin storage migrate              Migrate data from a previous location
-clin storage migrate --legacy-layout Convert the old notes/ + templates/ layout
-
-clin keybinds show                Show keybindings
-clin keybinds export              Export keybinds as TOML
-clin keybinds reset               Reset keybinds to defaults
-
-clin cache reset                  Delete current vault's note-summary cache
-
-clin templates list               List templates
-clin templates init               Create example templates
-
-clin config show                  Print the config file path
-clin config edit                  Open config in $VISUAL or $EDITOR
-clin config reset                 Reset config to default values
-
-clin --setup                      Force first-run setup wizard
-clin --version                    Print version
-clin --config <PATH>              Override config file (global)
-clin --vault <VAULT>              Override the storage/vault path (global)
-clin --help                       Show help
-```
-
----
+Run `clin --help` or `clin notes --help` to discover commands. The [CLI guide](docs/CLI.md) covers note creation, shell input, templates, vault management, configuration, and cache commands.
 
 ## Documentation
 
-Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all project documentation, with page navigation and search. The wiki automatically syncs from `main`; source files live in [`docs/`](docs/INDEX.md) and the repository root.
+Browse the **[Wiki](https://github.com/reekta92/clin-rs/wiki)** for all guides, or the [repository documentation index](docs/INDEX.md).
 
-- [Architecture](docs/ARCHITECTURE.md) — system overview, event loop, threading model
-- [List View](docs/LIST_VIEW.md) — notes list view: Grid/Tree layout, format chooser, preview pane
+- **Customize:** [configuration](docs/CONFIG_REFERENCE.md), [keybind presets](docs/KEYBIND_PRESETS.md), [command palette](docs/COMMAND_PALETTE.md).
+- **Terminal setup:** [images](docs/IMAGE_RENDERING.md), [clipboard and SSH](docs/EDITOR.md#clipboard-transport), [optional tools](docs/INSTALLATION.md#optional-tools).
+- **Project:** [roadmap](ROADMAP.md), [architecture](docs/ARCHITECTURE.md), [contributing](CONTRIBUTING.md), [report a bug](https://github.com/reekta92/clin-rs/issues).
 
-- [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and preset keybind-file options
-- [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
-- [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
-- [Calendar](docs/CALENDAR.md) — scheduling, linked notes, iCalendar, and CalDAV setup
-- [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view
+The Wiki syncs from `main`; documentation changes belong in the repository source files.
 
-- [Draw](docs/DRAW.md) — freehand drawing canvas
-- [Outline](docs/OUTLINE.md) — nested outline navigation
-- [Editor](docs/EDITOR.md) — title/body editing, find, soft-wrap, sidebars, wikilink previews
-- [Help](docs/HELP.md) — 3-pane help view: tabs, keybind index, tips, popup accordion
-- [Image Rendering](docs/IMAGE_RENDERING.md) — ratatui-image pixel rendering, protocols, [image] config
-- [Theme System](docs/THEME_SYSTEM.md) — built-in themes and customization
-- [Setup](docs/SETUP.md) — first-run setup wizard
-- [Command Palette](docs/COMMAND_PALETTE.md) — extensible action system
-- [Subnotes](docs/SUBNOTES.md) — attached plaintext notes, grid tab, radial graph, manager popup
-- [Templates](docs/TEMPLATES.md) — TOML-based note templates
+## Support & credits
 
+Support development on [Patreon](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358). Licensed under [GPL-3.0](LICENSE).
 
-## Roadmap
+Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), [graf](https://github.com/reekta92/graf-rs), [pinstar](https://github.com/reekta92/pinstar), and [draw-rs](https://github.com/reekta92/draw-rs). Markdown previews use comrak and syntect.
 
-See [ROADMAP.md](ROADMAP.md) for planned features and progress.
-
-## Architecture
-
-Full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Contributing
-
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Support
-
-`clin` is free and open-source. If it's useful to you, consider supporting its development on Patreon:
-
-[![Patreon](https://img.shields.io/badge/Patreon-Support%20clin-f96854.svg?logo=patreon&logoColor=white)](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358)
-
-## License
-
-Licensed under the [GNU General Public License v3.0](LICENSE).
-
-## Credits
-
-Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), upstream [graf](https://github.com/reekta92/graf-rs) (fdg-sim physics), and [pinstar](https://github.com/reekta92/pinstar). Markdown preview via built-in comrak/syntect renderer.
-
-Create a note from shell input without opening the TUI:
-
-```sh
-printf 'Meeting notes\n' | clin notes new --stdin 'Meeting'
-clin notes new 'Imported' < notes.txt
-```
-
-Input must be UTF-8 and at most 16 MiB. `--stdin` conflicts with `--body`.
-Explicit empty stdin creates an empty body; implicitly detected empty stdin
-keeps template content. See [Editor](docs/EDITOR.md#clipboard-transport) for
-native clipboard, SSH/OSC 52, tmux, and app-local fallback behavior.
+[Featured as Terminal Trove's Tool of the Week](https://terminaltrove.com/clin).
