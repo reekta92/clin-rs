@@ -1667,10 +1667,11 @@ impl App {
                     renderer.base_host = Some(id.clone());
                     let opts = crate::markdown::MdRenderOpts::from_config(&self.config, Some(id));
                     let height = self.desired_list_preview_height();
-                    renderer.set_page_height(height as usize);
+                    let page_height = crate::preview::markdown_page_height(height);
+                    renderer.set_page_height(page_height);
                     let viewport = crate::markdown::RenderViewport {
                         start: renderer.visible_start(),
-                        height: height as usize,
+                        height: page_height,
                     };
 
                     let content_changed = renderer.is_changed(&content, &self.app_theme, &opts);
@@ -1733,7 +1734,8 @@ impl App {
                             Some(PreviewContent::Markdown(renderer)) => *renderer,
                             _ => MarkdownRenderer::new(),
                         };
-                        renderer.set_page_height(height as usize);
+                        let page_height = crate::preview::markdown_page_height(height);
+                        renderer.set_page_height(page_height);
                         let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                         renderer.render_with(
                             &markdown,
@@ -1742,7 +1744,7 @@ impl App {
                             &opts,
                             crate::markdown::RenderViewport {
                                 start: renderer.visible_start(),
-                                height: height as usize,
+                                height: page_height,
                             },
                         );
                         self.list.preview_content =
@@ -1864,10 +1866,11 @@ impl App {
                 renderer.base_host = None;
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
-                renderer.set_page_height(height as usize);
+                let page_height = crate::preview::markdown_page_height(height);
+                renderer.set_page_height(page_height);
                 let viewport = crate::markdown::RenderViewport {
                     start: renderer.visible_start(),
-                    height: height as usize,
+                    height: page_height,
                 };
 
                 let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
@@ -1928,10 +1931,11 @@ impl App {
                 renderer.base_host = None;
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config, None);
                 let height = self.desired_list_preview_height();
-                renderer.set_page_height(height as usize);
+                let page_height = crate::preview::markdown_page_height(height);
+                renderer.set_page_height(page_height);
                 let viewport = crate::markdown::RenderViewport {
                     start: renderer.visible_start(),
-                    height: height as usize,
+                    height: page_height,
                 };
 
                 let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
@@ -1995,10 +1999,11 @@ impl App {
                     opts.render_bases = false;
                     let md = format!("# {}\n\n{}", sub.title, sub.content);
                     let height = self.desired_list_preview_height();
-                    renderer.set_page_height(height as usize);
+                    let page_height = crate::preview::markdown_page_height(height);
+                    renderer.set_page_height(page_height);
                     let viewport = crate::markdown::RenderViewport {
                         start: renderer.visible_start(),
-                        height: height as usize,
+                        height: page_height,
                     };
 
                     let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
@@ -2431,7 +2436,7 @@ mod tests {
         use ratatui::{Terminal, backend::TestBackend};
 
         let _guard = crate::config::ConfigTestGuard::lock();
-        for (height, line_count) in [(8, 6), (8, 7), (8, 12), (8, 13), (3, 2)] {
+        for (height, line_count) in [(8, 6_usize), (8, 7), (8, 12), (8, 13), (3, 2)] {
             let (_root, mut app) = make_app();
             let markers: Vec<_> = (1..=line_count).map(|n| format!("ROW{n:03}")).collect();
             std::fs::write(app.storage.notes_dir.join("preview.md"), markers.join("\n")).unwrap();
@@ -2505,6 +2510,17 @@ mod tests {
                     "height {height}, {line_count} lines: missing {marker}"
                 );
             }
+
+            app.list.last_preview_pane_height = height + 2;
+            app.update_preview();
+            let Some(PreviewContent::Markdown(renderer)) = &app.list.preview_content else {
+                panic!("expected markdown preview after resize");
+            };
+            assert_eq!(
+                renderer.total_pages(),
+                line_count.div_ceil(usize::from(height))
+            );
+            assert_eq!(app.list.preview_content_height, Some(height + 2));
         }
     }
 
