@@ -14,12 +14,13 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [DEPENDENCY_PATCHES.md](DEPENDENCY_PATCHES.md) — Published compatibility parser, maintained YAML backend, safety evidence, and update policy
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Repository roles, workspace, CI and coordinated changes
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) — Release blockers, automated proof and interactive acceptance
+- [PERFORMANCE.md](PERFORMANCE.md) — Worker/cache ownership, resource limits and reproducible benchmarks
 
 ## Views
 
-- [BASES.md](BASES.md) — Native Bases: four layouts, public queries, guarded editing, live embeds, safety and acceptance
-- [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) — Native audit, release measurements and manual checks
-- [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree layout, note format chooser, preview pane
+- [BASES.md](BASES.md) — Native Bases: four layouts, public queries, guarded editing, live embeds, safety and acceptance checks
+- [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) — Reproducible native workflow and compatibility checks
+- [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree/List/Multi layouts, note format chooser, preview pane
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
 - [CALENDAR.md](CALENDAR.md) — Month/week/day/agenda, scheduling, note references, iCalendar and CalDAV
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
@@ -44,30 +45,4 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — Keybind presets: Helix, Vim, and Emacs presets and sequence syntax
 ---
 
-## File Index
-
-```
-docs/
-├── INDEX.md              ← You are here
-├── ARCHITECTURE.md       System overview
-├── DEPENDENCY_PATCHES.md Compatibility forks and dependency safety
-├── BASES.md              Native Bases implementation and current limits
-├── LIST_VIEW.md          Notes list view
-├── GRAPH_VIEW.md         Force-directed graph
-├── HELP.md               Help: 3-pane, 8 tabs, keybind index, tips, popup accordion
-├── CALENDAR.md          Calendar, iCalendar and CalDAV
-├── CANVAS.md             Obsidian-compatible canvas
-├── DRAW.md               Freehand drawing
-├── OUTLINE.md             Outline
-├── EDITOR.md             Editor: title/body editing, preview, find, soft-wrap, sidebars, wikilinks
-├── SETUP.md              First-run setup wizard
-├── THEME_SYSTEM.md       Theme and color system
-├── COMMAND_PALETTE.md    Command palette + Action trait
-├── IMAGE_RENDERING.md    Native image rendering, ratatui-image, protocols
-├── TEMPLATES.md          Note template system
-├── SUBNOTES.md           Subnotes: virtual plaintext notes, grid tab, radial graph
-├── CONFIG_REFERENCE.md   All config options
-├── KEYBIND_PRESETS.md     Keybind presets and sequence syntax
-```
-
-- [Upgrading and plaintext recovery](UPGRADING.md) — retired features, legacy-data safety, stable filenames, and recovery privacy.
+- [UPGRADING.md](UPGRADING.md) — Retired features, legacy-data safety, stable filenames, and recovery privacy.

@@ -39,8 +39,12 @@ The default vault is `<Documents>/clin Vault`. Documents resolves through platfo
 |---|---|
 | Active config | `clin config show`; Linux: `$XDG_CONFIG_HOME/clin/config.toml` or `~/.config/clin/config.toml`; macOS: `~/.config/clin/config.toml`; Windows: platform `ProjectDirs` config directory |
 | Keybinds / custom themes | `<active-config-dir>/keybinds/<preset>.toml` / `<active-config-dir>/themes/*.toml` |
-| Note-summary cache | `<application-cache-dir>/vaults/<vault-digest>/note_cache.bin`; `clin cache reset` removes current vault's cache and legacy caches |
-| Templates / subnotes / editor draft | `<vault>/.clin/templates/` / `subnotes.bin` / `editor_draft.bin` |
+| Note-summary cache | `<application-cache-dir>/vaults/<vault-digest>/note_cache_plain_v4.bin`; `clin cache reset` removes current vault's cache and legacy caches |
+| Templates | `<vault>/.clin/templates/` |
+| Subnotes | `<vault>/.clin/subnotes.bin` (obfuscated plaintext; see [Subnotes](SUBNOTES.md)) |
+| Recovery | `<vault>/.clin/document-recovery-v2/` (private plaintext drafts and transactions); legacy `editor_draft.bin` is retained, not replayed |
+| Calendar | `<vault>/.clin/calendar.json` |
+| Local state | `<application-data-local-dir>/state.json` (goals, vault preferences, command usage) |
 | Image attachments | `<vault>/<image.attachments_subdir>/` |
 
 Application data/cache paths come from `directories::ProjectDirs::from("com", "clin", "clin")`, independently of `--config` and `--vault`.
@@ -61,6 +65,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `help_view` | `enum` | `true` | Enable the in-app Help view |
 | `tags` | `enum` | `true` | Enable the tag manager and tag UI surfaces |
 | `trash` | `enum` | `true` | Enable the trash view/restore UI (deletes still go to trash) |
+| `subnotes` | `enum` | `true` | Enable attached virtual notes, their section and manager |
 | `templates` | `enum` | `true` | Enable note templates |
 | `import` | `enum` | `true` | Enable import (File/CSV/JSON/URL/Clipboard) and OCR paste |
 | `images` | `enum` | `true` | Enable native pixel image rendering (restart required) |
@@ -107,8 +112,8 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
-| `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
-| `skip_dirs` | `array` | `[]` | Directory-name patterns to omit from the notes list |
+| `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas/.base). Non-note files open in the OS default application |
+| `skip_dirs` | `array<String>` | `[]` | Regular expressions matched against directory names; invalid expressions are ignored |
 | `folders_first` | `bool` | `true` | Show subfolders before files in every notes layout |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
@@ -216,6 +221,10 @@ You can also customize these per-view by adding nested overrides:
 - `[statusline.canvas]` — overrides for the canvas view
 - `[statusline.outline]` — overrides for the outline view
 
+Bases and Calendar use the global templates; `[statusline.bases]` and
+`[statusline.calendar]` are not supported. Default right-side templates vary by
+view (counts, cursor, date, or version); unset values use those built-in defaults.
+
 Each override sub-table accepts: `header_left`, `header_right`, `footer_left`, and `footer_right` fields.
 
 #### Template Interpolation Variables
@@ -228,6 +237,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{vault}`: Base folder name of the vault directory
 - `{vault_path}`: Full absolute path to the vault directory
 - `{version}`: Application package version
+- `{fps}`: Measured render rate; Graph uses its adapter metric (`--` until available)
 
 ##### Date & Time (all views)
 - `{time}`: Current local time (`%H:%M`)
@@ -252,6 +262,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 
 ##### List View (`Notes` view)
 - `{title}`: Header title text (e.g. `"Notes"`, `"Notes - Editing Layout"`)
+- `{sort}`: Styled sort indicator (such as `A-z` or modified-date direction)
 - `{sort_field}`: Current sorting field (`title`, `modified`)
 - `{sort_order}`: Current sorting order (`ascending`, `descending`)
 - `{layout}`: Active notes layout (`tree`, `grid`, `list`, `multi`)
@@ -297,7 +308,7 @@ retain terminal transparency. Popup controls keep their existing styling.
 - `{note_title}`: Title of the selected/edited note
 - `{note_id}`: Filename/ID of the note
 - `{note_folder}`: Folder directory of the note
-- `{note_format}`: File format extension (`md`, `txt`, `clin`, `draw`, `canvas`)
+- `{note_format}`: File format extension (`md`, `txt`, `clin`, `draw`, `canvas`, `base`)
 - `{note_size}`: Note file size formatted (e.g. `1.2 KB`)
 - `{note_links}`: Number of wikilinks in the note
 - `{tags}`: Comma-separated tags of the note
@@ -333,6 +344,11 @@ header_right = "{word_count_display}w {char_count_display}c {cursor_line}:{curso
 ```
 
 
+##### Help View
+
+- `{help_page}`: Current 1-based keybind page
+- `{help_total_pages}`: Total keybind pages for the active tab
+
 ##### Graph View (`Graph` view)
 - `{node_count}`, `{edge_count}`: Graph nodes and edges
 - `{selected_node}`: Label of the selected node or `"none"`
@@ -343,7 +359,7 @@ header_right = "{word_count_display}w {char_count_display}c {cursor_line}:{curso
 - `{show_grid}`, `{show_legend}`, `{show_minimap}`: Current grid, legend, and minimap visibility (`on`/`off`)
 
 ##### Draw View (`Draw` view)
-- `{tool}`: Active draw tool (`draw`, `erase`, `text`, `shape`)
+- `{tool}`: Active draw tool (`cursor`, `draw`, `erase`, `text`, `shape`)
 - `{shape}`: Active shape type (`rect`, `ellipse`, `diamond`, `line`, `arrow`)
 - `{element_count}`: Total drawn elements
 - `{draw_width}`, `{draw_height}`: Canvas drawing boundaries
@@ -466,11 +482,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 |---|---|---|---|
 | `max_results` | `usize` | `20` | Maximum search results |
 | `max_visible` | `usize` | `10` | Maximum visible results at once |
-### `[notes]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-
 ### `[goals]`
 
 | Option | Type | Default | Description |
@@ -556,17 +567,25 @@ max_visible = 10
 
 Keybind files are stored under the active configuration directory at `keybinds/<preset>.toml`. Runtime help shows the active preset path. Tables below describe the **default** preset; feature toggles may hide bindings.
 
+### Global Palette Binding (`[global]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `command_palette` | `Ctrl+Space`, `F6` | Contextual palette in all ten views; matching view bindings and modal input take priority |
+
 ### Global Function Keys
 
 | Key | Action |
 |---|---|
-| `F1` | Contextual help (except Setup); closes Help when already open |
+| `F1` | Contextual help (except Setup); Calendar uses its own help dialog; closes Help when already open |
 | `F2` | Quick keybind dropdown |
 | `F3` | Message history overlay |
 | `F4` | Vault switcher |
 | `F5` | Force full redraw |
 
-These global handlers take precedence over per-view bindings.
+These global handlers take precedence over per-view bindings when modal input
+does not own the key. In particular, F2 opens Quick Keybinds in Bases; use `e` to
+edit a property.
 
 ### List Actions (`[list]`)
 
@@ -628,7 +647,7 @@ These global handlers take precedence over per-view bindings.
 |---|---|---|
 | `back` | `Esc` | Return to notes (auto-saves) |
 | `save` | `Ctrl+s` | Save |
-| `cycle_focus` | `Ctrl+t` | Cycle focus (Title, Body, visible Sidebar) |
+| `cycle_focus` | `Ctrl+t` | Cycle focus (Title, visible Frontmatter, Body, visible Sidebar) |
 | `insert_tab` | `Tab` | Insert tab character |
 | `select_all` | `Ctrl+a`, `Ctrl+Shift+a` | Select all |
 | `copy` | `Ctrl+c` | Copy |
@@ -640,6 +659,9 @@ These global handlers take precedence over per-view bindings.
 | `delete_next_word` | `Ctrl+Delete` | Delete next word |
 | `move_to_top` | `Ctrl+Home` | Move cursor to top |
 | `move_to_bottom` | `Ctrl+End` | Move cursor to bottom |
+| `toggle_frontmatter` | `F7` | Show/hide the properties/raw-YAML region |
+| `toggle_mermaid_rendering` | `Alt+m` | Toggle Mermaid diagrams in the main editor preview |
+| `toggle_bases` | `Ctrl+g Ctrl+b` | Toggle the active-file Bases sidebar |
 | `toggle_markdown_preview` | `Ctrl+p` | Toggle markdown preview |
 | `toggle_preview_fullscreen` | `F11` | Toggle preview fullscreen |
 | `toggle_zen_mode` | `F8` | Toggle zen mode |
@@ -793,6 +815,46 @@ These global handlers take precedence over per-view bindings.
 | `back` | `Esc`, `q` | Back |
 | `help` | `?` | Show help |
 
+### Bases Actions (`[bases]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `back` | `Esc`, `q` | Return to the host view |
+| `help` | `?` | Contextual Bases help |
+| `move_up` | `k`, `Up` | Previous row |
+| `move_down` | `j`, `Down` | Next row |
+| `move_left` | `h`, `Left` | Previous column/group |
+| `move_right` | `l`, `Right` | Next column/group |
+| `page_up` | `PageUp`, `Ctrl+u` | Previous page |
+| `page_down` | `PageDown`, `Ctrl+d` | Next page |
+| `first` | `Home` | First row |
+| `last` | `End` | Last row |
+| `open` | `Enter` | Open public source/image or toggle a group |
+| `refresh` | `r` | Refresh public metadata and query |
+| `next_view` | `Tab` | Next saved view |
+| `previous_view` | `BackTab` | Previous saved view |
+| `edit` | `e`, `F2` | Edit property; F2 is intercepted by global Quick Keybinds |
+| `clear` | `Delete` | Clear property with confirmation |
+| `copy` | `y` | Copy property value |
+| `paste` | `p` | Paste property value |
+| `toggle_select` | `Space` | Toggle checked row |
+| `select_all` | `Ctrl+a` | Select visible results |
+| `undo` | `u` | Guarded undo |
+| `redo` | `Ctrl+r` | Guarded redo |
+| `configure` | `:` | Open Bases palette category |
+| `command_palette` | `Ctrl+p` | Open shared command palette |
+| `new_note` | `n` | Create public Markdown note |
+| `export` | `x` | Export displayed values |
+| `move_to_group` | `m` | Assign grouping property/move to folder |
+| `search` | `/` | Find displayed values |
+| `toggle_group` | `z` | Collapse/expand focused group |
+| `open_cover` | `v` | Preview configured cover |
+| `previous_property` | `[` | Focus previous property |
+| `next_property` | `]` | Focus next property |
+
+Calendar has fixed view-local keys rather than a `[calendar]` keybind table;
+see [Calendar](CALENDAR.md#keys-and-palette).
+
 ### Setup Actions (`[setup]`)
 
 | Action | Default Keys | Description |
@@ -809,9 +871,6 @@ These global handlers take precedence over per-view bindings.
 ## Migration Note
 
 The old `graf.toml` file is **no longer used**. All graf options (`[graf.visual]`, `[graf.physics]`, `[graf.interaction]`, `[graf.filter]`, `[graf.search]`) are now part of `config.toml`. The system auto-migrates settings from `graf.toml` on first read for backward compatibility.
-
----
-
 
 ---
 

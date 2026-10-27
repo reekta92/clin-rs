@@ -119,8 +119,8 @@ These tools are **optional** — clin works without them:
 
 | Platform | Method | Command |
 |---|---|---|
-| Any (from source) | Cargo build | `cargo build --release` |
-| Any | Cargo install | `cargo install clin-rs` |
+| Any (from source) | Cargo build | `cargo build --locked --release` |
+| Any | Cargo install | `cargo install --locked clin-rs` |
 | Debian/Ubuntu (amd64) | `.deb` | `sudo dpkg -i clin-rs_*_amd64.deb` |
 | Debian/Ubuntu (arm64) | `.deb` | `sudo dpkg -i clin-rs_*_arm64.deb` |
 | Fedora/RHEL (x86_64) | `.rpm` | `sudo rpm -i clin-rs-*.x86_64.rpm` |
@@ -141,12 +141,12 @@ These tools are **optional** — clin works without them:
 ```bash
 git clone https://github.com/reekta92/clin-rs.git
 cd clin-rs
-cargo build --release
+cargo build --locked --release
 ```
 
 ### With Cargo
 ```bash
-cargo install clin-rs
+cargo install --locked clin-rs
 ```
 
 </details>
@@ -290,7 +290,7 @@ cp -r /Volumes/clin/clin.app /Applications/
 hdiutil detach /Volumes/clin
 
 # Or using .tar.gz
-tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
+tar -xzf clin-rs-*-apple-darwin.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/
@@ -324,7 +324,19 @@ clin notes open "my-note"
 
 Once inside the TUI (default preset): navigate with `j`/`k`, open notes with `Enter`, open the command palette with `:` or `Ctrl+P`, and view the graph with `Ctrl+G`. Press `?` or `F1` for help, `F2` for quick keybinds, `F3` for messages, and `F4` to switch vaults. In Editor, `Ctrl+P` toggles Markdown preview instead of opening the palette.
 
-CLI templates currently insert the literal body without variable substitution or the template title; use the TUI template picker for rendered variables. See [Templates](docs/TEMPLATES.md).
+CLI templates render built-in and folder-local variables in the title and body. Explicit title/body arguments remain literal and override the corresponding template fields. See [Templates](docs/TEMPLATES.md).
+
+Create a note from shell input without opening the TUI:
+
+```sh
+printf 'Meeting notes\n' | clin notes new --stdin 'Meeting'
+clin notes new 'Imported' < notes.txt
+```
+
+Input must be UTF-8 and at most 16 MiB. `--stdin` conflicts with `--body`.
+Explicit empty stdin creates an empty body; implicitly detected empty stdin
+keeps template content. See [Editor](docs/EDITOR.md#clipboard-transport) for
+native clipboard, SSH/OSC 52, tmux, and app-local fallback behavior.
 
 ---
 
@@ -340,6 +352,8 @@ CLI templates currently insert the literal body without variable substitution or
 | **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
 | **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
+| **Bases** | Public `.base` queries and authoring | Table/List/Cards/Kanban, formulas, guarded property edits, live embeds |
+| **Calendar** | Schedule events and link notes | Month/Week/Day/Agenda, iCalendar import/export, manual CalDAV sync |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
 
 | Feature | Description |
@@ -436,7 +450,7 @@ pan_up = ["Up", "k"]
 ```
 clin                              Launch interactive TUI (default)
 clin notes list                   List note titles
-clin notes new [OPTIONS] [TITLE]  Create a note (supports --body, --no-tui)
+clin notes new [OPTIONS] [TITLE]   Create a note (--template, --folder, --body, --stdin, --no-tui)
 clin notes open <TITLE>           Open a note by title
 clin notes cat <TITLE>            Print a note's body to stdout
 clin notes quick <CONTENT> [TITLE] Quick note, then exit
@@ -448,7 +462,7 @@ clin storage reset                Reset to default storage path
 clin storage migrate              Migrate data from a previous location
 clin storage migrate --legacy-layout Convert the old notes/ + templates/ layout
 
-clin keybinds show                Show keybindings
+clin keybinds show                Print the active preset keybind-file path
 clin keybinds export              Export keybinds as TOML
 clin keybinds reset               Reset keybinds to defaults
 
@@ -475,11 +489,12 @@ clin --help                       Show help
 Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all project documentation, with page navigation and search. The wiki automatically syncs from `main`; source files live in [`docs/`](docs/INDEX.md) and the repository root.
 
 - [Architecture](docs/ARCHITECTURE.md) — system overview, event loop, threading model
-- [List View](docs/LIST_VIEW.md) — notes list view: Grid/Tree layout, format chooser, preview pane
+- [List View](docs/LIST_VIEW.md) — notes list view: Grid/Tree/List/Multi layouts, format chooser, preview pane
 
 - [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and preset keybind-file options
 - [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
 - [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
+- [Bases](docs/BASES.md) — public queries, four layouts, guarded authoring and live embeds
 - [Calendar](docs/CALENDAR.md) — scheduling, linked notes, iCalendar, and CalDAV setup
 - [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view
 
@@ -497,7 +512,7 @@ Browse the [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) for all proje
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned features and progress.
+See [ROADMAP.md](ROADMAP.md) for project ideas; these are not release commitments.
 
 ## Architecture
 
@@ -519,16 +534,4 @@ Licensed under the [GNU General Public License v3.0](LICENSE).
 
 ## Credits
 
-Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), upstream [graf](https://github.com/reekta92/graf-rs) (fdg-sim physics), and [pinstar](https://github.com/reekta92/pinstar). Markdown preview via built-in comrak/syntect renderer.
-
-Create a note from shell input without opening the TUI:
-
-```sh
-printf 'Meeting notes\n' | clin notes new --stdin 'Meeting'
-clin notes new 'Imported' < notes.txt
-```
-
-Input must be UTF-8 and at most 16 MiB. `--stdin` conflicts with `--body`.
-Explicit empty stdin creates an empty body; implicitly detected empty stdin
-keeps template content. See [Editor](docs/EDITOR.md#clipboard-transport) for
-native clipboard, SSH/OSC 52, tmux, and app-local fallback behavior.
+Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), upstream [graf](https://github.com/reekta92/graf) (fdg-sim physics), and [pinstar](https://github.com/reekta92/pinstar). Markdown preview via built-in comrak/syntect renderer.

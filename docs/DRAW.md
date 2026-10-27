@@ -8,7 +8,7 @@ Technical docs for the draw canvas module — a simple paint-style canvas for fr
 
 The draw view provides an infinite 2D canvas for freehand drawing, inserting predefined shapes, and adding text. Files use the `.draw` extension and are stored alongside notes in the vault.
 
-**Engine:** [draw-rs](https://github.com/reekta92/draw-rs), consumed through the revision-pinned `draw` dependency. **Clin host:** `src/draw_adapter.rs` (`DrawPlugin`).
+**Engine:** [draw-rs](https://github.com/reekta92/draw-rs), consumed through the registry `draw` dependency (`draw-rs`; exact version in `Cargo.lock`). **Clin host:** `src/draw_adapter.rs` (`DrawPlugin`).
 
 ---
 
@@ -155,7 +155,8 @@ pub enum DrawTool {
 
 ## Rendering
 
-Rendering lives in upstream `draw::draw_view()` and `draw::draw_snapshot()`. Clin keeps its toolbar, icons, statusline and keybinding hints in the adapter:
+Rendering lives in upstream `draw::draw_view()` and `draw::draw_snapshot()`. Clin supplies theme colors and resolved keybinding hints through the adapter;
+the host UI owns the shared header/footer:
 
 - Uses ratatui's `Canvas` widget with Braille markers
 - Adaptive dot grid remains private to the engine and does not appear in snapshots
@@ -181,7 +182,9 @@ Creation in clin still uses `Storage::create_document()` for collision protectio
 Loading legacy data never rewrites bytes; saving applies the supported migration.
 Output is also bounded to 16 MiB, so successful saves can be reopened.
 
-Completed edits, undo and redo save eagerly. Atomic replacement preserves
+Completed edits, undo and redo save eagerly through the adapter’s
+`Storage::replace_document` handler. It rejects stale source baselines and
+read-only targets. Atomic replacement preserves
 permissions, writes and syncs an exclusive temporary file, renames it, and syncs
 the containing directory on Unix. Failed saves keep the live document and its
 single recorded history entry; retry saving without repeating the edit. A failure
@@ -190,8 +193,10 @@ after rename may mean the new bytes were already published.
 Ordinary quit, palette departure and navigation use the same interaction/save
 guard. Unfinished gestures, changed fileless states and failed saves block
 departure. Direct and queued overlay errors become temporary statuses and keep
-Draw active. Concurrent external edits are not detected and may be overwritten.
-Forced Ctrl+C/process termination remains outside these ordinary departure guards.
+Draw active. An external edit present at the save check causes a conflict;
+other editors do not honor Clin’s lock, so a write racing final publication is
+not covered. See [save guarantees](UPGRADING.md#safe-note-saving).
+Forced process termination remains outside ordinary departure guards.
 
 Clin resolves keys before mapping them exhaustively to semantic `DrawAction`s.
 Text editors consume printable `q`; selectors, direct paste and context menus
