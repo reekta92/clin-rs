@@ -15,11 +15,12 @@ The Mermaid fork's main branch tracks upstream; the compatibility branch owns
 the parser package used by Clin. Compiler requirements live in each package's
 manifest. Exact dependency versions live in committed lockfiles.
 
-## Workspace and handoff
+## Workspace
 
 Use sibling checkouts named `clin-rs`, `pinstar`, `graf`, `draw-rs` and `.github`
-under one chosen workspace directory, with the origins linked above. Use `git worktree list` to locate canonical checkouts when a relative sibling
-path points into another worktree.
+under one chosen workspace directory, with the origins linked above. Use
+`git worktree list` to locate canonical checkouts when a relative sibling path
+points into another worktree.
 
 Before work, inspect `git status --short --branch`, `git remote -v` and
 `git fetch origin --prune` in each affected checkout. Start a branch from fetched

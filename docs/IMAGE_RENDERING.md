@@ -10,9 +10,9 @@ Native pixel image rendering via the `ratatui_image` crate. The protocol is auto
 
 The image rendering pipeline consists of three layers:
 
-- **Cache key** — image `PathBuf`; modification time is not part of the key. Replacing an image at the same path can leave cached pixels until the entry is evicted or the view cache is recreated.
-- **ImageCache** (`cache.rs`) — per-view LRU with `request`, `install_decoded`, and `get_proto`. Entries start pending, then receive a terminal-protocol renderer; capacity is at least one entry.
-- **Background worker** (`worker.rs::spawn()`) — consumes `ImageJob { key, max_dim }`, decodes/downscales the image, and returns `Result<DecodedImage>`. It drains queued jobs after each decode; the worker has no 150 ms debounce. Call sites set decode bounds; there is no `[image] max_dimension` config key.
+- **Cache key** — image `PathBuf`, with a request identity and decode bound per entry. Watcher changes invalidate matching Notes/Edit entries; without a delivered watcher change, replacing a file at the same path can retain cached pixels until eviction or refresh.
+- **ImageCache** (`cache.rs`) — per-view LRU with `request`, `install_decoded`, and `get_proto`. Capacity is at least one entry, with a 64 MiB decoded-pixel budget per cache. That budget excludes active decoders and protocol buffers.
+- **Background worker** (`worker.rs::spawn()`) — one worker handles both decode/downscale and protocol resize/encoding. `ImageJob` carries `key`, `request`, `cancel`, and `ImageWork::{Decode, Encode}`; results carry `ImageOutput::{Decoded, Encoded}`. The bounded queues hold 16 jobs and two results. Saturated requests retry, stale results are rejected, and hiding/evicting pending images cancels their work. There is no debounce or `[image] max_dimension` key; call sites choose decode bounds.
 
 ## Integration Points
 

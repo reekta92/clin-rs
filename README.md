@@ -462,7 +462,7 @@ clin storage reset                Reset to default storage path
 clin storage migrate              Migrate data from a previous location
 clin storage migrate --legacy-layout Convert the old notes/ + templates/ layout
 
-clin keybinds show                Show keybindings
+clin keybinds show                Print the active preset keybind-file path
 clin keybinds export              Export keybinds as TOML
 clin keybinds reset               Reset keybinds to defaults
 

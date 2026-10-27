@@ -46,7 +46,7 @@ Default bindings include:
 | `z` | Collapse/expand focused Table/List/Cards group |
 | `[` / `]` | Focus previous/next displayed property, including inside Kanban cards |
 | `v` | Preview configured public/remote cover image |
-| `e` / `F2`, `Delete` | Edit/clear a note property |
+| `e`, `Delete` | Edit/clear a note property |
 | `Space`, `Ctrl+a` | Toggle selection/select visible results |
 | `m` | Set grouping property on selected notes; blank clears the property |
 | `n` | Create a Markdown note; Kanban uses the focused column |

@@ -223,7 +223,7 @@ Theme/preset/UI changes update retained owners, including those suspended under 
            ActionCategory::General
        }
         fn glyph(&self) -> (&'static str, &'static str) {
-            clin::ui::icons::HELP.pair() // question-circle with a single-cell Unicode fallback
+            crate::ui::icons::HELP.pair() // question-circle with a single-cell Unicode fallback
         }
        fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
            // your logic here
