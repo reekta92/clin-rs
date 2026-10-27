@@ -7,6 +7,12 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 pub(crate) fn read_bounded_text(path: &Path, max_bytes: usize) -> Result<String> {
+    if !fs::metadata(path)
+        .context("failed to inspect document")?
+        .is_file()
+    {
+        bail!("failed to read document: not a regular file");
+    }
     let file = fs::File::open(path).context("failed to open document")?;
     let mut source = String::new();
     file.take(max_bytes as u64 + 1)

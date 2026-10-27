@@ -1339,30 +1339,7 @@ impl App {
                     return Vec::new();
                 };
                 self.visible_notes()
-                    .filter(|(_, n)| {
-                        for t in &rule.tags {
-                            if !n.tags.contains(t) {
-                                return false;
-                            }
-                        }
-                        if let Some(txt) = &rule.title_contains
-                            && !n.title.to_lowercase().contains(&txt.to_lowercase())
-                        {
-                            return false;
-                        }
-                        if let Some(prefix) = &rule.folder_prefix
-                            && !n.folder.starts_with(prefix)
-                        {
-                            return false;
-                        }
-                        if let Some(days) = rule.updated_within_days {
-                            let diff = now.saturating_sub(n.updated_at);
-                            if diff >= days * 86_400 {
-                                return false;
-                            }
-                        }
-                        true
-                    })
+                    .filter(|(_, note)| crate::note_index::matches_custom_rule(note, rule, now))
                     .map(|(i, _)| i)
                     .collect()
             }
@@ -2230,6 +2207,74 @@ mod tests {
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
         (temp_dir, App::new(storage).unwrap())
+    }
+
+    #[test]
+    fn expired_smart_folders_refresh_visible_rows_and_preserve_selection() {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let (_root, mut app) = make_app();
+        let now = crate::ui::now_unix_secs();
+        app.notes.push(NoteSummary {
+            id: "old.md".into(),
+            title: "Old".into(),
+            updated_at: now - 86_410,
+            folder: String::new(),
+            tags: Vec::new(),
+            pinned: false,
+            links: Vec::new(),
+            size_bytes: 0,
+        });
+        app.config
+            .list
+            .custom_smart_folders
+            .push(crate::config::structs::CustomSmartFolder {
+                name: "Recent".into(),
+                tags: Vec::new(),
+                title_contains: None,
+                folder_prefix: None,
+                updated_within_days: Some(1),
+            });
+        app.config.list.section_tabs = false;
+        app.list.notes_layout = crate::config::NotesLayout::Tree;
+        app.list.folder_expanded.insert(VIRTUAL_SMART_PATH.into());
+        app.refresh_visual_list();
+        let selected = app
+            .list
+            .visual_list
+            .iter()
+            .position(|item| matches!(item, VisualItem::Note { summary_idx: 0, .. }))
+            .unwrap();
+        app.list.visual_index = selected;
+        app.list.selected_indices.insert(selected);
+        app.list.visual_list.insert(
+            0,
+            VisualItem::SmartFolder {
+                kind: SmartFolderKind::Custom("Recent".into()),
+                label: "Recent".into(),
+                depth: 1,
+                is_expanded: false,
+                note_count: 1,
+            },
+        );
+        app.list.visual_index += 1;
+        app.list.selected_indices = [selected + 1].into();
+        app.note_index = Some(crate::note_index::NoteIndex::build(
+            app.notes_revision,
+            &app.notes,
+            &app.config.list.custom_smart_folders,
+            now - 20,
+            &app.config.features,
+        ));
+        assert!(app.refresh_expired_smart_folders());
+        assert!(!app.list.visual_list.iter().any(|item| matches!(
+            item, VisualItem::SmartFolder { label, .. } if label == "Recent"
+        )));
+        assert!(matches!(
+            app.list.visual_list[app.list.visual_index],
+            VisualItem::Note { summary_idx: 0, .. }
+        ));
+        assert!(app.list.selected_indices.contains(&app.list.visual_index));
+        assert!(!app.refresh_expired_smart_folders());
     }
 
     #[test]

@@ -143,6 +143,21 @@ fn recurrence_honors_exclusions_additions_and_moved_or_cancelled_instances() {
 
 #[test]
 fn recurring_all_day_and_dst_keep_calendar_dates() {
+    if std::env::var_os("CLIN_TEST_CALENDAR_DST").is_none() {
+        for timezone in ["UTC", "Europe/Vilnius"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "calendar::tests::recurring_all_day_and_dst_keep_calendar_dates",
+                ])
+                .env("CLIN_TEST_CALENDAR_DST", "1")
+                .env("TZ", timezone)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{timezone}: {output:?}");
+        }
+        return;
+    }
     let source = document(
         "BEGIN:VEVENT\r\nUID:days\r\nSUMMARY:Days\r\nDTSTART;VALUE=DATE:20261023\r\nDTEND;VALUE=DATE:20261025\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEXDATE;VALUE=DATE:20261024\r\nEND:VEVENT\r\n",
     );
@@ -157,10 +172,14 @@ fn recurring_all_day_and_dst_keep_calendar_dates() {
     );
     let events = ical::occurrences(&dst, "id", date("2026-10-23"), date("2026-10-29")).unwrap();
     assert_eq!(events.len(), 3);
-    assert_eq!(
-        events[0].end.signed_duration_since(events[0].start),
-        Duration::hours(25)
-    );
+    let local = |value: &str| {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .unwrap()
+            .with_timezone(&chrono::Local)
+            .naive_local()
+    };
+    assert_eq!(events[0].start, local("2026-10-24T12:00:00+02:00"));
+    assert_eq!(events[0].end, local("2026-10-25T12:00:00+01:00"));
     assert_eq!(
         events[1].end.signed_duration_since(events[1].start),
         Duration::hours(24)

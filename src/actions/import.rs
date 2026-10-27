@@ -207,7 +207,7 @@ pub fn file_stem_title(path: &str) -> String {
         .unwrap_or_else(|| "Imported Note".to_string())
 }
 
-fn sanitize_import_content(content: String) -> String {
+pub(super) fn sanitize_import_content(content: String) -> String {
     if !content
         .chars()
         .any(|ch| ch == '\r' || (ch.is_control() && !matches!(ch, '\n' | '\t')))

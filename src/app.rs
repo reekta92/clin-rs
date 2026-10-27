@@ -523,12 +523,27 @@ impl App {
         let index = crate::note_index::NoteIndex::build(
             self.notes_revision,
             &self.notes,
-            &self.catalog_folders,
             custom_rules,
             now,
             &self.config.features,
         );
         self.note_index = Some(index);
+    }
+
+    pub(crate) fn refresh_expired_smart_folders(&mut self) -> bool {
+        if self
+            .note_index
+            .as_ref()
+            .and_then(|index| index.min_membership_expiry)
+            .is_none_or(|expiry| crate::ui::now_unix_secs() < expiry)
+        {
+            return false;
+        }
+        let selection = self.capture_list_selection();
+        self.rebuild_note_index();
+        self.refresh_visual_list();
+        self.restore_list_selection(selection);
+        true
     }
     pub fn desired_list_preview_height(&self) -> u16 {
         self.list.last_preview_pane_height
@@ -1678,7 +1693,10 @@ impl App {
         let clin_temp = std::env::temp_dir().join("clin");
         let _ = std::fs::create_dir_all(&clin_temp);
         let temp_file_path = clin_temp.join(format!("clin_preview_{}.md", uuid::Uuid::new_v4()));
-        if let Err(e) = crate::fsutil::atomic_write_str(&temp_file_path, &content) {
+        let _temp = crate::fsutil::SecretTempFile::new(temp_file_path.clone());
+        if let Err(e) =
+            crate::fsutil::atomic_write_with_mode(&temp_file_path, content.as_bytes(), 0o600)
+        {
             self.set_temporary_status(&format!("Failed to write temp file: {e}"));
             self.messages.push(
                 format!("Failed to write temp file: {e}"),
