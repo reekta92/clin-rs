@@ -263,14 +263,16 @@ fn static_views_do_not_redraw_while_idle() {
             assert!(!app.poll_calendar(), "loaded calendar must remain idle");
         }
         let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
-        let error = crate::run_app(
+        let result = crate::run_app(
             &mut terminal,
             &mut app,
             &mut crate::event_source::EventSource::IdleUntil(
                 Instant::now() + Duration::from_millis(650),
             ),
-        )
-        .expect_err("idle input must end the observation window");
+        );
+        // Timed input returns an error, so finish the normal catalog cleanup explicitly.
+        crate::perform_orderly_catalog_shutdown(&mut app);
+        let error = result.expect_err("idle input must end the observation window");
         let error = error.downcast::<std::io::Error>().unwrap();
         assert_eq!(
             error.kind(),
