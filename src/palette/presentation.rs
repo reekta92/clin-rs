@@ -13,6 +13,21 @@ use ratatui::{
     text::{Line, Span},
 };
 
+pub(crate) fn category_color(
+    category: Option<crate::actions::ActionCategory>,
+    theme: &AppThemeColors,
+) -> ratatui::style::Color {
+    use crate::actions::ActionCategory;
+    match category {
+        None | Some(ActionCategory::General | ActionCategory::Notes) => theme.accent,
+        Some(ActionCategory::Import) => theme.success,
+        Some(ActionCategory::Append) => theme.subnote,
+        Some(ActionCategory::Bases) => theme.folder,
+        Some(ActionCategory::Views) => theme.heading,
+        Some(ActionCategory::Settings) => theme.tag,
+    }
+}
+
 impl CommandPalette {
     pub(crate) fn popup_size(&self, area: Rect, controls: bool) -> crate::ui::PopupSize {
         let large = crate::ui::PopupSize::Large;
