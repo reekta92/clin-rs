@@ -3826,6 +3826,105 @@ fn draw_selected_vector_shortcuts_ignore_modifiers_and_mouse_copy_reaches_host()
 }
 
 #[test]
+fn palette_actions_and_active_tabs_share_category_colors() {
+    use crate::actions::ActionCategory;
+
+    let mut fixture = Fixture::new();
+    fixture.app.config.ui.tab_icons_only = true;
+    for mode in [ViewMode::List, ViewMode::Edit, ViewMode::Bases] {
+        fixture.enter(mode);
+        assert!(fixture.app.open_command_palette(None));
+        let tabs = fixture.app.command_palette.as_ref().unwrap().tabs.clone();
+        for &theme in crate::setup::SETUP_THEMES {
+            fixture.app.config.ui.theme = theme.into();
+            fixture.app.refresh_theme_from_config();
+            assert_ne!(
+                crate::palette::category_color(
+                    Some(ActionCategory::Import),
+                    &fixture.app.app_theme
+                ),
+                crate::palette::category_color(Some(ActionCategory::Views), &fixture.app.app_theme),
+                "{theme}: Import and Views must have different colors"
+            );
+            for (tab_index, (label, glyph, category)) in tabs.iter().enumerate() {
+                let colors = &fixture.app.app_theme;
+                let color = match category {
+                    None | Some(ActionCategory::General | ActionCategory::Notes) => colors.accent,
+                    Some(ActionCategory::Import) => colors.success,
+                    Some(ActionCategory::Append) => colors.subnote,
+                    Some(ActionCategory::Bases) => colors.folder,
+                    Some(ActionCategory::Views) => colors.pinned,
+                    Some(ActionCategory::Settings) => colors.tag,
+                };
+                let mut palette = fixture.app.command_palette.take().unwrap();
+                palette.active_tab = tab_index;
+                palette.input.select_all();
+                palette.input.cut();
+                palette.refresh_items(&fixture.app);
+                let search = palette.items[0].name.clone();
+                fixture.app.command_palette = Some(palette);
+                for query in ["", search.as_str()] {
+                    let mut palette = fixture.app.command_palette.take().unwrap();
+                    palette.input.select_all();
+                    palette.input.insert_str(query);
+                    palette.refresh_items(&fixture.app);
+                    palette.state.select(None);
+                    fixture.app.command_palette = Some(palette);
+                    render_palette(&mut fixture.app);
+                    let results = fixture
+                        .app
+                        .command_palette
+                        .as_ref()
+                        .unwrap()
+                        .last_results_area
+                        .unwrap();
+                    fixture.app.mouse_pos = Some((results.x + 2, results.y + 1));
+                    let buffer = render_palette(&mut fixture.app);
+                    let palette = fixture.app.command_palette.as_ref().unwrap();
+                    let bar_y = results.y - 1;
+                    let tab_x = (0..AREA.width)
+                        .find(|&x| buffer[(x, bar_y)].symbol() == *glyph)
+                        .unwrap_or_else(|| {
+                            panic!("missing tab {label}: {}", rendered_text(&buffer, bar_y))
+                        });
+                    assert_eq!(buffer[(tab_x, bar_y)].fg, color, "{theme}: {label}");
+
+                    for (index, item) in palette.items.iter().enumerate() {
+                        let y = results.y + 1 + 2 * index as u16;
+                        if y + 1 >= results.bottom() - 1 {
+                            break;
+                        }
+                        if category.is_some() {
+                            assert_eq!(item.category, *category);
+                        }
+                        let expected =
+                            crate::palette::category_color(item.category, &fixture.app.app_theme);
+                        let title = format!("{} {}", item.glyph, item.name);
+                        let name_end = title.find(" [").unwrap_or(title.len());
+                        let mut column = results.x + 1;
+                        for ch in title[..name_end].chars() {
+                            let width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                            if column >= results.right() - 1 {
+                                break;
+                            }
+                            if !ch.is_whitespace() {
+                                assert_eq!(buffer[(column, y)].fg, expected, "{}", item.name);
+                            }
+                            column += width as u16;
+                        }
+                        assert_eq!(
+                            buffer[(results.x + 1, y + 1)].fg,
+                            fixture.app.app_theme.muted
+                        );
+                    }
+                }
+            }
+        }
+        fixture.app.command_palette = None;
+    }
+}
+
+#[test]
 fn palette_selection_keeps_text_contrast_across_themes() {
     let mut fixture = Fixture::new();
     assert!(fixture.app.open_command_palette(None));
