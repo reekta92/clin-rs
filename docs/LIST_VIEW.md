@@ -14,15 +14,22 @@ The List view (`ViewMode::List`) provides a flexible way to interact with your n
 
 ## Layout Options
 
-You can toggle between two primary layouts:
+Choose **Select Notes Layout** in the command palette or set `[list] default_view`.
 
-### 1. Grid Layout (Default)
-The Grid layout displays notes as cards. It is optimized for visual recognition and quick browsing.
-- **Tabs**: Quickly switch between the full **Vault** and your **Pinned** notes.
-- **"Create new..." Tile**: A dedicated tile in the grid that opens the format chooser to quickly start a new note.
+| Layout | Behavior |
+| --- | --- |
+| Grid (default) | Tiles for the current directory, with a Create New tile |
+| Tree | Expandable folders and notes in one hierarchy |
+| List | Directory rows; Enter/Right opens a folder, Left returns to its parent |
+| Multi | Directory rows plus the selected folder's children on the right; browsers narrower than 24 cells use one column |
 
-### 2. Tree Layout
-The Tree layout provides a hierarchical view of your folders and notes, similar to a traditional file explorer. It is ideal for navigating complex vault structures.
+Vault, Pinned, Smart, and Subnotes appear as section folders by default. Set
+`list.section_tabs = true` or use **Toggle Notes Section Tabs** to display them as
+header tabs in every layout. Tab/Shift+Tab or a click changes the active section;
+feature settings control Smart and Subnotes availability.
+
+### Organization across layouts
+
 - **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, and one folder per *Tag*. Control with `[features] smart_folders = true` (enabled by default). *This Week* means updated within the last seven days, not the calendar week. Custom rules live in `[list] custom_smart_folders`.
 - **Folder Pinning**: Pin folders to the top of the list for quick access by selecting a folder and pressing the pin key (`p`).
 - **Filenames**: Notes use their actual filenames without extensions, including suffixes such as `test (2)`. New-note prompts preview the filename that will be used, including a numbered suffix when the name already exists in that folder.
@@ -50,6 +57,9 @@ When creating a new note (via the "Create new..." tile or keyboard shortcuts), a
 - **Plain Text (.txt)**: Unformatted text files.
 - **Draw (.draw)**: Infinite canvas for hand-drawn diagrams and sketches.
 - **Canvas (.canvas)**: Interactive node-based mapping.
+- **Bases (.base)**: Native Table/List/Cards/Kanban queries over public vault files.
+
+Disabled file-view features hide their creation choices.
 
 ---
 

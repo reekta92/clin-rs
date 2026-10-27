@@ -1479,7 +1479,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let block = Block::default()
                 .style(app.app_theme.preview_bg_style())
                 .borders(Borders::NONE)
-                .padding(Padding::new(2, 2, 1, 1));
+                .padding(crate::preview::PADDING);
             let inner = block.inner(preview_rect);
             let end = (start + inner.height as usize).min(page.end);
             let range = start..end;

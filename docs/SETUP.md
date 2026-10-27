@@ -25,7 +25,7 @@ The screen is centered both horizontally and vertically. The left column contain
 
 ```
 ┌─────────────────────────────────────────────┬──────────────────────────────────┐
-│             CLIN ASCII logo (6 rows)         │                                  │
+│             CLIN ASCII logo (5 rows)         │                                  │
 │                                              │         Live Markdown            │
 │  [Vault]           Current vault   [select]  │
 │  [Theme]           Tokyo Night     [next]    │         Preview Pane             │
@@ -58,8 +58,8 @@ The screen is centered both horizontally and vertically. The left column contain
 | Theme | `[Theme]` | Built-in and custom themes |
 | Background | `[Background]` | Transparent / Solid |
 | Hint bar | `[Hint bar]` | Hint bar styles |
-| Icons | `[Icons]` | Nerd / Unicode / None |
-| Layout | `[Layout]` | Notes view Grid / Tree |
+| Icons | `[Icons]` | Nerd / Unicode / None / Emoji |
+| Layout | `[Layout]` | Notes view Grid / Tree / List / Multi |
 | Features | `[Features]` | Default / Expanded / Minimal / Custom feature toggles |
 | Keybinds | `[Keybinds]` | Default / Helix / Vim / Emacs (navigation only) |
 ---

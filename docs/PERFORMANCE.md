@@ -2,7 +2,6 @@
 
 ## Runtime ownership
 
-
 - Static views draw only after input, a resize, or a relevant background update. Completions are polled before drawing. Resize and pointer-move bursts are coalesced; drag samples and keys following a view transition are retained.
 - Hidden Markdown jobs release their result receivers and cancel work. Returning to a view resumes unfinished rendering while retaining the displayed document and scroll position. Result delivery observes cancellation even when its bounded channel is full.
 - Hidden Graph physics stops through graf's existing worker lifecycle. Returning waits for the previous worker to stop before starting another.

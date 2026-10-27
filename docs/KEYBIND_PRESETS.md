@@ -4,7 +4,7 @@ This document details the navigation keybind presets available in clin-rs: Helix
 
 These presets apply to all navigation surfaces throughout the application (such as the main notes list, help view, graph view, and canvas), but **never affect text-input surfaces** (such as the note body editor, note title editor, search boxes, templates, tag managers, and popups).
 
-**Command palette:** `Ctrl+Space` and `F6` work in all nine views under every shipped preset. Remap `[global] command_palette` in the active preset file, including multi-key sequences. View bindings take priority over colliding global shortcut strokes. Notes/Bases aliases remain available; `Ctrl+p` keeps its existing editor and Emacs behavior. Palette body insertion requires editor Body focus. Modal dialogs and active gestures block opening.
+**Command palette:** `Ctrl+Space` and `F6` work in all ten views under every shipped preset. Remap `[global] command_palette` in the active preset file, including multi-key sequences. View bindings take priority over colliding global shortcut strokes. Notes/Bases aliases remain available; `Ctrl+p` keeps its existing editor and Emacs behavior. Palette body insertion requires editor Body focus. Modal dialogs and active gestures block opening.
 
 ---
 
@@ -37,7 +37,8 @@ Helix style mappings rely on the `Space` key as a leader key for application-lev
 | List | Move Left | `h` / `Left` |
 | List | Move Right | `l` / `Right` |
 | List | Open Command Palette | `Space Space` |
-| List | Jump to Top | `g g` / `G` |
+| List | Jump to Top | `g g` |
+| List | Jump to Bottom | `g e` |
 | List | Page Up / Down | `Ctrl+b` / `Ctrl+f` |
 | List | Create Note / Folder | `Space n` / `Space N` |
 | List | New from Template | `Space t` |

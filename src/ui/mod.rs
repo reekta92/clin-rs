@@ -72,6 +72,7 @@ pub(crate) fn note_file_glyph(
         .unwrap_or("");
     let (icon, label, color) = match ext.to_ascii_lowercase().as_str() {
         "md" => (icons::MARKDOWN, "MD", theme.text),
+        "txt" if note_id == "todo.txt" => (icons::SUCCESS, "TODO", theme.success),
         "txt" => (icons::FILE, "TXT", theme.text),
         "clin" => (icons::LOCK, "CX", theme.destructive),
         "draw" => (icons::DRAW, "D", theme.success),
@@ -914,7 +915,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     None
                 }
             });
-            let tab_spans = build_tab_spans(
+            let mut tab_spans = build_tab_spans(
                 &tabs,
                 palette.active_tab,
                 hovered,
@@ -922,6 +923,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 app.config.ui.tab_icons_only,
                 app.config.ui.icon_mode,
             );
+            if let Some(span) = tab_spans.get_mut(palette.active_tab * 2) {
+                span.style = span.style.fg(crate::palette::category_color(
+                    palette.tabs[palette.active_tab].2,
+                    &app.app_theme,
+                ));
+            }
             let tabs_w = Paragraph::new(Line::from(tab_spans))
                 .alignment(Alignment::Center)
                 .style(app.app_theme.hint_line_bg_style());
@@ -1006,11 +1013,10 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .iter()
             .enumerate()
             .map(|(i, item)| {
+                let color = crate::palette::category_color(item.category, &app.app_theme);
                 let mut spans = vec![Span::styled(
                     format!("{} ", item.glyph),
-                    Style::default()
-                        .fg(app.app_theme.accent)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
                 let selected = palette.state.selected() == Some(i);
@@ -1023,7 +1029,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         description.style.fg = Some(app.app_theme.highlight_fg);
                     }
                 }
-                let mut list_item = ListItem::new(vec![Line::from(spans), preview]);
+                let mut title = Line::from(spans);
+                if item.category.is_some() {
+                    title = title.style(Style::default().fg(color));
+                }
+                let mut list_item = ListItem::new(vec![title, preview]);
                 if selected {
                     list_item = list_item.style(app.app_theme.selected_style());
                 } else if Some(i) == hovered_cmd_idx {
