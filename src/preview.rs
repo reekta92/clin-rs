@@ -7,6 +7,17 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use crate::app_theme::AppThemeColors;
 use crate::list_view::PreviewContent;
 
+pub(crate) const PADDING: Padding = Padding::new(2, 2, 1, 1);
+
+pub(crate) fn markdown_page_height(pane_height: u16) -> usize {
+    // Zero disables pagination, so retain a page even when padding fills the pane.
+    usize::from(
+        pane_height
+            .saturating_sub(PADDING.top + PADDING.bottom)
+            .max(1),
+    )
+}
+
 pub fn draw_preview_pane(
     frame: &mut Frame,
     rect: Rect,
@@ -42,14 +53,14 @@ pub fn draw_preview_pane(
                     Block::default()
                         .style(theme.preview_bg_style())
                         .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
+                        .padding(PADDING),
                 );
                 frame.render_widget(placeholder, rect);
             } else if let Some(doc) = renderer.document() {
                 let block = Block::default()
                     .style(theme.preview_bg_style())
                     .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1));
+                    .padding(PADDING);
                 let inner = block.inner(rect);
                 frame.render_widget(block, rect);
 
@@ -92,7 +103,7 @@ pub fn draw_preview_pane(
                     Block::default()
                         .style(theme.preview_bg_style())
                         .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
+                        .padding(PADDING),
                 );
             frame.render_widget(loading, rect);
         }
@@ -103,7 +114,7 @@ pub fn draw_preview_pane(
                     Block::default()
                         .style(theme.preview_bg_style())
                         .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
+                        .padding(PADDING),
                 );
             frame.render_widget(snapshot, rect);
         }
@@ -114,7 +125,7 @@ pub fn draw_preview_pane(
                     Block::default()
                         .style(theme.preview_bg_style())
                         .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
+                        .padding(PADDING),
                 );
             frame.render_widget(loading, rect);
         }
@@ -163,7 +174,7 @@ pub fn draw_preview_pane(
                 Block::default()
                     .style(theme.preview_bg_style())
                     .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1)),
+                    .padding(PADDING),
             );
             frame.render_widget(para, rect);
         }
@@ -174,9 +185,19 @@ pub fn draw_preview_pane(
                     Block::default()
                         .style(theme.preview_bg_style())
                         .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
+                        .padding(PADDING),
                 );
             frame.render_widget(placeholder, rect);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn tiny_preview_panes_keep_pagination_enabled() {
+        for height in 0..=3 {
+            assert_eq!(super::markdown_page_height(height), 1);
         }
     }
 }
