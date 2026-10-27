@@ -3835,9 +3835,17 @@ fn palette_actions_and_active_tabs_share_category_colors() {
         fixture.enter(mode);
         assert!(fixture.app.open_command_palette(None));
         let tabs = fixture.app.command_palette.as_ref().unwrap().tabs.clone();
-        for theme in ["default", "gruvbox"] {
+        for &theme in crate::setup::SETUP_THEMES {
             fixture.app.config.ui.theme = theme.into();
             fixture.app.refresh_theme_from_config();
+            assert_ne!(
+                crate::palette::category_color(
+                    Some(ActionCategory::Import),
+                    &fixture.app.app_theme
+                ),
+                crate::palette::category_color(Some(ActionCategory::Views), &fixture.app.app_theme),
+                "{theme}: Import and Views must have different colors"
+            );
             for (tab_index, (label, glyph, category)) in tabs.iter().enumerate() {
                 let colors = &fixture.app.app_theme;
                 let color = match category {
@@ -3845,7 +3853,7 @@ fn palette_actions_and_active_tabs_share_category_colors() {
                     Some(ActionCategory::Import) => colors.success,
                     Some(ActionCategory::Append) => colors.subnote,
                     Some(ActionCategory::Bases) => colors.folder,
-                    Some(ActionCategory::Views) => colors.heading,
+                    Some(ActionCategory::Views) => colors.pinned,
                     Some(ActionCategory::Settings) => colors.tag,
                 };
                 let mut palette = fixture.app.command_palette.take().unwrap();

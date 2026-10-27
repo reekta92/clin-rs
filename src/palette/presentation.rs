@@ -23,7 +23,7 @@ pub(crate) fn category_color(
         Some(ActionCategory::Import) => theme.success,
         Some(ActionCategory::Append) => theme.subnote,
         Some(ActionCategory::Bases) => theme.folder,
-        Some(ActionCategory::Views) => theme.heading,
+        Some(ActionCategory::Views) => theme.pinned,
         Some(ActionCategory::Settings) => theme.tag,
     }
 }
