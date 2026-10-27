@@ -102,7 +102,7 @@ Available variables for `{variable_name}` substitution:
 | `{date}` | `2026-05-10` | Current date (YYYY-MM-DD) |
 | `{datetime}` | `2026-05-10 14:30` | Date and time |
 | `{time}` | `14:30` | Current time (HH:MM) |
-| `{weekday}` | `Saturday` | Full weekday name |
+| `{weekday}` | `Sunday` | Full weekday name |
 | `{year}` | `2026` | 4-digit year |
 | `{month}` | `05` | Zero-padded month |
 | `{day}` | `10` | Zero-padded day of month |
@@ -146,17 +146,15 @@ One shared template can use `{book}`, `{chapter}`, `{chapter_title}`, and `{date
 
 #### Edit configuration in the TUI
 
-Select a physical folder (or a note inside it), open the command palette, and choose **Edit Folder Template Variables**. In grid layout, this edits the current folder. The action creates a starter config only when absent, then opens it in the existing template editor. Smart/virtual folders are not configuration destinations.
+Select a physical folder (or a note inside it), open the command palette, and choose **Edit Folder Template Variables**. In directory layouts (Grid, List, and Multi), this edits the current folder. The action creates a starter config only when absent, then opens it in the existing template editor. Smart/virtual folders are not configuration destinations.
 
 The built-in editor validates before saving; an invalid edit leaves the previous file intact and stays in the editor. With external-editor mode enabled, your editor writes directly to disk; Clin validates on return and reports errors. An invalid external edit must be corrected before template-based creation can continue.
 
 Folders with their own `.clin-template.toml` display a gear glyph (`⚙` in Unicode mode) on the folder item: beside its name in tree layout, and in the tile's corner in grid layout, alongside any pin badge (`♦` in Unicode mode). Both badges occupy one terminal cell. This indicates a local config file, not merely inherited variables. The badge respects the icon-mode setting and does not appear on virtual folders or the `..` navigation tile.
 
-Inside that folder, `.clin-template.toml` appears as a muted selectable item in both tree and grid layouts, even when hidden/all-files display is off. Select it and press Enter (or double-click) to edit using the same validated editor; its preview displays the TOML. The palette action remains available to create a config when none exists.
+Inside that folder, `.clin-template.toml` appears as a muted selectable item in all four Notes layouts, even when hidden/all-files display is off. Select it and press Enter (or double-click) to edit using the same validated editor; its preview displays the TOML. The palette action remains available to create a config when none exists.
 
 Config files are not indexed or counted as notes and cannot be pinned/tagged through note actions. They remain visible during selection mode without participating in bulk note selection. External config creation/removal updates the badge and item without moving the selected note.
-
-No header indicator, Smart Folder template automation, prompts, expressions, or executable plugins are included.
 
 ```rust
 impl TemplateVariables {
@@ -189,7 +187,7 @@ If a template file named `default.toml` exists in the templates directory, the T
 |---|---|
 | `clin templates list` | List all available templates |
 | `clin templates init` | Create meeting, todo, and journal example templates |
-| `clin notes new -t <display-name> [--folder <relative-path>] [title]` | Render a template using destination-folder variables, then open the TUI unless `--no-tui` or `--body` is supplied |
+| `clin notes new -t <display-name> [--folder <relative-path>] [title]` | Render a template using destination-folder variables, then open the TUI unless `--no-tui` or body input (`--body`, `--stdin`, or piped/redirected stdin) is supplied |
 
 ---
 
