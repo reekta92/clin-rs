@@ -155,11 +155,13 @@ fn resize_image(img: DynamicImage, max_dim: u32) -> DynamicImage {
 mod tests {
     use super::*;
     fn png(width: u32, height: u32) -> Vec<u8> {
-        let mut output = std::io::Cursor::new(Vec::new());
-        DynamicImage::new_rgba8(width, height)
-            .write_to(&mut output, image::ImageFormat::Png)
-            .unwrap();
-        output.into_inner()
+        let bytes: &[u8] = match (width, height) {
+            (1024, 512) => include_bytes!("../../tests/fixtures/image-limits/1024x512.png"),
+            (8193, 1) => include_bytes!("../../tests/fixtures/image-limits/8193x1.png"),
+            (4096, 2048) => include_bytes!("../../tests/fixtures/image-limits/4096x2048.png"),
+            _ => panic!("missing image fixture"),
+        };
+        bytes.to_vec()
     }
     #[test]
     fn existing_image_decoders_and_png_output_stay_enabled() {

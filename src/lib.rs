@@ -1778,7 +1778,6 @@ pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[cfg(windows)]
     #[test]
@@ -1834,11 +1833,13 @@ mod tests {
 
     #[test]
     fn list_dirty_draws_only_on_change() {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = tempfile::tempdir().unwrap();
         let storage = Storage {
-            data_dir: PathBuf::from("/tmp"),
-            config_dir: PathBuf::from("/tmp"),
-            notes_dir: PathBuf::from("/tmp"),
-            templates_dir: PathBuf::from("/tmp"),
+            data_dir: root.path().into(),
+            config_dir: root.path().into(),
+            notes_dir: root.path().into(),
+            templates_dir: root.path().into(),
             skip_dir_patterns: vec![],
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };
