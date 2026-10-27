@@ -148,6 +148,29 @@ mod tests {
     }
 
     #[test]
+    fn task_widget_file_has_a_special_glyph_and_theme_color() {
+        let theme = crate::app_theme::AppThemeColors::default();
+        for mode in [
+            IconMode::Nerd,
+            IconMode::Unicode,
+            IconMode::Emoji,
+            IconMode::None,
+        ] {
+            assert_eq!(
+                super::super::note_file_glyph("todo.txt", &theme, mode),
+                (SUCCESS.char(mode), "TODO", theme.success),
+            );
+            for id in ["notes.txt", "other-todo.txt", "folder/todo.txt", "TODO.TXT"] {
+                assert_eq!(
+                    super::super::note_file_glyph(id, &theme, mode),
+                    (FILE.char(mode), "TXT", theme.text),
+                    "{id}: {mode:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
     fn emoji_icons_keep_the_full_glyph_in_char_and_action_paths() {
         for &(name, icon) in ALL {
             let glyph = icon.get(IconMode::Emoji);
