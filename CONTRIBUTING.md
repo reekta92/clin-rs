@@ -49,6 +49,11 @@ archives so the AUR package can install the same desktop launcher and icons.
 - **Code style**: Run `cargo fmt --all` before committing
 - **Linting**: Run `cargo clippy --locked --all-targets -- -D warnings` and fix all warnings
 - **Testing**: Run `cargo test --locked`; ignored performance tests are opt-in
+- **CI test runner**: `python3 scripts/test_ci.py` builds the tests once and runs
+  the idle-view check alongside the remaining suite, including doctests. The idle
+  process has a 30-second deadline; remaining tests have five minutes. Either
+  failure fails CI and terminates the other process. CI uses line tables for
+  dev/test debug information to reduce build and cache size.
 - **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases. The changelog is historical release data; current behavior belongs in the guides.
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)

@@ -2746,9 +2746,13 @@ fn palette_workflow_base_creation_collision_retains_input_and_origin() {
     let (release, blocked) = mpsc::channel();
     pool.spawn(move || {
         started.send(()).unwrap();
-        blocked.recv().unwrap();
+        blocked
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
     });
-    ready.recv().unwrap();
+    ready
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
     f.app.notes_worker_pool = pool;
     activate(&mut f.app, "bases.create");
     replace_step_input(&mut f.app, "new-board");
@@ -3830,11 +3834,27 @@ fn palette_actions_and_active_tabs_share_category_colors() {
     use crate::actions::ActionCategory;
 
     let mut fixture = Fixture::new();
+    let mut terminal = Terminal::new(TestBackend::new(AREA.width, AREA.height)).unwrap();
+    let mut render = |app: &mut App| {
+        terminal
+            .draw(|frame| crate::ui::draw_ui(frame, app, EditFocus::Body))
+            .unwrap();
+        terminal.backend().buffer().clone()
+    };
     fixture.app.config.ui.tab_icons_only = true;
     for mode in [ViewMode::List, ViewMode::Edit, ViewMode::Bases] {
         fixture.enter(mode);
         assert!(fixture.app.open_command_palette(None));
         let tabs = fixture.app.command_palette.as_ref().unwrap().tabs.clone();
+        render(&mut fixture.app);
+        let results = fixture
+            .app
+            .command_palette
+            .as_ref()
+            .unwrap()
+            .last_results_area
+            .unwrap();
+        fixture.app.mouse_pos = Some((results.x + 2, results.y + 1));
         for &theme in crate::setup::SETUP_THEMES {
             fixture.app.config.ui.theme = theme.into();
             fixture.app.refresh_theme_from_config();
@@ -3870,17 +3890,9 @@ fn palette_actions_and_active_tabs_share_category_colors() {
                     palette.refresh_items(&fixture.app);
                     palette.state.select(None);
                     fixture.app.command_palette = Some(palette);
-                    render_palette(&mut fixture.app);
-                    let results = fixture
-                        .app
-                        .command_palette
-                        .as_ref()
-                        .unwrap()
-                        .last_results_area
-                        .unwrap();
-                    fixture.app.mouse_pos = Some((results.x + 2, results.y + 1));
-                    let buffer = render_palette(&mut fixture.app);
+                    let buffer = render(&mut fixture.app);
                     let palette = fixture.app.command_palette.as_ref().unwrap();
+                    assert_eq!(palette.last_results_area, Some(results));
                     let bar_y = results.y - 1;
                     let tab_x = (0..AREA.width)
                         .find(|&x| buffer[(x, bar_y)].symbol() == *glyph)
