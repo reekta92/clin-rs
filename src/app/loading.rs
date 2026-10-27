@@ -2426,6 +2426,89 @@ mod tests {
     }
 
     #[test]
+    fn list_preview_pages_show_every_line_at_padded_boundaries() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let _guard = crate::config::ConfigTestGuard::lock();
+        for (height, line_count) in [(8, 6), (8, 7), (8, 12), (8, 13), (3, 2)] {
+            let (_root, mut app) = make_app();
+            let markers: Vec<_> = (1..=line_count).map(|n| format!("ROW{n:03}")).collect();
+            std::fs::write(app.storage.notes_dir.join("preview.md"), markers.join("\n")).unwrap();
+            let load = crate::app::catalog::load_notes_blocking(
+                &app.storage,
+                &app.notes_worker_pool,
+                false,
+                false,
+            )
+            .unwrap();
+            app.notes = load.summaries;
+            app.list.visual_list = vec![VisualItem::Note {
+                summary_idx: 0,
+                depth: 0,
+                is_clin: false,
+                is_draw: false,
+                is_canvas: false,
+                in_virtual_pinned_folder: false,
+            }];
+            app.list.visual_index = 0;
+            app.list.preview_enabled = true;
+            app.list.last_preview_pane_width = 40;
+            app.list.last_preview_pane_height = height;
+            app.update_preview();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                app.poll_renderers();
+                if let Some(PreviewContent::Markdown(renderer)) = &app.list.preview_content
+                    && !renderer.is_pending()
+                {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "preview did not finish");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+
+            let mut terminal = Terminal::new(TestBackend::new(40, height)).unwrap();
+            let mut seen = vec![false; markers.len()];
+            for _ in 0..line_count {
+                terminal
+                    .draw(|frame| {
+                        crate::preview::draw_preview_pane(
+                            frame,
+                            frame.area(),
+                            &app.app_theme,
+                            app.list.preview_content.as_ref(),
+                            0,
+                            &app.config,
+                            Some(&app),
+                        );
+                    })
+                    .unwrap();
+                let output: String = terminal
+                    .backend()
+                    .buffer()
+                    .content
+                    .iter()
+                    .map(|cell| cell.symbol())
+                    .collect();
+                for (seen, marker) in seen.iter_mut().zip(&markers) {
+                    *seen |= output.contains(marker);
+                }
+                crate::events::handle_list_keys(
+                    &mut app,
+                    KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT),
+                );
+            }
+            for (seen, marker) in seen.iter().zip(&markers) {
+                assert!(
+                    seen,
+                    "height {height}, {line_count} lines: missing {marker}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn preview_resize_debounce_rerenders_list_and_editor() {
         let _lock = crate::config::ConfigTestGuard::lock();
         let (_td, mut app) = make_app();
