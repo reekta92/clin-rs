@@ -87,9 +87,9 @@ def build_pages(root, repository, revision):
     navigation = (
         "## Getting started\n\n"
         "- [Overview](Overview)\n"
-        "- [Installation](Overview#installation)\n"
+        "- [Installation](Installation)\n"
         "- [Quick start](Overview#quick-start)\n"
-        "- [CLI commands](Overview#cli-commands)\n\n"
+        "- [CLI commands](Cli)\n\n"
         "## Documentation\n\n" + links(docs) + "\n## Project\n\n" + links(project)
     )
     pages["Home.md"] = (
