@@ -72,6 +72,7 @@ pub(crate) fn note_file_glyph(
         .unwrap_or("");
     let (icon, label, color) = match ext.to_ascii_lowercase().as_str() {
         "md" => (icons::MARKDOWN, "MD", theme.text),
+        "txt" if note_id == "todo.txt" => (icons::SUCCESS, "TODO", theme.success),
         "txt" => (icons::FILE, "TXT", theme.text),
         "clin" => (icons::LOCK, "CX", theme.destructive),
         "draw" => (icons::DRAW, "D", theme.success),
