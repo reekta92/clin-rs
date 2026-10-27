@@ -50,9 +50,8 @@ pub(crate) fn grid_tile_rect(area: Rect, col: usize, row: usize, top_margin: u16
     )
 }
 
-/// Render one grid tile: plain border, centered icon (or text label with
-/// icons off), tag/pin glyph in the top-right corner, centered name on the
-/// bottom inner row.
+/// Render one grid tile: plain border, centered icon (or text label with lowercase
+/// badges when icons are off), corner badges, and a centered name on the bottom inner row.
 pub(crate) fn render_grid_tile(
     buf: &mut ratatui::buffer::Buffer,
     tile_rect: Rect,
@@ -117,14 +116,33 @@ pub(crate) fn render_grid_tile(
     let icon_y = inner.y;
     buf.set_style(Rect::new(inner.x, icon_y, inner.width, 1), icon_style);
     let inner_w = inner.width as usize;
+    let badges = [
+        (has_tags, crate::ui::icons::TAG, 't', theme.tag),
+        (is_pinned, crate::ui::icons::PIN, 'p', theme.pinned),
+        (
+            has_local_template,
+            crate::ui::icons::SETTINGS,
+            's',
+            theme.muted,
+        ),
+    ];
     if icon_mode == crate::config::IconMode::None {
-        let label_chars: Vec<char> = text_label.chars().collect();
-        let label_start = inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
-        for (k, ch) in label_chars.iter().enumerate() {
-            if let Some(cell) = buf.cell_mut((label_start + k as u16, icon_y)) {
-                cell.set_char(*ch).set_style(icon_style);
+        let mut spans = vec![Span::styled(text_label, icon_style)];
+        for (enabled, _, letter, color) in badges {
+            if enabled {
+                spans.push(Span::styled(
+                    letter.to_string(),
+                    icon_style.fg(if in_selection {
+                        theme.highlight_fg
+                    } else {
+                        color
+                    }),
+                ));
             }
         }
+        Line::from(spans)
+            .centered()
+            .render(Rect::new(inner.x, icon_y, inner.width, 1), buf);
     } else {
         use unicode_width::UnicodeWidthChar;
         let w = UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
@@ -135,28 +153,15 @@ pub(crate) fn render_grid_tile(
     // Pack badges tightly: the Unicode folder and pin previously occupied two cells;
     // the shared one-cell catalog now keeps their sizes consistent across layouts.
     // Use matching Font Awesome icons for the Nerd Font pin/gear to avoid mixing families.
-    // Icon-free mode leaves this corner empty.
-    let badges = [
-        (has_tags, crate::ui::icons::TAG.char(icon_mode), theme.tag),
-        (
-            is_pinned,
-            crate::ui::icons::PIN.char(icon_mode),
-            theme.pinned,
-        ),
-        (
-            has_local_template,
-            crate::ui::icons::SETTINGS.char(icon_mode),
-            theme.muted,
-        ),
-    ];
     let mut badge_right = inner.right();
     let mut badge_y = inner.y;
     let icon_width = unicode_width::UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
     let icon_right = inner.x + (inner.width.saturating_sub(icon_width) / 2) + icon_width;
-    for (enabled, glyph, color) in badges {
-        if !enabled || glyph == ' ' {
+    for (enabled, icon, _, color) in badges {
+        if !enabled || icon_mode == crate::config::IconMode::None {
             continue;
         }
+        let glyph = icon.char(icon_mode);
         let width = unicode_width::UnicodeWidthChar::width(glyph).unwrap_or(1) as u16;
         // Tagged, pinned notes can fill the corner; keep badges clear of the file glyph.
         if badge_y == inner.y && badge_right.saturating_sub(width) < icon_right {
@@ -1137,7 +1142,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             // Always folder icon — if pinned, pin glyph goes top-right
                             (crate::ui::icons::FOLDER.char(app.config.ui.icon_mode), "F")
                         };
-                        let col = if is_pinned {
+                        let col = if is_pinned
+                            && app.config.ui.icon_mode != crate::config::IconMode::None
+                        {
                             app.app_theme.pinned
                         } else if is_subnotes {
                             app.app_theme.subnote
@@ -2598,8 +2605,46 @@ mod tests {
                         })
                         .collect();
                     if mode == IconMode::None {
-                        assert!(tile_text.contains(labels[i]), "{}: {tile_text}", ids[i]);
-                        assert!(row.trim_start().starts_with("test"));
+                        let badges = if pinned { "tp" } else { "t" };
+                        assert!(
+                            tile_text.contains(&format!("{}{badges}", labels[i])),
+                            "{}: {tile_text}",
+                            ids[i]
+                        );
+                        let label_x = tile.rect.x
+                            + 1
+                            + (GRID_TILE_W - 2 - labels[i].len() as u16 - badges.len() as u16) / 2;
+                        let (_, _, color) =
+                            crate::ui::note_file_glyph(ids[i], &app.app_theme, mode);
+                        for x in label_x..label_x + labels[i].len() as u16 {
+                            assert_eq!(buffer[(x, tile.rect.y + 1)].fg, color);
+                        }
+                        let tag_x = label_x + labels[i].len() as u16;
+                        assert_eq!(buffer[(tag_x, tile.rect.y + 1)].fg, app.app_theme.tag);
+                        if pinned {
+                            assert_eq!(
+                                buffer[(tag_x + 1, tile.rect.y + 1)].fg,
+                                app.app_theme.pinned
+                            );
+                        }
+                        let prefix = if pinned { "p t test" } else { "t test" };
+                        assert!(row.trim_start().starts_with(prefix), "{row}");
+                        let name = list_buffer.content[i * 100..(i + 1) * 100]
+                            .windows(4)
+                            .find(|cells| {
+                                cells.iter().map(|cell| cell.symbol()).collect::<String>() == "test"
+                            })
+                            .unwrap();
+                        assert_eq!(
+                            name[0].fg,
+                            if pinned {
+                                app.app_theme.pinned
+                            } else if ids[i].ends_with(".clin") {
+                                app.app_theme.muted
+                            } else {
+                                Color::Reset
+                            }
+                        );
                     } else {
                         assert!(row.contains(icons[i]), "{}: {row}", ids[i]);
                         assert!(tile_text.contains(icons[i]), "{}: {tile_text}", ids[i]);
@@ -2615,6 +2660,87 @@ mod tests {
             for note in &mut app.notes {
                 note.pinned = false;
                 note.tags.clear();
+            }
+        }
+    }
+
+    #[test]
+    fn icon_free_list_badges_precede_names_in_all_list_layouts() {
+        use crate::config::{IconMode, NotesLayout};
+
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        std::fs::write(app.storage.note_path("note.md"), "# Body\n").unwrap();
+        app.notes = vec![app.storage.load_note_summary("note.md").unwrap()];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 1,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.config.ui.icon_mode = IconMode::None;
+        app.list.template_config_folders.insert("folder".into());
+        let area = Rect::new(0, 0, 80, 1);
+        for layout in [NotesLayout::Tree, NotesLayout::List, NotesLayout::Multi] {
+            app.list.notes_layout = layout;
+            for inline_info in [false, true] {
+                app.list.inline_info = inline_info;
+                for pinned in [false, true] {
+                    for tagged in [false, true] {
+                        app.notes[0].pinned = pinned;
+                        app.notes[0].tags = if tagged { vec!["tag".into()] } else { vec![] };
+                        let mut buffer = Buffer::empty(area);
+                        Widget::render(List::new([app.format_visual_item(0)]), area, &mut buffer);
+                        let text: String =
+                            buffer.content.iter().map(|cell| cell.symbol()).collect();
+                        let name = app.notes[0].file_stem();
+                        let prefix = format!(
+                            "{}{}{name}",
+                            if pinned { "p " } else { "" },
+                            if tagged { "t " } else { "" }
+                        );
+                        assert!(text.trim_start().starts_with(&prefix), "{text}");
+                        if pinned {
+                            let x = text.find(name).unwrap() as u16;
+                            assert_eq!(buffer[(x, 0)].fg, app.app_theme.pinned);
+                        }
+                        if tagged {
+                            let x = text.find("t ").unwrap() as u16;
+                            assert_eq!(buffer[(x, 0)].fg, app.app_theme.tag);
+                        }
+                    }
+                    let folder = crate::list_view::VisualItem::Folder {
+                        path: "folder".into(),
+                        name: "Folder".into(),
+                        depth: 1,
+                        is_expanded: true,
+                        note_count: 1,
+                        recursive_count: 1,
+                        stale: false,
+                        is_pinned: pinned,
+                    };
+                    let mut buffer = Buffer::empty(area);
+                    Widget::render(
+                        List::new([app.format_list_item(&folder, None)]),
+                        area,
+                        &mut buffer,
+                    );
+                    let text: String = buffer.content.iter().map(|cell| cell.symbol()).collect();
+                    let prefix = if pinned { "  s p Folder" } else { "  s Folder" };
+                    assert!(text.starts_with(prefix), "{text}");
+                    assert_eq!(buffer[(2, 0)].fg, app.app_theme.muted);
+                    let x = text.find("Folder").unwrap() as u16;
+                    assert_eq!(
+                        buffer[(x, 0)].fg,
+                        if pinned {
+                            app.app_theme.pinned
+                        } else {
+                            app.app_theme.folder
+                        }
+                    );
+                }
             }
         }
     }
@@ -2657,13 +2783,33 @@ mod tests {
                 );
                 let main = if mode == IconMode::None { 'F' } else { icon };
                 let main_width = main.width().unwrap_or(1) as u16;
-                let main_x = 1 + (GRID_TILE_W - 2 - main_width) / 2;
+                let badge_width = if mode == IconMode::None {
+                    u16::from(pin) + u16::from(template)
+                } else {
+                    0
+                };
+                let main_x = 1 + (GRID_TILE_W - 2 - main_width - badge_width) / 2;
                 assert_eq!(
                     buffer.cell((main_x, 1)).unwrap().symbol(),
                     main.to_string(),
                     "main icon moved: {mode:?}, pin={pin}, template={template}"
                 );
+                assert_eq!(buffer[(main_x, 1)].fg, app.app_theme.folder);
                 assert_eq!(buffer.cell((main_x, 2)).unwrap().symbol(), " ");
+                if mode == IconMode::None {
+                    let mut x = main_x + 1;
+                    for (enabled, letter, color) in [
+                        (pin, "p", app.app_theme.pinned),
+                        (template, "s", app.app_theme.muted),
+                    ] {
+                        if enabled {
+                            assert_eq!(buffer[(x, 1)].symbol(), letter);
+                            assert_eq!(buffer[(x, 1)].fg, color);
+                            x += 1;
+                        }
+                    }
+                    continue;
+                }
                 let mut badge_right = GRID_TILE_W - 1;
                 for (enabled, glyph) in [
                     (pin, crate::ui::icons::PIN.char(mode)),
