@@ -2,7 +2,7 @@
 
 ## Overview
 
-Subnotes are virtual notes attached to a physical parent note. Subnotes under plaintext parents remain supported. Legacy encrypted subnotes are retained but cannot be read or changed here; use the previous release to recover them first. They are browsable via a grid tab and a virtual tree folder in the notes list, with a radial braille graph and a manager popup.
+Subnotes are virtual notes attached to a physical parent note. Subnotes under plaintext parents remain supported. Legacy encrypted subnotes are retained but cannot be read or changed here; use the previous release to recover them first. They are browsable via the Subnotes section (a tab or virtual folder, depending on `list.section_tabs`) in the notes list, with a radial braille graph and a manager popup.
 
 **Source:** `src/storage.rs` (storage layer), `src/popups.rs` (popup state), `src/ui/popups.rs` (popup rendering), `src/events/mod.rs` (popup input), `src/ui/list_view.rs` (grid tab + radial graph), `src/app/loading.rs` (virtual folder)
 

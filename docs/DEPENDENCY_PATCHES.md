@@ -21,9 +21,14 @@ distrusted intermediate certificates), preserving the same compiler minimum.
 
 ## Mermaid YAML backend
 
-Clin depends on published Graf, Draw and Pinstar packages. Pinstar 1.1.4 provides
-the maintained Mermaid backend and independent image codec selection. Cargo.lock
-fixes exact versions and registry checksums.
+Clin uses registry Graf and Draw packages and Pinstar 1.1.4 pinned to Git revision
+`490fb6e3acf8c3aede483b5124ddd5bbdaa206b2` in `Cargo.toml`. The Pinstar pin supplies
+host popup fixes in addition to the maintained Mermaid backend and independent
+image codec selection. `Cargo.lock` records the Git revision and registry checksums.
+
+Cargo packaging replaces a Git dependency with its declared registry version.
+Verify the extracted package before publishing; a successful Git-checkout build
+alone does not prove that the registry package has the same adapter API.
 
 Pinstar uses published `merman-core-clin 0.6.0` from
 [the maintained fork branch](https://github.com/reekta92/merman/tree/fix/maintained-yaml-msrv-1.90).
@@ -39,30 +44,26 @@ there is no compatibility wrapper or second semantic value model.
 
 `yaml_serde` uses maintained `libyaml-rs 0.3.0`. This backend still contains
 translated libyaml unsafe code; removing the unmaintained dependency advisory
-is not a claim that all parser memory-safety risks disappear. No new advisory
-ignore was added. Source policy rejects unknown registries and Git dependencies.
+is not a claim that all parser memory-safety risks disappear. No YAML advisory ignore is required. `deny.toml` rejects unknown registries and
+Git sources except the explicitly allowed Pinstar repository. It separately
+retains unmaintained-package ignores for bincode (`RUSTSEC-2025-0141`) and paste
+(`RUSTSEC-2024-0436`); those are not resolved by the YAML backend.
 
-### Compatibility and safety proof
+### Compatibility checks
 
-New YAML contracts were run first against the old parser, then against the
-replacement. The unchanged existing snapshot corpus also passes:
+The maintained parser package owns its semantic snapshots and YAML contracts.
+When updating it, run those tests on the declared minimum Rust version, including
+tags, arbitrary mapping keys, aliases, numeric precision, quoted text, dates,
+multiline strings, CRLF, malformed/recursive aliases, and multi-document streaming.
 
-- 525 core unit tests and the complete existing semantic snapshot test.
-- New contracts for tags, arbitrary mapping keys, aliases, numeric precision,
-  quoted text, dates, multiline strings, CRLF, malformed/recursive aliases, and
-  multi-document streaming.
-- Rust 1.90 core tests, doctests, and xtask compilation.
-
-clin's existing bounded YAML visitor and lossless `yaml-edit` CST edits remain
-unchanged. Tests exercise duplicate-key rejection, expanded-node/depth bounds,
+Clin uses a bounded YAML visitor and lossless `yaml-edit` CST edits. Tests exercise duplicate-key rejection, expanded-node/depth bounds,
 malformed frontmatter, opaque tagged values, aliases, LF/CRLF, comments, body
 preservation, Base authoring, legacy opaque-data preservation, and native Mermaid
 previews. New recovery records use version 2; legacy encrypted formats remain untouched.
 
 Run `scripts/check.sh` for local Clin gates and `cargo package --locked` for
 package compilation. Shared CI also checks policy against the extracted archive.
-`cargo tree -i
-yaml_serde` should show the shared maintained backend; `unsafe-libyaml`,
+`cargo tree -i yaml_serde` should show the shared maintained backend; `unsafe-libyaml`,
 `serde_yaml`, and `serde_yaml_ng` packages must be absent from `Cargo.lock`.
 
 ### Updating or retiring the compatibility package

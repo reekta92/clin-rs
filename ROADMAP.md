@@ -1,32 +1,19 @@
 # Roadmap
 
-## Next release: 0.14 stable readiness
-
-The next release is a stabilization release. Track blockers in the
-[Release readiness milestone](https://github.com/reekta92/clin-rs/milestone/1),
-including [interactive acceptance #214](https://github.com/reekta92/clin-rs/issues/214),
-and [release checklist](docs/RELEASE_CHECKLIST.md).
-
-- [ ] Verify required native CI, the published dependency chain and minimum Rust.
-- [x] Prove the protected workflow: [Pinstar 1.1.2 release](https://github.com/reekta92/pinstar/actions/runs/39573233561).
-- [ ] Complete interactive terminal acceptance on Linux, Windows and macOS.
-
-The ideas below are an uncommitted backlog. New views and repository extractions
-need a separate scoped proposal after release blockers close.
-
-## Main Goal for v1.0.0
-Make the `clin-rs` project a modular platform that only provides main functionalities like notes view(including every popup in notes view), editor view, preview pane and add other features via library logic so they are both easier to manage and open for possible **plugins** along the way. **So all the other views except editor and notes will be a plugin/library that can be enabled/disabled according to how much does the user use it or not. Bigger views like `pinstar`, `graf` -and future ones- will have their own repositories that will be attached to the `clin-rs` as a library. These modularity also will be expanded for command palette actions as well.** Of course this is **just** a plan and might not even happen at all since managing multiple big projects is quite cumbersome.
+Project-level ideas are not release commitments. Current functionality is
+documented in the [README](README.md) and [documentation index](docs/INDEX.md).
+Use the [release checklist](docs/RELEASE_CHECKLIST.md) for candidate acceptance;
+track individual proposals and blockers in GitHub issues.
 
 ## Completed
 
-- [x] **Orthagonal connections** — arrow like connections between nodes, toggleable
+- [x] **Orthogonal connections** — arrow like connections between nodes, toggleable
 - [x] **Group titlebar** — add clickable titlebar for group nodes for easier navigation
 - [x] **Connection properties** — more properties for connections between nodes; color, type, text etc.
 - [x] **Create links** — create/remove wikilinks from graph view
 - [x] **Right-click menu** — context actions on nodes
-- [x] **Looking glass** — similar to minimap, a enlarged version of the selected note for easier identification.
+- [x] **Looking glass** — magnified graph region around the cursor.
 - [x] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
-- [x] **todo.txt** — todo.txt standardization support
 - [X] **Theme system** — 19 built-in themes, backgrounds, per-color overrides, theme switcher
 - [X] **Trash** — move notes/folders to trash, restore, empty trash
 - [X] **OCR paste** — clipboard image → OCR text (`tesseract`) via command palette
@@ -40,7 +27,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Folder management** — create, rename, move, collapse/expand
 - [X] **Tag management** — add, remove, filter by tags
 - [X] **Sorting & pinning** — sort by title/modified, pin notes to top
-- [X] **Custom keybinds** — fully rebindable via keybinds.toml
+- [X] **Custom keybinds** — configurable action maps in `keybinds/<preset>.toml`; global function keys remain reserved
 - [X] **Graph view full integration (graf)** — upstream `graf` library with clin-owned preview, search, config, keybinds, and statusline
 - [X] **Outline** — note hierarchy from headers
 - [X] **Text search** — search note content via internal `SearchWorker`
@@ -52,7 +39,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **URL import** — fetch article content as formatted markdown
 - [X] **Grid view notes** — file manager like grid/icon view in notes list
 - [X] **Daily goals** — daily word count and note count goals with in-app progress bars
-- [X] **Calendar** — rolling-week activity heatmap widget in the notes list view
+- [X] **Activity heatmap** — rolling-week note activity in the Notes widget strip
 
 - [X] **Setup wizard** — first-run onboarding: vault, theme, background, hint bar style, icons, notes layout, feature presets, and keybinds with live preview
 - [X] **Modular custom themes** — drop-in TOML themes in the active config directory's themes/ subdirectory, no recompile
@@ -83,7 +70,6 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Preview pane enhancements** — zoom-to-cursor, mouse-drag panning, in-memory cache, scale-to-fill on expand
 - [X] **Tree folder enhancements** — expand-all, expand-to-level (with count prefix), recursive folder counts in header, folder state persistence, dim empty folders
 - [X] **Scrollbars** — scrollbars on all scrollable panes
-- [X] **Global hover highlights** — mouse hover highlights across all interactive TUI panels and lists
 - [X] **Config-gated markdown features** — per-feature toggles for syntax highlighting, code theme, code line numbers, preview wrap, wrap indicator, link URL max length
 - [X] **Hint bar style customization** — custom `hint_bar_style` options (`classic`, `sharp`, `rounded`, `slanted`, `bubbles`, `blurred`, `chips`, `brackets`, `compact`, `sharp_gradient`, `rounded_gradient`, `slanted_gradient`, `hexagon`)
 - [X] **CLI mode** — list/new/open/cat/quick/search, config, storage, keybind, template, and cache tools via `clin` subcommands
@@ -93,7 +79,12 @@ Make the `clin-rs` project a modular platform that only provides main functional
 - [X] **Custom template variables** — folder-local variables and their configuration UI
 - [X] **Bases** — public `.base` queries, four layouts, native editing and live embeds
 
-## Planned
+- [x] **Properties edit** — hidden F7 properties/raw-YAML region above Body, lossless edits, managed-output policy, guarded recovery, and live Bases host metadata
+- [x] **Interactive calendar** — month/week/day/agenda with scheduled events and linked notes; see [Calendar](docs/CALENDAR.md)
+- [x] **Calendar integration** — iCalendar import/export and manual CalDAV synchronization
+- [x] **Kanban boards** — group public notes by a typed property in Bases.
+
+## Ideas
 
 #### General
 - [ ] **More filtypes** — more text filetypes(`.org`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
@@ -104,14 +95,12 @@ Make the `clin-rs` project a modular platform that only provides main functional
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
-- [x] **Properties edit** — hidden F7 properties/raw-YAML region above Body, lossless edits, managed-output policy, guarded recovery, and live Bases host metadata
 
 #### Graph View
 - [ ] **Date/time linking** — categorize nodes by note date
 - [ ] **Assign tags** — tag notes directly from graph
 
 #### Pinstar View
-- [ ] **Insert note links** — embed note references as objects
 - [ ] **QOL** — UI improvements for telling the state of the node, text alignment options for nodes
 - [ ] **Additional node properties** — beyond shipped titles and text-node shapes, such as configurable border styles
 - [ ] **Additional node types** — beyond shipped text/file/link/group nodes (image files already render through terminal graphics or placeholders)
@@ -129,10 +118,7 @@ Make the `clin-rs` project a modular platform that only provides main functional
 
 #### To-Do View & Calendar
 - [ ] **To-do view** — a new view for specifically managing to-dos
-- [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
-- [x] **Interactive calendar** — month/week/day/agenda with scheduled events and linked notes; see [Calendar](docs/CALENDAR.md)
-- [x] **Calendar integration** — iCalendar import/export and manual CalDAV synchronization
 
 #### Project Management View
 - [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.

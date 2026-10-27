@@ -6,7 +6,7 @@ Press unmodified `F6` for editor settings, applicable body commands, shared sett
 
 A built-in title/body editor with find popup, soft-wrap, sidebars with wikilink
 previews, and external-editor handoff. `Esc` saves once when returning to
-notes list.
+the calling view (normally Notes).
 
 **Source:** `src/editor.rs` (state), `src/editor_document.rs` (body buffer,
 revision, snapshot, and change contract), `src/editor_session.rs` (in-process
@@ -86,10 +86,10 @@ no temporary files containing note text are created.
 
 ## Focus and Preview
 
-The current editor has **Title**, **Body**, and visible **Sidebar** focus; it has no READ/EDIT modal state or `EditMode` enum. Typing edits the focused text field directly. `Ctrl+t` cycles focus; `Tab` inserts a tab in the body. Presets change navigation outside text inputs, not the body editor.
+The editor has **Title**, **Body**, visible **Frontmatter**, and **Sidebar** focus; typing is not modal. Typing edits the focused text field directly. `Ctrl+t` cycles focus; `Tab` inserts a tab in the body. Presets change navigation outside text inputs, not the body editor.
 
 `Ctrl+p` toggles the Markdown preview, `Alt+m` toggles Mermaid diagram rendering,
-and `F11` expands the preview. `Esc` first closes an active popup/link preview; otherwise it saves and returns directly to List. `Ctrl+s` saves without leaving.
+and `F11` expands the preview. `Esc` first closes an active popup/link preview; otherwise it saves and restores the return view (normally Notes, or Calendar/Bases when entered from there). `Ctrl+s` saves without leaving.
 
 `edit_mode_highlight` (default `true`) controls Markdown syntax highlighting over the editable body, despite its historical name. `ghost_syntax` dims Markdown delimiters, and `extended_markdown_features` enables additional syntax forms.
 
@@ -203,6 +203,7 @@ The `[editor]` section in `config.toml`:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
+| `frontmatter_mode` | enum | `"properties"` | F7 presentation: `"properties"` or `"raw_yaml"` |
 | `external_command` | String | — | External editor command (e.g. `"nvim"`, `"code"`) |
 | `external_enabled` | bool | `false` | Enable external editor mode |
 | `preview_enabled` | bool | `false` | Show markdown preview panel by default |

@@ -6,8 +6,8 @@ Thank you for considering contributing to clin! Here's how to get started.
 
 1. Fork and clone the repository
 2. Install Rust 1.90.0+ via [rustup](https://rustup.rs)
-3. Build: `cargo build`
-4. Run: `cargo run`
+3. Build: `cargo build --locked`
+4. Run against a disposable vault: `cargo run --locked -- --vault /tmp/clin-dev-vault`
 
 ## Releasing
 
@@ -49,7 +49,7 @@ archives so the AUR package can install the same desktop launcher and icons.
 - **Code style**: Run `cargo fmt --all` before committing
 - **Linting**: Run `cargo clippy --locked --all-targets -- -D warnings` and fix all warnings
 - **Testing**: Run `cargo test --locked`; ignored performance tests are opt-in
-- **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases.
+- **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases. The changelog is historical release data; current behavior belongs in the guides.
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 
@@ -88,7 +88,7 @@ python3 -m unittest discover -s .github/scripts -p 'test_check_*.py' -v
 
 ## Documentation and Wiki
 
-The [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) is generated from all root-level Markdown files and `docs/**/*.md`. Update these source files through the usual pull request process; do not edit generated wiki pages directly, because the next sync overwrites those edits. Local `development/` files and graphify artifacts are not published.
+The [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) is generated from all root-level Markdown files and `docs/**/*.md`. Update these source files through the usual pull request process; do not edit generated wiki pages directly, because the next sync overwrites those edits. Keep session plans, implementation reports, personal paths, and run logs out of these published sources. Local scratch files and graph artifacts are not published.
 
 `.github/workflows/wiki.yml` tests the generator on documentation pull requests and publishes after relevant changes reach `main`. Maintainers can also run **Actions → Sync Wiki → Run workflow** on `main`. New documentation files are discovered automatically; removed files are removed from the wiki. Handwritten pages outside the generated page names are preserved.
 
@@ -120,11 +120,11 @@ workspace setup, coordinated changes and [release acceptance](docs/RELEASE_CHECK
 
 ## Bug Reports
 
-Use the [Bug Report](https://github.com/reekta92/clin-rs/issues/new?template=bug_report.md) issue template.
+Open a [bug report](https://github.com/reekta92/clin-rs/issues/new) with reproduction steps, Clin version, OS, terminal, and relevant configuration. Use a disposable example vault; omit private notes and credentials.
 
 ## Feature Requests
 
-Use the [Feature Request](https://github.com/reekta92/clin-rs/issues/new?template=feature_request.md) issue template.
+Open a [feature request](https://github.com/reekta92/clin-rs/issues/new) describing the use case and expected behavior.
 
 ## License
 

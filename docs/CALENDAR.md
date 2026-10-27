@@ -58,7 +58,7 @@ Use the editor's **Open Link Preview** binding (`Alt+l` by default) with the cur
 | `s`, `r` | Sync CalDAV / reload from disk |
 | `c` | Resolve a sync conflict |
 | `?`, `F1` | Calendar help |
-| `Esc`, `q` | Return to Notes |
+| `Esc`, `q` | Return to the calling view (normally Notes) |
 
 View tabs and dates also accept clicks. Scroll selects events; in Day it scrolls hours. The command palette offers **Calendar: New Event**, **Calendar: Import iCalendar**, **Calendar: Export iCalendar**, and **Calendar: Sync CalDAV** while Calendar is active. Forms and confirmations retain keyboard ownership.
 

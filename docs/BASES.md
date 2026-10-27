@@ -46,7 +46,7 @@ Default bindings include:
 | `z` | Collapse/expand focused Table/List/Cards group |
 | `[` / `]` | Focus previous/next displayed property, including inside Kanban cards |
 | `v` | Preview configured public/remote cover image |
-| `e` / `F2`, `Delete` | Edit/clear a note property |
+| `e`, `Delete` | Edit/clear a note property |
 | `Space`, `Ctrl+a` | Toggle selection/select visible results |
 | `m` | Set grouping property on selected notes; blank clears the property |
 | `n` | Create a Markdown note; Kanban uses the focused column |
@@ -65,6 +65,43 @@ The header shows plain tabs for the document’s saved views and the document ID
 Statusline variables: `{bases_file}`, `{bases_rows}`, `{bases_matched}`, `{bases_selected}`,
 `{bases_view}` and `{bases_property}`. Legacy count/selection/index variables use
 public query state in Bases, separate from the ordinary note catalog.
+
+## File and query format
+
+A `.base` file contains standalone YAML without Markdown frontmatter delimiters.
+For example, this table lists Markdown files with numeric `price` and `amount`
+properties, calculates totals, and sorts largest first:
+
+```yaml
+filters:
+  and:
+    - 'file.ext == "md"'
+    - 'file.hasProperty("price") && file.hasProperty("amount")'
+formulas:
+  total: 'note.price * note.amount'
+views:
+  - type: table
+    name: Totals
+    order: [file.name, price, amount, formula.total]
+    sort:
+      - property: formula.total
+        direction: DESC
+    summaries:
+      formula.total: Sum
+```
+
+Global `filters` and each view's `filters` both apply. Filters accept an expression
+or nested `and`, `or`, and `not` lists. `order` selects displayed properties;
+`sort` orders rows using `ASC`/`DESC`. `limit` caps displayed rows, while `groupBy`
+and `groupOrder` control groups. Property labels use top-level `properties` entries
+with `displayName`; top-level `summaries` defines custom summary expressions.
+
+Expressions can reference `file` metadata, `note` properties, `formula` values,
+and the public host through `this`. They support typed arithmetic, comparisons,
+boolean operations, lists, dates, links, and supported type methods. This is a
+bounded native expression evaluator; arbitrary JavaScript and plugin code do not
+execute. Unknown functions, cycles, invalid types, and exhausted resource budgets
+produce diagnostics. Declared note-property types come from `.obsidian/types.json`.
 
 ## Table and List settings
 
@@ -239,12 +276,10 @@ The editor's hidden **F7** properties/raw-YAML region can edit custom and manage
 
 ## Acceptance and compatibility
 
-[BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) records the Notes-design audit, native
-workflow checks, release measurements, and reproduction checklist. File round
-trips and native terminal workflows are tested. Obsidian 1.14.3 runtime comparison
-was explicitly waived; no runtime-parity claim is made. Simultaneous Obsidian/clin
-writers are unsupported. Linux acceptance does not establish Windows/macOS or Nix
-build parity.
+[BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) describes reproducible automated and
+manual checks. Obsidian 1.14.3 runtime parity has not been established.
+Simultaneous Obsidian/Clin writers are unsupported. Linux tests do not establish
+Windows/macOS or Nix build parity.
 
 Implementation: `src/bases/`; guarded document/property storage:
 `src/storage/{documents.rs,metadata.rs,public_moves.rs,document_recovery.rs}` and
