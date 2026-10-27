@@ -1409,15 +1409,7 @@ where
             dirty |= canvas.poll_images();
         }
 
-        if let Some(ref idx) = app.note_index
-            && let Some(expiry) = idx.min_membership_expiry
-            && crate::ui::now_unix_secs() >= expiry
-        {
-            app.rebuild_note_index();
-            if app.mode == ViewMode::List {
-                dirty = true;
-            }
-        }
+        dirty |= app.refresh_expired_smart_folders();
 
         if app.needs_full_redraw {
             terminal.clear()?;

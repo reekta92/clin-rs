@@ -612,7 +612,7 @@ impl Storage {
                     };
 
                     if accepted {
-                        let metadata = match entry.metadata().or_else(|_| fs::metadata(&path)) {
+                        let metadata = match fs::metadata(&path) {
                             Ok(m) => m,
                             Err(err) => {
                                 complete = false;
@@ -624,6 +624,9 @@ impl Storage {
                                 continue;
                             }
                         };
+                        if !metadata.is_file() {
+                            continue;
+                        }
 
                         let modified_nanos = metadata.modified().ok().and_then(|t| {
                             t.duration_since(std::time::UNIX_EPOCH)
@@ -724,7 +727,7 @@ impl Storage {
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         } else {
-            let content = fs::read_to_string(&path)
+            let content = documents::read_bounded_text(&path, 16 * 1024 * 1024)
                 .with_context(|| format!("load_note_summary read failed for {}", path.display()))?;
             let (fm, plain_content) = frontmatter::parse(&content);
 

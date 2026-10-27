@@ -126,9 +126,9 @@ impl Action for OcrPasteAction {
             anyhow::bail!("Tesseract failed: {err}");
         }
 
-        let extracted_text =
-            crate::fsutil::sanitize_for_terminal(String::from_utf8_lossy(&output.stdout).trim())
-                .into_owned();
+        let extracted_text = super::import::sanitize_import_content(
+            String::from_utf8_lossy(&output.stdout).trim().to_owned(),
+        );
 
         if extracted_text.is_empty() {
             anyhow::bail!("OCR extracted no text.");
@@ -307,4 +307,62 @@ pub(crate) fn insert_image_reference(app: &mut App, rel_path: &str) -> Result<()
         }
     }
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    #[test]
+    fn ocr_preserves_lines_and_tabs_in_the_saved_note() -> Result<()> {
+        let Ok(root) = std::env::var("CLIN_OCR_TEST_ROOT") else {
+            let root = tempfile::tempdir()?;
+            DynamicImage::new_rgba8(1, 1).save(root.path().join("image.png"))?;
+            for (name, script) in [
+                (
+                    "wl-paste",
+                    "#!/bin/sh\nexec /bin/cat \"$CLIN_OCR_TEST_ROOT/image.png\"\n",
+                ),
+                (
+                    "tesseract",
+                    "#!/bin/sh\nprintf 'first line\\nsecond line\\tcolumn\\007\\n'\n",
+                ),
+            ] {
+                let path = root.path().join(name);
+                fs::write(&path, script)?;
+                fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+            }
+            let output = Command::new(std::env::current_exe()?)
+                .args([
+                    "--exact",
+                    "actions::ocr::tests::ocr_preserves_lines_and_tabs_in_the_saved_note",
+                ])
+                .env("CLIN_OCR_TEST_ROOT", root.path())
+                .env("WAYLAND_DISPLAY", "test")
+                .env("PATH", root.path())
+                .output()?;
+            assert!(output.status.success(), "{output:?}");
+            return Ok(());
+        };
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let vault = std::path::Path::new(&root).join("vault");
+        fs::create_dir_all(&vault)?;
+        let storage = crate::storage::Storage {
+            data_dir: vault.clone(),
+            notes_dir: vault.clone(),
+            config_dir: vault.clone(),
+            templates_dir: vault.join(".clin/templates"),
+            skip_dir_patterns: Vec::new(),
+            frontmatter_policy: crate::frontmatter::WritePolicy::default(),
+        };
+        storage.create_document("note.md", "original")?;
+        let mut app = App::new(storage)?;
+        OcrPasteAction.execute(&mut app, Some("note.md"))?;
+        assert_eq!(
+            app.storage.load_note("note.md")?.content,
+            "original\n\n---\n**OCR Extract:**\nfirst line\nsecond line\tcolumn"
+        );
+        Ok(())
+    }
 }

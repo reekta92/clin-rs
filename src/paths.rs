@@ -80,20 +80,39 @@ impl AppPaths {
     /// `config.toml`, `keybinds/`, `themes/`, and same-root legacy files).
     /// Data/cache roots always come from `ProjectDirs`.
     pub fn discover(config_file: PathBuf) -> Result<Self> {
-        let proj = directories::ProjectDirs::from("com", "clin", "clin")
-            .context("could not determine application directories")?;
+        #[cfg(test)]
+        {
+            static SUPPORT: std::sync::LazyLock<tempfile::TempDir> =
+                std::sync::LazyLock::new(|| {
+                    tempfile::tempdir().expect("isolated test support paths")
+                });
+            let root = SUPPORT
+                .path()
+                .join(format!("{:016x}", vault_cache_digest(&config_file)));
+            Self::from_roots(
+                config_file,
+                root.join("config"),
+                root.join("data"),
+                root.join("cache"),
+            )
+        }
+        #[cfg(not(test))]
+        {
+            let proj = directories::ProjectDirs::from("com", "clin", "clin")
+                .context("could not determine application directories")?;
 
-        let config_dir = config_file
-            .parent()
-            .context("config path has no parent")?
-            .to_path_buf();
+            let config_dir = config_file
+                .parent()
+                .context("config path has no parent")?
+                .to_path_buf();
 
-        Ok(Self {
-            config_dir,
-            default_config_dir: proj.config_dir().to_path_buf(),
-            data_local_dir: proj.data_local_dir().to_path_buf(),
-            cache_dir: proj.cache_dir().to_path_buf(),
-        })
+            Ok(Self {
+                config_dir,
+                default_config_dir: proj.config_dir().to_path_buf(),
+                data_local_dir: proj.data_local_dir().to_path_buf(),
+                cache_dir: proj.cache_dir().to_path_buf(),
+            })
+        }
     }
 
     /// Construct from explicit roots (for testing).
@@ -199,6 +218,23 @@ mod tests {
             paths.summary_cache_path(),
             cache.join("note_cache_plain_v4.bin")
         );
+    }
+
+    #[test]
+    fn discovery_isolates_support_files_for_each_test_profile() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let config = first.path().join("config.toml");
+        let paths = AppPaths::discover(config.clone()).unwrap();
+        let again = AppPaths::discover(config).unwrap();
+        let other = AppPaths::discover(second.path().join("config.toml")).unwrap();
+        let real = directories::ProjectDirs::from("com", "clin", "clin").unwrap();
+        assert_ne!(paths.data_local_dir(), real.data_local_dir());
+        assert_ne!(paths.cache_dir(), real.cache_dir());
+        assert_ne!(paths.default_config_dir, real.config_dir());
+        assert_eq!(paths.state_path(), again.state_path());
+        assert_ne!(paths.state_path(), other.state_path());
+        assert_ne!(paths.cache_dir(), other.cache_dir());
     }
 
     #[test]

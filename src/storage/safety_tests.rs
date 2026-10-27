@@ -12,6 +12,36 @@ fn fixture(root: &Path) -> Storage {
 }
 
 #[test]
+fn summaries_reject_files_over_the_document_limit() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let storage = fixture(root.path());
+    let path = root.path().join("large.md");
+    let file = fs::File::create(path)?;
+    file.set_len(16 * 1024 * 1024 + 1)?;
+    assert!(storage.load_note_summary("large.md").is_err());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn scans_and_document_reads_reject_named_pipes() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let storage = fixture(root.path());
+    let path = root.path().join("pipe.md");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()?
+            .success()
+    );
+    assert_eq!(storage.list_note_ids(false, false)?, Vec::<String>::new());
+    assert_eq!(storage.list_note_ids(false, true)?, Vec::<String>::new());
+    assert!(storage.load_note_summary("pipe.md").is_err());
+    assert!(storage.load_document("pipe.md").is_err());
+    Ok(())
+}
+
+#[test]
 fn keybinds_follow_the_active_configuration_directory() -> Result<()> {
     let _guard = crate::config::ConfigTestGuard::lock();
     let root = tempfile::tempdir()?;

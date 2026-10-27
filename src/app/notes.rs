@@ -1813,7 +1813,7 @@ impl App {
             }
         }
 
-        let _secret = SecretTempFile::new(temp_file_path.clone());
+        let secret = SecretTempFile::new(temp_file_path.clone());
 
         let args: Vec<String> = vec![temp_file_path.to_string_lossy().into_owned()];
         let (result, editor_prog) = self.run_in_external_editor(&args);
@@ -1834,7 +1834,10 @@ impl App {
                         self.set_temporary_status_static("No changes made in external editor.");
                     }
                 } else {
-                    self.set_temporary_status_static("Failed to read from temp file.");
+                    self.set_temporary_status(&format!(
+                        "Failed to read editor output; file retained at {}",
+                        secret.persist().display()
+                    ));
                     self.messages.push(
                         "Failed to read from temp file.".to_string(),
                         crate::app::messages::MessageSeverity::Warning,
@@ -1843,7 +1846,8 @@ impl App {
             }
             Ok(status) => {
                 self.set_temporary_status(&format!(
-                    "Editor '{editor_prog}' exited with status: {status}"
+                    "Editor '{editor_prog}' exited with status: {status}; file retained at {}",
+                    secret.persist().display()
                 ));
             }
             Err(e) => {
@@ -1857,6 +1861,87 @@ impl App {
 mod external_editor_tests {
     use super::*;
     use std::{fs, os::unix::fs::PermissionsExt};
+
+    #[test]
+    fn external_preview_is_private_and_cleans_up_after_success_or_failure() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = tempfile::tempdir()?;
+        let mut config = crate::config::ClinConfig::default();
+        config.core.storage_path = Some(root.path().join("vault"));
+        config.save()?;
+        let (storage, _) = crate::storage::Storage::init();
+        let mut app = App::new(storage?)?;
+        app.storage.create_document("note.md", "private preview")?;
+        app.open_note_at_line("note.md", None);
+        let script = root.path().join("preview");
+        let argument = root.path().join("argument");
+        let snapshot = root.path().join("snapshot");
+        for code in [0, 1] {
+            fs::write(
+                &script,
+                format!(
+                    "#!/bin/sh\nprintf '%s' \"$1\" > '{}'\ncp -p \"$1\" '{}'\nexit {code}\n",
+                    argument.display(),
+                    snapshot.display(),
+                ),
+            )?;
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o700))?;
+            app.config.core.preview_command = Some(script.to_string_lossy().into_owned());
+            app.open_external_preview();
+            assert_eq!(fs::read_to_string(&snapshot)?, "private preview");
+            assert_eq!(fs::metadata(&snapshot)?.permissions().mode() & 0o777, 0o600);
+            assert!(!std::path::Path::new(&fs::read_to_string(&argument)?).exists());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn failed_subnote_editor_output_is_retained() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = tempfile::tempdir()?;
+        let mut config = crate::config::ClinConfig::default();
+        config.core.storage_path = Some(root.path().join("vault"));
+        config.save()?;
+        let (storage, _) = crate::storage::Storage::init();
+        let mut app = App::new(storage?)?;
+        app.storage.set_subnotes(
+            "note.md",
+            &[crate::storage::SubNote {
+                id: "child".into(),
+                title: "Child".into(),
+                content: "original".into(),
+                updated_at: 1,
+            }],
+        )?;
+        let script = root.path().join("editor");
+        let argument = root.path().join("argument");
+        for (code, output, expected) in [
+            (1, "new edits", b"new edits".as_slice()),
+            (0, "\\377", b"\xff".as_slice()),
+        ] {
+            fs::write(
+                &script,
+                format!(
+                    "#!/bin/sh\nprintf '%s' \"$1\" > '{}'\nprintf '{output}' > \"$1\"\nexit {code}\n",
+                    argument.display(),
+                ),
+            )?;
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o700))?;
+            app.editor.external_editor = Some(script.to_string_lossy().into_owned());
+            app.open_subnotes_popup_for("note.md", None);
+            app.open_subnote_in_external_editor();
+            let retained = std::path::Path::new(app.status.rsplit("retained at ").next().unwrap());
+            assert_eq!(fs::read(retained)?, expected);
+            assert!(!std::path::Path::new(&fs::read_to_string(&argument)?).exists());
+            let Some(crate::popups::ActivePopup::Subnotes(popup)) = &app.popups.active else {
+                panic!("subnotes popup lost");
+            };
+            assert_eq!(popup.subnotes[0].content, "original");
+            assert_eq!(app.storage.get_subnotes("note.md")?[0].content, "original");
+            fs::remove_file(retained)?;
+        }
+        Ok(())
+    }
 
     #[test]
     fn external_editor_conflicts_keep_edits_even_when_recovery_fails() -> Result<()> {
