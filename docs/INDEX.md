@@ -18,7 +18,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 ## Views
 
 - [BASES.md](BASES.md) — Native Bases: four layouts, public queries, guarded editing, live embeds, safety and acceptance
-- [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) — Native audit, release measurements and manual checks
+- [BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) — Reproducible native workflow and compatibility checks
 - [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree layout, note format chooser, preview pane
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
 - [CALENDAR.md](CALENDAR.md) — Month/week/day/agenda, scheduling, note references, iCalendar and CalDAV

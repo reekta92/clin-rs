@@ -1,8 +1,7 @@
 # Performance checks and resource ownership
 
-This pass optimizes clin-rs without changing the pinstar, graf, Draw, or textarea dependencies. It preserves visible Graph physics, image filtering, editor save/conflict checks, and recovery flushing.
+## Runtime ownership
 
-## Changes
 
 - Static views draw only after input, a resize, or a relevant background update. Completions are polled before drawing. Resize and pointer-move bursts are coalesced; drag samples and keys following a view transition are retained.
 - Hidden Markdown jobs release their result receivers and cancel work. Returning to a view resumes unfinished rendering while retaining the displayed document and scroll position. Result delivery observes cancellation even when its bounded channel is full.
@@ -15,52 +14,42 @@ This pass optimizes clin-rs without changing the pinstar, graf, Draw, or textare
 - Calendar expansion and note-link metadata scans run on the existing worker pool. Results are keyed by range/revision; event rendering and edits share the same immutable store snapshot. Reload/update cancels obsolete work, and hidden note-link jobs are cancelled.
 - Editor serialization and status rendering share a revision-cached body snapshot. `{modified}` compares against the loaded save baseline without reading files during rendering and updates after undo, save, and pending property input.
 
-## Measurements
+## Benchmark scope
 
-Measured on Linux, Ryzen 7 7840HS (16 logical CPUs), approximately 31 GiB RAM, Rust release builds. Fixtures are disposable and synthetic; filesystem caches are warm. These measurements are diagnostic results, not guarantees for other hardware or network filesystems.
+Benchmarks use synthetic disposable vaults and Ratatui TestBackend buffers.
+Frame timings exclude terminal transport and most background I/O. Record the
+candidate revision, OS, CPU, compiler, profile, fixture, and filesystem conditions
+with results; measurements do not guarantee performance on other hardware.
 
-The mixed-view benchmark uses 1k/10k/50k notes, a selected 5k-line document, a 500-node/499-edge Canvas, a 500-element drawing, and a 120×40 terminal buffer. Graph uses its normal configured limits. It measures 100 frames per view, 100 alternating navigation keys plus drawing, and the time to enter each view. The four Notes layouts also render a populated folder containing the full note count. Frame timings exclude terminal transport and most background I/O. Bases has a separate 5k-note acceptance benchmark.
+| Benchmark | Workload | Enforced limits |
+| --- | --- | --- |
+| Mixed views | 1k/10k/50k notes, 5k-line note, 500-node Canvas, 500-element drawing, 120×40 buffer; nine views and four Notes layouts | With `CLIN_PERF_ENFORCE=1`, frame and non-editor navigation/frame p95 ≤16 ms |
+| Editor persistence | Input, drawing, recovery and saves for 5k/100k-line plaintext notes | With `CLIN_PERF_ENFORCE=1`, input/render cycle p95 <50 ms |
+| Bases | 5,000 notes, 500 attachments, four layouts, queries, watcher refresh and two live embeds | Cold query ≤3 s; warm query p95 ≤150 ms; refresh p95 ≤500 ms; render p95 ≤16 ms; input ≤50 ms; cancellation ≤100 ms; incremental RSS ≤128 MiB when measurable |
+| Resource soak (Linux) | At least ten minutes and 100 cycles through nine views, 1k-note vault, actual image worker and watcher | Retained RSS growth ≤128 MiB; at most four additional threads/descriptors after warmup |
 
-At 50k notes, all tested frames and navigation/frame pairs passed the enforced 16 ms p95 gate:
-
-| View | Enter once | Frame p95 | Navigation + frame p95 |
-| --- | ---: | ---: | ---: |
-| Notes | 0.011 ms | 0.087 ms | 0.125 ms |
-| Edit | 2.176 ms | 0.318 ms | See persistence workload below |
-| Graph | 41.476 ms | 1.398 ms | 1.671 ms |
-| Canvas | 2.861 ms | 0.571 ms | 0.661 ms |
-| Draw | 0.685 ms | 0.103 ms | 0.159 ms |
-| Outline | 0.641 ms | 0.145 ms | 0.199 ms |
-| Help | 0.271 ms | 0.293 ms | 0.301 ms |
-| Calendar | 0.035 ms | 0.115 ms | 0.127 ms |
-| Setup | 0.021 ms | 0.102 ms | 0.158 ms |
-
-Populated 50k-note Grid/Tree/List/Multi layouts measured 0.131–0.136 ms frame p95. These rendering figures do not include rebuilding the catalog or the visual list.
-
-The ten-minute resource run completed 7,983 full cycles (71,847 view entries). After warmup, RSS went from 42,212 to 42,604 KiB (+392 KiB); threads stayed at 14 and descriptors at 7 (peak 8). A final-release 100-cycle confirmation ended at 42,080 KiB, with 14 threads and 7 descriptors.
-
-The editor benchmark includes input, drawing, and durable recovery/save handling over 400 plain-text edit cycles. Repeated runs measured 0.676–0.798 ms p95 at 5k lines and 9.522–10.973 ms at 100k lines, against pre-change baselines of 0.666 ms and 10.944 ms. This does not establish a reliable keystroke speedup; the main gains here are reduced idle work, bounded background work, and avoiding UI-thread I/O/encoding. The separate mixed-content textarea limit remains below.
-
-Bases acceptance passed: four layouts measured 0.136–0.891 ms frame p95; cold metadata plus first query took 404 ms; full warm queries measured 64 ms p95. Watcher-to-result latency was 333 ms p95 including the existing 250 ms debounce. Retained Bases RSS was 122,768 KiB over the host baseline, within its 128 MiB gate. Reopening two live embeds plateaued around 160 MiB total RSS.
-
-Direct-open PTY checks confirmed Editor, Canvas, Draw, and Bases terminal output. The 1024×768 checkerboard image produced halfblock image glyphs. Their three-second idle samples emitted no further terminal bytes and used 0–1 CPU ticks (0–0.33% of one core at this sampling resolution). The PTY keyboard driver did not reliably navigate to the other views; those interactions are covered by the in-process event tests and benchmarks, not claimed as native-terminal validation.
-
-Verification passed: 778 unit tests, 20 integration tests, formatting, Clippy with warnings denied, dependency policy, and all-target Rust 1.90 checks. Nine opt-in tests remain ignored in the ordinary suite; the view, editor persistence, Bases acceptance, and resource tests above were run explicitly.
+Bases RSS excludes decoded covers and standalone evaluator microbenchmarks;
+the host catalog is available before its cold-query timer. Bases asserts that
+all 5,000 rows remain present. The benchmark retains its temporary vault and
+prints the path for inspection.
 
 ## Reproduction
 
 Use temporary XDG directories so tests cannot mix their state with an installed app:
 
 ```sh
-export XDG_DATA_HOME=/tmp/clin-performance-data
-export XDG_STATE_HOME=/tmp/clin-performance-state
+CLIN_PERF_ROOT=$(mktemp -d)
+export XDG_CONFIG_HOME="$CLIN_PERF_ROOT/config"
+export XDG_DATA_HOME="$CLIN_PERF_ROOT/data"
+export XDG_STATE_HOME="$CLIN_PERF_ROOT/state"
+export XDG_CACHE_HOME="$CLIN_PERF_ROOT/cache"
 cargo test --locked --offline -- --test-threads=4
 cargo clippy --locked --offline --all-targets -- -D warnings
 scripts/check.sh fmt deny msrv
 
 CLIN_PERF_ENFORCE=1 cargo test --locked --offline --release --lib \
   view_perf_tests::mixed_vault_view_performance -- --ignored --nocapture --test-threads=1
-cargo test --locked --offline --release --lib \
+CLIN_PERF_ENFORCE=1 cargo test --locked --offline --release --lib \
   editor_session::safety_tests::full_editor_persistence_perf -- --ignored --nocapture --test-threads=1
 cargo test --locked --offline --release --lib \
   bases::workflow_tests::acceptance::native_5000_note_acceptance -- --ignored --nocapture --test-threads=1
@@ -72,10 +61,17 @@ The Linux soak defaults to ten minutes and at least 100 complete cycles through 
 
 The ordinary regression suite also checks idle rendering (at most three frames in 650 ms), saturated image queues, cancellation/resume, stale image results, image-owner routing, Calendar snapshot consistency, catalog selection, and save/recovery behavior. Some image tests require permission to bind a loopback server. `cargo-deny` needs a writable advisory-database lock.
 
-## Remaining limits
+## Limits
 
-- The 100k-line mixed-content textarea edit-pair baseline remains approximately 37–38 ms p95. The raw upstream textarea has the same behavior; its whole-document screen-map rebuild is outside this clin-rs-only change. The plain-text persistence benchmark below exercises a different workload.
-- View activation remains synchronous where measured local openings fit the 50 ms budget. Cold/network-filesystem activation is unmeasured.
-- Canvas image queues and native Canvas protocol encoding remain owned by pinstar. clin-rs removes unconditional Canvas redraws and repeated host checks; upstream cache/queue behavior is unchanged. Canvas still polls quickly when image support is present because the dependency exposes no pending-work query.
-- Cancellation cannot interrupt a filesystem syscall or a decoder already inside a native operation. It prevents stale installation and cancels queued/result-delivery work.
-- Sixel/iTerm and macOS/Windows native terminal rendering were not validated on this Linux host. Automated tests cover Kitty first-transmission behavior and halfblock image encoding. A GUI Kitty launch did not expose its requested control socket, so no GUI visual claim is made.
+- The body editor uses upstream ratatui-textarea. Whole-document screen-map work
+  can dominate large mixed-content notes; the plaintext persistence benchmark
+  measures a different workload.
+- Some view activation remains synchronous. Check cold and network filesystems
+  separately from warm synthetic fixtures.
+- Canvas image queues and protocol encoding belong to Pinstar. Canvas polls
+  while image support is present because the dependency exposes no pending-work
+  query.
+- Cancellation cannot interrupt an active filesystem syscall or codec operation.
+  It prevents stale installation and cancels queued/result-delivery work.
+- TestBackend does not validate real terminal graphics, input, or platform
+  integration. Follow [release acceptance](RELEASE_CHECKLIST.md) for those checks.

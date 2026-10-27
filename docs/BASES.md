@@ -239,12 +239,10 @@ The editor's hidden **F7** properties/raw-YAML region can edit custom and manage
 
 ## Acceptance and compatibility
 
-[BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) records the Notes-design audit, native
-workflow checks, release measurements, and reproduction checklist. File round
-trips and native terminal workflows are tested. Obsidian 1.14.3 runtime comparison
-was explicitly waived; no runtime-parity claim is made. Simultaneous Obsidian/clin
-writers are unsupported. Linux acceptance does not establish Windows/macOS or Nix
-build parity.
+[BASES_ACCEPTANCE.md](BASES_ACCEPTANCE.md) describes reproducible automated and
+manual checks. Obsidian 1.14.3 runtime parity has not been established.
+Simultaneous Obsidian/Clin writers are unsupported. Linux tests do not establish
+Windows/macOS or Nix build parity.
 
 Implementation: `src/bases/`; guarded document/property storage:
 `src/storage/{documents.rs,metadata.rs,public_moves.rs,document_recovery.rs}` and

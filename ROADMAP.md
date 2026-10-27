@@ -1,21 +1,9 @@
 # Roadmap
 
-## Next release: 0.14 stable readiness
-
-The next release is a stabilization release. Track blockers in the
-[Release readiness milestone](https://github.com/reekta92/clin-rs/milestone/1),
-including [interactive acceptance #214](https://github.com/reekta92/clin-rs/issues/214),
-and [release checklist](docs/RELEASE_CHECKLIST.md).
-
-- [ ] Verify required native CI, the published dependency chain and minimum Rust.
-- [x] Prove the protected workflow: [Pinstar 1.1.2 release](https://github.com/reekta92/pinstar/actions/runs/39573233561).
-- [ ] Complete interactive terminal acceptance on Linux, Windows and macOS.
-
-The ideas below are an uncommitted backlog. New views and repository extractions
-need a separate scoped proposal after release blockers close.
-
-## Main Goal for v1.0.0
-Make the `clin-rs` project a modular platform that only provides main functionalities like notes view(including every popup in notes view), editor view, preview pane and add other features via library logic so they are both easier to manage and open for possible **plugins** along the way. **So all the other views except editor and notes will be a plugin/library that can be enabled/disabled according to how much does the user use it or not. Bigger views like `pinstar`, `graf` -and future ones- will have their own repositories that will be attached to the `clin-rs` as a library. These modularity also will be expanded for command palette actions as well.** Of course this is **just** a plan and might not even happen at all since managing multiple big projects is quite cumbersome.
+Project-level ideas are not release commitments. Current functionality is
+documented in the [README](README.md) and [documentation index](docs/INDEX.md).
+Use the [release checklist](docs/RELEASE_CHECKLIST.md) for candidate acceptance;
+track individual proposals and blockers in GitHub issues.
 
 ## Completed
 
