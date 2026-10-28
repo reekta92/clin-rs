@@ -22,4 +22,7 @@ jobs:
   ci:
     permissions:
       contents: read
-    uses: reekta92/.github/.github/workflows/ci.yml@0b563c110a6df98c00a85b44593fd3afe6863480
+    uses: reekta92/.github/.github/workflows/ci.yml@11b8f0381eee881434f9febb4ced8bfd46a20dac
+    with:
+      test_runner: scripts/test_ci.py
+      debug_info: line-tables-only
