@@ -8,6 +8,8 @@ use std::time::Duration;
 use crossterm::event::Event;
 
 pub enum EventSource {
+    #[cfg(test)]
+    IdleUntil(std::time::Instant),
     Crossterm,
     BufferedCrossterm {
         stashed: VecDeque<Event>,
@@ -27,6 +29,8 @@ impl EventSource {
             };
         }
         match self {
+            #[cfg(test)]
+            Self::IdleUntil(_) => unreachable!("idle test input cannot buffer events"),
             Self::Channel { stashed, .. } | Self::BufferedCrossterm { stashed } => {
                 let mut pending: VecDeque<_> = events.into_iter().collect();
                 pending.append(stashed);
@@ -45,6 +49,18 @@ impl EventSource {
 
     pub fn poll(&mut self, timeout: Duration) -> std::io::Result<bool> {
         match self {
+            #[cfg(test)]
+            Self::IdleUntil(deadline) => {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "idle observation completed",
+                    ));
+                }
+                std::thread::sleep(timeout.min(remaining));
+                Ok(false)
+            }
             Self::Crossterm => crossterm::event::poll(timeout),
             Self::BufferedCrossterm { stashed } => {
                 if !stashed.is_empty() {
@@ -74,6 +90,8 @@ impl EventSource {
 
     pub fn read(&mut self) -> std::io::Result<Event> {
         match self {
+            #[cfg(test)]
+            Self::IdleUntil(_) => unreachable!("idle test input has no events"),
             Self::Crossterm => crossterm::event::read(),
             Self::BufferedCrossterm { stashed } => {
                 stashed.pop_front().map_or_else(crossterm::event::read, Ok)
