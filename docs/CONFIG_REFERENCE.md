@@ -186,7 +186,7 @@ Unix, ISO date (`YYYY-MM-DD`), and RFC 3339 timestamps are accepted on read. Dis
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
 | `show_status_bar` | `bool` | `true` | Show Graph shortcut hints; the shared footer always remains visible |
 | `tab_icons_only` | `bool` | `false` | Show only icons on tab bars; text labels remain in `"none"` mode |
-| `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"emoji"`: emoji icons (terminal emoji support required); `"none"`: text labels without decorative icons. Unicode/Emoji/None use portable bar separators |
+| `icon_mode` | `enum` | `"nerd"` | `"nerd"`: single-cell Font Awesome icons (Nerd Font required); `"unicode"`: single-cell text symbols; `"emoji"`: emoji icons (terminal emoji support required); `"none"`: text labels with colored lowercase property badges (`p` pinned, `t` tagged, `s` folder-local template settings). Grid badges follow the type label; list badges precede the name. Unicode/Emoji/None use portable bar separators |
 | `scrollbars` | `bool` | `true` | Show mouse-draggable scrollbars on scrollable regions |
 | `scrollbar_pan_mode` | `bool` | `false` | Notes list scrollbar pans without moving selection |
 | `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"sharp"`, `"rounded"`, `"slanted"`, `"bubbles"`, `"blurred"`, `"chips"`, `"brackets"`, `"compact"`, `"sharp_gradient"`, `"rounded_gradient"`, `"slanted_gradient"`, `"hexagon"` |

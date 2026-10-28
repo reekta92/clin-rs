@@ -1321,7 +1321,11 @@ impl App {
                 let sanitized_name = crate::fsutil::sanitize_for_terminal(name);
                 let mut display_name = sanitized_name.into_owned();
                 if *is_pinned {
-                    let pin_icon = crate::ui::icons::PIN.get(self.config.ui.icon_mode);
+                    let pin_icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
+                        "p"
+                    } else {
+                        crate::ui::icons::PIN.get(self.config.ui.icon_mode)
+                    };
                     if !pin_icon.is_empty() {
                         display_name = format!("{pin_icon} {display_name}");
                     }
@@ -1338,10 +1342,20 @@ impl App {
                 if self.list.drag_hover.is_some() && self.list.drag_hover == vi {
                     style = style.bg(self.app_theme.highlight_bg);
                 }
-                let mut spans = vec![Span::styled(text, style)];
-                if name != ".." && self.list.template_config_folders.contains(path) {
-                    let glyph = crate::ui::icons::SETTINGS.get(self.config.ui.icon_mode);
-                    if !glyph.is_empty() {
+                let mut spans = Vec::new();
+                let has_local_template =
+                    name != ".." && self.list.template_config_folders.contains(path);
+                if has_local_template && self.config.ui.icon_mode == crate::config::IconMode::None {
+                    spans.push(Span::raw(indent));
+                    spans.push(Span::styled(
+                        "s ",
+                        Style::default().fg(self.app_theme.muted),
+                    ));
+                    spans.push(Span::styled(format!("{display_name}{count_suffix}"), style));
+                } else {
+                    spans.push(Span::styled(text, style));
+                    if has_local_template {
+                        let glyph = crate::ui::icons::SETTINGS.get(self.config.ui.icon_mode);
                         spans.push(Span::styled(
                             format!(" {glyph}"),
                             Style::default().fg(self.app_theme.muted),
@@ -1371,7 +1385,11 @@ impl App {
 
                 spans.push(Span::raw("  "));
                 if summary.pinned {
-                    let icon = crate::ui::icons::PIN.get(self.config.ui.icon_mode);
+                    let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
+                        "p"
+                    } else {
+                        crate::ui::icons::PIN.get(self.config.ui.icon_mode)
+                    };
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),
@@ -1384,6 +1402,14 @@ impl App {
 
                 if *is_clin {
                     text_style = text_style.fg(self.app_theme.muted);
+                }
+                if self.config.ui.icon_mode == crate::config::IconMode::None {
+                    if !summary.tags.is_empty() {
+                        spans.push(Span::styled("t ", Style::default().fg(self.app_theme.tag)));
+                    }
+                    if summary.pinned {
+                        text_style = text_style.fg(self.app_theme.pinned);
+                    }
                 }
                 spans.extend(crate::ui::note_file_icon(
                     &summary.id,
