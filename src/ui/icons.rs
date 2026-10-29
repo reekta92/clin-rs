@@ -148,6 +148,35 @@ mod tests {
     }
 
     #[test]
+    fn office_file_icons_are_recognized_in_all_icon_modes() {
+        let theme = crate::app_theme::AppThemeColors::default();
+        for mode in [
+            IconMode::Nerd,
+            IconMode::Unicode,
+            IconMode::Emoji,
+            IconMode::None,
+        ] {
+            for ext in [
+                "doc", "docx", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "odg",
+            ] {
+                let id = format!("folder/document.{ext}");
+                let (glyph, label, color) = super::super::note_file_glyph(&id, &theme, mode);
+                assert_eq!(label, ext.to_ascii_uppercase(), "{id}: {mode:?}");
+                assert_eq!(
+                    super::super::note_file_glyph(&id.to_ascii_uppercase(), &theme, mode),
+                    (glyph, label, color),
+                );
+                if mode == IconMode::None {
+                    assert_eq!(glyph, ' ');
+                    assert!(super::super::note_file_icon(&id, &theme, mode).is_none());
+                } else {
+                    assert_ne!(glyph, UNKNOWN.char(mode), "{id}: {mode:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn task_widget_file_has_a_special_glyph_and_theme_color() {
         let theme = crate::app_theme::AppThemeColors::default();
         for mode in [
