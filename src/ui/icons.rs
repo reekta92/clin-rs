@@ -37,6 +37,9 @@ macro_rules! icons {
 icons! {
     FILE: "\u{f15c}", "≡", "📄";
     MARKDOWN: "\u{f02d}", "¶", "📘";
+    WORD: "\u{f1c2}", "W", "📝";
+    SPREADSHEET: "\u{f1c3}", "X", "📈";
+    PRESENTATION: "\u{f1c4}", "P", "📑";
     LOCK: "\u{f023}", "⊠", "🔒";
     DRAW: "\u{f1fc}", "✎", "🎨";
     CANVAS: "\u{f247}", "◇", "💠";
@@ -126,7 +129,8 @@ mod tests {
         for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::Emoji] {
             let mut seen = std::collections::HashSet::new();
             for ext in [
-                "md", "txt", "clin", "draw", "canvas", "base", "png", "jpg", "gif", "webp",
+                "md", "txt", "clin", "draw", "canvas", "base", "png", "jpg", "gif", "webp", "doc",
+                "xls", "ppt",
             ] {
                 let (glyph, label, color) =
                     super::super::note_file_glyph(&format!("note.{ext}"), &theme, mode);
@@ -144,6 +148,35 @@ mod tests {
                 super::super::note_file_glyph("unknown.bin", &theme, mode).0,
                 UNKNOWN.char(mode)
             );
+        }
+    }
+
+    #[test]
+    fn office_file_icons_are_recognized_in_all_icon_modes() {
+        let theme = crate::app_theme::AppThemeColors::default();
+        for mode in [
+            IconMode::Nerd,
+            IconMode::Unicode,
+            IconMode::Emoji,
+            IconMode::None,
+        ] {
+            for ext in [
+                "doc", "docx", "odt", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "odg",
+            ] {
+                let id = format!("folder/document.{ext}");
+                let (glyph, label, color) = super::super::note_file_glyph(&id, &theme, mode);
+                assert_eq!(label, ext.to_ascii_uppercase(), "{id}: {mode:?}");
+                assert_eq!(
+                    super::super::note_file_glyph(&id.to_ascii_uppercase(), &theme, mode),
+                    (glyph, label, color),
+                );
+                if mode == IconMode::None {
+                    assert_eq!(glyph, ' ');
+                    assert!(super::super::note_file_icon(&id, &theme, mode).is_none());
+                } else {
+                    assert_ne!(glyph, UNKNOWN.char(mode), "{id}: {mode:?}");
+                }
+            }
         }
     }
 

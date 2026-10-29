@@ -2440,10 +2440,18 @@ mod tests {
             "folder/test.gif",
             "folder/test.webp",
             "folder/test.jpeg",
+            "folder/test.odt",
+            "folder/test.ods",
+            "folder/test.odp",
+            "folder/test.odg",
+            "folder/test.docx",
+            "folder/test.xlsx",
+            "folder/test.pptx",
             "folder/test.bin",
         ];
         let labels = [
-            "MD", "TXT", "D", "C", "BASE", "CX", "PNG", "JPEG", "GIF", "WEBP", "JPEG", "?",
+            "MD", "TXT", "D", "C", "BASE", "CX", "PNG", "JPEG", "GIF", "WEBP", "JPEG", "ODT",
+            "ODS", "ODP", "ODG", "DOCX", "XLSX", "PPTX", "?",
         ];
         app.notes = ids
             .iter()
@@ -2493,6 +2501,13 @@ mod tests {
                 icons::GIF,
                 icons::WEBP,
                 icons::JPEG,
+                icons::WORD,
+                icons::SPREADSHEET,
+                icons::PRESENTATION,
+                icons::DRAW,
+                icons::WORD,
+                icons::SPREADSHEET,
+                icons::PRESENTATION,
                 icons::UNKNOWN,
             ]
             .map(|icon| icon.get(mode));
@@ -2541,9 +2556,11 @@ mod tests {
                     .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
                     .unwrap();
                 let buffer = terminal.backend().buffer();
+                let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, buffer.area);
                 let result_rows: Vec<_> = buffer
                     .content
                     .chunks(100)
+                    .map(|row| &row[popup_area.x as usize..popup_area.right() as usize])
                     .filter(|row| {
                         row.iter()
                             .map(|cell| cell.symbol())
@@ -2559,7 +2576,9 @@ mod tests {
                             result_rows[i].iter().map(|cell| cell.symbol()).collect();
                         assert!(
                             text.trim_start_matches([' ', '│', '▸', '▾'])
-                                .starts_with("folder/test")
+                                .starts_with("folder/test"),
+                            "{}: {mode:?}, {query}: {text}",
+                            ids[i],
                         );
                     } else {
                         let list_icon =
