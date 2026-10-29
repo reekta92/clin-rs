@@ -37,6 +37,9 @@ macro_rules! icons {
 icons! {
     FILE: "\u{f15c}", "≡", "📄";
     MARKDOWN: "\u{f02d}", "¶", "📘";
+    WORD: "\u{f1c2}", "W", "📝";
+    SPREADSHEET: "\u{f1c3}", "X", "📈";
+    PRESENTATION: "\u{f1c4}", "P", "📑";
     LOCK: "\u{f023}", "⊠", "🔒";
     DRAW: "\u{f1fc}", "✎", "🎨";
     CANVAS: "\u{f247}", "◇", "💠";
@@ -126,7 +129,8 @@ mod tests {
         for mode in [IconMode::Nerd, IconMode::Unicode, IconMode::Emoji] {
             let mut seen = std::collections::HashSet::new();
             for ext in [
-                "md", "txt", "clin", "draw", "canvas", "base", "png", "jpg", "gif", "webp",
+                "md", "txt", "clin", "draw", "canvas", "base", "png", "jpg", "gif", "webp", "doc",
+                "xls", "ppt",
             ] {
                 let (glyph, label, color) =
                     super::super::note_file_glyph(&format!("note.{ext}"), &theme, mode);
