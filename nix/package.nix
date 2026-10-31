@@ -43,6 +43,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoLock = {
     lockFile = "${finalAttrs.src}/Cargo.lock";
+    outputHashes = {
+      "pinstar-1.1.4" = "sha256-71GFX1PDjv10v9Fz7CanR++zyoQ0gQiL3z9//HrI/Ls=";
+    };
   };
 
   nativeBuildInputs = [
@@ -52,6 +55,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   buildInputs = [
     zlib
+  ]
+  ++ lib.optionals stdenv.hostPlatform.isLinux [
     libx11
     libxcb
   ];
@@ -60,7 +65,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     install -Dm444 assets/clin.desktop -t $out/share/applications
     install -Dm444 assets/icon.svg $out/share/icons/hicolor/scalable/apps/clin.svg
     install -Dm444 assets/clin.png -t $out/share/icons/hicolor/256x256/apps
-  '' + lib.optionalString stdenv.hostPlatform.isDarwin ''
+  ''
+  + lib.optionalString stdenv.hostPlatform.isDarwin ''
     app=$out/Applications/clin.app
     mkdir -p $out/Applications
     cp -R assets/clin.app "$app"
@@ -76,10 +82,28 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --prefix PATH : ${lib.makeBinPath runtimeDeps}
   '';
 
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    test "$($out/bin/clin --version)" = "clin ${finalAttrs.version}"
+    $out/bin/clin --help > /dev/null
+    test -f $out/share/applications/clin.desktop
+    test -f $out/share/icons/hicolor/scalable/apps/clin.svg
+    test -f $out/share/icons/hicolor/256x256/apps/clin.png
+  ''
+  + lib.optionalString stdenv.hostPlatform.isDarwin ''
+    test -x $out/Applications/clin.app/Contents/MacOS/clin
+    test -f $out/Applications/clin.app/Contents/Resources/clin.icns
+    test "$($out/Applications/clin.app/Contents/Resources/clin --version)" = "clin ${finalAttrs.version}"
+  ''
+  + ''
+    runHook postInstallCheck
+  '';
+
   meta = {
     description = "Feature-packed terminal note management app inspired by Obsidian";
     homepage = "https://github.com/reekta92/clin-rs";
-    license = lib.licenses.gpl3;
+    license = lib.licenses.gpl3Only;
     mainProgram = "clin";
   };
 })
