@@ -42,7 +42,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
     };
 
   cargoLock = {
-    lockFile = "${finalAttrs.src}/Cargo.lock";
+    lockFile = ../Cargo.lock;
     outputHashes = {
       "pinstar-1.1.4" = "sha256-71GFX1PDjv10v9Fz7CanR++zyoQ0gQiL3z9//HrI/Ls=";
     };
