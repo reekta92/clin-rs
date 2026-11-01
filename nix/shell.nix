@@ -1,31 +1,22 @@
 {
   mkShell,
-  pkg-config,
+  callPackage,
   rustc,
   cargo,
   rustfmt,
   clippy,
   rust-analyzer,
-  zlib,
-  libx11,
-  libxcb,
 }:
 mkShell {
   name = "clin";
 
-  nativeBuildInputs = [
-    pkg-config
-  ];
+  inputsFrom = [ (callPackage ./package.nix { }) ];
 
-  buildInputs = [
+  nativeBuildInputs = [
     rustc
     cargo
     rustfmt
     clippy
     rust-analyzer
-
-    zlib
-    libx11
-    libxcb
   ];
 }
