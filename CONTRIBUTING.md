@@ -58,6 +58,20 @@ archives so the AUR package can install the same desktop launcher and icons.
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 
+### Nix packaging
+
+The flake supports `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`.
+Run `nix flake check --all-systems --no-build` to evaluate every package and
+development shell, then `nix flake check` to build and check the native package.
+`nix develop` provides the Rust tools and the package's native dependencies.
+The Nix workflow runs these checks on native Linux and macOS runners.
+
+`nix/package.nix` vendors the committed `Cargo.lock`. When changing a Git
+dependency's revision or version, update its `cargoLock.outputHashes` entry
+and rebuild with Nix. Keep `flake.lock` committed; normal builds must use its
+pinned nixpkgs revision. Package checks verify the installed command, version,
+desktop launcher, and icons; the standard Rust CI runs the application tests.
+
 ### Checking upstream libraries
 
 Run an existing adapter contract against a candidate library checkout:
