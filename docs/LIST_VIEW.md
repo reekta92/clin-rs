@@ -40,7 +40,7 @@ feature settings control Smart and Subnotes availability.
 ## Previews and Rendering
 
 The List view features a configurable preview pane that renders the contents of the selected note:
-- **Markdown**: Renders formatted text, lists, code blocks, and read-only terminal-native Mermaid flowcharts. Invalid/oversized diagrams retain source with a diagnostic; terminal substitutions are explicit. See [Mermaid previews](EDITOR.md#mermaid-flowchart-previews).
+- **Markdown**: Renders formatted text, lists, code blocks, and read-only terminal-native Mermaid flowchart, sequence, ER and state diagrams. Invalid/unsupported/oversized diagrams retain source with a diagnostic; terminal substitutions are explicit. See [Mermaid previews](EDITOR.md#mermaid-previews).
 - **Canvas Snapshots**: Shows a static preview of `.canvas` files.
 - **Draw Snapshots**: Shows a static preview of `.draw` files.
 - **Images**: Shows supported image files through terminal graphics when `[features] images` is enabled.
