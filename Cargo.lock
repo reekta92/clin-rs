@@ -2264,8 +2264,7 @@ dependencies = [
 [[package]]
 name = "merman-core-clin"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59ff880331d67814f557b0d049cea743e087ea71e6cd9bd2159eb814a2b7c1f2"
+source = "git+https://github.com/reekta92/merman?rev=d3d4afb75232708616b7e6127b28ff9cb42b4c76#d3d4afb75232708616b7e6127b28ff9cb42b4c76"
 dependencies = [
  "chrono",
  "euclid",
@@ -2964,13 +2963,13 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 [[package]]
 name = "pinstar"
 version = "1.1.4"
-source = "git+https://github.com/reekta92/pinstar?rev=490fb6e3acf8c3aede483b5124ddd5bbdaa206b2#490fb6e3acf8c3aede483b5124ddd5bbdaa206b2"
+source = "git+https://github.com/reekta92/pinstar?rev=d75833645a6f8c43d0d078eca050718ff9391169#d75833645a6f8c43d0d078eca050718ff9391169"
 dependencies = [
  "anyhow",
  "crossterm",
  "htmlize",
  "image",
- "lru 0.18.5",
+ "lru 0.19.0",
  "merman-core-clin",
  "ratatui",
  "ratatui-image",
