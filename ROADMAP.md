@@ -115,3 +115,4 @@ track individual proposals and blockers in GitHub issues.
 - [ ] **Plugin support** — a plugin system to allow users create new views, command palette actions, preview pane types for specific filetypes and possibly custom popups
 
 #### Other
+- [ ] **CLI automation** - rework of CLI commands to make them more usefull in a scripting/automation purpose maybe allow for interactive TUI control via CLI or a shell.
