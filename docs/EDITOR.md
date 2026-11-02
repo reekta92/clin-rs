@@ -53,31 +53,49 @@ Body mutations schedule Markdown preview from `EditorDocument::revision()`.
 never schedule body preview work. Initial open and explicit preview toggles
 remain immediate.
 
-## Mermaid Flowchart Previews
+## Mermaid Previews
 
 Fenced `mermaid` blocks (backtick or tilde fences) render inline as read-only,
-terminal-native flowcharts through Pinstar. Edit their source in the body, not in
+terminal-native flowcharts, sequences, ER diagrams and state diagrams through
+Pinstar. Edit their source in the body, not in
 an embedded canvas editor. Diagrams default to **on**. **Alt+m** toggles all
 Mermaid blocks in the main edit preview between diagrams and ordinary code
-blocks, including malformed or non-flowchart blocks. This session-only preference
+blocks, including malformed or unsupported blocks. This session-only preference
 resets to on when clin restarts; list and linked-note previews are unaffected.
 No collapse control is needed: preview scrolling tracks the editor's source line
 and wrapped sub-row, rather than copying screen row numbers. Diagram height may differ from fenced-source height. Source anchors
 are recalculated on resizing and wrapping changes; independent preview scrolling
 lasts until the editor anchor moves or preview content is rebuilt.
 
-The native parser uses `merman-core-clin` 0.6.0 with the upstream 0.6 parser API. Nodes, nested subgraphs,
-directions, edge labels/markers, classes and basic terminal colors are retained.
+The native parser uses an immutable revision of `merman-core-clin` 0.6.0 with the
+upstream 0.6 parser API. Flowchart nodes, nested subgraphs, directions, edge
+labels/markers, classes and basic terminal colors are retained. Wide ranks wrap
+vertically; horizontal diagrams can use vertical terminal layout with a notice.
 Specialized shapes use labelled outlines; HTML/Markdown, icons/images, CSS,
 curves, animation and browser configuration use explicit terminal substitutions.
 Images are placeholders, remote assets are not fetched, links are text and
 callbacks never execute. Substitution notices appear below the diagram.
 
+Sequence previews retain actors, participant aliases, solid/dashed messages,
+self-messages and nested `loop`, `opt`, `alt` and `else` blocks. Numbered headers
+identify lifelines; complete messages wrap above their arrows. Activations,
+parallel blocks, notes, participant boxes and dynamic participants retain source
+with a diagnostic.
+
+ER previews use entity cards and cardinality-labelled relationships, preserving
+attributes, types, PK/FK/UK keys, comments and disconnected entities. State
+previews use state cards with every outgoing transition, self-loop, start/end
+marker and attached note. Note placement and CSS use terminal equivalents.
+Composite states and specialized state shapes retain source. Bare semicolons in
+state transition labels also retain source with a diagnostic: Mermaid interprets
+their remaining text as extra states. Use a comma in the source label.
+
 Invalid, unsupported, too-wide or oversized diagrams retain their fenced source
 with an explanation, never a silently incomplete graph. Preview limits are
-64 KiB per block, 128 nodes, 256 edges, 32 groups, 16 nesting levels, 240 columns
+64 KiB per block, 128 nodes/entities/participants, 256 edges/events, 32 groups, 16 nesting levels, 240 columns
 and 512 diagram rows. Conservative pre-parse chart-body budgets also cap raw `&` characters at 32,
-opening delimiters at 256, and `subgraph` words at 32, including labels/comments.
+opening delimiters at 256, `subgraph` words at 32 and block-opening keywords at 32,
+including labels/comments. State source has a conservative 16-opening-brace budget.
 YAML frontmatter uses a non-expanding scanner with 16-level structure limit;
 anchors/aliases are rejected, while literal `&`/`*` in strings remain supported.
 Rejected input remains visible as source rather than risking parser expansion.

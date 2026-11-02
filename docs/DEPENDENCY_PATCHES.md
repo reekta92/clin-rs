@@ -22,22 +22,27 @@ distrusted intermediate certificates), preserving the same compiler minimum.
 ## Mermaid YAML backend
 
 Clin uses registry Graf and Draw packages and Pinstar 1.1.4 pinned to Git revision
-`490fb6e3acf8c3aede483b5124ddd5bbdaa206b2` in `Cargo.toml`. The Pinstar pin supplies
-host popup fixes in addition to the maintained Mermaid backend and independent
-image codec selection. `Cargo.lock` records the Git revision and registry checksums.
+`d75833645a6f8c43d0d078eca050718ff9391169` in `Cargo.toml`. The Pinstar pin supplies
+native flowchart, sequence, ER and state previews alongside host popup fixes and
+independent image codec selection. `Cargo.lock` records immutable Git revisions
+and registry checksums.
 
 Cargo packaging replaces a Git dependency with its declared registry version.
 Verify the extracted package before publishing; a successful Git-checkout build
-alone does not prove that the registry package has the same adapter API.
+alone does not prove that the registry package has the same adapter API or preview
+behavior. The published Pinstar 1.1.4 and parser 0.6.0 do not include these preview
+changes; matching registry releases are required before publishing this feature.
 
-Pinstar uses published `merman-core-clin 0.6.0` from
+Pinstar uses `merman-core-clin 0.6.0` pinned to Git revision
+`d3d4afb75232708616b7e6127b28ff9cb42b4c76` from
 [the maintained fork branch](https://github.com/reekta92/merman/tree/fix/maintained-yaml-msrv-1.90).
 The upstream 0.6 parser API, library import, MIT/Apache-2.0 attribution and Rust
-1.90 support remain. The backend reaches registry consumers without a root
-`[patch]`. No Mermaid feature was disabled to make dependency checks pass.
+1.90 support remain. No root `[patch]` is required. The pin fixes quoted subgraph
+titles containing delimiters and an ER lexer panic on UTF-8 attribute names.
+No Mermaid feature was disabled to make dependency checks pass.
 
 The fork starts at the published 0.6.0 source revision
-`91722fd1881ae37fd276788fe78a5cc7274d4cde`. Its only runtime change replaces
+`91722fd1881ae37fd276788fe78a5cc7274d4cde`. Its YAML backend replaces
 archived `serde_yaml` with YAML Organization's `yaml_serde 0.10.7`. clin's
 historical `serde_yaml_ng` import name aliases that same maintained package;
 there is no compatibility wrapper or second semantic value model.
@@ -45,7 +50,7 @@ there is no compatibility wrapper or second semantic value model.
 `yaml_serde` uses maintained `libyaml-rs 0.3.0`. This backend still contains
 translated libyaml unsafe code; removing the unmaintained dependency advisory
 is not a claim that all parser memory-safety risks disappear. No YAML advisory ignore is required. `deny.toml` rejects unknown registries and
-Git sources except the explicitly allowed Pinstar repository. It separately
+Git sources except the explicitly allowed Pinstar and maintained Merman repositories. It separately
 retains unmaintained-package ignores for bincode (`RUSTSEC-2025-0141`) and paste
 (`RUSTSEC-2024-0436`); those are not resolved by the YAML backend.
 
