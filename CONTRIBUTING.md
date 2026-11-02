@@ -72,6 +72,14 @@ and rebuild with Nix. Keep `flake.lock` committed; normal builds must use its
 pinned nixpkgs revision. Package checks verify the installed command, version,
 desktop launcher, and icons; the standard Rust CI runs the application tests.
 
+Source overrides through `.overrideAttrs` use the replacement source's
+`Cargo.lock`, including sources filtered with `lib.cleanSource` or
+`lib.fileset.toSource`. Set `version` separately when targeting a different release.
+If Git dependency hashes change, replace `cargoDeps` using
+`rustPlatform.importCargoLock` with the replacement lockfile and hashes;
+`cargoLock` is already consumed by the builder before `.overrideAttrs` runs.
+Flake checks also test lockfile selection and dependency overrides.
+
 ### Checking upstream libraries
 
 Run an existing adapter contract against a candidate library checkout:

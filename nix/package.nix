@@ -3,6 +3,7 @@
   stdenv,
   rustPlatform,
   makeBinaryWrapper,
+  versionCheckHook,
   pkg-config,
   zlib,
   libx11,
@@ -42,7 +43,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
     };
 
   cargoLock = {
-    lockFile = ../Cargo.lock;
+    # Read filtered sources at their origin so fresh evaluation needs no store copy.
+    lockFile = (finalAttrs.src.origSrc or finalAttrs.src) + "/Cargo.lock";
     outputHashes = {
       "pinstar-1.1.4" = "sha256-71GFX1PDjv10v9Fz7CanR++zyoQ0gQiL3z9//HrI/Ls=";
     };
@@ -82,10 +84,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
       --prefix PATH : ${lib.makeBinPath runtimeDeps}
   '';
 
+  nativeInstallCheckInputs = [ versionCheckHook ];
   doInstallCheck = true;
   installCheckPhase = ''
     runHook preInstallCheck
-    test "$($out/bin/clin --version)" = "clin ${finalAttrs.version}"
     $out/bin/clin --help > /dev/null
     test -f $out/share/applications/clin.desktop
     test -f $out/share/icons/hicolor/scalable/apps/clin.svg
