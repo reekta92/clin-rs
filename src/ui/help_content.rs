@@ -190,7 +190,7 @@ const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
 const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Markdown preview",
-        "Press {edit:ToggleMarkdownPreview} to toggle a side-by-side **live preview** of your rendered markdown note. Mermaid flowchart fences render as read-only terminal diagrams; keep editing their source in the body. Scrolling follows source positions even when wrapping or diagram heights differ. Invalid or oversized diagrams show source with a diagnostic; visual substitutions are explained.",
+        "Press {edit:ToggleMarkdownPreview} to toggle a side-by-side **live preview** of your rendered markdown note. Mermaid flowchart, sequence, ER and state fences render as read-only terminal diagrams; keep editing their source in the body. Scrolling follows source positions even when wrapping or diagram heights differ. Invalid, unsupported or oversized diagrams show source with a diagnostic; visual substitutions are explained.",
     ),
     tip(
         "Mermaid diagrams",

@@ -25,6 +25,7 @@
 
       checks = forAllSystems (pkgs: {
         package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        source-overrides = pkgs.callPackage ./nix/tests.nix { };
       });
     };
 }

@@ -1205,7 +1205,7 @@ fn render_code_block(
         match pinstar::preview::render_mermaid(&cb.literal, columns) {
             Ok(preview) => {
                 let mut rows = vec![ratatui::text::Line::styled(
-                    "Mermaid flowchart",
+                    "Mermaid diagram",
                     ctx.theme.code_inline,
                 )];
                 rows.extend(preview.lines);
@@ -1955,7 +1955,7 @@ mod tests {
             for wrap in [false, true] {
                 let lines = render_test(source, columns, wrap, false);
                 let output = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
-                assert_eq!(output.matches("Mermaid flowchart").count(), 2, "{output}");
+                assert_eq!(output.matches("Mermaid diagram").count(), 2, "{output}");
                 assert!(
                     output.contains("Start")
                         && output.contains("Finish")
@@ -1991,6 +1991,8 @@ mod tests {
             "flowchart TD\nA-->B",
             "flowchart TD\nA[broken",
             "sequenceDiagram\nA->>B: hello",
+            "erDiagram\nITEM {\ntext name\n}",
+            "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
         ] {
             let source = format!("before\n\n```mermaid\n{literal}\n```\n\nafter");
             for wrap in [true, false] {
@@ -2008,7 +2010,7 @@ mod tests {
                     .join("\n");
                 assert!(output.contains(literal.lines().last().unwrap()), "{output}");
                 assert!(
-                    !output.contains("Mermaid flowchart") && !output.contains("showing source"),
+                    !output.contains("Mermaid diagram") && !output.contains("showing source"),
                     "{output}"
                 );
                 assert!(
@@ -2034,11 +2036,23 @@ mod tests {
 
     #[test]
     fn mermaid_errors_retain_fenced_source_and_explanation() {
-        for literal in ["flowchart TD\nA[broken", "sequenceDiagram\nA->>B: hello"] {
+        for literal in [
+            "flowchart TD\nA[broken",
+            "classDiagram\nA <|-- B",
+            "sequenceDiagram\nA->>B: hello\nactivate B",
+            "stateDiagram-v2\nA --> B: approved; final state valid",
+        ] {
             let source = format!("```mermaid\n{literal}\n```\nafter");
             let lines = render_test(&source, 100, true, false);
             let output = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
-            assert!(output.contains("showing source"), "{output}");
+            assert!(
+                output
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .contains("showing source"),
+                "{output}"
+            );
             assert!(output.contains(literal.lines().last().unwrap()), "{output}");
             let document = RenderedDocument::new(lines);
             let rendered = document.source_to_rendered_position(source.lines().count() - 1, 0);
@@ -2055,6 +2069,48 @@ mod tests {
                 .collect::<String>()
                 .contains("Mermaid")
         );
+    }
+
+    #[test]
+    fn mermaid_sequence_er_and_state_previews_preserve_source_anchors() {
+        for (literal, expected) in [
+            (
+                "sequenceDiagram\nactor User\nUser->>Server: hello\nServer-->>User: response",
+                "hello",
+            ),
+            ("erDiagram\nITEM {\ntext name PK\n}", "name: text [PK]"),
+            (
+                "stateDiagram-v2\n[*] --> Ready: begin\nReady --> [*]\nnote right of Ready\nKeep this note\nend note",
+                "Keep this note",
+            ),
+        ] {
+            for fence in ["```", "~~~"] {
+                let source = format!("before\n{fence}mermaid\n{literal}\n{fence}\nafter");
+                for columns in [60, 100, 160] {
+                    for wrap in [false, true] {
+                        let lines = render_test(&source, columns, wrap, false);
+                        let output = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+                        assert!(
+                            output.contains("Mermaid diagram") && output.contains(expected),
+                            "{output}"
+                        );
+                        assert!(!output.contains("showing source"), "{output}");
+                        assert!(
+                            lines
+                                .windows(2)
+                                .all(|pair| pair[0].source_line <= pair[1].source_line)
+                        );
+                        let document = RenderedDocument::new(lines);
+                        for anchor in ["before", "after"] {
+                            let source_line =
+                                source.lines().position(|line| line == anchor).unwrap();
+                            let rendered = document.source_to_rendered_position(source_line, 0);
+                            assert!(line_text(document.line(rendered).unwrap()).contains(anchor));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]
