@@ -87,17 +87,13 @@ track individual proposals and blockers in GitHub issues.
 ## Ideas
 
 #### General
-- [ ] **More filtypes** — more text filetypes(`.org`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
-- [ ] **Keybind settings** — set keybinds directly from the TUI OR open the keybind config at the default editor in the help view
 
 #### Notes View
-- [ ] **Notebook files** — a text file type where you can embed interactable drawings(via `draw`), schemes(via `pinstar`) etc. At it's core it's a markdown file with a special property, so it will be compatible with other `.md` editors.
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
 
 #### Graph View
-- [ ] **Date/time linking** — categorize nodes by note date
 - [ ] **Assign tags** — tag notes directly from graph
 
 #### Pinstar View
@@ -113,21 +109,10 @@ track individual proposals and blockers in GitHub issues.
 
 #### Command Palette
 - [ ] **Merge/split notes** — combine or divide notes
-- [ ] **Advanced clipboard** — multi-selection copy/paste
 - [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
-
-#### To-Do View & Calendar
-- [ ] **To-do view** — a new view for specifically managing to-dos
-- [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
-
-#### Project Management View
-- [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.
-- [ ] **Assigning docs to files** — assign specific sections of a document file or the entire file to 1 or more project files so when any of the project files updates, user is notified that the documentation requires updates too.
-- [ ] **Notifications** — notify users when documents/wiki requires update.
-- [ ] **Context aware search** — a search action that allows user to search a context that shows similar results from the docs/wiki. For example searching "command palette/how" shows the "How" section of the "Command Palette" system.
 
 #### Configuration
 - [ ] **Plugin support** — a plugin system to allow users create new views, command palette actions, preview pane types for specific filetypes and possibly custom popups
 
 #### Other
-- [ ] **Calendar/time tools** — date calculator, timezone converter
+- [ ] **CLI automation** - rework of CLI commands to make them more usefull in a scripting/automation purpose maybe allow for interactive TUI control via CLI or a shell.
