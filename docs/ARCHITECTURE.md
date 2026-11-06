@@ -424,6 +424,10 @@ Graph construction, physics, spatial indexing, viewport, and rendering live in [
 
 Other background work includes catalog enumeration, search, folder previews, image decoding, and recovery persistence. Worker results are installed by the host loop; Editor deliberately defers generic queues until it exits. Feature flags gate worker startup (image worker changes require restart).
 
+The main and Editor loops share a 60 Hz pacing limit so rapid input cannot trigger
+unbounded redraws. Idle views still wait for events without redrawing;
+work that already exceeds the frame interval incurs no additional pacing delay.
+
 ## Key Patterns
 
 ### Command Palette / Action System
