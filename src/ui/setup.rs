@@ -566,6 +566,9 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             ) -> Line<'static> {
                 let mut spans = vec![Span::raw("  ")]; // depth-0 note indent
                 spans.extend(crate::ui::note_file_icon(title, theme, icon_mode));
+                if tag.is_some() && icon_mode == crate::config::IconMode::None {
+                    spans.push(Span::styled("t ", Style::default().fg(theme.tag)));
+                }
                 spans.push(Span::raw(title.to_string()));
                 if let Some(tag) = tag {
                     spans.push(Span::raw(" "));

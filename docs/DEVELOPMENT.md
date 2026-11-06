@@ -10,31 +10,22 @@
 | [draw-rs](https://github.com/reekta92/draw-rs) | Drawing model, input, rendering and standalone CLI |
 | [.github](https://github.com/reekta92/.github) | Reusable CI, releases and workflow regression tests |
 | [merman maintenance branch](https://github.com/reekta92/merman/tree/fix/maintained-yaml-msrv-1.90) | Published `merman-core-clin` parser compatibility package |
-| [sicth](https://github.com/reekta92/sicth) | Separate file navigator using the shared workflows |
 
 The Mermaid fork's main branch tracks upstream; the compatibility branch owns
 the parser package used by Clin. Compiler requirements live in each package's
-manifest. Exact dependency versions live in committed lockfiles. Local folders
-without a verified remote remain experiments until their maintainer declares
-a supported repository.
+manifest. Exact dependency versions live in committed lockfiles.
 
-## Workspace and handoff
+## Workspace
 
 Use sibling checkouts named `clin-rs`, `pinstar`, `graf`, `draw-rs` and `.github`
-under one chosen workspace directory, with the origins linked above. A Codex
-worktree's `../` can be another worktree directory; use `git worktree list` to
-locate canonical checkouts before resolving sibling paths.
+under one chosen workspace directory, with the origins linked above. Use
+`git worktree list` to locate canonical checkouts when a relative sibling path
+points into another worktree.
 
 Before work, inspect `git status --short --branch`, `git remote -v` and
 `git fetch origin --prune` in each affected checkout. Start a branch from fetched
 `origin/main`, preserving existing edits and unfinished branches. Do not reset
 or switch a colleague's active checkout to synchronize it.
-
-Handoff notes identify repository, branch, commit, linked PRs, passed checks and
-remaining blockers. Keep reusable commands and decisions in tracked files.
-Ignored `development/` notes and graph artifacts are supplementary. Keep
-unfinished implementation in persistent storage and commit reviewable changes;
-temporary build directories may disappear after a restart.
 
 GitHub deletes newly merged branches automatically. For older branches, verify
 `git merge-base --is-ancestor <branch> origin/main` and inspect open PRs before
@@ -64,8 +55,7 @@ lockfile, then refresh the pinned consumer revision in library CI.
 Shared workflow changes must merge into `.github/main` and pass workflow tests
 before consumers adopt their immutable SHA. Retarget stacked PRs when the parent
 merges. Keep feature, persistence and release changes separately reviewable.
-Use the `Release readiness` milestone for current acceptance blockers; the
-remaining roadmap is an uncommitted idea backlog.
+Track candidate-specific acceptance blockers in the release issue.
 
 ## Release ownership
 
@@ -81,5 +71,5 @@ and `statuses: write`. Configure required reviewers on `release-approval` if
 publication needs interactive GitHub approval.
 
 Complete [release acceptance](RELEASE_CHECKLIST.md) for the actual candidate and
-record manual evidence on the milestone issue. Hosted tests cannot establish
+record manual evidence on the release issue. Hosted tests cannot establish
 behavior in a real interactive terminal or Obsidian runtime.

@@ -657,10 +657,18 @@ fn crowded_footers_drop_version_before_shortcuts_or_status() {
     for style in HintBarStyle::ALL {
         app.app_theme.hint_bar_style = style;
         for view in [ViewMode::List, ViewMode::Edit, ViewMode::Help] {
-            for (width, watermark) in [(80, false), (180, true)] {
-                let mut ctx = crate::statusline::StatuslineContext::for_view(&app, view);
+            let mut ctx = crate::statusline::StatuslineContext::for_view(&app, view);
+            ctx.hints = Some(vec![Span::raw("Useful shortcuts ".repeat(4))]);
+            let (left, right) = crate::statusline::render_footer(
+                &ctx,
+                &app.config.statusline,
+                view,
+                &app.app_theme,
+            );
+            // Release versions and hint styles change the footer's natural width.
+            let full_width = u16::try_from(left.width() + right.unwrap().width()).unwrap();
+            for (width, watermark) in [(full_width - 1, false), (full_width, true)] {
                 ctx.area = Some(Rect::new(0, 0, width, 1));
-                ctx.hints = Some(vec![Span::raw("Useful shortcuts ".repeat(4))]);
                 let (left, right) = crate::statusline::render_footer(
                     &ctx,
                     &app.config.statusline,

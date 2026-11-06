@@ -129,9 +129,9 @@ fn palette_navigation_and_vault_switch_wait_for_public_write_completion() {
     let (release, wait_release) = std::sync::mpsc::channel();
     pool.spawn(move || {
         started.send(()).unwrap();
-        wait_release.recv().unwrap();
+        wait_release.recv_timeout(Duration::from_secs(5)).unwrap();
     });
-    ready.recv().unwrap();
+    ready.recv_timeout(Duration::from_secs(5)).unwrap();
     let baseline = app.storage.load_document("board.base").unwrap();
     let source = format!("{}\n# completed palette write\n", baseline.source());
     app.bases_state.as_mut().unwrap().write_task = Some(crate::bases::write::WriteTask::spawn(
@@ -356,9 +356,9 @@ fn palette_bases_cancel_pending_source_read_keeps_original_owner() {
     let (release, blocked) = std::sync::mpsc::channel();
     pool.spawn(move || {
         started.send(()).unwrap();
-        blocked.recv().unwrap();
+        blocked.recv_timeout(Duration::from_secs(5)).unwrap();
     });
-    ready.recv().unwrap();
+    ready.recv_timeout(Duration::from_secs(5)).unwrap();
     app.notes_worker_pool = pool;
     bases_category(&mut app);
     workflow_choice(&mut app, "bases.config.source");

@@ -1,6 +1,6 @@
 # Maintainer: reekta92 mdag.92988@protonmail.com
 pkgname=clin-rs-bin
-pkgver=0.14.0_rc.1
+pkgver=0.14.1
 pkgrel=1
 pkgdesc="Feature-packed terminal note management app"
 url="https://github.com/reekta92/clin-rs"
@@ -9,8 +9,8 @@ arch=("x86_64")
 provides=("clin-rs" "clin")
 conflicts=("clin-rs")
 depends=("gcc-libs")
-source=("https://github.com/reekta92/clin-rs/releases/download/v0.14.0-rc.1/clin-rs-x86_64-unknown-linux-gnu.tar.xz")
-sha256sums=("d19209b30c26a920e642fe0e654a7343e75300d47b278a885a8a63824cce3f1f")
+source=("https://github.com/reekta92/clin-rs/releases/download/v0.14.1/clin-rs-x86_64-unknown-linux-gnu.tar.xz")
+sha256sums=("2aa71d560b3956d2da359e70aeb6e17915ed844b596615ac6c3f2bbe9bdd1caa")
 
 package() {
     install -Dm755 "clin" -t "$pkgdir/usr/bin"

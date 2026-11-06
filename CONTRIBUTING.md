@@ -6,8 +6,8 @@ Thank you for considering contributing to clin! Here's how to get started.
 
 1. Fork and clone the repository
 2. Install Rust 1.90.0+ via [rustup](https://rustup.rs)
-3. Build: `cargo build`
-4. Run: `cargo run`
+3. Build: `cargo build --locked`
+4. Run against a disposable vault: `cargo run --locked -- --vault /tmp/clin-dev-vault`
 
 ## Releasing
 
@@ -39,7 +39,7 @@ archives so the AUR package can install the same desktop launcher and icons.
 
 | Secret | Source | Used by |
 |---|---|---|
-| `BOT_TOKEN` | Repository bot token with Git write access | Wiki publication; optional release authentication |
+| `BOT_TOKEN` | Optional bot token with discussion write access | Release discussions |
 | `CARGO_REGISTRY_TOKEN` | [crates.io/settings/tokens](https://crates.io/settings/tokens) — publish scope | crates.io publish |
 
 
@@ -49,9 +49,36 @@ archives so the AUR package can install the same desktop launcher and icons.
 - **Code style**: Run `cargo fmt --all` before committing
 - **Linting**: Run `cargo clippy --locked --all-targets -- -D warnings` and fix all warnings
 - **Testing**: Run `cargo test --locked`; ignored performance tests are opt-in
-- **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases.
+- **CI test runner**: `python3 scripts/test_ci.py` builds the tests once and runs
+  the idle-view check alongside the remaining suite, including doctests. The idle
+  process has a 30-second deadline; remaining tests have five minutes. Either
+  failure fails CI and terminates the other process. CI uses line tables for
+  dev/test debug information to reduce build and cache size.
+- **Commits**: Use Conventional Commits (`docs:`, `fix:`, `feat:`, etc.); the generated changelog filters other messages. Do not hand-edit `CHANGELOG.md` or bump `Cargo.toml` for releases. The changelog is historical release data; current behavior belongs in the guides.
 - **Architecture**: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the system overview
 - **Configuration reference**: See [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
+
+### Nix packaging
+
+The flake supports `x86_64-linux`, `aarch64-linux`, and `aarch64-darwin`.
+Run `nix flake check --all-systems --no-build` to evaluate every package and
+development shell, then `nix flake check` to build and check the native package.
+`nix develop` provides the Rust tools and the package's native dependencies.
+The Nix workflow runs these checks on native Linux and macOS runners.
+
+`nix/package.nix` vendors the committed `Cargo.lock`. When changing a Git
+dependency's revision or version, update its `cargoLock.outputHashes` entry
+and rebuild with Nix. Keep `flake.lock` committed; normal builds must use its
+pinned nixpkgs revision. Package checks verify the installed command, version,
+desktop launcher, and icons; the standard Rust CI runs the application tests.
+
+Source overrides through `.overrideAttrs` use the replacement source's
+`Cargo.lock`, including sources filtered with `lib.cleanSource` or
+`lib.fileset.toSource`. Set `version` separately when targeting a different release.
+If Git dependency hashes change, replace `cargoDeps` using
+`rustPlatform.importCargoLock` with the replacement lockfile and hashes;
+`cargoLock` is already consumed by the builder before `.overrideAttrs` runs.
+Flake checks also test lockfile selection and dependency overrides.
 
 ### Checking upstream libraries
 
@@ -88,11 +115,11 @@ python3 -m unittest discover -s .github/scripts -p 'test_check_*.py' -v
 
 ## Documentation and Wiki
 
-The [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) is generated from all root-level Markdown files and `docs/**/*.md`. Update these source files through the usual pull request process; do not edit generated wiki pages directly, because the next sync overwrites those edits. Local `development/` files and graphify artifacts are not published.
+The [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) is generated from all root-level Markdown files and `docs/**/*.md`. Update these source files through the usual pull request process; do not edit generated wiki pages directly, because the next sync overwrites those edits. Keep session plans, implementation reports, personal paths, and run logs out of these published sources. Local scratch files and graph artifacts are not published.
 
 `.github/workflows/wiki.yml` tests the generator on documentation pull requests and publishes after relevant changes reach `main`. Maintainers can also run **Actions → Sync Wiki → Run workflow** on `main`. New documentation files are discovered automatically; removed files are removed from the wiki. Handwritten pages outside the generated page names are preserved.
 
-Publication uses the existing `BOT_TOKEN` repository secret, which must have Git write access to `reekta92/clin-rs.wiki.git`. Keep this credential in Actions secrets, never in source files. The workflow never exposes it to pull request jobs.
+Publication uses the automatically provided `GITHUB_TOKEN` with `contents: write` permission scoped to the publish job. No additional secret is required for wiki sync. Pull request jobs retain read-only repository access.
 
 Run the generator tests locally:
 
@@ -120,11 +147,11 @@ workspace setup, coordinated changes and [release acceptance](docs/RELEASE_CHECK
 
 ## Bug Reports
 
-Use the [Bug Report](https://github.com/reekta92/clin-rs/issues/new?template=bug_report.md) issue template.
+Open a [bug report](https://github.com/reekta92/clin-rs/issues/new) with reproduction steps, Clin version, OS, terminal, and relevant configuration. Use a disposable example vault; omit private notes and credentials.
 
 ## Feature Requests
 
-Use the [Feature Request](https://github.com/reekta92/clin-rs/issues/new?template=feature_request.md) issue template.
+Open a [feature request](https://github.com/reekta92/clin-rs/issues/new) describing the use case and expected behavior.
 
 ## License
 

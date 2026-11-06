@@ -1,5 +1,15 @@
 use super::{MarkdownRenderer, MdRenderOpts, RenderViewport};
 use crate::app_theme::AppThemeColors;
+use std::time::{Duration, Instant};
+
+fn finish_rendering(renderer: &mut MarkdownRenderer) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while renderer.is_pending() {
+        renderer.poll();
+        assert!(Instant::now() < deadline, "Markdown rendering timed out");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
 
 #[test]
 fn layout_precedes_highlighting() {
@@ -55,10 +65,7 @@ fn unknown_language_completes_plain() {
     };
     renderer.render_with(content, 80, &theme, &opts, viewport);
 
-    while renderer.is_pending() {
-        std::thread::sleep(std::time::Duration::from_millis(1));
-        renderer.poll();
-    }
+    finish_rendering(&mut renderer);
 
     let doc = renderer.document().unwrap();
     let text: String = doc
@@ -82,9 +89,7 @@ fn widget_clips_wide_characters() {
         height: 10,
     };
     renderer.render_with(content, 80, &theme, &opts, viewport);
-    while renderer.is_pending() {
-        renderer.poll();
-    }
+    finish_rendering(&mut renderer);
 
     let doc = renderer.document().unwrap();
     let widget = super::MarkdownWidget::new(doc, 0..1);
@@ -110,9 +115,7 @@ fn continuous_scroll_clamps() {
         height: 2,
     };
     renderer.render_with(content, 80, &theme, &opts, viewport);
-    while renderer.is_pending() {
-        renderer.poll();
-    }
+    finish_rendering(&mut renderer);
     renderer.scroll_down(10, 2);
     assert_eq!(renderer.scroll_offset(), 7); // max scroll is 9 - 2 = 7
     renderer.scroll_up(10);
@@ -130,10 +133,7 @@ fn code_block_highlighting_patches_match() {
         height: 200,
     };
     renderer.render_with(content, 120, &theme, &opts, viewport);
-    while renderer.is_pending() {
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        renderer.poll();
-    }
+    finish_rendering(&mut renderer);
     let doc = renderer.document().unwrap();
     for (i, line) in doc.lines().iter().enumerate() {
         let text: String = line.spans.iter().map(|s| s.text.as_str()).collect();

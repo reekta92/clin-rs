@@ -22,5 +22,10 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.callPackage ./nix/shell.nix { };
       });
+
+      checks = forAllSystems (pkgs: {
+        package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        source-overrides = pkgs.callPackage ./nix/tests.nix { };
+      });
     };
 }

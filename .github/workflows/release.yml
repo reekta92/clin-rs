@@ -104,5 +104,5 @@ jobs:
       update_docs: ${{ inputs.update_docs }}
       create_discussion: ${{ inputs.create_discussion }}
     secrets:
-      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      BOT_TOKEN: ${{ inputs.create_discussion && secrets.BOT_TOKEN || '' }}
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

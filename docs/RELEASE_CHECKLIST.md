@@ -26,7 +26,8 @@ before checking upgrade behavior.
    content/filename. Change the file externally and confirm a stale save retains
    the unsaved buffer and reports a conflict. Check read-only behavior.
 3. Leave unsaved text, terminate, restart and verify recovery. Check ordinary
-   exit, Ctrl+C and error exits restore raw mode, mouse and alternate screen.
+   exit, signal-driven shutdown and error exits restore raw mode, mouse and
+   alternate screen. In text fields, Ctrl+C copies; test it without exiting.
 4. Open Canvas and Draw, change content, save, leave and reopen. Verify external
    changes reject stale saves and failed saves retain the live model.
 5. Open Graph and a public `.base` file, navigate and return to an edited note.

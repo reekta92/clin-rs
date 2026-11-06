@@ -8,7 +8,7 @@ Technical docs for the pinstar canvas module — an Obsidian-compatible node/edg
 
 The canvas view provides an infinite 2D space for visual note mapping. Users can place text nodes, link to files/URLs, group nodes, and connect them with edges. Canvas files use the `.canvas` extension and follow Obsidian's canvas JSON schema for compatibility.
 
-**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (immutable revision selected in `Cargo.toml`, `images` and `mermaid-preview` features) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, the statusline footer, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate. For local compatibility checks, use `python3 scripts/check_upstream.py ../pinstar` from the Clin root; this tests the candidate without changing Clin's pin or lockfile. See [checking upstream libraries](../CONTRIBUTING.md#checking-upstream-libraries).
+**Source:** upstream [`pinstar`](https://github.com/reekta92/pinstar) crate (immutable revision selected in `Cargo.toml`, `images` and `mermaid-preview` features) — clin integrates it through `src/pinstar_adapter.rs` (`PinstarPlugin`), which owns clin keybinds, host status integration, the image file dialog, the system clipboard and per-vault preferences. Canvas engine modules (`state`, `input`, `render`, `data`, plus `formats` for Mermaid/DOT/PlantUML) live in the upstream crate. For local compatibility checks, use `python3 scripts/check_upstream.py ../pinstar` from the Clin root; this tests the candidate without changing Clin's pin or lockfile. See [checking upstream libraries](../CONTRIBUTING.md#checking-upstream-libraries).
 
 ---
 
@@ -185,9 +185,14 @@ Storage::list_note_ids()
                 │
 User interacts → PinstarState mutated
     │
-PinstarState::save() -> writes JSON to disk
-    └─ serde_json::to_string_pretty()
+PinstarState::save() -> serialize JSON
+    └─ adapter save handler -> Storage::replace_document()
+         └─ baseline/read-only checks, permission-preserving atomic replacement
 ```
+
+Failed saves retain the live model and report the error. External edits already
+present at the save check reject replacement. Do not rely on Clin's cooperative
+lock to coordinate another editor; see [save guarantees](UPGRADING.md#safe-note-saving).
 
 ### View Lifecycle
 
@@ -195,21 +200,22 @@ Canvas is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md
 
 ```
 User enters Canvas view
-  ├─ Plugin created: PinstarPlugin::new(path, config, keybinds, matcher, picker)
+  ├─ Plugin created: PinstarPlugin::new_in_storage(..., storage)
   ├─ Owned by App as Option<PinstarPlugin>
   ├─ overlay_render() called from draw_ui() each frame
   ├─ Events dispatched to overlay_handle_event()
   │     └─ returns OverlayResult::{Continue, Exit}
   └─ On Exit:
-       ├─ state = None; mode = return_mode (no save here — saves are eager,
-       │  PinstarState::save() runs at every mutation and on Ctrl+s)
+       ├─ reject unfinished interactions
+       ├─ save_for_navigation() retries the guarded save
+       └─ after success: state = None; restore return_mode
 ```
 
 ---
 
 ## Rendering
 
-Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's adapter paints the statusline footer over the bottom row. The canvas uses:
+Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); Clin renders the shared header/footer outside the engine canvas rectangle. The canvas uses:
 
 - **Braille markers** (`ratatui::symbols::braille`) for node shapes and edge lines
 - **half-block** characters for dense rendering
@@ -226,7 +232,7 @@ Rendering happens in the upstream `pinstar` crate (`draw_pinstar_view`); clin's 
 ## Connection with Other Systems
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — overall state machine and event loop
-- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateCanvasAction` (Ctrl+P → New Canvas)
+- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateCanvasAction` (palette → Create Canvas Map)
 - [ARCHITECTURE.md](ARCHITECTURE.md) — data flow and storage overview
 
 Guarded inline Bases writes reload the containing Canvas and clear its ordinary

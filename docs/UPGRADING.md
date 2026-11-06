@@ -5,11 +5,11 @@ Backup and encryption features have been removed. clin no longer creates Git rep
 ## Before upgrading an encrypted vault
 
 1. Securely copy the complete vault, including hidden `.clin` metadata, and separately preserve the original application key files. A vault copy alone does not include the key stored outside it.
-2. Use the previous release against a copy, with the original key, to recover drafts and decrypt notes. The previous recovery implementation can discard failed records, so never run this migration against your only surviving copy.
+2. Use a release that still supports encryption against a copy, with the original key, to recover drafts and decrypt notes. The legacy recovery implementation can discard failed records, so never run this migration against your only surviving copy.
 3. Verify recovered plaintext content and supported canvas/drawing formats before opening the copy in this release.
 4. Keep originals until the migration and independent backups have been verified.
 
-Legacy `.clin` notes, `.clin/editor_draft.bin`, old `.clin/document-recovery` journals, and opaque encrypted subnote payloads remain untouched by automatic recovery. Startup reports detected legacy notes/recovery records. Encrypted subnotes cannot be read or changed here; use the previous release first. Old encrypted catalog caches are not reused or automatically deleted.
+Legacy `.clin` notes, `.clin/editor_draft.bin`, old `.clin/document-recovery` journals, and opaque encrypted subnote payloads remain untouched by automatic recovery. Startup reports detected legacy notes/recovery records. Encrypted subnotes cannot be read or changed here; use a release that still supports encryption first. Old encrypted catalog caches are not reused or automatically deleted.
 
 ## Plaintext recovery and privacy
 
@@ -26,6 +26,19 @@ private recovery storage. If recovery storage also fails, clin retains the
 temporary file and reports its path; save a copy before your OS clears temporary files.
 
 `clin storage migrate` copies the complete vault, including attachments, `.base` files, `.obsidian` settings, subnotes, templates, and recovery records. It rejects symlink traversal, nested source/destination vaults, live recovery owners, and read failures. Source data remains in place; external legacy keys still require a separate copy.
+
+`storage set` changes the active path and records the previous path; it does not
+copy files. To copy an existing configured vault into a new location:
+
+```sh
+clin storage set /absolute/path/to/new-vault
+clin storage migrate
+```
+
+Migration uses the recorded previous location as source and the active vault as
+destination. With no usable record, it can offer the default vault as a fallback.
+Review the printed paths and any collision prompts. Close other Clin sessions
+before migrating, then verify destination contents before removing the source.
 
 Migration preserves root-relative paths even when all notes live in `notes/`.
 Use `clin storage migrate --legacy-layout` only to convert the old layout:

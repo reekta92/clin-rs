@@ -8,7 +8,7 @@ Technical docs for the force-directed graph module — visualizes the note corpu
 
 The graph view displays all notes as nodes with edges representing `[[wikilinks]]` connections between them. It uses upstream `graf`'s force-directed layout (`fdg_sim`) in a background thread for graphs up to 1,000 displayed nodes; larger graphs use a static clustered layout.
 
-**Source:** `src/graf_adapter.rs` (`GrafPlugin`) integrates upstream [`graf`](https://github.com/reekta92/graf-rs), pinned by `Cargo.toml` / `Cargo.lock`. Graph construction, physics, rendering, spatial indexing, and viewport live in that crate. Clin owns note I/O, preview, quick search, config-error UI, statusline, and keybind mapping.
+**Source:** `src/graf_adapter.rs` (`GrafPlugin`) integrates upstream [`graf`](https://github.com/reekta92/graf), pinned by `Cargo.toml` / `Cargo.lock`. Graph construction, physics, rendering, spatial indexing, and viewport live in that crate. Clin owns note I/O, preview, quick search, config-error UI, statusline, and keybind mapping.
 
 ---
 
@@ -58,7 +58,7 @@ Graph is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)
 ```text
 User enters Graph
   ├─ app.graph_plugin = Some(GrafPlugin::new(...))
-  ├─ upstream physics shares Arc<RwLock<GraphState>>
+  ├─ upstream physics shares Arc<Mutex<GraphState>>
   ├─ host calls overlay_render() / overlay_handle_event()
   └─ exit drops plugin, signals physics stop, restores return_mode
 ```
@@ -84,7 +84,7 @@ Upstream `graf::draw_graph_view()` uses ratatui's `Canvas`; `[graf.visual] canva
 5. Labels  ──────── title text (mode-controlled)
 6. Minimap  ─────── small overview in corner
 7. Legend  ───────── sorted by link count
-8. Status bar  ───── file/link counts, position
+8. Shared host bars ─ file/link counts, position and shortcuts
 ```
 
 ### Node Rendering
@@ -104,7 +104,7 @@ Upstream `graf::draw_graph_view()` uses ratatui's `Canvas`; `[graf.visual] canva
 
 ### Minimap
 
-- **Markers:** `half_block` (default) or `braille`/`dot`
+- **Markers:** upstream default (`half_block`); Clin exposes no minimap-marker setting
 - **Position:** `top_right` (default), `top_left`, `bottom_right`, `bottom_left`
 - Shows a bird's-eye view of the entire graph with a viewport rectangle
 
@@ -145,7 +145,6 @@ The Graph view supports a preview pane identically to the List view. When enable
 | `Shift+P` | Toggle preview pane |
 | `Shift+S` | Toggle Graph shortcuts |
 | `r` | Refresh simulation |
-| `Ctrl+R` | Reload config |
 | `?` / `F1` | Help |
 
 ### Mouse
@@ -153,10 +152,10 @@ The Graph view supports a preview pane identically to the List view. When enable
 | Gesture | Action |
 |---|---|
 | Left-click | Select node |
-| Left-click-drag | Drag node (interrupts settling) |
+| Left-click-drag | Drag node |
 | Scroll | Zoom in/out |
 | Middle-click-drag | Pan viewport |
-| Hover | Highlight connections (implementation varies) |
+| Hover | Highlight the node |
 
 ---
 

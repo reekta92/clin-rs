@@ -205,9 +205,9 @@ fn image_completions_reach_the_owner_and_worker_disconnect_clears_pending() {
     app.image_decode_rx = Some(receiver);
     let key = std::path::PathBuf::from("shared.png");
     app.editor.image_cache.request(key.clone(), 128, &sender);
-    let editor_job = requests.recv().unwrap();
+    let editor_job = requests.recv_timeout(Duration::from_secs(5)).unwrap();
     app.list.image_cache.request(key.clone(), 128, &sender);
-    let list_job = requests.recv().unwrap();
+    let list_job = requests.recv_timeout(Duration::from_secs(5)).unwrap();
     for job in [editor_job, list_job] {
         results
             .send(DecodedImage {
@@ -231,8 +231,61 @@ fn image_completions_reach_the_owner_and_worker_disconnect_clears_pending() {
 }
 
 #[test]
-fn static_views_do_not_redraw_while_idle() {
+fn rapid_input_keeps_redraws_within_sixty_fps() {
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    let _guard = crate::config::ConfigTestGuard::lock();
+    for mode in [
+        ViewMode::List,
+        ViewMode::Edit,
+        ViewMode::Canvas,
+        ViewMode::Graph,
+        ViewMode::Draw,
+    ] {
+        let (_root, mut app) = fixture(0);
+        enter(&mut app, mode);
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let input = std::thread::spawn(move || {
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_millis(180) {
+                sender.send(Event::Resize(120, 40)).unwrap();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if mode != ViewMode::List {
+                sender
+                    .send(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+                    .unwrap();
+            }
+            sender
+                .send(Event::Key(KeyEvent::new(
+                    KeyCode::Char('q'),
+                    KeyModifiers::NONE,
+                )))
+                .unwrap();
+        });
+        let start = Instant::now();
+        let result = crate::run_app(
+            &mut terminal,
+            &mut app,
+            &mut crate::event_source::EventSource::channel(receiver),
+        );
+        let elapsed = start.elapsed();
+        input.join().unwrap();
+        result.unwrap();
+        let frames = terminal.get_frame().count();
+        eprintln!("{mode:?}: {frames} frames in {elapsed:?}");
+        let limit = elapsed.as_secs_f64() * 60.0 + 2.0;
+        assert!(
+            frames as f64 <= limit,
+            "{mode:?} drew {frames} frames in {elapsed:?}; expected at most {limit:.0}"
+        );
+        assert!(app.should_quit, "quit input was lost in {mode:?}");
+    }
+}
+
+#[test]
+fn static_views_do_not_redraw_while_idle() {
     let _guard = crate::config::ConfigTestGuard::lock();
     for mode in [
         ViewMode::List,
@@ -244,6 +297,7 @@ fn static_views_do_not_redraw_while_idle() {
         ViewMode::Calendar,
         ViewMode::Setup,
     ] {
+        eprintln!("observing idle frames in {mode:?}");
         let (_root, mut app) = fixture(0);
         enter(&mut app, mode);
         if mode == ViewMode::Calendar {
@@ -262,30 +316,25 @@ fn static_views_do_not_redraw_while_idle() {
             }
             assert!(!app.poll_calendar(), "loaded calendar must remain idle");
         }
-        let (sender, receiver) = std::sync::mpsc::channel();
-        let driver = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(650));
-            let keys = if mode == ViewMode::Edit {
-                vec![KeyCode::Esc, KeyCode::Char('q')]
-            } else if mode == ViewMode::Setup {
-                vec![KeyCode::Esc, KeyCode::Enter, KeyCode::Char('q')]
-            } else {
-                vec![KeyCode::Char('q'), KeyCode::Char('q')]
-            };
-            for code in keys {
-                sender
-                    .send(Event::Key(KeyEvent::new(code, KeyModifiers::NONE)))
-                    .unwrap();
-            }
-        });
         let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
-        crate::run_app(
+        let result = crate::run_app(
             &mut terminal,
             &mut app,
-            &mut crate::event_source::EventSource::channel(receiver),
-        )
-        .unwrap();
-        driver.join().unwrap();
+            &mut crate::event_source::EventSource::IdleUntil(
+                Instant::now() + Duration::from_millis(650),
+            ),
+        );
+        // Timed input returns an error, so finish the normal catalog cleanup explicitly.
+        crate::perform_orderly_catalog_shutdown(&mut app);
+        let error = result.expect_err("idle input must end the observation window");
+        let error = error.downcast::<std::io::Error>().unwrap();
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::TimedOut,
+            "{mode:?}: {error}"
+        );
+        assert_eq!(error.to_string(), "idle observation completed");
+        assert_eq!(app.mode, mode, "idle view changed without input");
         let frames = terminal.get_frame().count();
         assert!(frames <= 3, "{mode:?} drew {frames} idle frames");
     }

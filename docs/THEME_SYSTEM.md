@@ -6,7 +6,7 @@ Technical docs for the theme and color system — 19 built-in themes, per-color 
 
 ## Custom Themes
 
-Drop a TOML file into the active configuration directory’s `themes/<name>.toml` to make `<name>` available as a theme. Set `theme = "<name>"` under `[ui]` in `config.toml` to activate it.
+Drop a TOML file into the active configuration directory’s `themes/<name>.toml` to make `<name>` available as a theme. Names must contain only ASCII letters, digits, and underscores. Set `theme = "<name>"` under `[ui]` in `config.toml` to activate it.
 
 ### File Schema
 
@@ -35,7 +35,6 @@ background = "#1a1b26"   # optional → transparent when absent
 [graph]
 nodes = ["#7aa2f7","#bb9af7","#7dcfff","#e0af68","#9ece6a","#f7768e","#94e2d5","#ff9e64"]
 chrome = "#565f89"
-title  = "#bb9af7"
 text   = "#cbccd5"
 fg     = "#ffffff"
 bg     = "#1a1b26"       # optional
@@ -45,7 +44,7 @@ bg     = "#1a1b26"       # optional
 
 1. **Custom dir** — `<name>.toml` in `<active-config-dir>/themes/` is checked first.
 2. **Built-in** — if no custom file found, the name is matched against built-in themes.
-3. **Fallback** — unknown names silently resolve to the Default theme.
+3. **Fallback** — unknown names resolve to Default. A failed custom-theme load reports a warning, then tries the built-in name or Default.
 
 A custom theme with the same name as a built-in overrides it.
 
@@ -216,6 +215,7 @@ pub struct AppThemeColors {
     pub highlight_bg: Color, // Selection highlight background
     pub selection_indicator: Color, // Selection marker
     pub hint_bar_style: HintBarStyle,
+    pub icon_mode: IconMode,
 }
 ```
 
@@ -236,7 +236,7 @@ impl AppThemeColors {
 
 | View | Uses |
 |---|---|
-  | List | `accent` (selection), `pinned` (pinned items), `smart` (smart folders), `subnote` (subnotes), `folder` (vault folders), `tag` (tags), `muted` (hints), `border` (dividers), `bg` (background) |
+| List | `accent` (selection), `pinned` (pinned items), `smart` (smart folders), `subnote` (subnotes), `folder` (vault folders), `tag` (tags), `muted` (hints), `border` (dividers), `bg` (background) |
 | Edit | `accent` (cursor), `highlight_fg`/`highlight_bg` (title bar), `muted` (status), `border` (dividers) |
 | Help | `accent` (current tab), `muted` (other tabs), `title_bar_bg_style` (tab bar), `bg_style` (content) |
 | Graph | Uses graf `ThemeColors` palette for node/edge/grid colors; `app_theme` for UI shell (status bar, borders) |

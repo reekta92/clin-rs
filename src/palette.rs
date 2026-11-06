@@ -5,6 +5,7 @@ use ratatui_textarea::TextArea;
 
 mod managers;
 mod presentation;
+pub(crate) use presentation::category_color;
 pub(crate) mod workflows;
 use workflows::{PaletteParent, Workflow};
 
@@ -81,6 +82,7 @@ pub struct PaletteItem {
     pub name: String,
     pub description: String,
     pub glyph: String,
+    pub category: Option<crate::actions::ActionCategory>,
     pub score: i64,
 }
 
@@ -210,6 +212,7 @@ impl CommandPalette {
                     name: action.name.clone(),
                     description: action.description.clone(),
                     glyph: action.glyph.clone(),
+                    category: Some(action.category),
                     score: 0,
                 });
             }
@@ -227,6 +230,7 @@ impl CommandPalette {
                         name: action.name.clone(),
                         description: action.description.clone(),
                         glyph: action.glyph.clone(),
+                        category: Some(action.category),
                         score,
                     });
                 }

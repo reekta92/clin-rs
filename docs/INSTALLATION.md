@@ -160,7 +160,7 @@ hdiutil detach /Volumes/clin
 
 # Or using .tar.gz
 
-tar -xzf clin-rs-aarch64-apple-darwin.tar.gz
+tar -xzf clin-rs-*-apple-darwin.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/

@@ -2,6 +2,75 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.14.1] - 2026-11-06
+
+### Fixed
+
+- Use GitHub token for wiki sync (#260)
+- Set 60hz render limit (#259)
+## [0.14.0] - 2026-11-06
+
+### Added
+
+- Expand native Mermaid previews (#254)
+
+### Fixed
+
+- Use job token unless discussions need bot credentials (#258)
+- Make footer width test independent of version (#257)
+- Preserve source overrides and use version check hook (#255)
+- Restore reproducible builds and package checks (#253)
+- Add office document icons (#245) (#246)
+
+### Build
+
+- Bump notify from 8.2.0 to 8.2.1 (#251)
+- Bump tokio from 1.53.3 to 1.54.1 (#250)
+- Bump uuid from 1.28.0 to 1.29.0 (#249)
+- Bump icalendar from 0.17.15 to 0.17.17 (#248)
+- Bump unicode-width from 0.2.2 to 0.2.3 (#247)
+
+### Release
+
+- V0.14.0
+## [0.14.0-rc.2] - 2026-10-28
+
+### Added
+
+- Distinguish the task widget todo.txt file (#241)
+- Color actions and active tabs by category (#237)
+- Calendar visual improvements (#231)
+
+### Changed
+
+- Reuse parsers and add optional article clipping (#228)
+
+### Documentation
+
+- Audit documentation against current code and remove session reports (#240)
+- Added AGENTS.md file to guide LLM generated contributions (#232)
+
+### Fixed
+
+- Show property badges without icons (#242)
+- Stop idle-view hangs and speed up test execution (#243)
+- Prevent hidden lines between pages (#235) (#239)
+- Address cleanup14 audit findings (#236)
+- Make popups consistent and fix vault switching (#234)
+- Macos fix for new perf tests (#233)
+
+### Performance
+
+- Enable bounded parallel tests and lighter debug info (#244)
+- Reduce idle rendering and bound background work (#230)
+
+### Build
+
+- Bump lru from 0.18.5 to 0.19.0 (#226)
+
+### Release
+
+- V0.14.0-rc.2
 ## [0.14.0-rc.1] - 2026-10-24
 
 ### Fixed
@@ -13,6 +82,10 @@ All notable changes to clin are documented in this file.
 
 - Bump base64 from 0.22.1 to 0.23.1 (#224)
 - Reduce duplicate and unused dependencies (#222)
+
+### Release
+
+- V0.14.0-rc.1
 ## [0.14.0-rc.0] - 2026-10-22
 
 ### Release

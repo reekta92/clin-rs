@@ -249,6 +249,7 @@ impl CommandPalette {
                 name: "Apply".into(),
                 description: "Submit entered value".into(),
                 glyph: String::new(),
+                category: None,
                 score: 0,
             }];
             self.state.select(Some(0));
@@ -283,6 +284,7 @@ impl CommandPalette {
                     name,
                     description,
                     glyph: String::new(),
+                    category: None,
                     score,
                 })
             })

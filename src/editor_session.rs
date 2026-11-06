@@ -21,11 +21,13 @@ where
     let mut focus = EditFocus::Body;
     let mut mouse_selection = MouseTextSelection::default();
     let mut dirty = true;
+    let mut frame_pacer = crate::frame_pacer::FramePacer::new();
     if let Some(change) = app.editor.body.take_change() {
         synchronize_source_highlight(app, change);
     }
 
     while !app.should_quit && app.mode == ViewMode::Edit {
+        frame_pacer.wait();
         if crate::SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;

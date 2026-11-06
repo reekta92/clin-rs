@@ -24,6 +24,7 @@ pub mod editor;
 pub(crate) mod editor_document;
 pub(crate) mod editor_session;
 pub mod event_source;
+mod frame_pacer;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
@@ -1348,8 +1349,10 @@ where
     let mut focus = EditFocus::Body;
     let mut dirty = true;
     let mut prev_mode = app.mode;
+    let mut frame_pacer = crate::frame_pacer::FramePacer::new();
 
     while !app.should_quit {
+        frame_pacer.wait();
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;
@@ -1778,7 +1781,6 @@ pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[cfg(windows)]
     #[test]
@@ -1834,11 +1836,13 @@ mod tests {
 
     #[test]
     fn list_dirty_draws_only_on_change() {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = tempfile::tempdir().unwrap();
         let storage = Storage {
-            data_dir: PathBuf::from("/tmp"),
-            config_dir: PathBuf::from("/tmp"),
-            notes_dir: PathBuf::from("/tmp"),
-            templates_dir: PathBuf::from("/tmp"),
+            data_dir: root.path().into(),
+            config_dir: root.path().into(),
+            notes_dir: root.path().into(),
+            templates_dir: root.path().into(),
             skip_dir_patterns: vec![],
             frontmatter_policy: crate::frontmatter::WritePolicy::default(),
         };

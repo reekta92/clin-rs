@@ -38,7 +38,7 @@ All the features you need to manage your knowledge base; use tags, sort notes in
 
 <img width="1916" height="1042" alt="Pasted image (4)" src="https://github.com/user-attachments/assets/2d9c4810-e4b3-4c91-8589-cc0a4f237598" />
 
-Graph view powered by [graf-rs](https://github.com/reekta92/graf-rs) with realtime physics simulation, edit or create connections directly from the graph view, view local graphs only and more.
+Graph view powered by [graf-rs](https://github.com/reekta92/graf) with realtime physics simulation, edit or create connections directly from the graph view, view local graphs only and more.
 
 <img width="1916" height="1042" alt="Pasted image (5)" src="https://github.com/user-attachments/assets/5f431a51-be2a-45df-9bb8-ac3608c66026" />
 
@@ -141,6 +141,6 @@ The Wiki syncs from `main`; documentation changes belong in the repository sourc
 
 Support development on [Patreon](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358). Licensed under [GPL-3.0](LICENSE).
 
-Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), [graf](https://github.com/reekta92/graf-rs), [pinstar](https://github.com/reekta92/pinstar), and [draw-rs](https://github.com/reekta92/draw-rs). Markdown previews use comrak and syntect.
+Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), [graf](https://github.com/reekta92/graf), [pinstar](https://github.com/reekta92/pinstar), and [draw-rs](https://github.com/reekta92/draw-rs). Markdown previews use comrak and syntect.
 
 [Featured as Terminal Trove's Tool of the Week](https://terminaltrove.com/clin).

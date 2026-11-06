@@ -85,6 +85,7 @@ Actions are grouped by category:
 | Category | Shipped actions |
 |---|---|
 | **General** | Show info, paste image, insert image from file (shown under All) |
+| **Notes** | Applicable note actions, including Outline and Subnotes |
 | **Import** | File, CSV, JSON, URL, and clipboard imports to a new note |
 | **Append** | File, CSV, JSON, URL, and clipboard imports appended to current note; OCR paste |
 | **Bases** | All 34 configuration commands, visible only in the Bases view |
@@ -223,7 +224,7 @@ Theme/preset/UI changes update retained owners, including those suspended under 
            ActionCategory::General
        }
         fn glyph(&self) -> (&'static str, &'static str) {
-            clin::ui::icons::HELP.pair() // question-circle with a single-cell Unicode fallback
+            crate::ui::icons::HELP.pair() // question-circle with a single-cell Unicode fallback
         }
        fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
            // your logic here
