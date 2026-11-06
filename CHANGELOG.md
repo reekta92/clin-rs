@@ -2,6 +2,27 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.14.0] - 2026-11-06
+
+### Added
+
+- Expand native Mermaid previews (#254)
+
+### Fixed
+
+- Use job token unless discussions need bot credentials (#258)
+- Make footer width test independent of version (#257)
+- Preserve source overrides and use version check hook (#255)
+- Restore reproducible builds and package checks (#253)
+- Add office document icons (#245) (#246)
+
+### Build
+
+- Bump notify from 8.2.0 to 8.2.1 (#251)
+- Bump tokio from 1.53.3 to 1.54.1 (#250)
+- Bump uuid from 1.28.0 to 1.29.0 (#249)
+- Bump icalendar from 0.17.15 to 0.17.17 (#248)
+- Bump unicode-width from 0.2.2 to 0.2.3 (#247)
 ## [0.14.0-rc.2] - 2026-10-28
 
 ### Added
@@ -36,6 +57,10 @@ All notable changes to clin are documented in this file.
 ### Build
 
 - Bump lru from 0.18.5 to 0.19.0 (#226)
+
+### Release
+
+- V0.14.0-rc.2
 ## [0.14.0-rc.1] - 2026-10-24
 
 ### Fixed
