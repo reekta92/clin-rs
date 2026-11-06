@@ -39,7 +39,7 @@ archives so the AUR package can install the same desktop launcher and icons.
 
 | Secret | Source | Used by |
 |---|---|---|
-| `BOT_TOKEN` | Repository bot token with Git write access | Wiki publication; optional release authentication |
+| `BOT_TOKEN` | Repository bot token with Git write access; discussion permissions for release discussions | Wiki publication; optional release discussions |
 | `CARGO_REGISTRY_TOKEN` | [crates.io/settings/tokens](https://crates.io/settings/tokens) — publish scope | crates.io publish |
 
 
