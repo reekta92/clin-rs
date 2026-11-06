@@ -2,6 +2,12 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.14.1] - 2026-11-06
+
+### Fixed
+
+- Use GitHub token for wiki sync (#260)
+- Set 60hz render limit (#259)
 ## [0.14.0] - 2026-11-06
 
 ### Added
@@ -23,6 +29,10 @@ All notable changes to clin are documented in this file.
 - Bump uuid from 1.28.0 to 1.29.0 (#249)
 - Bump icalendar from 0.17.15 to 0.17.17 (#248)
 - Bump unicode-width from 0.2.2 to 0.2.3 (#247)
+
+### Release
+
+- V0.14.0
 ## [0.14.0-rc.2] - 2026-10-28
 
 ### Added
