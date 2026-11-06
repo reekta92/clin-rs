@@ -24,6 +24,7 @@ pub mod editor;
 pub(crate) mod editor_document;
 pub(crate) mod editor_session;
 pub mod event_source;
+mod frame_pacer;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
@@ -1348,8 +1349,10 @@ where
     let mut focus = EditFocus::Body;
     let mut dirty = true;
     let mut prev_mode = app.mode;
+    let mut frame_pacer = crate::frame_pacer::FramePacer::new();
 
     while !app.should_quit {
+        frame_pacer.wait();
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;

@@ -231,6 +231,60 @@ fn image_completions_reach_the_owner_and_worker_disconnect_clears_pending() {
 }
 
 #[test]
+fn rapid_input_keeps_redraws_within_sixty_fps() {
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    let _guard = crate::config::ConfigTestGuard::lock();
+    for mode in [
+        ViewMode::List,
+        ViewMode::Edit,
+        ViewMode::Canvas,
+        ViewMode::Graph,
+        ViewMode::Draw,
+    ] {
+        let (_root, mut app) = fixture(0);
+        enter(&mut app, mode);
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let input = std::thread::spawn(move || {
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_millis(180) {
+                sender.send(Event::Resize(120, 40)).unwrap();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            if mode != ViewMode::List {
+                sender
+                    .send(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+                    .unwrap();
+            }
+            sender
+                .send(Event::Key(KeyEvent::new(
+                    KeyCode::Char('q'),
+                    KeyModifiers::NONE,
+                )))
+                .unwrap();
+        });
+        let start = Instant::now();
+        let result = crate::run_app(
+            &mut terminal,
+            &mut app,
+            &mut crate::event_source::EventSource::channel(receiver),
+        );
+        let elapsed = start.elapsed();
+        input.join().unwrap();
+        result.unwrap();
+        let frames = terminal.get_frame().count();
+        eprintln!("{mode:?}: {frames} frames in {elapsed:?}");
+        let limit = elapsed.as_secs_f64() * 60.0 + 2.0;
+        assert!(
+            frames as f64 <= limit,
+            "{mode:?} drew {frames} frames in {elapsed:?}; expected at most {limit:.0}"
+        );
+        assert!(app.should_quit, "quit input was lost in {mode:?}");
+    }
+}
+
+#[test]
 fn static_views_do_not_redraw_while_idle() {
     let _guard = crate::config::ConfigTestGuard::lock();
     for mode in [
