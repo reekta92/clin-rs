@@ -81,19 +81,6 @@ Write, connect, organize, and schedule notes in one terminal app.
 
 Also includes [templates](docs/TEMPLATES.md), [outlines](docs/OUTLINE.md), [subnotes](docs/SUBNOTES.md), daily writing goals, and file/URL imports with optional conversion and OCR tools.
 
-<details>
-<summary>See graph, canvas, and editor screenshots</summary>
-
-<table>
-  <tr>
-    <td valign="top" width="33%"><img src="https://github.com/user-attachments/assets/a1f56629-9c40-4151-95b3-e35494106c43" alt="Graph view showing connections between notes" width="100%"><br><b>Graph:</b> explore your wikilinks.</td>
-    <td valign="top" width="33%"><img src="https://github.com/user-attachments/assets/ac972010-3a15-4faf-869a-11ea475e4ee0" alt="Canvas view with connected nodes" width="100%"><br><b>Canvas:</b> arrange connected ideas.</td>
-    <td valign="top" width="33%"><img src="https://github.com/user-attachments/assets/ac3291f2-21a9-452a-b603-366f1d8bd3fe" alt="Built-in editor view" width="100%"><br><b>Editor:</b> write and revise notes in the terminal.</td>
-  </tr>
-</table>
-
-</details>
-
 ## Installation
 
 Download a package from [Releases](https://github.com/reekta92/clin-rs/releases), or use your preferred package manager:
