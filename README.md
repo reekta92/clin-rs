@@ -1,4 +1,3 @@
-<div align="center">
 
 <img width="128" height="128" alt="clin logo" src="assets/icon.svg" />
 
@@ -17,9 +16,41 @@ Write, connect, organize, and schedule notes in one terminal app.
 
 </div>
 
-![Notes view with a Markdown preview](https://github.com/user-attachments/assets/1de315ca-1585-4315-94b4-6e57c310b322)
+<img width="1916" height="1042" alt="Pasted image (9)" src="https://github.com/user-attachments/assets/138f402c-6e4a-4b9d-a1a7-6ef1dfff623b" />
 
-Browse your vault and preview notes without leaving the terminal.
+Browse your vault and preview(and edit) notes without leaving the terminal.
+
+<img width="1916" height="1042" alt="Pasted image (7)" src="https://github.com/user-attachments/assets/4286b5e3-9c3a-4292-bbac-b999cd564313" />
+
+Markdown first text editor with dynamic styling, preview pane, zen mode for focused editing, text alignment including left-right or justified alignments and more. External editors also supported out of the box.
+
+<img width="1916" height="1042" alt="Pasted image (2)" src="https://github.com/user-attachments/assets/c08d95db-9677-4754-9a5a-3fa710343fdb" />
+
+Both mouse and keyboard friendly workflows with visual feedback and modern sleek designed UI/UX.
+
+<img width="1916" height="1042" alt="Pasted image" src="https://github.com/user-attachments/assets/1b7afd4f-623e-40fb-a8da-95523c7dbe12" />
+
+Calendar view to manage your tasks/events, with iCal and CalDav support.
+
+<img width="1916" height="1042" alt="Pasted image (3)" src="https://github.com/user-attachments/assets/03bc1d77-d616-443a-9eb2-8ee7600750e0" />
+
+All the features you need to manage your knowledge base; use tags, sort notes into smart folders with custom rules, create note templates, create subnotes that are inside a note, create backward/forward links for related notes and many more.
+
+<img width="1916" height="1042" alt="Pasted image (4)" src="https://github.com/user-attachments/assets/2d9c4810-e4b3-4c91-8589-cc0a4f237598" />
+
+Graph view powered by [graf-rs](https://github.com/reekta92/graf-rs) with realtime physics simulation, edit or create connections directly from the graph view, view local graphs only and more.
+
+<img width="1916" height="1042" alt="Pasted image (5)" src="https://github.com/user-attachments/assets/5f431a51-be2a-45df-9bb8-ac3608c66026" />
+
+Create canvases or edit .canvas files, powered by [pinstar](https://github.com/reekta92/pinstar) create nodes, connections; edit node properties like colors, size, title and more; render images directly in the canvas; create group nodes to tidy all the nodes however you want, compatible with Obsidian.
+
+<img width="1916" height="1042" alt="Pasted image (6)" src="https://github.com/user-attachments/assets/9ee57005-fc27-43b8-8f3a-5dda753b3dfb" />
+
+Create freehand drawing using braille characters powered by [draw-rs](https://github.com/reekta92/draw-rs) edit drawings by rotating scaling or coloring them, create shapes, add text and more.
+
+<img width="1916" height="1042" alt="Pasted image (8)" src="https://github.com/user-attachments/assets/9c6e8584-c8d2-487b-84b7-f990e0f6563f" />
+
+Create, interactively edit and configure .base files for creating custom databases or views like kanban, cards, table etc. to render dynamically inside note files, compatible with Obsidian.
 
 ## Features
 
