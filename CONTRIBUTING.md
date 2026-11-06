@@ -39,7 +39,7 @@ archives so the AUR package can install the same desktop launcher and icons.
 
 | Secret | Source | Used by |
 |---|---|---|
-| `BOT_TOKEN` | Repository bot token with Git write access; discussion permissions for release discussions | Wiki publication; optional release discussions |
+| `BOT_TOKEN` | Optional bot token with discussion write access | Release discussions |
 | `CARGO_REGISTRY_TOKEN` | [crates.io/settings/tokens](https://crates.io/settings/tokens) — publish scope | crates.io publish |
 
 
@@ -119,7 +119,7 @@ The [GitHub Wiki](https://github.com/reekta92/clin-rs/wiki) is generated from al
 
 `.github/workflows/wiki.yml` tests the generator on documentation pull requests and publishes after relevant changes reach `main`. Maintainers can also run **Actions → Sync Wiki → Run workflow** on `main`. New documentation files are discovered automatically; removed files are removed from the wiki. Handwritten pages outside the generated page names are preserved.
 
-Publication uses the existing `BOT_TOKEN` repository secret, which must have Git write access to `reekta92/clin-rs.wiki.git`. Keep this credential in Actions secrets, never in source files. The workflow never exposes it to pull request jobs.
+Publication uses the automatically provided `GITHUB_TOKEN` with `contents: write` permission scoped to the publish job. No additional secret is required for wiki sync. Pull request jobs retain read-only repository access.
 
 Run the generator tests locally:
 

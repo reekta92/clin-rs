@@ -36,6 +36,8 @@ jobs:
   publish:
     needs: check
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && github.repository == 'reekta92/clin-rs'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     concurrency:
       group: wiki-publish
@@ -48,14 +50,10 @@ jobs:
           persist-credentials: false
       - name: Publish documentation
         env:
-          GH_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${GH_TOKEN}" ]]; then
-            echo '::error::BOT_TOKEN must have write access to the wiki repository.'
-            exit 1
-          fi
           gh auth setup-git
           wiki="${RUNNER_TEMP}/clin-wiki"
           git clone "https://github.com/${GITHUB_REPOSITORY}.wiki.git" "$wiki"
