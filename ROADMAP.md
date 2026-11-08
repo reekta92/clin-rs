@@ -91,7 +91,6 @@ track individual proposals and blockers in GitHub issues.
 #### Notes View
 
 #### Edit View
-- [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
 
 #### Graph View
 - [ ] **Assign tags** — tag notes directly from graph
@@ -104,15 +103,19 @@ track individual proposals and blockers in GitHub issues.
 - [ ] **Jump to** — kinda like find in file/quick search, searches a string through entire node titles, content etc. allows for jumping to that node
 
 #### Draw View
-- [ ] **Text size** — changable text size
-- [ ] **UI indicators** — indicators like how big is the canvas, the scale etc.
 
 #### Command Palette
-- [ ] **Merge/split notes** — combine or divide notes
-- [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
 
 #### Configuration
 - [ ] **Plugin support** — a plugin system to allow users create new views, command palette actions, preview pane types for specific filetypes and possibly custom popups
 
 #### Other
 - [ ] **CLI automation** - rework of CLI commands to make them more usefull in a scripting/automation purpose maybe allow for interactive TUI control via CLI or a shell.
+
+## Archived
+
+- [ ] **Merge/split notes** — combine or divide notes
+- [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
+- [ ] **Text size** — changable text size
+- [ ] **UI indicators** — indicators like how big is the canvas, the scale etc.
+- [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
