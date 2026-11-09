@@ -5,6 +5,10 @@ documented in the [README](README.md) and [documentation index](docs/INDEX.md).
 Use the [release checklist](docs/RELEASE_CHECKLIST.md) for candidate acceptance;
 track individual proposals and blockers in GitHub issues.
 
+## Goal before v1.0.0 - 80% complete
+
+CLI automation for scripting and agent interaction for those who wants to automate or access the features of the project from the shell rather than launching the TUI. Polishing of UI elements especially the hints and help sections across the app to make it more user friendly. Performance check for each individual canvas view: `pinstar`, `graf` and `draw-rs`. Bug fixing especialy related to file managing features.
+
 ## Completed
 
 - [x] **Orthogonal connections** — arrow like connections between nodes, toggleable
