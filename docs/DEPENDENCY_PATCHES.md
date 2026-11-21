@@ -9,37 +9,26 @@ Stored digests and recovery record formats remain unchanged.
 Image features explicitly retain the existing decoders and PNG output while
 omitting the unused AVIF encoder. Image 0.25's `avif` feature enables encoding;
 AVIF decoding requires the separate `avif-native` feature, which Clin did not
-enable. Pinstar 1.1.4 separates `image-defaults` from image-node support, so Clin
+enable. Pinstar separates `image-defaults` from image-node support, so Clin
 disables its defaults and selects codecs itself. Older Pinstar releases force
 all image defaults.
 
 The lockfile also selects `rustls 0.23.46`, resolving
 `RUSTSEC-2026-0346` through `RUSTSEC-2026-0349` without advisory ignores or an MSRV
-change. This is a registry patch update, independent of the Mermaid fork below.
+change. This is a registry patch update, independent of the Mermaid parser.
 `rustls-webpki 0.103.16` also resolves `RUSTSEC-2026-0382` (acceptance of
 distrusted intermediate certificates), preserving the same compiler minimum.
 
 ## Mermaid YAML backend
 
-Clin uses registry Graf and Draw packages and Pinstar 1.1.4 pinned to Git revision
-`d75833645a6f8c43d0d078eca050718ff9391169` in `Cargo.toml`. The Pinstar pin supplies
-native flowchart, sequence, ER and state previews alongside host popup fixes and
-independent image codec selection. `Cargo.lock` records immutable Git revisions
-and registry checksums.
+Pinstar 1.1.6 and `merman-core-clin 0.6.1` are published on crates.io.
+Pinstar provides native flowchart, sequence, ER and state previews alongside
+independent image codec selection. It enables the parser features those
+previews use. The standalone parser still enables Gantt by default.
 
-Cargo packaging replaces a Git dependency with its declared registry version.
-Verify the extracted package before publishing; a successful Git-checkout build
-alone does not prove that the registry package has the same adapter API or preview
-behavior. The published Pinstar 1.1.4 and parser 0.6.0 do not include these preview
-changes; matching registry releases are required before publishing this feature.
-
-Pinstar uses `merman-core-clin 0.6.0` pinned to Git revision
-`d3d4afb75232708616b7e6127b28ff9cb42b4c76` from
-[the maintained fork branch](https://github.com/reekta92/merman/tree/fix/maintained-yaml-msrv-1.90).
-The upstream 0.6 parser API, library import, MIT/Apache-2.0 attribution and Rust
-1.90 support remain. No root `[patch]` is required. The pin fixes quoted subgraph
-titles containing delimiters and an ER lexer panic on UTF-8 attribute names.
-No Mermaid feature was disabled to make dependency checks pass.
+The [maintained fork](https://github.com/reekta92/merman/tree/fix/maintained-yaml-msrv-1.90)
+retains the upstream 0.6 parser API, MIT/Apache-2.0 attribution and Rust 1.90
+support. It handles delimiters in quoted subgraph titles and UTF-8 ER attribute names.
 
 The fork starts at the published 0.6.0 source revision
 `91722fd1881ae37fd276788fe78a5cc7274d4cde`. Its YAML backend replaces
@@ -47,12 +36,19 @@ archived `serde_yaml` with YAML Organization's `yaml_serde 0.10.7`. clin's
 historical `serde_yaml_ng` import name aliases that same maintained package;
 there is no compatibility wrapper or second semantic value model.
 
-`yaml_serde` uses maintained `libyaml-rs 0.3.0`. This backend still contains
-translated libyaml unsafe code; removing the unmaintained dependency advisory
-is not a claim that all parser memory-safety risks disappear. No YAML advisory ignore is required. `deny.toml` rejects unknown registries and
-Git sources except the explicitly allowed Pinstar and maintained Merman repositories. It separately
-retains unmaintained-package ignores for bincode (`RUSTSEC-2025-0141`) and paste
-(`RUSTSEC-2024-0436`); those are not resolved by the YAML backend.
+`yaml_serde` uses maintained `libyaml-rs 0.3.0`. The translated libyaml backend
+still uses unsafe code. Dependency policy rejects unknown registries and Git
+sources and retains the existing maintenance exceptions for bincode
+(`RUSTSEC-2025-0141`) and paste (`RUSTSEC-2024-0436`).
+
+## Date and calendar dependencies
+
+Clin uses Jiff for civil dates and timestamps and `calcard-next` for iCalendar
+parsing and recurrence. Graf 1.1.3 and Trash 5.4 use Jiff. Pinstar
+selects only the Mermaid parsers required for its previews. The lockfile
+excludes `chrono` and `chrono-tz`, resolving `RUSTSEC-2026-0543` and
+`RUSTSEC-2026-0555`. The migration preserves stored timestamp and calendar
+formats.
 
 ### Compatibility checks
 

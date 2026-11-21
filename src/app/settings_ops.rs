@@ -605,7 +605,7 @@ impl App {
     }
 
     pub fn load_goals_progress(&self) -> crate::goals::DailyProgress {
-        let today = chrono::Local::now().date_naive().to_string();
+        let today = jiff::Zoned::now().date().to_string();
         let fresh = || crate::goals::DailyProgress {
             date: today.clone(),
             words_written: 0,
@@ -640,7 +640,7 @@ impl App {
 
     pub fn get_current_goals_progress(&mut self) -> &mut crate::goals::DailyProgress {
         self.check_and_reload_config();
-        let today = chrono::Local::now().date_naive().to_string();
+        let today = jiff::Zoned::now().date().to_string();
         if self.goals_progress.date != today {
             self.goals_progress = self.load_goals_progress();
         }

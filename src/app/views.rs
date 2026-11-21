@@ -163,9 +163,8 @@ impl App {
         }
         if destination == "calendar.open" {
             if self.calendar_view.is_none() {
-                self.calendar_view = Some(crate::calendar::view::View::new(
-                    chrono::Local::now().date_naive(),
-                ));
+                self.calendar_view =
+                    Some(crate::calendar::view::View::new(jiff::Zoned::now().date()));
             }
             self.mode = ViewMode::Calendar;
             self.return_mode = Some(ViewMode::List);

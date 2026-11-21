@@ -1466,10 +1466,7 @@ impl App {
                         ));
                     }
 
-                    let secs =
-                        std::time::UNIX_EPOCH + std::time::Duration::from_secs(summary.updated_at);
-                    let dt: chrono::DateTime<chrono::Local> = secs.into();
-                    let formatted = dt.format(&self.date_format).to_string();
+                    let formatted = crate::ui::format_date(summary.updated_at, &self.date_format);
                     spans.push(Span::raw(" "));
                     spans.push(Span::styled(
                         format!("({formatted})"),

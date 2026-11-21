@@ -2,14 +2,14 @@ use super::*;
 
 impl App {
     pub(crate) fn open_calendar_reference(&mut self, target: &str) -> anyhow::Result<()> {
-        let (resource, date) = if let Ok(date) = target.parse::<chrono::NaiveDate>() {
+        let (resource, date) = if let Ok(date) = target.parse::<jiff::civil::Date>() {
             (None, date)
         } else {
             let (id, date) = target.split_once('@').ok_or_else(|| {
                 anyhow::anyhow!("Use calendar:YYYY-MM-DD or calendar:EVENT-ID@YYYY-MM-DD")
             })?;
             uuid::Uuid::parse_str(id)?;
-            let date = date.parse::<chrono::NaiveDate>()?;
+            let date = date.parse::<jiff::civil::Date>()?;
             self.calendar.ensure_loaded(&self.storage)?;
             anyhow::ensure!(
                 self.calendar
@@ -33,7 +33,7 @@ impl App {
 
     pub(crate) fn open_calendar_at(
         &mut self,
-        date: Option<chrono::NaiveDate>,
+        date: Option<jiff::civil::Date>,
     ) -> anyhow::Result<()> {
         self.navigate_from_palette("calendar.open")?;
         if let Some(date) = date
