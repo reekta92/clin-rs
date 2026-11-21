@@ -13,7 +13,7 @@ enum Place {
     PublicSource(String),
     Template(PathBuf),
     Graph,
-    Calendar(chrono::NaiveDate, crate::calendar::view::Display),
+    Calendar(jiff::civil::Date, crate::calendar::view::Display),
     Draw(Option<String>),
     Canvas(String),
     Bases {

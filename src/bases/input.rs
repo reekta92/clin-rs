@@ -416,7 +416,7 @@ impl BasesState {
             return;
         }
         self.loading = true;
-        self.environment.now = chrono::Local::now();
+        self.environment.now = jiff::Zoned::now();
         if invalidate {
             self.media.invalidate();
         }

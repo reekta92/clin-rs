@@ -1,9 +1,9 @@
 use super::{dav, ical, store, view};
 use crate::storage::Storage;
-use chrono::{Duration, NaiveDate};
+use jiff::{Timestamp, civil::Date, tz::TimeZone};
 use std::{fs, path::Path};
 
-fn date(value: &str) -> NaiveDate {
+fn date(value: &str) -> Date {
     value.parse().unwrap()
 }
 
@@ -75,7 +75,7 @@ fn asynchronous_events_share_the_editing_snapshot_until_reload() {
             Ok(())
         })
         .unwrap();
-    let events = wait(&mut service, from.pred_opt().unwrap(), until);
+    let events = wait(&mut service, from.yesterday().unwrap(), until);
     assert_eq!(events[0].title, "Original");
     assert!(
         service.update(&storage, |_| Ok(())).is_err(),
@@ -111,6 +111,9 @@ fn all_day_and_timed_events_validate_and_round_trip() {
     assert!(draft.build(None).is_err());
     draft.repeat = "FREQ=DAILY\r\nSUMMARY:injection".into();
     assert!(draft.build(None).is_err());
+
+    let damaged = source.replace("DTSTART;", "MALFORMED LINE\r\nDTSTART;");
+    assert!(ical::Draft::from_source(&damaged).is_err());
 }
 
 #[test]
@@ -173,17 +176,26 @@ fn recurring_all_day_and_dst_keep_calendar_dates() {
     let events = ical::occurrences(&dst, "id", date("2026-10-23"), date("2026-10-29")).unwrap();
     assert_eq!(events.len(), 3);
     let local = |value: &str| {
-        chrono::DateTime::parse_from_rfc3339(value)
+        value
+            .parse::<Timestamp>()
             .unwrap()
-            .with_timezone(&chrono::Local)
-            .naive_local()
+            .to_zoned(TimeZone::system())
+            .datetime()
     };
     assert_eq!(events[0].start, local("2026-10-24T12:00:00+02:00"));
     assert_eq!(events[0].end, local("2026-10-25T12:00:00+01:00"));
     assert_eq!(
-        events[1].end.signed_duration_since(events[1].start),
-        Duration::hours(24)
+        events[1].end.duration_since(events[1].start),
+        jiff::SignedDuration::from_hours(24)
     );
+}
+
+#[test]
+fn parser_validates_components_after_unfolding_lines() {
+    let source = "BEGIN:VCALEN\r\n DAR\r\nVERSION:2.0\r\nBEGIN:VE\r\n\tVENT\r\nUID:folded\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    let document = ical::parse(source).unwrap();
+    assert_eq!(ical::uid(&document).unwrap(), "folded");
+    assert!(ical::parse(&source.replace("END:VEVENT", "END:VEVENT\r\n EXTRA")).is_err());
 }
 
 #[test]

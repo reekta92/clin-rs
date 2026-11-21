@@ -1,6 +1,6 @@
 use crate::config::structs::CustomSmartFolder;
 use crate::storage::NoteSummary;
-use chrono::{Local, NaiveDate, TimeZone};
+use jiff::{Timestamp, civil::Date, tz::TimeZone};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -9,7 +9,7 @@ pub struct NoteIndex {
     pub min_membership_expiry: Option<u64>,
     pub by_id: HashMap<Arc<str>, usize>,
     pub pinned_indices: Vec<usize>,
-    pub activity_by_day: HashMap<NaiveDate, usize>,
+    pub activity_by_day: HashMap<Date, usize>,
 }
 
 pub(crate) fn matches_custom_rule(note: &NoteSummary, rule: &CustomSmartFolder, now: u64) -> bool {
@@ -52,11 +52,13 @@ impl NoteIndex {
                 index.pinned_indices.push(i);
             }
             if features.calendar.is_enabled()
-                && let Some(date_time) = Local.timestamp_opt(note.updated_at as i64, 0).single()
+                && let Some(timestamp) = i64::try_from(note.updated_at)
+                    .ok()
+                    .and_then(|secs| Timestamp::from_second(secs).ok())
             {
                 *index
                     .activity_by_day
-                    .entry(date_time.date_naive())
+                    .entry(timestamp.to_zoned(TimeZone::system()).date())
                     .or_default() += 1;
             }
             if features.smart_folders.is_enabled() {
@@ -161,11 +163,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        let today = Local
-            .timestamp_opt(now as i64, 0)
-            .single()
+        let today = Timestamp::from_second(now as i64)
             .unwrap()
-            .date_naive();
+            .to_zoned(TimeZone::system())
+            .date();
         assert_eq!(with_cal.activity_by_day, HashMap::from([(today, 1)]));
         assert!(without_cal.activity_by_day.is_empty());
         // Today/week expiry is computed regardless of the calendar flag.
