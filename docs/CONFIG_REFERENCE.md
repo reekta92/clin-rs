@@ -112,7 +112,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
-| `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas/.base). Non-note files open in the OS default application |
+| `file_extensions` | `array<String>` | `[]` | Add extensions to the Notes list and filename search, for example `["odt", "pdf"]`. Use `["all"]` to include every file type. Files without a native view open in the system default app. Existing `show_all_files = true` migrates to `["all"]` |
 | `skip_dirs` | `array<String>` | `[]` | Regular expressions matched against directory names; invalid expressions are ignored |
 | `folders_first` | `bool` | `true` | Show subfolders before files in every notes layout |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |

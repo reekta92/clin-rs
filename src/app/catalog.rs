@@ -30,7 +30,7 @@ pub enum CatalogCommand {
     Reconcile {
         generation: u64,
         show_hidden: bool,
-        show_all: bool,
+        extensions: Vec<String>,
     },
     Paths {
         generation: u64,
@@ -88,9 +88,9 @@ pub(crate) fn load_notes_blocking(
     storage: &Storage,
     pool: &rayon::ThreadPool,
     show_hidden: bool,
-    show_all: bool,
+    extensions: &[String],
 ) -> Result<BlockingCatalogLoad> {
-    let scan = storage.scan_vault(show_hidden, show_all)?;
+    let scan = storage.scan_catalog(show_hidden, extensions)?;
     let parsed: Vec<_> = pool.install(|| {
         scan.files
             .par_iter()
@@ -123,11 +123,11 @@ pub(crate) fn load_notes_blocking(
 
 #[allow(clippy::type_complexity)]
 pub(crate) fn load_persisted_note_cache(
-    _storage: &Storage,
+    storage: &Storage,
     cache_path: &Path,
     vault_digest: u64,
     show_hidden: bool,
-    show_all: bool,
+    extensions: &[String],
 ) -> (
     Vec<NoteSummary>,
     HashMap<String, (FileStamp, NoteSummary)>,
@@ -153,25 +153,8 @@ pub(crate) fn load_persisted_note_cache(
     let mut map = HashMap::with_capacity(cache.entries.len());
 
     for (id, stamp, summary) in cache.entries {
-        if crate::templates::is_folder_template_config(Path::new(&id)) {
+        if !storage.catalog_file_visible(&id, show_hidden, extensions) {
             continue;
-        }
-        if !show_hidden {
-            let has_hidden = id.split('/').any(|s| s.starts_with('.'));
-            if has_hidden {
-                continue;
-            }
-        }
-        if !show_all {
-            let ext = Path::new(&id)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            let accepted = matches!(ext, "md" | "txt" | "draw" | "canvas" | "base")
-                || crate::storage::is_image_ext(ext);
-            if !accepted {
-                continue;
-            }
         }
         summaries.push(summary.clone());
         map.insert(id, (stamp, summary));
@@ -259,8 +242,8 @@ pub(crate) fn spawn_catalog_worker(
     pool: Arc<rayon::ThreadPool>,
     cache_path: PathBuf,
     vault_digest: u64,
-    show_hidden: bool,
-    show_all: bool,
+    mut show_hidden: bool,
+    mut extensions: Vec<String>,
     initial_map: HashMap<String, (FileStamp, NoteSummary)>,
     initial_folders: Vec<String>,
     initial_complete: bool,
@@ -287,7 +270,7 @@ pub(crate) fn spawn_catalog_worker(
                         &cache_path,
                         vault_digest,
                         show_hidden,
-                        show_all,
+                        extensions.iter().any(|ext| ext == "all"),
                         &folders,
                         &map,
                     );
@@ -318,7 +301,7 @@ pub(crate) fn spawn_catalog_worker(
                                 &cache_path,
                                 vault_digest,
                                 show_hidden,
-                                show_all,
+                                extensions.iter().any(|ext| ext == "all"),
                                 &folders,
                                 &map,
                             );
@@ -329,13 +312,15 @@ pub(crate) fn spawn_catalog_worker(
                     CatalogCommand::Reconcile {
                         generation: cmd_gen,
                         show_hidden: sh,
-                        show_all: sa,
+                        extensions: new_extensions,
                     } => {
                         if generation.load(Ordering::SeqCst) != cmd_gen {
                             continue;
                         }
 
-                        let scan = match storage.scan_vault(sh, sa) {
+                        show_hidden = sh;
+                        extensions = new_extensions;
+                        let scan = match storage.scan_catalog(show_hidden, &extensions) {
                             Ok(s) => s,
                             Err(err) => {
                                 send_event(
@@ -537,8 +522,14 @@ pub(crate) fn spawn_catalog_worker(
                         for change in changes {
                             match change {
                                 PathChange::Upsert(id) => {
+                                    if !storage.catalog_file_visible(&id, show_hidden, &extensions)
+                                    {
+                                        continue;
+                                    }
                                     let path = storage.note_path(&id);
-                                    if let Ok(meta) = std::fs::metadata(&path) {
+                                    if let Ok(meta) = std::fs::metadata(&path)
+                                        && meta.is_file()
+                                    {
                                         let modified_nanos = meta.modified().ok().and_then(|t| {
                                             t.duration_since(std::time::UNIX_EPOCH)
                                                 .ok()
@@ -736,7 +727,7 @@ mod tests {
         }
 
         let (reloaded_summaries, reloaded_map, reloaded_folders) =
-            load_persisted_note_cache(&storage, &cache_path, digest, false, false);
+            load_persisted_note_cache(&storage, &cache_path, digest, false, &[]);
 
         assert_eq!(reloaded_folders, folders);
         assert_eq!(reloaded_summaries.len(), 1);
@@ -756,7 +747,7 @@ mod tests {
         )
         .unwrap();
         let (summaries, map, folders) =
-            load_persisted_note_cache(&storage, &cache_path, digest, false, false);
+            load_persisted_note_cache(&storage, &cache_path, digest, false, &[]);
         assert!(summaries.is_empty() && map.is_empty() && folders.is_empty());
     }
 
@@ -768,7 +759,7 @@ mod tests {
         let digest = 1u64;
 
         let (summaries, _, _) =
-            load_persisted_note_cache(&storage, &cache_path, digest, false, false);
+            load_persisted_note_cache(&storage, &cache_path, digest, false, &[]);
         assert_eq!(summaries.len(), 0);
     }
 
@@ -869,6 +860,50 @@ mod tests {
     }
 
     #[test]
+    fn file_extension_overrides_agree_on_startup_rename_and_filename_search() -> Result<()> {
+        let _guard = crate::config::ConfigTestGuard::lock();
+        let root = TempDir::new()?;
+        let config = root.path().join("config.toml");
+        std::fs::write(&config, "[list]\nfile_extensions = [\"odt\"]\n")?;
+        crate::config::set_config_path_override(config);
+        std::fs::create_dir(root.path().join("office"))?;
+        std::fs::write(root.path().join("office/Before.ODT"), [0, 255])?;
+        std::fs::write(root.path().join("ignored.docx"), [0, 255])?;
+        let mut app = crate::app::App::new(make_test_storage(root.path()))?;
+        assert_eq!(app.notes.len(), 1);
+        assert_eq!(app.notes[0].id, "office/Before.ODT");
+
+        std::fs::rename(
+            root.path().join("office/Before.ODT"),
+            root.path().join("office/After.ODT"),
+        )?;
+        app.send_catalog_paths(vec![
+            PathChange::Remove("office/Before.ODT".into()),
+            PathChange::Upsert("ignored.docx".into()),
+            PathChange::Upsert("office/After.ODT".into()),
+        ]);
+        for _ in 0..2 {
+            let event = app.catalog_event_rx.recv_timeout(Duration::from_secs(5))?;
+            app.handle_catalog_event(event);
+        }
+        assert_eq!(app.notes.len(), 1);
+        assert_eq!(app.notes[0].id, "office/After.ODT");
+
+        app.begin_search();
+        let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active else {
+            panic!("search popup missing");
+        };
+        popup.input.insert_str("After");
+        app.update_search();
+        let Some(crate::popups::ActivePopup::Search(popup)) = &app.popups.active else {
+            panic!("search popup missing");
+        };
+        assert_eq!(popup.title_result_ids.len(), 1);
+        assert_eq!(&*popup.title_result_ids[0], "office/After.ODT");
+        Ok(())
+    }
+
+    #[test]
     fn load_notes_blocking_includes_pdf_when_show_all() {
         let tmp = TempDir::new().unwrap();
         let storage = make_test_storage(tmp.path());
@@ -883,7 +918,7 @@ mod tests {
             .unwrap();
 
         // With show_all=true, both files should appear
-        let load = load_notes_blocking(&storage, &pool, false, true).unwrap();
+        let load = load_notes_blocking(&storage, &pool, false, &["all".into()]).unwrap();
         assert!(
             load.summaries.iter().any(|s| s.id == "a.md"),
             "md file should appear with show_all=true"
@@ -895,7 +930,7 @@ mod tests {
         assert_eq!(load.summaries.len(), 2);
 
         // With show_all=false, only the md file should appear
-        let load_filtered = load_notes_blocking(&storage, &pool, false, false).unwrap();
+        let load_filtered = load_notes_blocking(&storage, &pool, false, &[]).unwrap();
         assert!(
             load_filtered.summaries.iter().any(|s| s.id == "a.md"),
             "md file should appear with show_all=false"

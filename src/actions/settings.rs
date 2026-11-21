@@ -179,12 +179,22 @@ toggle_action!(
     ToggleShowAllFilesAction,
     "settings.show_all_files",
     "Show All Files",
-    "Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas)",
+    "Toggle all file extensions in the vault list",
     ActionCategory::Settings,
     crate::ui::icons::OPEN_FOLDER.pair(),
     toggle_show_all_files,
     app,
-    if app.list.show_all_files { "On" } else { "Off" }
+    if app
+        .config
+        .list
+        .file_extensions
+        .iter()
+        .any(|ext| ext == "all")
+    {
+        "On"
+    } else {
+        "Off"
+    }
 );
 
 toggle_action!(

@@ -45,7 +45,6 @@ fn config_items_are_visible_in_all_layouts_and_selection_modes_but_are_not_notes
     let mut app = app(dir.path());
     app.catalog_folders = vec!["book".into(), "book/chapter".into()];
     app.list.show_hidden_files = false;
-    app.list.show_all_files = false;
     app.list
         .folder_expanded
         .extend(["".into(), "book".into(), "book/chapter".into()]);

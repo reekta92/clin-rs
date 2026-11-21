@@ -383,6 +383,16 @@ impl ClinConfig {
             }
         }
 
+        if let Some(list) = value.get_mut("list").and_then(toml::Value::as_table_mut)
+            && let Some(legacy) = list.remove("show_all_files")
+        {
+            if legacy.as_bool() == Some(true) {
+                list.entry("file_extensions")
+                    .or_insert_with(|| toml::Value::Array(vec![toml::Value::String("all".into())]));
+            }
+            changed = true;
+        }
+
         let mut graf_addons = toml::value::Table::new();
         if let Some(root) = value.as_table_mut() {
             if let Some(v) = root.remove("search") {
@@ -728,6 +738,13 @@ impl ClinConfig {
     }
 
     fn normalize_sections(&mut self) {
+        for extension in &mut self.list.file_extensions {
+            *extension = extension
+                .trim()
+                .trim_start_matches('.')
+                .to_ascii_lowercase();
+        }
+        self.list.file_extensions.retain(|ext| !ext.is_empty());
         let secs = &mut self.list.sections;
         let mut seen = std::collections::HashSet::new();
         secs.retain(|s| seen.insert(*s));
@@ -933,6 +950,32 @@ unknown_field = "ignore me"
         // Explicitly setting it false also survives a round-trip.
         let cfg2: ClinConfig = toml::from_str("[features]\ncalendar = false\n").unwrap();
         assert!(!cfg2.features.calendar.is_enabled());
+    }
+
+    #[test]
+    fn file_extensions_migrate_legacy_all_and_normalize_overrides() {
+        let _guard = ConfigTestGuard::lock();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        set_config_path_override(path.clone());
+
+        for (settings, expected) in [
+            ("show_all_files = true", vec!["all"]),
+            ("show_all_files = false", vec![]),
+            (
+                "show_all_files = true\nfile_extensions = [\".ODT\"]",
+                vec!["odt"],
+            ),
+        ] {
+            fs::write(&path, format!("[list]\n{settings}\n")).unwrap();
+            let config = ClinConfig::load().0.unwrap();
+            assert_eq!(config.list.file_extensions, expected);
+            assert!(
+                !fs::read_to_string(&path)
+                    .unwrap()
+                    .contains("show_all_files")
+            );
+        }
     }
 
     #[test]

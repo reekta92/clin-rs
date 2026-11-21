@@ -76,10 +76,14 @@ pub(crate) struct NoteFileEntry {
     pub stamp: FileStamp,
 }
 
-enum VaultScanPolicy {
+enum VaultScanPolicy<'a> {
     Notes {
         include_hidden: bool,
         include_all_files: bool,
+    },
+    Catalog {
+        include_hidden: bool,
+        extensions: &'a [String],
     },
     PublicFiles,
 }
@@ -496,14 +500,59 @@ impl Storage {
         })
     }
 
-    fn scan_vault_with_policy(&self, policy: VaultScanPolicy) -> Result<VaultScan> {
+    pub(crate) fn catalog_file_visible(
+        &self,
+        id: &str,
+        include_hidden: bool,
+        extensions: &[String],
+    ) -> bool {
+        let path = Path::new(id);
+        if crate::templates::is_folder_template_config(path)
+            || (!include_hidden && id.split('/').any(|part| part.starts_with('.')))
+            || path.parent().is_some_and(|parent| {
+                parent.components().any(|part| {
+                    part.as_os_str().to_str().is_some_and(|part| {
+                        self.skip_dir_patterns
+                            .iter()
+                            .any(|pattern| pattern.is_match(part))
+                    })
+                })
+            })
+        {
+            return false;
+        }
+        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+        !ext.eq_ignore_ascii_case("clin")
+            && (matches!(ext, "md" | "txt" | "draw" | "canvas" | "base")
+                || is_image_ext(ext)
+                || extensions
+                    .iter()
+                    .any(|allowed| allowed == "all" || allowed.eq_ignore_ascii_case(ext)))
+    }
+
+    pub(crate) fn scan_catalog(
+        &self,
+        include_hidden: bool,
+        extensions: &[String],
+    ) -> Result<VaultScan> {
+        self.scan_vault_with_policy(VaultScanPolicy::Catalog {
+            include_hidden,
+            extensions,
+        })
+    }
+
+    fn scan_vault_with_policy(&self, policy: VaultScanPolicy<'_>) -> Result<VaultScan> {
         let public_dataset = matches!(policy, VaultScanPolicy::PublicFiles);
-        let (include_hidden, include_all_files) = match policy {
+        let (include_hidden, include_all_files, catalog_extensions) = match policy {
             VaultScanPolicy::Notes {
                 include_hidden,
                 include_all_files,
-            } => (include_hidden, include_all_files),
-            VaultScanPolicy::PublicFiles => (false, true),
+            } => (include_hidden, include_all_files, None),
+            VaultScanPolicy::Catalog {
+                include_hidden,
+                extensions,
+            } => (include_hidden, false, Some(extensions)),
+            VaultScanPolicy::PublicFiles => (false, true, None),
         };
         let mut files = Vec::new();
         let mut folders = Vec::new();
@@ -600,7 +649,9 @@ impl Storage {
                     folders.push(rel_path.clone());
                     pending_dirs.push((path, rel_path));
                 } else {
-                    let accepted = if include_all_files {
+                    let accepted = if let Some(extensions) = catalog_extensions {
+                        self.catalog_file_visible(&rel_path, include_hidden, extensions)
+                    } else if include_all_files {
                         path.is_file()
                     } else {
                         path.extension()
