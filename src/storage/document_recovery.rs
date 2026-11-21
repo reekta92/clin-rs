@@ -1,14 +1,20 @@
 //! Private plaintext recovery for guarded documents. Legacy encrypted records stay untouched.
 
-use super::{Storage, documents::DocumentSnapshot, write_guard::CoordinationGuard};
+use super::{
+    Storage,
+    documents::{DocumentChange, DocumentSnapshot},
+    write_guard::CoordinationGuard,
+};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
+pub(crate) const MAX_DOCUMENT_TRANSACTION_BYTES: usize = 32 * 1024 * 1024;
 const MAX_BYTES: usize = 40 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 enum Record<T> {
@@ -166,6 +172,109 @@ impl Storage {
     pub(crate) fn abort_document_transaction(&self, journal: DocumentTransaction) -> Result<()> {
         self.remove_document_record(&journal.path)
     }
+    pub(crate) fn apply_document_changes(
+        &self,
+        plans: Vec<(DocumentSnapshot, String)>,
+        cancelled: &AtomicBool,
+    ) -> Result<Vec<DocumentChange>> {
+        let bytes: usize = plans
+            .iter()
+            .map(|(baseline, source)| baseline.source().len() + source.len())
+            .sum();
+        if bytes > MAX_DOCUMENT_TRANSACTION_BYTES {
+            bail!("document edits exceed the 32 MiB transaction limit; original files retained");
+        }
+        // Preflight every target. Each actual write rechecks baseline and uses permission-preserving atomic replacement.
+        for (baseline, _) in &plans {
+            if self.load_document(baseline.id())?.source() != baseline.source() {
+                bail!(
+                    "{}: document changed on disk; reload before saving",
+                    baseline.id()
+                );
+            }
+            if std::fs::metadata(self.document_path(baseline.id())?)?
+                .permissions()
+                .readonly()
+            {
+                bail!("{}: document is read-only", baseline.id());
+            }
+        }
+        if cancelled.load(Ordering::Relaxed) {
+            bail!("document edits cancelled");
+        }
+        let journal = self.begin_document_transaction(&plans)?;
+        let mut changes = Vec::new();
+        for (before, source) in plans {
+            let result = if cancelled.load(Ordering::Relaxed) {
+                Err(anyhow::anyhow!("document edits cancelled"))
+            } else {
+                self.save_document(&before, &source)
+            };
+            match result {
+                Ok(after) => {
+                    if before.source() != after.source() {
+                        changes.push(DocumentChange { before, after });
+                    }
+                }
+                Err(error) => {
+                    let mut retain = true;
+                    if let Ok(after) = self.load_document(before.id()) {
+                        retain = after.source() != before.source() && after.source() != source;
+                        if after.source() == source && before.source() != source {
+                            changes.push(DocumentChange { before, after });
+                        }
+                    }
+                    return self.abort_document_changes(changes, journal, error, retain);
+                }
+            }
+        }
+        if cancelled.load(Ordering::Relaxed) {
+            return self.abort_document_changes(
+                changes,
+                journal,
+                anyhow::anyhow!("document edits cancelled"),
+                false,
+            );
+        }
+        let entries = changes
+            .iter()
+            .map(|change| {
+                (
+                    change.before.id(),
+                    change.before.source(),
+                    change.after.source(),
+                )
+            })
+            .collect();
+        if let Err(error) = self.finish_document_transaction(&journal, entries) {
+            return self.abort_document_changes(changes, journal, error, false);
+        }
+        Ok(changes)
+    }
+
+    fn abort_document_changes(
+        &self,
+        changes: Vec<DocumentChange>,
+        journal: DocumentTransaction,
+        error: anyhow::Error,
+        retain: bool,
+    ) -> Result<Vec<DocumentChange>> {
+        let mut failures = Vec::new();
+        for change in changes.iter().rev() {
+            if let Err(rollback) = self.save_document(&change.after, change.before.source()) {
+                failures.push(format!("{}: {rollback:#}", change.before.id()));
+            }
+        }
+        if retain || !failures.is_empty() {
+            bail!(
+                "{error:#}; private plaintext recovery record retained; inspect affected files: {}",
+                failures.join("; ")
+            );
+        }
+        self.abort_document_transaction(journal)?;
+        Err(error.context("document transaction aborted; completed writes rolled back"))
+    }
+
     pub fn write_document_draft(&self, baseline: &DocumentSnapshot, source: &str) -> Result<()> {
         self.document_path(baseline.id())?;
         let path = self

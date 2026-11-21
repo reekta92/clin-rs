@@ -12,12 +12,9 @@ use anyhow::{Context, Result, bail};
 use serde_yaml_ng::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub const MAX_HISTORY_BYTES: usize = 32 * 1024 * 1024;
-#[derive(Clone, Debug)]
-pub struct Change {
-    pub before: DocumentSnapshot,
-    pub after: DocumentSnapshot,
-}
+pub use crate::storage::documents::DocumentChange as Change;
+pub const MAX_HISTORY_BYTES: usize =
+    crate::storage::document_recovery::MAX_DOCUMENT_TRANSACTION_BYTES;
 #[derive(Clone, Debug)]
 pub struct Transaction {
     pub changes: Vec<Change>,
@@ -282,107 +279,10 @@ fn apply(
     plans: Vec<(DocumentSnapshot, String)>,
     cancelled: &AtomicBool,
 ) -> Result<Transaction> {
-    let bytes: usize = plans
-        .iter()
-        .map(|(baseline, source)| baseline.source().len() + source.len())
-        .sum();
-    if bytes > MAX_HISTORY_BYTES {
-        bail!("bulk edit exceeds 32 MiB undo budget; original files retained");
-    }
-    // Preflight every target. Each actual write rechecks baseline and uses permission-preserving atomic replacement.
-    for (baseline, _) in &plans {
-        if storage.load_document(baseline.id())?.source() != baseline.source() {
-            bail!(
-                "{}: document changed on disk; reload before saving",
-                baseline.id()
-            );
-        }
-        if std::fs::metadata(storage.document_path(baseline.id())?)?
-            .permissions()
-            .readonly()
-        {
-            bail!("{}: document is read-only", baseline.id());
-        }
-    }
-    if cancelled.load(Ordering::Relaxed) {
-        bail!("property edit cancelled");
-    }
-    let journal = storage.begin_document_transaction(&plans)?;
-    let mut transaction = Transaction {
-        changes: Vec::new(),
+    Ok(Transaction {
+        changes: storage.apply_document_changes(plans, cancelled)?,
         moves: Vec::new(),
-    };
-    for (before, source) in plans {
-        let result = if cancelled.load(Ordering::Relaxed) {
-            Err(anyhow::anyhow!("property edit cancelled"))
-        } else {
-            storage.save_document(&before, &source)
-        };
-        match result {
-            Ok(after) => {
-                if before.source() != after.source() {
-                    transaction.changes.push(Change { before, after });
-                }
-            }
-            Err(error) => {
-                let mut retain = true;
-                if let Ok(after) = storage.load_document(before.id()) {
-                    retain = after.source() != before.source() && after.source() != source;
-                    if after.source() == source && before.source() != source {
-                        transaction.changes.push(Change { before, after });
-                    }
-                }
-                return abort(storage, transaction, journal, error, retain);
-            }
-        }
-    }
-    if cancelled.load(Ordering::Relaxed) {
-        return abort(
-            storage,
-            transaction,
-            journal,
-            anyhow::anyhow!("property edit cancelled"),
-            false,
-        );
-    }
-    let entries = transaction
-        .changes
-        .iter()
-        .map(|change| {
-            (
-                change.before.id(),
-                change.before.source(),
-                change.after.source(),
-            )
-        })
-        .collect();
-    if let Err(error) = storage.finish_document_transaction(&journal, entries) {
-        return abort(storage, transaction, journal, error, false);
-    }
-    Ok(transaction)
-}
-
-fn abort(
-    storage: &Storage,
-    transaction: Transaction,
-    journal: crate::storage::document_recovery::DocumentTransaction,
-    error: anyhow::Error,
-    retain: bool,
-) -> Result<Transaction> {
-    let mut failures = Vec::new();
-    for change in transaction.changes.iter().rev() {
-        if let Err(rollback) = storage.save_document(&change.after, change.before.source()) {
-            failures.push(format!("{}: {rollback:#}", change.before.id()));
-        }
-    }
-    if retain || !failures.is_empty() {
-        bail!(
-            "{error:#}; private plaintext recovery record retained; inspect affected files: {}",
-            failures.join("; ")
-        );
-    }
-    storage.abort_document_transaction(journal)?;
-    Err(error.context("property transaction aborted; completed writes rolled back"))
+    })
 }
 
 #[cfg(test)]

@@ -25,6 +25,12 @@ pub(crate) fn read_bounded_text(path: &Path, max_bytes: usize) -> Result<String>
 }
 
 #[derive(Clone, Debug)]
+pub struct DocumentChange {
+    pub before: DocumentSnapshot,
+    pub after: DocumentSnapshot,
+}
+
+#[derive(Clone, Debug)]
 pub struct DocumentSnapshot {
     id: String,
     source: std::sync::Arc<str>,
