@@ -1429,7 +1429,7 @@ fn calendar_dialogs_share_chrome_and_help_remains_reachable() {
     for (width, height) in [(80, 24), (120, 40), (40, 12)] {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         let area = Rect::new(0, 0, width, height);
-        let mut view = crate::calendar::view::View::new(chrono::Local::now().date_naive());
+        let mut view = crate::calendar::view::View::new(jiff::Zoned::now().date());
         view.dialog = Some(crate::calendar::view::Dialog::Help);
         terminal
             .draw(|frame| {

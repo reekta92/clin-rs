@@ -534,7 +534,7 @@ fn builtin_summary(name: &str, values: &[Value], evaluator: &mut Evaluator<'_>) 
             .iter()
             .filter_map(|value| {
                 if let Value::Date(date) = value {
-                    Some(date.timestamp_millis())
+                    Some(date.timestamp().as_millisecond())
                 } else {
                     None
                 }

@@ -31,8 +31,8 @@ impl Action for InsertDateAction {
             app.mode == crate::app::ViewMode::Edit,
             "Insert Date needs the active editor"
         );
-        let s = chrono::Local::now()
-            .format(&app.config.editor.date_format)
+        let s = jiff::Zoned::now()
+            .strftime(&app.config.editor.date_format)
             .to_string();
         app.editor.body.insert_str(&s);
         app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;

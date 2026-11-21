@@ -9,10 +9,10 @@ use crate::{
     overlay::{OverlayResult, OverlayView},
 };
 use anyhow::{Context, Result, ensure};
-use chrono::{Datelike, Duration, Local, NaiveDate, Timelike};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind,
 };
+use jiff::{ToSpan, Zoned, civil::Date};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
 use std::collections::BTreeMap;
@@ -60,20 +60,20 @@ impl Drop for LinksJob {
 }
 
 pub struct View {
-    pub date: NaiveDate,
+    pub date: Date,
     pub display: Display,
     pub dialog: Option<Dialog>,
     dialog_scroll: usize,
     selected: usize,
     events: Vec<Occurrence>,
     visible: Vec<usize>,
-    cells: Vec<(Rect, NaiveDate)>,
+    cells: Vec<(Rect, Date)>,
     rows: Vec<(Rect, usize)>,
     links: BTreeMap<String, Vec<String>>,
     links_revision: Option<u64>,
     links_job: Option<LinksJob>,
-    events_key: Option<(NaiveDate, NaiveDate, u64)>,
-    visible_key: Option<(NaiveDate, Display)>,
+    events_key: Option<(Date, Date, u64)>,
+    visible_key: Option<(Date, Display)>,
     pending_resource: Option<String>,
     pub error: Option<String>,
     hour_scroll: u32,
@@ -105,29 +105,26 @@ pub struct Form {
     rects: Vec<(Rect, usize)>,
 }
 
-pub fn month_start(date: NaiveDate) -> NaiveDate {
-    date.with_day(1).expect("first day")
+pub fn month_start(date: Date) -> Date {
+    date.first_of_month()
 }
 
-pub fn week_start(date: NaiveDate, start: WeekStart) -> NaiveDate {
+pub fn week_start(date: Date, start: WeekStart) -> Date {
     let day = match start {
-        WeekStart::Sunday => date.weekday().num_days_from_sunday(),
-        WeekStart::Monday => date.weekday().num_days_from_monday(),
+        WeekStart::Sunday => date.weekday().to_sunday_zero_offset(),
+        WeekStart::Monday => date.weekday().to_monday_zero_offset(),
     };
-    date.checked_sub_signed(Duration::days(i64::from(day)))
+    date.checked_sub(i64::from(day).days()).unwrap_or(date)
+}
+
+pub fn shift_month(date: Date, months: i32) -> Date {
+    jiff::Span::new()
+        .try_months(months)
+        .and_then(|span| date.checked_add(span))
         .unwrap_or(date)
 }
 
-pub fn shift_month(date: NaiveDate, months: i32) -> NaiveDate {
-    if months < 0 {
-        date.checked_sub_months(chrono::Months::new(months.unsigned_abs()))
-    } else {
-        date.checked_add_months(chrono::Months::new(months as u32))
-    }
-    .unwrap_or(date)
-}
-
-pub fn month_cells(area: Rect, date: NaiveDate, start: WeekStart) -> Vec<(Rect, NaiveDate)> {
+pub fn month_cells(area: Rect, date: Date, start: WeekStart) -> Vec<(Rect, Date)> {
     let first = week_start(month_start(date), start);
     (0..42u16)
         .filter_map(|index| {
@@ -144,14 +141,14 @@ pub fn month_cells(area: Rect, date: NaiveDate, start: WeekStart) -> Vec<(Rect, 
                     (right - left) as u16,
                     (bottom - top) as u16,
                 ),
-                first.checked_add_signed(Duration::days(i64::from(index)))?,
+                first.checked_add(i64::from(index).days()).ok()?,
             ))
         })
         .collect()
 }
 
 impl View {
-    pub fn new(date: NaiveDate) -> Self {
+    pub fn new(date: Date) -> Self {
         Self {
             date,
             display: Display::Month,
@@ -200,9 +197,7 @@ impl View {
     pub(crate) fn refresh(&mut self, app: &mut App) -> bool {
         let mut changed = false;
         let from = week_start(month_start(self.date), app.list.week_start);
-        let until = from
-            .checked_add_signed(Duration::days(75))
-            .unwrap_or(self.date);
+        let until = from.checked_add(75.days()).unwrap_or(self.date);
         let key = (from, until, app.calendar.revision());
         if self.events_key != Some(key) {
             match app
@@ -246,10 +241,7 @@ impl View {
                     if self.display == Display::Agenda {
                         event.start.date() >= self.date
                             && event.start.date()
-                                < self
-                                    .date
-                                    .checked_add_signed(Duration::days(30))
-                                    .unwrap_or(NaiveDate::MAX)
+                                < self.date.checked_add(30.days()).unwrap_or(Date::MAX)
                     } else {
                         event.on_date(self.date)
                     }
@@ -416,7 +408,7 @@ impl View {
                     .notes_dir
                     .join(format!(
                         "calendar-{}.ics",
-                        Local::now().format("%Y%m%d-%H%M%S")
+                        Zoned::now().strftime("%Y%m%d-%H%M%S")
                     ))
                     .to_string_lossy(),
             );
@@ -800,7 +792,7 @@ impl View {
                 }
             }
             KeyCode::Char('t') => {
-                self.date = Local::now().date_naive();
+                self.date = Zoned::now().date();
                 self.selected = 0;
             }
             KeyCode::Char('n') => self.begin_form(app, None, None)?,
@@ -873,10 +865,7 @@ impl View {
             _ => {}
         }
         if days != 0 {
-            self.date = self
-                .date
-                .checked_add_signed(Duration::days(days))
-                .unwrap_or(self.date);
+            self.date = self.date.checked_add(days.days()).unwrap_or(self.date);
             self.selected = 0;
         }
         Ok(OverlayResult::Continue)
@@ -973,7 +962,7 @@ fn event_time(e: &Occurrence) -> String {
     if e.all_day {
         "All day".into()
     } else {
-        e.start.format("%H:%M").to_string()
+        e.start.strftime("%H:%M").to_string()
     }
 }
 
@@ -1119,7 +1108,7 @@ impl View {
         let mut lines = Vec::new();
         for event in events {
             let title = if timed {
-                format!("{} {}", event.start.format("%H:%M"), event.title)
+                format!("{} {}", event.start.strftime("%H:%M"), event.title)
             } else {
                 event.title.clone()
             };
@@ -1132,7 +1121,7 @@ impl View {
         lines
     }
 
-    fn note_summary(&self, date: NaiveDate) -> Option<[String; 2]> {
+    fn note_summary(&self, date: Date) -> Option<[String; 2]> {
         let mut notes = std::collections::BTreeSet::new();
         for note in self
             .events
@@ -1154,7 +1143,7 @@ impl View {
         let inner = calendar_pane(
             frame,
             area,
-            &self.date.format("%B %Y").to_string(),
+            &self.date.strftime("%B %Y").to_string(),
             theme,
             theme.bg_style(),
         );
@@ -1248,7 +1237,7 @@ impl View {
                         if e.all_day {
                             "·".into()
                         } else {
-                            e.start.format("%H:%M").to_string()
+                            e.start.strftime("%H:%M").to_string()
                         },
                         e.title
                     ),
@@ -1268,7 +1257,7 @@ impl View {
                 }
                 style
             };
-            if *date == Local::now().date_naive() {
+            if *date == Zoned::now().date() {
                 style = style.fg(theme.success).add_modifier(Modifier::BOLD);
             }
             if *date == self.date {
@@ -1291,20 +1280,18 @@ impl View {
             let x = u32::from(area.width) * u32::from(col) / 7;
             let end = u32::from(area.width) * u32::from(col + 1) / 7;
             let rect = Rect::new(area.x + x as u16, area.y, (end - x) as u16, area.height);
-            let date = start
-                .checked_add_signed(Duration::days(i64::from(col)))
-                .unwrap_or(start);
+            let date = start.checked_add(i64::from(col).days()).unwrap_or(start);
             self.cells.push((rect, date));
             let inner = calendar_pane(
                 frame,
                 rect,
-                &date.format("%a %d").to_string(),
+                &date.strftime("%a %d").to_string(),
                 &app.app_theme,
                 calendar_section_style(&app.app_theme, col % 2 != 0, false),
             );
             if date == self.date {
                 frame.render_widget(
-                    Paragraph::new(date.format("%a %d").to_string()).style(
+                    Paragraph::new(date.strftime("%a %d").to_string()).style(
                         Style::default()
                             .fg(app.app_theme.accent)
                             .add_modifier(Modifier::BOLD),
@@ -1345,7 +1332,7 @@ impl View {
         let inner = calendar_pane(
             frame,
             area,
-            &format!("{} · local time", self.date.format("%a %d %b")),
+            &format!("{} · local time", self.date.strftime("%a %d %b")),
             &app.app_theme,
             app.app_theme.bg_style(),
         );
@@ -1367,7 +1354,8 @@ impl View {
                     !e.all_day
                         && e.on_date(self.date)
                         && (e.start.date() < self.date && hour == 0
-                            || e.start.date() == self.date && e.start.hour() == hour)
+                            || e.start.date() == self.date
+                                && u32::try_from(e.start.hour()).ok() == Some(hour))
                 })
                 .peekable();
             if events.peek().is_none() {
@@ -1398,7 +1386,7 @@ impl View {
         let title = if dates {
             "Agenda · next 30 days".to_owned()
         } else {
-            self.date.format("%a %d %b").to_string()
+            self.date.strftime("%a %d %b").to_string()
         };
         let inner = calendar_pane(
             frame,
@@ -1429,7 +1417,7 @@ impl View {
         let entries = self.visible.iter().enumerate().flat_map(|(index, event)| {
             let event = &self.events[*event];
             let prefix = if dates {
-                format!("{} ", event.start.format("%m-%d"))
+                format!("{} ", event.start.strftime("%m-%d"))
             } else {
                 String::new()
             };
@@ -1531,8 +1519,8 @@ impl View {
                 } else {
                     format!(
                         "{} to {}",
-                        event.start.format("%Y-%m-%d %H:%M"),
-                        event.end.format("%Y-%m-%d %H:%M")
+                        event.start.strftime("%Y-%m-%d %H:%M"),
+                        event.end.strftime("%Y-%m-%d %H:%M")
                     )
                 }),
             ];
@@ -1858,7 +1846,7 @@ pub fn draw_widget(frame: &mut Frame, rect: Rect, app: &mut App, bottom_border: 
     if area.width < 14 || area.height < 8 {
         return;
     }
-    let date = Local::now().date_naive();
+    let date = Zoned::now().date();
     let width = area.width.min(35);
     let area = Rect::new(
         area.x + (area.width - width) / 2,
@@ -1867,7 +1855,7 @@ pub fn draw_widget(frame: &mut Frame, rect: Rect, app: &mut App, bottom_border: 
         8,
     );
     frame.render_widget(
-        Paragraph::new(format!("{} · Calendar", date.format("%B %Y")))
+        Paragraph::new(format!("{} · Calendar", date.strftime("%B %Y")))
             .style(Style::default().fg(app.app_theme.accent)),
         Rect::new(area.x, area.y, area.width, 1),
     );
@@ -1878,7 +1866,7 @@ pub fn draw_widget(frame: &mut Frame, rect: Rect, app: &mut App, bottom_border: 
         &app.app_theme,
     );
     let from = week_start(month_start(date), app.list.week_start);
-    let until = from + Duration::days(42);
+    let until = from + 42.days();
     let (events, error) =
         match app
             .calendar
@@ -1936,8 +1924,8 @@ pub fn widget_date(
     col: u16,
     row: u16,
     start: WeekStart,
-) -> NaiveDate {
-    let date = Local::now().date_naive();
+) -> Date {
+    let date = Zoned::now().date();
     let area = crate::ui::widget_strip_content_area(rect, strip, bottom_border);
     if area.width < 14 || area.height < 8 {
         return date;

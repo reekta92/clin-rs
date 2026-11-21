@@ -429,7 +429,7 @@ fn canvas_contextual_footer_uses_the_selected_bar_style() {
 fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
     use crate::{calendar::view::Display, config::HintBarStyle};
     let mut f = Fixture::new();
-    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    let date: jiff::civil::Date = "2026-10-24".parse().unwrap();
     f.app.open_calendar_at(Some(date)).unwrap();
     f.app.status = "Ready".into();
     f.app.config.statusline = crate::config::StatuslineConfig::default();
@@ -519,7 +519,7 @@ fn calendar_borderless_panes_keep_header_tabs_and_footer_warnings() {
     terminal
         .draw(|frame| crate::ui::draw_ui(frame, &mut f.app, EditFocus::Body))
         .unwrap();
-    let target_date: chrono::NaiveDate = "2026-10-26".parse().unwrap();
+    let target_date: jiff::civil::Date = "2026-10-26".parse().unwrap();
     let target =
         crate::calendar::view::month_cells(Rect::new(1, 3, 63, 36), date, f.app.list.week_start)
             .into_iter()
@@ -596,7 +596,7 @@ fn calendar_checker_backgrounds_fill_days_and_mute_adjacent_months() {
     use crate::calendar::view::Display;
     use ratatui::style::Color;
     let mut f = Fixture::new();
-    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    let date: jiff::civil::Date = "2026-10-24".parse().unwrap();
     f.app.open_calendar_at(Some(date)).unwrap();
     f.app.status = "Ready".into();
     for bg in [
@@ -619,7 +619,7 @@ fn calendar_checker_backgrounds_fill_days_and_mute_adjacent_months() {
             if *day == date {
                 continue;
             }
-            let expected = if day.format("%Y-%m").to_string() != "2026-10" {
+            let expected = if day.strftime("%Y-%m").to_string() != "2026-10" {
                 let muted = f.app.app_theme.preview_bg().unwrap();
                 if muted == bg {
                     crate::app_theme::mix_colors(bg, f.app.app_theme.muted, 0.12)
@@ -667,7 +667,7 @@ fn calendar_distinguishes_events_and_linked_notes_in_every_display() {
     use ratatui::style::Color;
     for timed in [false, true] {
         let mut f = Fixture::new();
-        let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+        let date: jiff::civil::Date = "2026-10-24".parse().unwrap();
         f.app.open_calendar_at(Some(date)).unwrap();
         f.app.app_theme.accent = Color::Rgb(30, 170, 220);
         f.app.app_theme.subnote = Color::Rgb(190, 110, 210);
@@ -739,7 +739,7 @@ fn calendar_distinguishes_events_and_linked_notes_in_every_display() {
 fn calendar_month_summarizes_notes_and_events_while_other_views_list_all() {
     use crate::calendar::{ical::Draft, store};
     let mut f = Fixture::new();
-    let date: chrono::NaiveDate = "2026-10-24".parse().unwrap();
+    let date: jiff::civil::Date = "2026-10-24".parse().unwrap();
     f.app.open_calendar_at(Some(date)).unwrap();
     let mut resources = Vec::new();
     for title in ["Meet", "Notes", "Znotes", "Zevent", "Zlast"] {
@@ -889,7 +889,7 @@ fn calendar_month_summarizes_notes_and_events_while_other_views_list_all() {
 #[test]
 fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() {
     let mut f = Fixture::new();
-    let date: chrono::NaiveDate = "2026-12-31".parse().unwrap();
+    let date: jiff::civil::Date = "2026-12-31".parse().unwrap();
     f.app.open_calendar_at(Some(date)).unwrap();
     let ids = f
         .app
@@ -931,7 +931,7 @@ fn calendar_hjkl_matches_arrows_and_shifted_keys_keep_event_actions_available() 
                 ('m' | 'w', 'k') => -7,
                 _ => 0,
             };
-            assert_eq!(moved_date, date + chrono::Duration::days(days));
+            assert_eq!(moved_date, date + jiff::ToSpan::days(days));
             drive(&mut f.app, key(KeyCode::Char('y')));
             let moved_reference =
                 crate::text_edit::TEST_CLIPBOARD.with(|c| c.borrow().clone().unwrap());
@@ -1068,7 +1068,7 @@ fn calendar_form_retains_invalid_input_and_renders_all_views_at_small_sizes() {
         .as_ref()
         .unwrap()
         .date
-        .succ_opt()
+        .tomorrow()
         .unwrap();
     let mut draft = crate::calendar::ical::Draft::new(tomorrow);
     draft.title = "Tomorrow".into();
@@ -1112,7 +1112,7 @@ fn calendar_widget_opens_clicked_day_and_inline_reference_saves_editor() {
     let column = content.x + (content.width - content.width.min(35)) / 2;
     let row = content.y + (content.height.saturating_sub(8)) / 2 + 2;
     let expected = crate::calendar::view::week_start(
-        crate::calendar::view::month_start(chrono::Local::now().date_naive()),
+        crate::calendar::view::month_start(jiff::Zoned::now().date()),
         f.app.list.week_start,
     );
     drive(

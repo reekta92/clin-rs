@@ -373,8 +373,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertDate => {
-                let s = chrono::Local::now()
-                    .format(&app.config.editor.date_format)
+                let s = jiff::Zoned::now()
+                    .strftime(&app.config.editor.date_format)
                     .to_string();
                 match *focus {
                     EditFocus::Title => {

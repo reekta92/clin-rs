@@ -111,14 +111,14 @@ pub(crate) fn timestamp(value: &serde_yaml_ng::Value) -> Option<u64> {
         return Some(value);
     }
     let text = value.as_str()?;
-    let seconds = chrono::DateTime::parse_from_rfc3339(text)
-        .map(|date| date.timestamp())
+    let seconds = text
+        .parse::<jiff::Timestamp>()
+        .map(|date| date.as_second())
         .ok()
         .or_else(|| {
-            chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
-                .ok()?
-                .and_hms_opt(0, 0, 0)
-                .map(|date| date.and_utc().timestamp())
+            let date = jiff::civil::Date::strptime("%Y-%m-%d", text).ok()?;
+            let midnight = date.at(0, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).ok()?;
+            Some(midnight.timestamp().as_second())
         })?;
     u64::try_from(seconds).ok()
 }

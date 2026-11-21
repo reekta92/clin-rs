@@ -543,7 +543,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                                     app.list.week_start,
                                 )
                             } else {
-                                chrono::Local::now().date_naive()
+                                jiff::Zoned::now().date()
                             };
                             if let Err(error) = app.open_calendar_at(Some(date)) {
                                 app.set_temporary_status(&format!("{error:#}"));

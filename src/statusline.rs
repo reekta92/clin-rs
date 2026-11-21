@@ -356,12 +356,12 @@ impl StatuslineContext<'_> {
                 self.calendar
                     .or_else(|| self.app.and_then(|app| app.calendar_view.as_ref()))
                     .map(|calendar| {
-                        let mut text = String::new();
-                        let date = calendar.date.format(self.date_format.unwrap_or("%Y-%m-%d"));
                         // Date-only values cannot satisfy time or timezone directives.
-                        if std::fmt::write(&mut text, format_args!("{date}")).is_err() {
-                            return calendar.date.to_string();
-                        }
+                        let text = jiff::fmt::strtime::format(
+                            self.date_format.unwrap_or("%Y-%m-%d"),
+                            calendar.date,
+                        )
+                        .unwrap_or_else(|_| calendar.date.to_string());
                         crate::fsutil::sanitize_for_terminal(&text).into_owned()
                     })
                     .unwrap_or_default()
@@ -434,22 +434,22 @@ impl StatuslineContext<'_> {
             // Date / Time
             "time" | "date" | "datetime" | "weekday" | "year" | "month" | "day" | "hour"
             | "minute" | "second" => {
-                let now = chrono::Local::now();
+                let now = jiff::Zoned::now();
                 let fmt = self
                     .date_format
                     .or_else(|| self.app.map(|a| a.date_format.as_str()))
                     .unwrap_or("%Y-%m-%d");
                 let val = match name {
-                    "time" => now.format("%H:%M").to_string(),
-                    "date" => now.format(fmt).to_string(),
-                    "datetime" => format!("{} {}", now.format(fmt), now.format("%H:%M")),
-                    "weekday" => now.format("%A").to_string(),
-                    "year" => now.format("%Y").to_string(),
-                    "month" => now.format("%m").to_string(),
-                    "day" => now.format("%d").to_string(),
-                    "hour" => now.format("%H").to_string(),
-                    "minute" => now.format("%M").to_string(),
-                    "second" => now.format("%S").to_string(),
+                    "time" => now.strftime("%H:%M").to_string(),
+                    "date" => now.strftime(fmt).to_string(),
+                    "datetime" => format!("{} {}", now.strftime(fmt), now.strftime("%H:%M")),
+                    "weekday" => now.strftime("%A").to_string(),
+                    "year" => now.strftime("%Y").to_string(),
+                    "month" => now.strftime("%m").to_string(),
+                    "day" => now.strftime("%d").to_string(),
+                    "hour" => now.strftime("%H").to_string(),
+                    "minute" => now.strftime("%M").to_string(),
+                    "second" => now.strftime("%S").to_string(),
                     _ => unreachable!(),
                 };
                 Some(val.into())

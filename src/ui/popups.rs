@@ -678,9 +678,12 @@ pub fn render_list_with_selection(
     state
 }
 
-pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
-    let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
-    secs.into()
+pub fn unix_ts_to_local(unix_ts: u64) -> jiff::Zoned {
+    i64::try_from(unix_ts)
+        .ok()
+        .and_then(|seconds| jiff::Timestamp::from_second(seconds).ok())
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+        .to_zoned(jiff::tz::TimeZone::system())
 }
 
 pub fn now_unix_secs() -> u64 {
@@ -692,7 +695,7 @@ pub fn now_unix_secs() -> u64 {
 
 pub fn format_date(unix_ts: u64, date_format: &str) -> String {
     let dt = unix_ts_to_local(unix_ts);
-    dt.format(date_format).to_string()
+    dt.strftime(date_format).to_string()
 }
 
 pub fn format_size(bytes: u64) -> String {
