@@ -44,8 +44,9 @@ impl Occurrence {
 
 pub fn parse(source: &str) -> Result<Document> {
     ensure!(source.len() <= MAX_BYTES, "iCalendar exceeds 16 MiB");
-    static FOLD: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"\r?\n[ \t]").unwrap());
+    static FOLD: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\r?\n[ \t]").expect("static iCalendar fold expression")
+    });
     let unfolded = FOLD.replace_all(source.trim_start_matches('\u{feff}'), "");
     let source = unfolded.trim();
     ensure!(

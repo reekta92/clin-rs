@@ -700,8 +700,9 @@ pub(crate) fn format_configured_date(
     use jiff::fmt::strtime::{Config, PosixCustom};
     use std::sync::LazyLock;
 
-    static LEGACY_DIRECTIVES: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"%%|%(:{3}z|\.f|[+CfvZ])").unwrap());
+    static LEGACY_DIRECTIVES: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"%%|%:::z|%\.f|%[+CfvZ]").expect("static legacy date expression")
+    });
 
     let date = date.into();
     let fractional = match date.subsec_nanosecond() {
@@ -712,7 +713,7 @@ pub(crate) fn format_configured_date(
         None => "%.f",
     };
     let format = LEGACY_DIRECTIVES.replace_all(format, |captures: &regex::Captures<'_>| {
-        match captures.get(0).unwrap().as_str() {
+        match &captures[0] {
             "%+" => format!("%FT%T{fractional}%:z"),
             "%.f" => fractional.to_owned(),
             "%C" => "%02C".into(),
