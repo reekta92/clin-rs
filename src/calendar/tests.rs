@@ -191,6 +191,14 @@ fn recurring_all_day_and_dst_keep_calendar_dates() {
 }
 
 #[test]
+fn parser_validates_components_after_unfolding_lines() {
+    let source = "BEGIN:VCALEN\r\n DAR\r\nVERSION:2.0\r\nBEGIN:VE\r\n\tVENT\r\nUID:folded\r\nEND:VEVENT\r\nEND:VCALENDAR";
+    let document = ical::parse(source).unwrap();
+    assert_eq!(ical::uid(&document).unwrap(), "folded");
+    assert!(ical::parse(&source.replace("END:VEVENT", "END:VEVENT\r\n EXTRA")).is_err());
+}
+
+#[test]
 fn importing_and_editing_preserve_alarms_unknown_properties_and_timezone_components() {
     let source = document(
         "BEGIN:VTIMEZONE\r\nTZID:Europe/Berlin\r\nX-CUSTOM:zone\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:preserve\r\nSUMMARY:Folded long\r\n  title\r\nDTSTART;TZID=Europe/Berlin:20261023T100000\r\nDTEND;TZID=Europe/Berlin:20261023T110000\r\nX-CUSTOM:a\r\nX-CUSTOM:b\r\nATTENDEE;CN=User:mailto:user@example.org\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT15M\r\nDESCRIPTION:Reminder\r\nEND:VALARM\r\nEND:VEVENT\r\n",

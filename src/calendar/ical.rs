@@ -12,7 +12,10 @@ use jiff::{
     civil::{Date, DateTime, Time},
     tz::{Offset, TimeZone},
 };
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::LazyLock,
+};
 
 pub const MAX_BYTES: usize = 16 * 1024 * 1024;
 
@@ -41,7 +44,10 @@ impl Occurrence {
 
 pub fn parse(source: &str) -> Result<Document> {
     ensure!(source.len() <= MAX_BYTES, "iCalendar exceeds 16 MiB");
-    let source = source.trim_start_matches('\u{feff}').trim();
+    static FOLD: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"\r?\n[ \t]").unwrap());
+    let unfolded = FOLD.replace_all(source.trim_start_matches('\u{feff}'), "");
+    let source = unfolded.trim();
     ensure!(
         source.starts_with("BEGIN:VCALENDAR") && source.ends_with("END:VCALENDAR"),
         "Expected one VCALENDAR document"
