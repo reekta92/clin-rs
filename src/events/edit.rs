@@ -373,9 +373,13 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::InsertDate => {
-                let s = jiff::Zoned::now()
-                    .strftime(&app.config.editor.date_format)
-                    .to_string();
+                let Ok(s) = crate::ui::format_configured_date(
+                    &jiff::Zoned::now(),
+                    &app.config.editor.date_format,
+                ) else {
+                    app.set_temporary_status("Invalid editor date format");
+                    return false;
+                };
                 match *focus {
                     EditFocus::Title => {
                         let _ = app.editor.title_editor.insert_str(&s);

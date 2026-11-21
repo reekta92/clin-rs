@@ -357,9 +357,9 @@ impl StatuslineContext<'_> {
                     .or_else(|| self.app.and_then(|app| app.calendar_view.as_ref()))
                     .map(|calendar| {
                         // Date-only values cannot satisfy time or timezone directives.
-                        let text = jiff::fmt::strtime::format(
-                            self.date_format.unwrap_or("%Y-%m-%d"),
+                        let text = crate::ui::format_configured_date(
                             calendar.date,
+                            self.date_format.unwrap_or("%Y-%m-%d"),
                         )
                         .unwrap_or_else(|_| calendar.date.to_string());
                         crate::fsutil::sanitize_for_terminal(&text).into_owned()
@@ -439,10 +439,14 @@ impl StatuslineContext<'_> {
                     .date_format
                     .or_else(|| self.app.map(|a| a.date_format.as_str()))
                     .unwrap_or("%Y-%m-%d");
+                let date = || {
+                    crate::ui::format_configured_date(&now, fmt)
+                        .unwrap_or_else(|_| now.date().to_string())
+                };
                 let val = match name {
                     "time" => now.strftime("%H:%M").to_string(),
-                    "date" => now.strftime(fmt).to_string(),
-                    "datetime" => format!("{} {}", now.strftime(fmt), now.strftime("%H:%M")),
+                    "date" => date(),
+                    "datetime" => format!("{} {}", date(), now.strftime("%H:%M")),
                     "weekday" => now.strftime("%A").to_string(),
                     "year" => now.strftime("%Y").to_string(),
                     "month" => now.strftime("%m").to_string(),
