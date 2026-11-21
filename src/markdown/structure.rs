@@ -125,7 +125,7 @@ pub(crate) fn metadata(content: &str) -> Metadata {
     metadata
 }
 
-fn is_escaped(source: &str, offset: usize) -> bool {
+pub(super) fn is_escaped(source: &str, offset: usize) -> bool {
     source.as_bytes()[..offset]
         .iter()
         .rev()

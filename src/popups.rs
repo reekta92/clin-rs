@@ -169,6 +169,7 @@ pub struct FolderPicker {
 pub struct NoteRenamePopup {
     pub note_id: String,
     pub input: TextArea<'static>,
+    pub rewrite_links: Option<bool>,
 }
 
 pub struct VaultRenamePopup {

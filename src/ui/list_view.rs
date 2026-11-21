@@ -2399,7 +2399,7 @@ mod tests {
                     .collect();
                 let renamed = format!("{prefix}test (4).{ext}");
                 assert!(text.contains(&format!("Will rename to: {renamed}")));
-                assert!(text.contains("Links are not updated"));
+                assert!(text.contains("Update links? No"));
                 app.confirm_rename_note();
                 assert!(!app.storage.note_path(&other).exists());
                 for name in ["test", "test (2)", "test (4)"] {

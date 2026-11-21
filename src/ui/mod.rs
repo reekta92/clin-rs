@@ -1126,7 +1126,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             "RENAME FILE",
             &mut popup.input,
             &preview,
-            PopupHints::Text("Enter rename · Esc cancel · Links are not updated"),
+            PopupHints::Text(match popup.rewrite_links {
+                Some(true) => "Tab Update links? Yes · Enter rename · Esc",
+                Some(false) => "Tab Update links? No · Enter rename · Esc",
+                None => "Enter rename · Esc cancel",
+            }),
             &app.app_theme,
         );
     }

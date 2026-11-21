@@ -65,7 +65,7 @@ fn list_rename_updates_title_and_preserves_other_properties_and_subnotes() {
         for pinned in [false, true] {
             let id = format!("stable.{ext}");
             let source = format!(
-                "---\r\n# keep header\r\ntitle: 'Old title' # keep comment\r\npinned: {pinned}\r\ncustom: [a, b]\r\n---\r\nbody [[stable]]\r\n"
+                "---\r\n# keep header\r\ntitle: 'Old title' # keep comment\r\npinned: {pinned}\r\ncustom: [a, b]\r\nlinks: [manual]\r\n---\r\nbody [[stable]]\r\n"
             );
             fs::write(app.storage.notes_dir.join(&id), &source).unwrap();
             app.storage.frontmatter_policy.title = false;
@@ -103,7 +103,7 @@ fn list_rename_updates_title_and_preserves_other_properties_and_subnotes() {
             let renamed = format!("{name}.{ext}");
             assert_eq!(
                 fs::read_to_string(app.storage.note_path(&renamed)).unwrap(),
-                source.replace("Old title", &name)
+                source.replace("'Old title'", &format!("\"{name}\""))
             );
             assert!(!app.storage.note_path(&id).exists());
             assert_eq!(app.storage.get_subnotes(&renamed).unwrap(), subnotes);
@@ -117,6 +117,90 @@ fn list_rename_updates_title_and_preserves_other_properties_and_subnotes() {
             assert_eq!(app.notes[0].pinned, pinned);
         }
     }
+}
+
+#[test]
+fn rename_can_rewrite_wikilinks_embeds_and_markdown_destinations() {
+    let (_guard, _root, mut app) = fixture();
+    let vault = &app.storage.notes_dir;
+    fs::create_dir_all(vault.join("notes")).unwrap();
+    fs::create_dir_all(vault.join("other")).unwrap();
+    fs::write(
+        vault.join("notes/Old.md"),
+        "---\ntitle: Old\nupdated_at: 1\nlinks: [Old]\n---\n[[Old]]\n",
+    )
+    .unwrap();
+    fs::write(vault.join("other/Old.md"), "# Different note").unwrap();
+    fs::write(vault.join("other/local.md"), "[[Old]] [local](Old.md)\n").unwrap();
+    let referring = concat!(
+        "---\r\ncustom: 'keep me'\r\n---\r\n",
+        "é [[notes/Old#Heading|alias]] ![[notes/Old#^block]]\r\n",
+        "[label](notes/Old.md?download#Heading \"Title\") [angle](<notes/Old.md>)\r\n",
+        "[`[`](notes/Old.md#Code)\r\n",
+        "[reference][ref] [unrelated](https://example.test/notes/Old.md)\r\n\r\n",
+        "[ref]: notes/Old.md \"Keep title\"\r\n\r\n",
+        "`[[notes/Old]]` \\[[notes/Old]]\r\n",
+        "```md\r\n[[notes/Old]]\r\n```\r\n",
+    );
+    fs::write(vault.join("links.md"), referring).unwrap();
+
+    let mut input = crate::ui::make_popup_textarea(&app.app_theme, "");
+    input.insert_str("New name (draft)");
+    app.popups.active = Some(crate::popups::ActivePopup::NoteRename(
+        crate::popups::NoteRenamePopup {
+            note_id: "notes/Old.md".into(),
+            input,
+            rewrite_links: Some(false),
+        },
+    ));
+    for code in [KeyCode::Tab, KeyCode::Enter] {
+        assert!(crate::events::handle_global_popups_and_palette(
+            &mut app,
+            crossterm::event::Event::Key(KeyEvent::new(code, KeyModifiers::NONE)),
+            ratatui::layout::Rect::default(),
+        ));
+    }
+
+    let vault = &app.storage.notes_dir;
+    assert!(!vault.join("notes/Old.md").exists());
+    let renamed = fs::read_to_string(vault.join("notes/New name (draft).md")).unwrap();
+    let doc = PropertyDocument::parse(&renamed).unwrap();
+    assert_eq!(doc.properties["title"].as_str(), Some("New name (draft)"));
+    assert!(doc.properties["updated_at"].as_u64().unwrap() > 1);
+    assert_eq!(
+        doc.properties["links"][0].as_str(),
+        Some("New name (draft)")
+    );
+    assert_eq!(doc.body, "[[New name (draft)]]\n");
+    assert_eq!(
+        fs::read_to_string(vault.join("links.md")).unwrap(),
+        referring
+            .replace(
+                "[[notes/Old#Heading|alias]]",
+                "[[notes/New name (draft)#Heading|alias]]"
+            )
+            .replace(
+                "![[notes/Old#^block]]",
+                "![[notes/New name (draft)#^block]]"
+            )
+            .replace(
+                "[label](notes/Old.md?",
+                "[label](notes/New%20name%20%28draft%29.md?"
+            )
+            .replace("<notes/Old.md>", "<notes/New%20name%20%28draft%29.md>")
+            .replace(
+                "](notes/Old.md#Code)",
+                "](notes/New%20name%20%28draft%29.md#Code)"
+            )
+            .replace(
+                "[reference][ref]",
+                "[reference](notes/New%20name%20%28draft%29.md \"Keep title\")"
+            )
+    );
+    assert_eq!(
+        fs::read_to_string(vault.join("other/local.md")).unwrap(),
+        "[[Old]] [local](Old.md)\n"
+    );
 }
 
 #[test]
@@ -136,6 +220,7 @@ fn list_rename_other_file_types_preserves_source_bytes() {
             crate::popups::NoteRenamePopup {
                 note_id: id.clone(),
                 input,
+                rewrite_links: None,
             },
         ));
         app.confirm_rename_note();

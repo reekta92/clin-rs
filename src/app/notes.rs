@@ -1614,11 +1614,13 @@ impl App {
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
                     .borders(ratatui::widgets::Borders::ALL)
-                    .title("Rename file: links are NOT updated - Esc cancel, Enter confirm"),
+                    .title("Rename file"),
             );
+            let rewrite_links = (id.ends_with(".md") || id.ends_with(".txt")).then_some(false);
             self.popups.active = Some(crate::popups::ActivePopup::NoteRename(NoteRenamePopup {
                 note_id: id,
                 input,
+                rewrite_links,
             }));
         } else {
             self.set_temporary_status_static("Select a note to rename");
@@ -1633,12 +1635,38 @@ impl App {
                 self.set_temporary_status_static("Title cannot be empty");
                 return;
             }
-            let result = self.storage.rename_note(&popup.note_id, new_title);
+            let metadata = if popup.rewrite_links == Some(true) {
+                self.storage
+                    .load_vault_metadata(&std::sync::atomic::AtomicBool::new(false))
+                    .map(Some)
+            } else {
+                Ok(None)
+            };
+            let result = metadata.and_then(|metadata| {
+                let id = self.storage.rename_note(&popup.note_id, new_title)?;
+                Ok((id, metadata))
+            });
             match result {
-                Ok(id) => {
+                Ok((id, metadata)) => {
+                    let links = metadata.as_ref().map(|metadata| {
+                        self.storage
+                            .rewrite_renamed_note_links(metadata, &popup.note_id, &id)
+                    });
                     self.refresh_note_single(Some(&popup.note_id), &id);
                     self.request_notes_reconcile();
-                    self.set_temporary_status(&format!("Renamed to {id}"));
+                    match links {
+                        Some(Ok(count)) => self.set_temporary_status(&format!(
+                            "Renamed to {id} and updated links in {count} files"
+                        )),
+                        Some(Err(error)) => {
+                            let message =
+                                format!("Renamed to {id}. Link updates failed: {error:#}");
+                            self.set_temporary_status(&message);
+                            self.messages
+                                .push(message, crate::app::messages::MessageSeverity::Warning);
+                        }
+                        None => self.set_temporary_status(&format!("Renamed to {id}")),
+                    }
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to rename: {e}"));

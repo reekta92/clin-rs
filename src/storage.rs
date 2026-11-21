@@ -3,6 +3,7 @@ pub mod documents;
 pub(crate) mod drafts;
 pub mod metadata;
 pub mod public_moves;
+mod rename_links;
 mod write_guard;
 
 use crate::config::ClinConfig;
@@ -968,14 +969,7 @@ impl Storage {
             (
                 "updated_at",
                 policy.updated_at != frontmatter::TimestampFormat::None,
-                match policy.updated_at {
-                    frontmatter::TimestampFormat::Iso8601 => Value::String(
-                        chrono::DateTime::from_timestamp(i64::try_from(updated_at)?, 0)
-                            .context("timestamp out of range")?
-                            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-                    ),
-                    _ => Value::Number(updated_at.into()),
-                },
+                policy.updated_at.encode(updated_at)?,
                 working
                     .properties
                     .get("updated_at")
@@ -1016,7 +1010,9 @@ impl Storage {
         }
     }
 
-    pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
+    pub fn rename_note(&mut self, id: &str, new_title: &str) -> Result<String> {
+        use frontmatter::properties::{PropertyDocument, edit_properties};
+        use serde_yaml_ng::Value;
         let Some(ext @ ("md" | "txt")) = Path::new(id).extension().and_then(|ext| ext.to_str())
         else {
             return self.rename_document(id, new_title);
@@ -1025,22 +1021,28 @@ impl Storage {
         let baseline = self.load_document(id)?;
         let stem = self.note_file_stem_from_title(new_title);
         let target = self.unique_note_id(&stem, ext, id);
-        let frame = frontmatter::properties::PropertyDocument::parse(baseline.source())?;
-        let has_title = frame.properties.contains_key("title");
-        let title_changed = frame
-            .properties
-            .get("title")
-            .and_then(serde_yaml_ng::Value::as_str)
-            != Some(new_title);
-        let source = self.prepare_note_source(
-            &target,
-            Some(&baseline),
-            baseline.source(),
-            new_title,
-            (has_title || self.frontmatter_policy.title) && (id != target || title_changed),
-            None,
-            crate::ui::now_unix_secs(),
-        )?;
+        let properties = PropertyDocument::parse(baseline.source())?.properties;
+        let previous_title = properties.get("title");
+        let title_changed = (previous_title.is_some() || self.frontmatter_policy.title)
+            && previous_title.and_then(Value::as_str) != Some(new_title);
+        let mut edits = Vec::new();
+        if title_changed {
+            edits.push(("title".into(), Some(Value::String(new_title.to_owned()))));
+        }
+        let timestamp = self.frontmatter_policy.updated_at;
+        if (id != target || title_changed)
+            && timestamp != frontmatter::TimestampFormat::None
+            && properties
+                .get("updated_at")
+                .and_then(frontmatter::timestamp)
+                .is_some()
+        {
+            edits.push((
+                "updated_at".into(),
+                Some(timestamp.encode(crate::ui::now_unix_secs())?),
+            ));
+        }
+        let source = edit_properties(baseline.source(), &edits)?;
         let change = (source != baseline.source()).then_some((baseline.source(), source.as_str()));
         self.relocate_note_locked(id, &target, change)?;
         Ok(target)

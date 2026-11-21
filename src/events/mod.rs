@@ -1510,7 +1510,15 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::NoteRename(popup) => {
+            ActivePopup::NoteRename(mut popup) => {
+                if key.code == KeyCode::Tab
+                    && key.modifiers.is_empty()
+                    && let Some(rewrite) = &mut popup.rewrite_links
+                {
+                    *rewrite = !*rewrite;
+                    app.popups.active = Some(ActivePopup::NoteRename(popup));
+                    return true;
+                }
                 route_text(ActivePopup::NoteRename(popup), key, app, |app| {
                     app.confirm_rename_note();
                 })

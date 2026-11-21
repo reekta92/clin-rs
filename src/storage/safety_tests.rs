@@ -489,7 +489,7 @@ fn file_rename_updates_title_and_migrates_plain_subnotes_without_overwriting_rec
     }];
     storage.set_subnotes("old.md", &notes)?;
     let renamed = storage.rename_note("old.md", "new")?;
-    let expected = source.replace("Display title", "new");
+    let expected = source.replace("'Display title'", "\"new\"");
     assert_eq!(renamed, "new.md");
     assert_eq!(fs::read_to_string(root.path().join(&renamed))?, expected);
     assert_eq!(storage.get_subnotes(&renamed)?.len(), 1);

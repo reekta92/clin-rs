@@ -32,6 +32,19 @@ pub enum TimestampFormat {
     None,
 }
 
+impl TimestampFormat {
+    pub(crate) fn encode(self, seconds: u64) -> anyhow::Result<serde_yaml_ng::Value> {
+        Ok(match self {
+            Self::Iso8601 => serde_yaml_ng::Value::String(
+                chrono::DateTime::from_timestamp(i64::try_from(seconds)?, 0)
+                    .ok_or_else(|| anyhow::anyhow!("timestamp out of range"))?
+                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            ),
+            _ => serde_yaml_ng::Value::Number(seconds.into()),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WritePolicy {
