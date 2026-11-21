@@ -57,7 +57,7 @@ fn key(app: &mut App, focus: &mut EditFocus, code: KeyCode, modifiers: KeyModifi
 }
 
 #[test]
-fn list_rename_changes_filename_and_preserves_note_source_and_subnotes() {
+fn list_rename_updates_title_and_preserves_other_properties_and_subnotes() {
     let (_guard, _root, mut app) = fixture();
     app.keybinds = crate::keybinds::Keybinds::default();
     app.list.grid_folder.clear();
@@ -103,7 +103,7 @@ fn list_rename_changes_filename_and_preserves_note_source_and_subnotes() {
             let renamed = format!("{name}.{ext}");
             assert_eq!(
                 fs::read_to_string(app.storage.note_path(&renamed)).unwrap(),
-                source
+                source.replace("Old title", &name)
             );
             assert!(!app.storage.note_path(&id).exists());
             assert_eq!(app.storage.get_subnotes(&renamed).unwrap(), subnotes);
@@ -113,7 +113,7 @@ fn list_rename_changes_filename_and_preserves_note_source_and_subnotes() {
             );
             assert_eq!(app.notes.len(), 1);
             assert_eq!(app.notes[0].id, renamed);
-            assert_eq!(app.notes[0].title, "Old title");
+            assert_eq!(app.notes[0].title, name);
             assert_eq!(app.notes[0].pinned, pinned);
         }
     }

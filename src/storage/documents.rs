@@ -243,7 +243,7 @@ impl Storage {
             self.apply_public_file_moves(&plans, &cancelled)?;
         } else {
             let _guard = self.write_guard()?;
-            self.relocate_note_locked(id, &target_id)?;
+            self.relocate_note_locked(id, &target_id, None)?;
         }
         Ok(target_id)
     }

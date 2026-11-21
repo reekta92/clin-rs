@@ -480,7 +480,7 @@ impl Storage {
             let target = Path::new(&entry.id).with_extension(extension);
             let target = target.to_str().context("invalid migrated filename")?;
             if !self.document_path(target)?.exists() {
-                self.relocate_note_locked(&entry.id, target)?;
+                self.relocate_note_locked(&entry.id, target, None)?;
             }
         }
         Ok(())
@@ -1016,9 +1016,34 @@ impl Storage {
         }
     }
 
-    /// Explicit file rename. UI warns that references are not automatically rewritten.
-    pub fn rename_note(&mut self, id: &str, new_title: &str) -> Result<String> {
-        self.rename_document(id, new_title)
+    pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
+        let Some(ext @ ("md" | "txt")) = Path::new(id).extension().and_then(|ext| ext.to_str())
+        else {
+            return self.rename_document(id, new_title);
+        };
+        let _guard = self.write_guard()?;
+        let baseline = self.load_document(id)?;
+        let stem = self.note_file_stem_from_title(new_title);
+        let target = self.unique_note_id(&stem, ext, id);
+        let frame = frontmatter::properties::PropertyDocument::parse(baseline.source())?;
+        let has_title = frame.properties.contains_key("title");
+        let title_changed = frame
+            .properties
+            .get("title")
+            .and_then(serde_yaml_ng::Value::as_str)
+            != Some(new_title);
+        let source = self.prepare_note_source(
+            &target,
+            Some(&baseline),
+            baseline.source(),
+            new_title,
+            (has_title || self.frontmatter_policy.title) && (id != target || title_changed),
+            None,
+            crate::ui::now_unix_secs(),
+        )?;
+        let change = (source != baseline.source()).then_some((baseline.source(), source.as_str()));
+        self.relocate_note_locked(id, &target, change)?;
+        Ok(target)
     }
 
     pub fn duplicate_note(&mut self, id: &str, target_folder: &str) -> Result<String> {
@@ -1348,19 +1373,42 @@ impl Storage {
         } else {
             format!("{new_folder}/{file_name}")
         };
-        self.relocate_note_locked(id, &target_id)?;
+        self.relocate_note_locked(id, &target_id, None)?;
         Ok(target_id)
     }
 
     /// Keep both parent records until the new filename is durably published.
-    fn relocate_note_locked(&self, id: &str, target_id: &str) -> Result<()> {
+    fn relocate_note_locked(
+        &self,
+        id: &str,
+        target_id: &str,
+        change: Option<(&str, &str)>,
+    ) -> Result<()> {
         let source = self.document_path(id)?;
         let target = self.document_path(target_id)?;
-        if source == target {
+        let check_source = || {
+            if let Some((before, after)) = change {
+                anyhow::ensure!(
+                    after.len() <= 16 * 1024 * 1024,
+                    "document exceeds 16777216-byte safety limit"
+                );
+                anyhow::ensure!(
+                    documents::read_bounded_text(&source, 16 * 1024 * 1024)? == before,
+                    "document changed on disk; reload before renaming"
+                );
+            }
+            Ok::<_, anyhow::Error>(())
+        };
+        check_source()?;
+        if source == target && change.is_none() {
             return Ok(());
         }
         if fs::metadata(&source)?.permissions().readonly() {
             anyhow::bail!("document is read-only");
+        }
+        if source == target {
+            let (_, after) = change.expect("source change checked");
+            return crate::fsutil::atomic_write_preserving_permissions(&source, after.as_bytes());
         }
         if target.exists() {
             anyhow::bail!("destination already exists");
@@ -1380,12 +1428,24 @@ impl Storage {
         };
         let result = (|| -> Result<()> {
             fs::create_dir_all(target.parent().context("destination has no directory")?)?;
-            fs::hard_link(&source, &target)
-                .context("failed to publish filename without overwriting")?;
+            if let Some((_, after)) = change {
+                crate::fsutil::atomic_create_preserving_permissions(
+                    &target,
+                    &source,
+                    after.as_bytes(),
+                )?;
+            } else {
+                fs::hard_link(&source, &target)
+                    .context("failed to publish filename without overwriting")?;
+            }
             #[cfg(unix)]
             fs::File::open(target.parent().context("destination has no directory")?)?.sync_all()?;
-            if let Err(error) = fs::remove_file(&source) {
-                let _ = fs::remove_file(&target);
+            if let Err(error) =
+                check_source().and_then(|()| fs::remove_file(&source).map_err(Into::into))
+            {
+                if let Err(cleanup) = fs::remove_file(&target) {
+                    anyhow::bail!("{error:#}; could not clean up {target_id}: {cleanup}");
+                }
                 return Err(error).context("failed to remove old filename; original retained");
             }
             #[cfg(unix)]
