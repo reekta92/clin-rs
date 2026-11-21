@@ -62,7 +62,7 @@ impl BasesState {
             if loaded.metadata.property_types.declared_type(key) == Some("date")
                 && let super::value::Value::Date(date) = &group.value
             {
-                return Ok(Value::String(date.format("%Y-%m-%d").to_string()));
+                return Ok(Value::String(date.strftime("%Y-%m-%d").to_string()));
             }
         }
         let source = match &group.value {

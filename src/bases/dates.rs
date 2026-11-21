@@ -3,22 +3,17 @@
 use super::eval::arity;
 use super::value::{Value, parse_date};
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Datelike, Local, TimeDelta, Timelike};
+use jiff::{ToSpan, Zoned, civil::Date};
 
-pub(crate) fn method(
-    date: DateTime<Local>,
-    name: &str,
-    values: &[Value],
-    now: DateTime<Local>,
-) -> Result<Value> {
+pub(crate) fn method(date: &Zoned, name: &str, values: &[Value], now: &Zoned) -> Result<Value> {
     Ok(match name {
         "date" => {
             arity(values.len(), 0, 0)?;
-            Value::Date(parse_date(&date.format("%Y-%m-%d").to_string())?)
+            Value::Date(parse_date(&date.strftime("%Y-%m-%d").to_string())?)
         }
         "time" => {
             arity(values.len(), 0, 0)?;
-            Value::text(&date.format("%H:%M:%S").to_string())
+            Value::text(&date.strftime("%H:%M:%S").to_string())
         }
         "relative" => {
             arity(values.len(), 0, 0)?;
@@ -32,8 +27,9 @@ pub(crate) fn method(
     })
 }
 
-fn relative(date: DateTime<Local>, now: DateTime<Local>) -> String {
-    let seconds = (date.timestamp_millis() - now.timestamp_millis()) as f64 / 1000.0;
+fn relative(date: &Zoned, now: &Zoned) -> String {
+    let seconds =
+        (date.timestamp().as_millisecond() - now.timestamp().as_millisecond()) as f64 / 1000.0;
     let absolute = seconds.abs();
     let phrase = if absolute < 45.0 {
         "a few seconds".into()
@@ -65,7 +61,7 @@ fn relative(date: DateTime<Local>, now: DateTime<Local>) -> String {
     }
 }
 
-pub(crate) fn format_date(date: DateTime<Local>, source: &str) -> Result<String> {
+pub(crate) fn format_date(date: &Zoned, source: &str) -> Result<String> {
     const TOKENS: &[&str] = &[
         "LLLL", "llll", "YYYY", "MMMM", "dddd", "DDDD", "GGGG", "gggg", "LTS", "LLL", "lll", "MMM",
         "ddd", "DDD", "SSS", "SS", "Do", "Mo", "Qo", "YY", "MM", "DD", "HH", "hh", "kk", "mm",
@@ -132,23 +128,23 @@ pub(crate) fn format_date(date: DateTime<Local>, source: &str) -> Result<String>
             _ => None,
         };
         if let Some(format) = format {
-            output.push_str(&date.format(format).to_string());
+            output.push_str(&date.strftime(format).to_string());
         } else {
             let value = match *token {
                 "Q" => ((date.month() - 1) / 3 + 1).to_string(),
                 "Qo" => ordinal((date.month() - 1) / 3 + 1),
                 "Do" => ordinal(date.day()),
                 "Mo" => ordinal(date.month()),
-                "S" => (date.timestamp_subsec_millis() / 100).to_string(),
-                "SS" => format!("{:02}", date.timestamp_subsec_millis() / 10),
-                "SSS" => format!("{:03}", date.timestamp_subsec_millis()),
+                "S" => ((date.subsec_nanosecond() / 1_000_000) / 100).to_string(),
+                "SS" => format!("{:02}", (date.subsec_nanosecond() / 1_000_000) / 10),
+                "SSS" => format!("{:03}", (date.subsec_nanosecond() / 1_000_000)),
                 "k" => (if date.hour() == 0 { 24 } else { date.hour() }).to_string(),
                 "kk" => format!("{:02}", if date.hour() == 0 { 24 } else { date.hour() }),
-                "d" | "e" => date.weekday().num_days_from_sunday().to_string(),
-                "E" => date.weekday().number_from_monday().to_string(),
-                "dd" => date.format("%a").to_string()[..2].to_owned(),
-                "x" => date.timestamp_millis().to_string(),
-                "X" => (date.timestamp_millis() as f64 / 1000.0).to_string(),
+                "d" | "e" => date.weekday().to_sunday_zero_offset().to_string(),
+                "E" => date.weekday().to_monday_one_offset().to_string(),
+                "dd" => date.strftime("%a").to_string()[..2].to_owned(),
+                "x" => date.timestamp().as_millisecond().to_string(),
+                "X" => (date.timestamp().as_millisecond() as f64 / 1000.0).to_string(),
                 "w" | "ww" | "gggg" => {
                     let week = locale_week(date)?;
                     if *token == "gggg" {
@@ -159,16 +155,16 @@ pub(crate) fn format_date(date: DateTime<Local>, source: &str) -> Result<String>
                         week.1.to_string()
                     }
                 }
-                "L" => date.format("%m/%d/%Y").to_string(),
-                "l" => date.format("%-m/%-d/%Y").to_string(),
-                "LT" => date.format("%-I:%M %p").to_string(),
-                "LTS" => date.format("%-I:%M:%S %p").to_string(),
-                "LL" => date.format("%B %-d, %Y").to_string(),
-                "ll" => date.format("%b %-d, %Y").to_string(),
-                "LLL" => date.format("%B %-d, %Y %-I:%M %p").to_string(),
-                "lll" => date.format("%b %-d, %Y %-I:%M %p").to_string(),
-                "LLLL" => date.format("%A, %B %-d, %Y %-I:%M %p").to_string(),
-                "llll" => date.format("%a, %b %-d, %Y %-I:%M %p").to_string(),
+                "L" => date.strftime("%m/%d/%Y").to_string(),
+                "l" => date.strftime("%-m/%-d/%Y").to_string(),
+                "LT" => date.strftime("%-I:%M %p").to_string(),
+                "LTS" => date.strftime("%-I:%M:%S %p").to_string(),
+                "LL" => date.strftime("%B %-d, %Y").to_string(),
+                "ll" => date.strftime("%b %-d, %Y").to_string(),
+                "LLL" => date.strftime("%B %-d, %Y %-I:%M %p").to_string(),
+                "lll" => date.strftime("%b %-d, %Y %-I:%M %p").to_string(),
+                "LLLL" => date.strftime("%A, %B %-d, %Y %-I:%M %p").to_string(),
+                "llll" => date.strftime("%a, %b %-d, %Y %-I:%M %p").to_string(),
                 _ => bail!("unsupported date format token {token:?}"),
             };
             output.push_str(&value);
@@ -177,7 +173,7 @@ pub(crate) fn format_date(date: DateTime<Local>, source: &str) -> Result<String>
     }
     Ok(output)
 }
-fn ordinal(value: u32) -> String {
+fn ordinal(value: i8) -> String {
     let suffix = if (11..=13).contains(&(value % 100)) {
         "th"
     } else {
@@ -190,25 +186,20 @@ fn ordinal(value: u32) -> String {
     };
     format!("{value}{suffix}")
 }
-fn locale_week(date: DateTime<Local>) -> Result<(i32, u32)> {
-    let day = date.date_naive();
+fn locale_week(date: &Zoned) -> Result<(i16, i64)> {
+    let day = date.date();
     let year = date.year();
-    let first = chrono::NaiveDate::from_ymd_opt(year, 1, 1).expect("valid current year");
-    let next = chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1);
+    let first = Date::new(year, 1, 1).expect("valid current year");
     let start = first
-        .checked_sub_signed(TimeDelta::days(i64::from(
-            first.weekday().num_days_from_sunday(),
-        )))
+        .checked_sub(i64::from(first.weekday().to_sunday_zero_offset()).days())
         .context("week date exceeds supported range")?;
-    if let Some(next) = next {
+    if let Ok(next) = Date::new(year + 1, 1, 1) {
         let next_start = next
-            .checked_sub_signed(TimeDelta::days(i64::from(
-                next.weekday().num_days_from_sunday(),
-            )))
+            .checked_sub(i64::from(next.weekday().to_sunday_zero_offset()).days())
             .context("week date exceeds supported range")?;
         if day >= next_start {
             return Ok((year + 1, 1));
         }
     }
-    Ok((year, ((day - start).num_days() / 7 + 1) as u32))
+    Ok((year, i64::from(day.since(start)?.get_days()) / 7 + 1))
 }

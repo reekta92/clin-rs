@@ -4,7 +4,7 @@ use super::expr::{Expression, Kind, Literal, Node, Operator};
 use super::value::{Duration, Link, MAX_VALUE_SIZE, Text, Value, js_whitespace, parse_date};
 use crate::storage::metadata::VaultMetadata;
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Datelike, Local, Months, TimeDelta, Timelike};
+use jiff::{SignedDuration, Span, Timestamp, Zoned, tz::TimeZone};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,7 +65,7 @@ impl Formulas {
 #[derive(Clone, Debug)]
 pub struct Environment {
     pub host: Option<String>,
-    pub now: DateTime<Local>,
+    pub now: Zoned,
     /// Retain this seed during live refresh; replace when loading another view.
     pub random_seed: u64,
 }
@@ -73,7 +73,7 @@ impl Default for Environment {
     fn default() -> Self {
         Self {
             host: None,
-            now: Local::now(),
+            now: Zoned::now(),
             random_seed: rand::random(),
         }
     }
@@ -417,10 +417,16 @@ impl<'a> Evaluator<'a> {
                     "properties" => self.all_properties(&id)?,
                     "ctime" => file
                         .created
-                        .map_or(Value::Null, |time| Value::Date(time.into())),
+                        .and_then(|time| Timestamp::try_from(time).ok())
+                        .map_or(Value::Null, |time| {
+                            Value::Date(time.to_zoned(TimeZone::system()))
+                        }),
                     "mtime" => file
                         .modified
-                        .map_or(Value::Null, |time| Value::Date(time.into())),
+                        .and_then(|time| Timestamp::try_from(time).ok())
+                        .map_or(Value::Null, |time| {
+                            Value::Date(time.to_zoned(TimeZone::system()))
+                        }),
                     "tags" => Value::List(file.tags.iter().map(|tag| Value::text(tag)).collect()),
                     "links" | "embeds" => Value::List(
                         if key == "links" {
@@ -448,7 +454,7 @@ impl<'a> Evaluator<'a> {
                 "hour" => f64::from(date.hour()),
                 "minute" => f64::from(date.minute()),
                 "second" => f64::from(date.second()),
-                "millisecond" => f64::from(date.timestamp_subsec_millis()),
+                "millisecond" => f64::from(date.subsec_nanosecond() / 1_000_000),
                 _ => bail!("unsupported date property {key:?}"),
             }),
             value => bail!("{} has no property {key:?}", value.type_name()),
@@ -506,7 +512,7 @@ impl<'a> Evaluator<'a> {
             Value::Boolean(value) => Identity::Boolean(*value),
             Value::Number(value) => Identity::Number(number_identity(*value)),
             Value::String(value) => Identity::String(value.clone()),
-            Value::Date(value) => Identity::Date(value.timestamp_millis()),
+            Value::Date(value) => Identity::Date(value.timestamp().as_millisecond()),
             Value::Duration(value) => Identity::Duration(
                 number_identity(value.months),
                 number_identity(value.milliseconds),
@@ -580,7 +586,7 @@ impl<'a> Evaluator<'a> {
         if let Value::Date(date) = &left {
             if let (Operator::Subtract, Value::Date(other)) = (operator, &right) {
                 return Ok(Value::Number(
-                    (date.timestamp_millis() - other.timestamp_millis()) as f64,
+                    (date.timestamp().as_millisecond() - other.timestamp().as_millisecond()) as f64,
                 ));
             }
             let duration = match &right {
@@ -602,18 +608,21 @@ impl<'a> Evaluator<'a> {
             {
                 bail!("date offset exceeds supported range");
             }
-            let date = if months >= 0.0 {
-                date.checked_add_months(Months::new(months as u32))
+            let date = if months == 0.0 {
+                date.clone()
             } else {
-                date.checked_sub_months(Months::new((-months) as u32))
-            }
-            .context("calendar date offset is invalid")?;
+                let civil = date
+                    .datetime()
+                    .checked_add(Span::new().try_months(months as i64)?)
+                    .context("calendar date offset is invalid")?;
+                date.time_zone()
+                    .to_ambiguous_zoned(civil)
+                    .unambiguous()
+                    .context("calendar date offset is invalid")?
+            };
             return Ok(Value::Date(
-                date.checked_add_signed(
-                    TimeDelta::try_milliseconds(milliseconds.round() as i64)
-                        .context("date offset exceeds supported range")?,
-                )
-                .context("date exceeds supported range")?,
+                date.checked_add(SignedDuration::from_millis(milliseconds.round() as i64))
+                    .context("date exceeds supported range")?,
             ));
         }
         if let Value::Duration(duration) = &left {
@@ -712,11 +721,11 @@ impl<'a> Evaluator<'a> {
             "now" | "today" | "random" => {
                 arity(values.len(), 0, 0)?;
                 if name == "now" {
-                    return Ok(Value::Date(self.environment.now));
+                    return Ok(Value::Date(self.environment.now.clone()));
                 }
                 if name == "today" {
                     return Ok(Value::Date(parse_date(
-                        &self.environment.now.format("%Y-%m-%d").to_string(),
+                        &self.environment.now.strftime("%Y-%m-%d").to_string(),
                     )?));
                 }
                 let mut hash = DefaultHasher::new();
@@ -867,7 +876,7 @@ impl<'a> Evaluator<'a> {
         match receiver {
             Value::String(text) => self.string_method(text, name, values),
             Value::Number(number) => number_method(number, name, values),
-            Value::Date(date) => super::dates::method(date, name, values, self.environment.now),
+            Value::Date(date) => super::dates::method(&date, name, values, &self.environment.now),
             Value::List(list) => self.list_method(list, name, values),
             Value::Object(object) => {
                 arity(values.len(), 0, 0)?;

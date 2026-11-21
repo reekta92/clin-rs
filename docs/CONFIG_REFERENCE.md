@@ -103,7 +103,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
 | `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
-| `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
+| `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (strftime format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
 | `default_view` | `enum` | `"grid"` | Notes layout: `"grid"` tiles; `"tree"` expanding folders; `"list"` directory rows; `"multi"` directory rows with selected-folder contents on the right |
 | `section_tabs` | `bool` | `false` | Show Vault, Pinned, Smart, and Subnotes as header tabs in all four layouts; otherwise show them as folder items |

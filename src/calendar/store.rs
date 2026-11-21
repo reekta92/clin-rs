@@ -2,7 +2,7 @@
 use super::ical::{self, Occurrence};
 use crate::storage::Storage;
 use anyhow::{Context, Result, ensure};
-use chrono::NaiveDate;
+use jiff::civil::Date;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -151,7 +151,7 @@ impl Store {
 #[derive(Default)]
 pub struct Service {
     pub store: Option<Store>,
-    cache: Option<(NaiveDate, NaiveDate, Vec<Occurrence>, Vec<String>)>,
+    cache: Option<(Date, Date, Vec<Occurrence>, Vec<String>)>,
     job: Option<mpsc::Receiver<Result<String>>>,
     revision: u64,
     event_job: Option<EventJob>,
@@ -159,8 +159,8 @@ pub struct Service {
 }
 
 struct EventJob {
-    from: NaiveDate,
-    until: NaiveDate,
+    from: Date,
+    until: Date,
     revision: u64,
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
     receiver: mpsc::Receiver<Result<EventResult>>,
@@ -261,8 +261,8 @@ impl Service {
     pub(crate) fn events_async(
         &mut self,
         storage: &Storage,
-        from: NaiveDate,
-        until: NaiveDate,
+        from: Date,
+        until: Date,
         pool: &rayon::ThreadPool,
     ) -> Result<Option<(&[Occurrence], &[String])>> {
         let cached = self
@@ -332,12 +332,12 @@ impl Service {
         // Validate every series before committing any of the import.
         for source in &resources {
             ical::Draft::from_source(source)?;
-            let date = chrono::Local::now().date_naive();
+            let date = jiff::Zoned::now().date();
             ical::occurrences(
                 source,
                 "import",
                 date,
-                date.succ_opt().context("Date out of range")?,
+                date.tomorrow().context("Date out of range")?,
             )?;
         }
         self.update(storage, |data| {
@@ -357,40 +357,13 @@ impl Service {
 
     pub fn export(&mut self, storage: &Storage, path: &Path) -> Result<usize> {
         self.ensure_loaded(storage)?;
-        let mut out = ical::parse(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//clin//Calendar//EN\r\nEND:VCALENDAR\r\n",
+        let (source, count) = ical::export(
+            self.data()
+                .resources
+                .iter()
+                .filter(|record| !record.deleted)
+                .map(|record| record.source.as_str()),
         )?;
-        let mut count = 0;
-        let mut zones = BTreeMap::new();
-        let mut uids = std::collections::HashSet::new();
-        for r in self.data().resources.iter().filter(|r| !r.deleted) {
-            ensure!(
-                uids.insert(ical::uid(&ical::parse(&r.source)?)?),
-                "Calendars contain duplicate event UIDs; export would be ambiguous"
-            );
-            for c in ical::parse(&r.source)?.components {
-                if c.name == "VTIMEZONE" {
-                    let id = ical::value(&c, "TZID")
-                        .context("VTIMEZONE requires TZID")?
-                        .to_owned();
-                    let source = ical::Document {
-                        properties: Vec::new(),
-                        components: vec![c.clone()],
-                    }
-                    .to_string();
-                    if let Some(previous) = zones.insert(id, source.clone()) {
-                        ensure!(
-                            previous == source,
-                            "Calendars contain conflicting timezone definitions"
-                        );
-                        continue;
-                    }
-                }
-                out.components.push(c);
-            }
-            count += 1;
-        }
-        let source = out.to_string();
         ensure!(
             source.len() <= ical::MAX_BYTES,
             "Export exceeds 16 MiB; existing file retained"
@@ -442,8 +415,8 @@ impl Service {
 
 fn expand_events(
     data: &Data,
-    from: NaiveDate,
-    until: NaiveDate,
+    from: Date,
+    until: Date,
     cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<(Vec<Occurrence>, Vec<String>)> {
     let mut events = Vec::new();
