@@ -1,4 +1,4 @@
-use chrono::Datelike;
+use jiff::ToSpan;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
@@ -29,7 +29,7 @@ pub fn draw_calendar(
     frame: &mut Frame,
     rect: Rect,
     theme: &AppThemeColors,
-    activity_by_day: &std::collections::HashMap<chrono::NaiveDate, usize>,
+    activity_by_day: &std::collections::HashMap<jiff::civil::Date, usize>,
     bottom_border: bool,
     week_start: crate::config::WeekStart,
     strip_rect: Rect,
@@ -38,7 +38,7 @@ pub fn draw_calendar(
         return;
     }
 
-    let today = chrono::Local::now().date_naive();
+    let today = jiff::Zoned::now().date();
 
     // Width-adaptive week count.
 
@@ -48,25 +48,25 @@ pub fn draw_calendar(
     let weeks = (inner_w / COL_PITCH).clamp(1, 26);
 
     // Window: last column starts on the week-start weekday, ending with today.
-    let today_wd = today.weekday().num_days_from_sunday() as i64;
+    let today_wd = today.weekday().to_sunday_zero_offset() as i64;
     let target = match week_start {
         crate::config::WeekStart::Sunday => 0,
         crate::config::WeekStart::Monday => 1,
     };
     let shift = (today_wd - target).rem_euclid(7);
-    let last_col_start = today - chrono::Duration::days(shift);
-    let first_col_start = last_col_start - chrono::Duration::days(7 * (weeks as i64 - 1));
+    let last_col_start = today - shift.days();
+    let first_col_start = last_col_start - (7 * (weeks as i64 - 1)).days();
 
     let mut lines: Vec<Line> = Vec::with_capacity(8);
 
     // Month-labels row (GitHub-style).
     let mut month_row_text = String::from("   "); // align with day-label column
-    let mut prev_month = 0u32;
+    let mut prev_month = 0i8;
     for col_i in 0..weeks as usize {
-        let col_start = first_col_start + chrono::Duration::days(7 * col_i as i64);
+        let col_start = first_col_start + (7 * col_i as i64).days();
         let m = col_start.month();
         if col_i == 0 || m != prev_month {
-            month_row_text.push_str(&format!("{:<3}", col_start.format("%b")));
+            month_row_text.push_str(&format!("{:<3}", col_start.strftime("%b")));
             prev_month = m;
         } else {
             month_row_text.push_str("  ");
@@ -90,7 +90,7 @@ pub fn draw_calendar(
             Style::default().fg(theme.muted),
         ));
         for col_i in 0..weeks as usize {
-            let date = first_col_start + chrono::Duration::days((7 * col_i + row_i) as i64);
+            let date = first_col_start + ((7 * col_i + row_i) as i64).days();
             let count = activity_by_day.get(&date).copied().unwrap_or(0);
             let (ch, mut style) = match count {
                 0 => ('\u{00B7}', Style::default().fg(theme.muted)), // ·

@@ -1,6 +1,6 @@
 use super::Action;
 use crate::app::App;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::borrow::Cow;
 
 pub struct InsertDateAction;
@@ -31,9 +31,9 @@ impl Action for InsertDateAction {
             app.mode == crate::app::ViewMode::Edit,
             "Insert Date needs the active editor"
         );
-        let s = chrono::Local::now()
-            .format(&app.config.editor.date_format)
-            .to_string();
+        let s =
+            crate::ui::format_configured_date(&jiff::Zoned::now(), &app.config.editor.date_format)
+                .context("Invalid editor date format")?;
         app.editor.body.insert_str(&s);
         app.editor.autosave_status = crate::editor::AutosaveStatus::Unsaved;
         app.editor.autosave_timer =
