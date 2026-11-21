@@ -496,6 +496,21 @@ fn canvas_file_and_inline_text_nodes_use_live_native_regions_and_exact_json_spli
         assert!(Instant::now() < deadline, "{screen:?}");
         std::thread::sleep(Duration::from_millis(2));
     }
+
+    let mut terminal = Terminal::new(TestBackend::new(100, 28)).unwrap();
+    let pinstar::data::CanvasNode::File(node) = &mut plugin.state.data.nodes[1] else {
+        panic!("expected file node");
+    };
+    node.width -= 10.0;
+    app.base_embeds.begin_frame();
+    terminal
+        .draw(|frame| plugin.overlay_render(frame, AREA, &mut app))
+        .unwrap();
+    assert!(
+        !app.base_embeds.is_loading(),
+        "resizing a Canvas node must reuse its loaded Bases query and media"
+    );
+
     let mut origin = crate::bases::embedding::InlineOrigin::new(text.into(), 1..3).unwrap();
     origin.rebase_canvas(&canvas, "inline").unwrap();
     let changed = origin

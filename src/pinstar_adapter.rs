@@ -228,7 +228,8 @@ impl PinstarPlugin {
     }
 
     fn draw_base_embeds(&mut self, frame: &mut Frame, area: Rect, app: &App) {
-        if self.state.context_menu.is_some()
+        if self.state.is_view_transforming()
+            || self.state.context_menu.is_some()
             || self.state.rename_popup.is_some()
             || self.state.floating_editor.is_some()
         {
