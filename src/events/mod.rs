@@ -1666,7 +1666,7 @@ impl crate::popups::ActivePopup {
                             app.update_search();
                         }
                     }
-                    KeyCode::Left => {
+                    KeyCode::Left | KeyCode::Char('h') => {
                         if popup.focus == crate::popups::SearchFocus::Input {
                             crate::text_edit::feed_key(&app.keybinds, &mut popup.input, key);
                             app.popups.active = Some(reinsert(popup));
@@ -1678,11 +1678,12 @@ impl crate::popups::ActivePopup {
                                 Err(i) => i.saturating_sub(1),
                             };
                             let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
-                            if r == base
-                                && let Some(hit) = popup.grep_results.get(hit_idx)
+                            if let Some(hit) = popup.grep_results.get(hit_idx)
+                                && r - base <= hit.lines.len()
+                                && popup.grep_expanded.remove(&hit.note_id)
                             {
-                                popup.grep_expanded.remove(&hit.note_id);
                                 popup.rebuild_grep_offsets();
+                                popup.grep_selected = base;
                             }
                             app.popups.active = Some(reinsert(popup));
                         } else {

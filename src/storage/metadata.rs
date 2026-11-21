@@ -48,11 +48,11 @@ impl PropertyTypes {
             }
             "date" => value
                 .as_str()
-                .is_some_and(|v| chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d").is_ok()),
+                .is_some_and(|v| jiff::civil::Date::strptime("%Y-%m-%d", v).is_ok()),
             "datetime" => value.as_str().is_some_and(|v| {
-                chrono::DateTime::parse_from_rfc3339(v).is_ok()
-                    || chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
-                    || chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M").is_ok()
+                v.parse::<jiff::Timestamp>().is_ok()
+                    || jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M:%S%.f", v).is_ok()
+                    || jiff::civil::DateTime::strptime("%Y-%m-%dT%H:%M", v).is_ok()
             }),
             _ => bail!("unsupported property type {kind:?}; declaration retained"),
         };

@@ -582,7 +582,7 @@ pub fn clipboard_to_md() -> Result<(String, String)> {
 
     let title = format!(
         "Clipboard {}",
-        chrono::Local::now().format("%Y-%m-%d %H:%M")
+        jiff::Zoned::now().strftime("%Y-%m-%d %H:%M")
     );
     Ok(sanitized(title, text))
 }

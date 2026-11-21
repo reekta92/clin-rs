@@ -8,6 +8,7 @@ use std::sync::{Arc, LazyLock};
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct RenderKey {
     pub fingerprint: u64,
+    pub content_fingerprint: u64,
     pub content: Arc<str>,
     pub cols: u16,
     pub theme: MarkdownTheme,
@@ -38,12 +39,14 @@ impl RenderKey {
     pub fn new(content: Arc<str>, cols: u16, theme: MarkdownTheme, opts: MdRenderOpts) -> Self {
         let mut hasher = std::hash::DefaultHasher::new();
         content.hash(&mut hasher);
+        let content_fingerprint = hasher.finish();
         cols.hash(&mut hasher);
         theme.hash(&mut hasher);
         opts.hash(&mut hasher);
         let fingerprint = hasher.finish();
         Self {
             fingerprint,
+            content_fingerprint,
             content,
             cols,
             theme,

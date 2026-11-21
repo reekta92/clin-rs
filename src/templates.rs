@@ -15,7 +15,7 @@ pub fn is_folder_template_config(path: &Path) -> bool {
 }
 
 use anyhow::{Context, Result};
-use chrono::Local;
+use jiff::Zoned;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,15 +110,15 @@ struct TemplateVariables {
 
 impl TemplateVariables {
     pub fn now() -> Self {
-        let now = Local::now();
+        let now = Zoned::now();
         Self {
-            date: now.format("%Y-%m-%d").to_string(),
-            datetime: now.format("%Y-%m-%d %H:%M").to_string(),
-            time: now.format("%H:%M").to_string(),
-            weekday: now.format("%A").to_string(),
-            year: now.format("%Y").to_string(),
-            month: now.format("%m").to_string(),
-            day: now.format("%d").to_string(),
+            date: now.strftime("%Y-%m-%d").to_string(),
+            datetime: now.strftime("%Y-%m-%d %H:%M").to_string(),
+            time: now.strftime("%H:%M").to_string(),
+            weekday: now.strftime("%A").to_string(),
+            year: now.strftime("%Y").to_string(),
+            month: now.strftime("%m").to_string(),
+            day: now.strftime("%d").to_string(),
         }
     }
 

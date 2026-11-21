@@ -1,6 +1,7 @@
 pub mod properties;
 
 use crate::config::TextAlignment;
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -36,9 +37,9 @@ impl TimestampFormat {
     pub(crate) fn encode(self, seconds: u64) -> anyhow::Result<serde_yaml_ng::Value> {
         Ok(match self {
             Self::Iso8601 => serde_yaml_ng::Value::String(
-                chrono::DateTime::from_timestamp(i64::try_from(seconds)?, 0)
-                    .ok_or_else(|| anyhow::anyhow!("timestamp out of range"))?
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                jiff::Timestamp::from_second(i64::try_from(seconds)?)
+                    .context("timestamp out of range")?
+                    .to_string(),
             ),
             _ => serde_yaml_ng::Value::Number(seconds.into()),
         })
@@ -124,14 +125,14 @@ pub(crate) fn timestamp(value: &serde_yaml_ng::Value) -> Option<u64> {
         return Some(value);
     }
     let text = value.as_str()?;
-    let seconds = chrono::DateTime::parse_from_rfc3339(text)
-        .map(|date| date.timestamp())
+    let seconds = text
+        .parse::<jiff::Timestamp>()
+        .map(|date| date.as_second())
         .ok()
         .or_else(|| {
-            chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
-                .ok()?
-                .and_hms_opt(0, 0, 0)
-                .map(|date| date.and_utc().timestamp())
+            let date = jiff::civil::Date::strptime("%Y-%m-%d", text).ok()?;
+            let midnight = date.at(0, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).ok()?;
+            Some(midnight.timestamp().as_second())
         })?;
     u64::try_from(seconds).ok()
 }

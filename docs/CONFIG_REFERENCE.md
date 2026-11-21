@@ -103,7 +103,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
 | `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
-| `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (chrono format) |
+| `date_format` | `String` | `"%Y-%m-%d"` | Date format for inline note metadata (strftime format) |
 | `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
 | `default_view` | `enum` | `"grid"` | Notes layout: `"grid"` tiles; `"tree"` expanding folders; `"list"` directory rows; `"multi"` directory rows with selected-folder contents on the right |
 | `section_tabs` | `bool` | `false` | Show Vault, Pinned, Smart, and Subnotes as header tabs in all four layouts; otherwise show them as folder items |
@@ -112,7 +112,7 @@ Legacy per-section flags (`[image] enabled`, `[goals] enabled`, `[list] calendar
 | `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
-| `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas/.base). Non-note files open in the OS default application |
+| `file_extensions` | `array<String>` | `[]` | Add extensions to the Notes list and filename search, for example `["odt", "pdf"]`. Use `["all"]` to include every file type. Files without a native view open in the system default app. Existing `show_all_files = true` migrates to `["all"]` |
 | `skip_dirs` | `array<String>` | `[]` | Regular expressions matched against directory names; invalid expressions are ignored |
 | `folders_first` | `bool` | `true` | Show subfolders before files in every notes layout |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
