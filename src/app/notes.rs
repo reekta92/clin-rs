@@ -76,7 +76,7 @@ impl App {
         let cmd = crate::app::catalog::CatalogCommand::Reconcile {
             generation: generation_num,
             show_hidden: self.list.show_hidden_files,
-            show_all: self.list.show_all_files,
+            extensions: self.config.list.file_extensions.clone(),
         };
         self.send_catalog_cmd(cmd);
     }
@@ -99,7 +99,7 @@ impl App {
             self.send_catalog_cmd(crate::app::catalog::CatalogCommand::Reconcile {
                 generation: self.catalog_generation.load(Ordering::SeqCst),
                 show_hidden: self.list.show_hidden_files,
-                show_all: self.list.show_all_files,
+                extensions: self.config.list.file_extensions.clone(),
             });
         }
     }

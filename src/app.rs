@@ -604,7 +604,6 @@ impl App {
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
-        list.show_all_files = bootstrap_config.list.show_all_files;
         list.calendar_enabled = bootstrap_config.features.calendar.is_enabled();
         list.week_start = bootstrap_config.list.week_start;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
@@ -629,7 +628,7 @@ impl App {
             &storage,
             &notes_worker_pool,
             bootstrap_config.list.show_hidden_files,
-            bootstrap_config.list.show_all_files,
+            &bootstrap_config.list.file_extensions,
         )?;
 
         let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
@@ -651,7 +650,7 @@ impl App {
             scoped_cache_path,
             digest,
             bootstrap_config.list.show_hidden_files,
-            bootstrap_config.list.show_all_files,
+            bootstrap_config.list.file_extensions.clone(),
             load.map,
             catalog_folders.clone(),
             initial_complete,
@@ -664,7 +663,7 @@ impl App {
             let _ = cmd_tx.try_send(crate::app::catalog::CatalogCommand::Reconcile {
                 generation: 1,
                 show_hidden: bootstrap_config.list.show_hidden_files,
-                show_all: bootstrap_config.list.show_all_files,
+                extensions: bootstrap_config.list.file_extensions.clone(),
             });
         }
 
@@ -889,7 +888,6 @@ impl App {
         list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.folders_first = bootstrap_config.list.folders_first;
-        list.show_all_files = bootstrap_config.list.show_all_files;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.calendar_enabled = bootstrap_config.features.calendar.is_enabled();
         list.week_start = bootstrap_config.list.week_start;
@@ -928,7 +926,7 @@ impl App {
                 &scoped_cache_path,
                 digest,
                 bootstrap_config.list.show_hidden_files,
-                bootstrap_config.list.show_all_files,
+                &bootstrap_config.list.file_extensions,
             );
 
         let initial_complete = false;
@@ -945,7 +943,7 @@ impl App {
             scoped_cache_path,
             digest,
             bootstrap_config.list.show_hidden_files,
-            bootstrap_config.list.show_all_files,
+            bootstrap_config.list.file_extensions.clone(),
             cached_map,
             catalog_folders.clone(),
             initial_complete,
@@ -957,7 +955,7 @@ impl App {
         let _ = cmd_tx.try_send(crate::app::catalog::CatalogCommand::Reconcile {
             generation: 1,
             show_hidden: bootstrap_config.list.show_hidden_files,
-            show_all: bootstrap_config.list.show_all_files,
+            extensions: bootstrap_config.list.file_extensions.clone(),
         });
 
         let search_query_generation = Arc::new(AtomicU64::new(1));
@@ -1136,6 +1134,7 @@ impl App {
     }
     pub fn reload_config(&mut self) {
         let old_section_tabs = self.config.list.section_tabs;
+        let old_extensions = self.config.list.file_extensions.clone();
         let old_availability = (
             self.config.features.canvas_view.is_enabled(),
             self.config.features.draw_view.is_enabled(),
@@ -1174,6 +1173,9 @@ impl App {
         );
         if old_availability != new_availability {
             self.refresh_view_file_features();
+        }
+        if old_extensions != self.config.list.file_extensions {
+            self.request_notes_reconcile();
         }
     }
 

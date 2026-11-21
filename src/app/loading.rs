@@ -2293,7 +2293,7 @@ mod tests {
             &app.storage,
             &app.notes_worker_pool,
             false,
-            false,
+            &[],
         )
         .unwrap();
         app.notes = load.summaries;
@@ -2383,7 +2383,7 @@ mod tests {
             &app.storage,
             &app.notes_worker_pool,
             false,
-            false,
+            &[],
         )
         .unwrap();
         app.notes = load.summaries;
@@ -2444,7 +2444,7 @@ mod tests {
                 &app.storage,
                 &app.notes_worker_pool,
                 false,
-                false,
+                &[],
             )
             .unwrap();
             app.notes = load.summaries;
@@ -2538,7 +2538,7 @@ mod tests {
             &app.storage,
             &app.notes_worker_pool,
             false,
-            false,
+            &[],
         )
         .unwrap();
         app.notes = load.summaries;
@@ -2599,7 +2599,7 @@ mod tests {
             &app.storage,
             &app.notes_worker_pool,
             false,
-            true, // include_all_files
+            &["all".into()], // file extension overrides
         )
         .unwrap();
         app.notes = load.summaries;
@@ -2648,7 +2648,7 @@ mod tests {
             &app.storage,
             &app.notes_worker_pool,
             false,
-            false,
+            &[],
         )
         .unwrap();
         app.notes = load.summaries;

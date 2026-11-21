@@ -517,12 +517,21 @@ impl App {
     }
 
     pub fn toggle_show_all_files(&mut self) {
-        self.list.show_all_files = !self.list.show_all_files;
+        let extensions = &mut self.config.list.file_extensions;
+        let show_all = !extensions.iter().any(|ext| ext == "all");
+        if show_all {
+            extensions.push("all".into());
+        } else {
+            extensions.retain(|ext| ext != "all");
+        }
+        let extensions = extensions.clone();
         self.request_notes_reconcile();
-        let val = self.list.show_all_files;
-        let _ = self.flag_status_persist(val, "Showing all files", "Showing notes only", |c, v| {
-            c.list.show_all_files = v
-        });
+        let _ = self.flag_status_persist(
+            show_all,
+            "Showing all files",
+            "Showing configured file types",
+            |c, _| c.list.file_extensions = extensions,
+        );
     }
 
     pub fn toggle_folders_first(&mut self) {

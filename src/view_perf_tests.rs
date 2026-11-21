@@ -132,13 +132,9 @@ fn catalog_batch_preserves_cursor_and_bulk_selection_by_identity() {
     app.editor.editing_id = Some("selected.md".into());
     let path = app.storage.notes_dir.join(selected);
     fs::write(&path, "---\ntitle: A first note\n---\nChanged\n").unwrap();
-    let loaded = crate::app::catalog::load_notes_blocking(
-        &app.storage,
-        &app.notes_worker_pool,
-        false,
-        false,
-    )
-    .unwrap();
+    let loaded =
+        crate::app::catalog::load_notes_blocking(&app.storage, &app.notes_worker_pool, false, &[])
+            .unwrap();
     let upserts = loaded
         .summaries
         .into_iter()

@@ -345,7 +345,7 @@ pub struct ListConfig {
     #[serde(default)]
     pub show_hidden_files: bool,
     #[serde(default)]
-    pub show_all_files: bool,
+    pub file_extensions: Vec<String>,
     #[serde(default)]
     pub skip_dirs: Vec<String>,
     pub folders_first: bool,
@@ -380,7 +380,7 @@ impl Default for ListConfig {
             inline_info: true,
             pinned_on_top: false,
             show_hidden_files: false,
-            show_all_files: false,
+            file_extensions: Vec::new(),
             skip_dirs: Vec::new(),
             folders_first: true,
             calendar_position: CalendarPosition::default(),
