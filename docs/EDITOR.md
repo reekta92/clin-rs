@@ -67,7 +67,7 @@ and wrapped sub-row, rather than copying screen row numbers. Diagram height may 
 are recalculated on resizing and wrapping changes; independent preview scrolling
 lasts until the editor anchor moves or preview content is rebuilt.
 
-The native parser uses an immutable revision of `merman-core-clin` 0.6.0 with the
+The native parser uses the published `merman-core-clin 0.6.1` with the
 upstream 0.6 parser API. Flowchart nodes, nested subgraphs, directions, edge
 labels/markers, classes and basic terminal colors are retained. Wide ranks wrap
 vertically; horizontal diagrams can use vertical terminal layout with a notice.
