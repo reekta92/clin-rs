@@ -498,18 +498,30 @@ fn canvas_file_and_inline_text_nodes_use_live_native_regions_and_exact_json_spli
     }
 
     let mut terminal = Terminal::new(TestBackend::new(100, 28)).unwrap();
-    let pinstar::data::CanvasNode::File(node) = &mut plugin.state.data.nodes[1] else {
-        panic!("expected file node");
-    };
-    node.width -= 10.0;
+    for width in 24..46 {
+        let pinstar::data::CanvasNode::File(node) = &mut plugin.state.data.nodes[1] else {
+            panic!("expected file node");
+        };
+        node.width = f64::from(width);
+        app.base_embeds.begin_frame();
+        terminal
+            .draw(|frame| plugin.overlay_render(frame, AREA, &mut app))
+            .unwrap();
+        assert!(
+            !app.base_embeds.is_loading(),
+            "resizing a Canvas node must reuse its loaded Bases query and media"
+        );
+    }
+
+    plugin.state.last_zoom_at = Some(Instant::now());
     app.base_embeds.begin_frame();
     terminal
         .draw(|frame| plugin.overlay_render(frame, AREA, &mut app))
         .unwrap();
-    assert!(
-        !app.base_embeds.is_loading(),
-        "resizing a Canvas node must reuse its loaded Bases query and media"
-    );
+    assert!(!app.base_embeds.has_visible());
+    plugin.state.last_zoom_at = Instant::now().checked_sub(pinstar::TRANSFORM_SETTLE);
+    assert!(plugin.poll_base_renderers().unwrap());
+    assert!(plugin.state.last_zoom_at.is_none());
 
     let mut origin = crate::bases::embedding::InlineOrigin::new(text.into(), 1..3).unwrap();
     origin.rebase_canvas(&canvas, "inline").unwrap();
