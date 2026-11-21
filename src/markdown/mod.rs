@@ -153,7 +153,7 @@ impl MarkdownRenderer {
     pub(crate) fn base_content(&self) -> Option<(u64, Arc<str>)> {
         self.current_key
             .as_ref()
-            .map(|key| (key.fingerprint, key.content.clone()))
+            .map(|key| (key.content_fingerprint, key.content.clone()))
     }
 
     pub(crate) fn resize_base_slots(&mut self, heights: &[usize]) -> bool {

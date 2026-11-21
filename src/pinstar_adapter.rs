@@ -228,7 +228,8 @@ impl PinstarPlugin {
     }
 
     fn draw_base_embeds(&mut self, frame: &mut Frame, area: Rect, app: &App) {
-        if self.state.context_menu.is_some()
+        if self.state.is_view_transforming()
+            || self.state.context_menu.is_some()
             || self.state.rename_popup.is_some()
             || self.state.floating_editor.is_some()
         {
@@ -346,6 +347,14 @@ impl PinstarPlugin {
             .values_mut()
             .fold(false, |dirty, renderer| renderer.poll() | dirty);
         let now = std::time::Instant::now();
+        if self
+            .state
+            .last_zoom_at
+            .is_some_and(|zoom| now.duration_since(zoom) >= pinstar::TRANSFORM_SETTLE)
+        {
+            self.state.last_zoom_at = None;
+            dirty = true;
+        }
         let check_host = now >= self.next_host_check;
         if check_host {
             self.next_host_check = now + std::time::Duration::from_millis(200);
