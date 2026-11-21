@@ -731,6 +731,29 @@ mod tests {
             !app.handle_search_events(),
             "idle drain must report changed=false"
         );
+
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        for code in [KeyCode::Char('h'), KeyCode::Left] {
+            let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active else {
+                panic!("search popup missing");
+            };
+            popup.focus = crate::popups::SearchFocus::Results;
+            popup
+                .grep_expanded
+                .insert(popup.grep_results[0].note_id.clone());
+            popup.rebuild_grep_offsets();
+            popup.grep_selected = 2;
+            assert!(crate::events::handle_global_popups_and_palette(
+                &mut app,
+                Event::Key(KeyEvent::new(code, KeyModifiers::NONE)),
+                ratatui::layout::Rect::default(),
+            ));
+            let Some(crate::popups::ActivePopup::Search(popup)) = &app.popups.active else {
+                panic!("search popup missing");
+            };
+            assert_eq!(popup.total_grep_rows(), 1);
+            assert_eq!(popup.grep_selected, 0);
+        }
     }
 
     #[test]
