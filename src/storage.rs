@@ -970,9 +970,9 @@ impl Storage {
                 policy.updated_at != frontmatter::TimestampFormat::None,
                 match policy.updated_at {
                     frontmatter::TimestampFormat::Iso8601 => Value::String(
-                        chrono::DateTime::from_timestamp(i64::try_from(updated_at)?, 0)
+                        jiff::Timestamp::from_second(i64::try_from(updated_at)?)
                             .context("timestamp out of range")?
-                            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                            .to_string(),
                     ),
                     _ => Value::Number(updated_at.into()),
                 },

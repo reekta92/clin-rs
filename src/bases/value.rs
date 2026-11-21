@@ -1,7 +1,11 @@
 //! Typed query values. Strings retain UTF-16 units until terminal/UTF-8 output.
 
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone};
+use jiff::{
+    Timestamp, Zoned,
+    civil::{Date, DateTime},
+    tz::{AmbiguousOffset, TimeZone},
+};
 use serde_yaml_ng::Value as Yaml;
 
 pub(crate) const MAX_VALUE_SIZE: usize = 1024 * 1024;
@@ -105,7 +109,7 @@ pub enum Value {
     Boolean(bool),
     Number(f64),
     String(Text),
-    Date(DateTime<Local>),
+    Date(Zoned),
     Duration(Duration),
     List(Vec<Value>),
     /// Insertion order is observable through keys()/values().
@@ -170,7 +174,7 @@ impl Value {
             Self::String(value) | Self::Image(value) | Self::Icon(value) | Self::Html(value) => {
                 value.clone()
             }
-            Self::Date(value) => value.to_rfc3339().into(),
+            Self::Date(value) => value.strftime("%Y-%m-%dT%H:%M:%S%.f%:z").to_string().into(),
             Self::Duration(value) => format!("{}M {}ms", value.months, value.milliseconds).into(),
             Self::File(id) | Self::Host(id) => id.as_str().into(),
             Self::Link(value) => value.target.clone(),
@@ -235,7 +239,7 @@ impl Value {
             Self::Number(value) => Ok(*value),
             Self::Boolean(value) => Ok(f64::from(*value)),
             Self::Null => Ok(0.0),
-            Self::Date(value) => Ok(value.timestamp_millis() as f64),
+            Self::Date(value) => Ok(value.timestamp().as_millisecond() as f64),
             Self::String(value) => {
                 let value = value.utf8()?;
                 let value = value.trim_matches(js_whitespace);
@@ -280,7 +284,9 @@ impl Value {
                 String::from_utf16(&value.0)
                     .context("group contains an unpaired UTF-16 surrogate")?,
             ),
-            Self::Date(value) => Yaml::String(value.to_rfc3339()),
+            Self::Date(value) => {
+                Yaml::String(value.strftime("%Y-%m-%dT%H:%M:%S%.f%:z").to_string())
+            }
             Self::Link(link) => {
                 let target = String::from_utf16(&link.target.0)
                     .context("link contains an unpaired UTF-16 surrogate")?;
@@ -356,26 +362,27 @@ pub(crate) fn js_whitespace(ch: char) -> bool {
     matches!(ch, '\u{9}'..='\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
 }
 
-pub(crate) fn parse_date(source: &str) -> Result<DateTime<Local>> {
-    if let Ok(date) = DateTime::parse_from_rfc3339(source) {
-        return Ok(date.with_timezone(&Local));
+pub(crate) fn parse_date(source: &str) -> Result<Zoned> {
+    let zone = TimeZone::system();
+    if let Ok(timestamp) = source.parse::<Timestamp>() {
+        return Ok(timestamp.to_zoned(zone));
     }
-    for format in [
+    let date = [
         "%Y-%m-%d %H:%M:%S%.f",
         "%Y-%m-%dT%H:%M:%S%.f",
         "%Y-%m-%d %H:%M",
         "%Y-%m-%dT%H:%M",
-    ] {
-        if let Ok(date) = NaiveDateTime::parse_from_str(source, format) {
-            return Local
-                .from_local_datetime(&date)
-                .earliest()
-                .context("date falls in a local timezone gap");
-        }
+    ]
+    .iter()
+    .find_map(|format| DateTime::strptime(format, source).ok())
+    .map_or_else(
+        || Date::strptime("%Y-%m-%d", source).map(|date| date.at(0, 0, 0, 0)),
+        Ok,
+    )
+    .context("invalid date")?;
+    let zoned = zone.into_ambiguous_zoned(date);
+    if matches!(zoned.offset(), AmbiguousOffset::Gap { .. }) {
+        anyhow::bail!("date falls in a local timezone gap");
     }
-    let date = NaiveDate::parse_from_str(source, "%Y-%m-%d").context("invalid date")?;
-    Local
-        .from_local_datetime(&date.and_hms_opt(0, 0, 0).context("invalid midnight")?)
-        .earliest()
-        .context("date falls in a local timezone gap")
+    Ok(zoned.earlier()?)
 }

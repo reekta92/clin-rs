@@ -54,7 +54,7 @@ pub(crate) fn parse_todotxt_line(line: &str) -> TodoTxtItem<'_> {
         if date.as_bytes()[4] == b'-'
             && date.as_bytes()[7] == b'-'
             && date.bytes().all(|b| b.is_ascii_digit() || b == b'-')
-            && chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok()
+            && jiff::civil::Date::strptime("%Y-%m-%d", date).is_ok()
             && (s.len() == 10 || s[10..].starts_with(char::is_whitespace))
         {
             return Some((date, s[10..].trim_start()));

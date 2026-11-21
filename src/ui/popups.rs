@@ -678,9 +678,12 @@ pub fn render_list_with_selection(
     state
 }
 
-pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
-    let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
-    secs.into()
+pub fn unix_ts_to_local(unix_ts: u64) -> jiff::Zoned {
+    i64::try_from(unix_ts)
+        .ok()
+        .and_then(|seconds| jiff::Timestamp::from_second(seconds).ok())
+        .unwrap_or(jiff::Timestamp::UNIX_EPOCH)
+        .to_zoned(jiff::tz::TimeZone::system())
 }
 
 pub fn now_unix_secs() -> u64 {
@@ -690,9 +693,50 @@ pub fn now_unix_secs() -> u64 {
         .as_secs()
 }
 
+pub(crate) fn format_configured_date(
+    date: impl Into<jiff::fmt::strtime::BrokenDownTime>,
+    format: &str,
+) -> Result<String, jiff::Error> {
+    use jiff::fmt::strtime::{Config, PosixCustom};
+    use std::sync::LazyLock;
+
+    static LEGACY_DIRECTIVES: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"%%|%:::z|%\.f|%[+CfvZ]").expect("static legacy date expression")
+    });
+
+    let date = date.into();
+    let fractional = match date.subsec_nanosecond() {
+        Some(0) => "",
+        Some(nanos) if nanos % 1_000_000 == 0 => "%.3f",
+        Some(nanos) if nanos % 1_000 == 0 => "%.6f",
+        Some(_) => "%.9f",
+        None => "%.f",
+    };
+    let format = LEGACY_DIRECTIVES.replace_all(format, |captures: &regex::Captures<'_>| {
+        match &captures[0] {
+            "%+" => format!("%FT%T{fractional}%:z"),
+            "%.f" => fractional.to_owned(),
+            "%C" => "%02C".into(),
+            "%f" => "%9f".into(),
+            "%v" => "%e-%b-%Y".into(),
+            "%Z" => "%:z".into(),
+            "%:::z" => date.offset().map_or_else(
+                || "%:::z".into(),
+                |offset| {
+                    let seconds = offset.seconds();
+                    let sign = if seconds < 0 { '-' } else { '+' };
+                    format!("{sign}{:02}", seconds.unsigned_abs() / 3_600)
+                },
+            ),
+            literal => literal.to_owned(),
+        }
+    });
+    date.to_string_with_config(&Config::new().custom(PosixCustom::new()), format.as_ref())
+}
+
 pub fn format_date(unix_ts: u64, date_format: &str) -> String {
     let dt = unix_ts_to_local(unix_ts);
-    dt.format(date_format).to_string()
+    format_configured_date(&dt, date_format).unwrap_or_else(|_| dt.date().to_string())
 }
 
 pub fn format_size(bytes: u64) -> String {
@@ -1780,6 +1824,17 @@ pub fn draw_header_dropdown(
 mod tests {
     use super::*;
     use ratatui::style::Modifier;
+
+    #[test]
+    fn configured_date_formats_preserve_legacy_directives() {
+        let date: jiff::Zoned = "2024-07-08T12:34:56.123400+05:30[+05:30]".parse().unwrap();
+        let format = "%+|%v|%C|%f|%.f|%Z|%:::z|%x|%%+";
+        assert_eq!(
+            format_configured_date(&date, format).unwrap(),
+            "2024-07-08T12:34:56.123400+05:30| 8-Jul-2024|20|123400000|.123400|+05:30|+05|07/08/24|%+"
+        );
+        assert!(format_configured_date(&date, "%").is_err());
+    }
 
     fn has_mod(st: Style, m: Modifier) -> bool {
         st.add_modifier.contains(m)
