@@ -525,7 +525,7 @@ fn deduplicate(values: &mut Vec<String>) {
     values.retain(|value| !value.is_empty() && seen.insert(value.clone()));
 }
 
-fn normalize_path(path: &str) -> Option<String> {
+pub(super) fn normalize_path(path: &str) -> Option<String> {
     if path.starts_with('/') || path.starts_with('\\') {
         return None;
     }
@@ -545,7 +545,7 @@ fn normalize_path(path: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-fn decode_percent(target: &str) -> Option<String> {
+pub(super) fn decode_percent(target: &str) -> Option<String> {
     let mut bytes = Vec::with_capacity(target.len());
     let mut source = target.as_bytes().iter().copied();
     while let Some(byte) = source.next() {

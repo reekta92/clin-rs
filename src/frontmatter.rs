@@ -1,6 +1,7 @@
 pub mod properties;
 
 use crate::config::TextAlignment;
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -30,6 +31,19 @@ pub enum TimestampFormat {
     Unix,
     Iso8601,
     None,
+}
+
+impl TimestampFormat {
+    pub(crate) fn encode(self, seconds: u64) -> anyhow::Result<serde_yaml_ng::Value> {
+        Ok(match self {
+            Self::Iso8601 => serde_yaml_ng::Value::String(
+                jiff::Timestamp::from_second(i64::try_from(seconds)?)
+                    .context("timestamp out of range")?
+                    .to_string(),
+            ),
+            _ => serde_yaml_ng::Value::Number(seconds.into()),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

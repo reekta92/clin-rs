@@ -1,5 +1,6 @@
 mod builtin;
 mod cache;
+pub(crate) mod rename_links;
 mod source_highlight;
 pub(crate) mod structure;
 mod style;

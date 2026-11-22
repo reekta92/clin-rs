@@ -25,6 +25,12 @@ pub(crate) fn read_bounded_text(path: &Path, max_bytes: usize) -> Result<String>
 }
 
 #[derive(Clone, Debug)]
+pub struct DocumentChange {
+    pub before: DocumentSnapshot,
+    pub after: DocumentSnapshot,
+}
+
+#[derive(Clone, Debug)]
 pub struct DocumentSnapshot {
     id: String,
     source: std::sync::Arc<str>,
@@ -243,7 +249,7 @@ impl Storage {
             self.apply_public_file_moves(&plans, &cancelled)?;
         } else {
             let _guard = self.write_guard()?;
-            self.relocate_note_locked(id, &target_id)?;
+            self.relocate_note_locked(id, &target_id, None)?;
         }
         Ok(target_id)
     }

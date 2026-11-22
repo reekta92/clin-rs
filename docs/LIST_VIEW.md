@@ -66,6 +66,7 @@ Disabled file-view features hide their creation choices.
 ## Core Interactions
 
 ### Organization
+- **Renaming**: Rename a note to update its filename and title property. Press Tab in the rename prompt to include links and embeds in other vault notes.
 - **Pinning**: Important notes can be pinned to appear at the top of the grid or in the "Pinned" tab.
 - **Sorting**: Sort your notes by title or last modified date, ascending or descending. Default: modified, descending.
 - **Folders**: Organize notes into nested directories. A gear badge marks folders containing their own `.clin-template.toml` (not inherited-only variables); it appears beside the tree folder label or in the grid tile corner alongside its pin badge. With templates enabled, the config appears inside its folder as a muted selectable item regardless of hidden-file settings. Enter/double-click opens the validated config editor; the preview shows TOML. Configs are not counted/indexed as notes or included in bulk note actions. See [Template System](TEMPLATES.md#folder-local-custom-variables).

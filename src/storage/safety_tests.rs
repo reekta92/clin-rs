@@ -475,7 +475,7 @@ fn unrelated_plaintext_subnote_writes_preserve_opaque_legacy_payloads() -> Resul
 }
 
 #[test]
-fn file_rename_keeps_source_and_migrates_plain_subnotes_without_overwriting_records() -> Result<()>
+fn file_rename_updates_title_and_migrates_plain_subnotes_without_overwriting_records() -> Result<()>
 {
     let root = tempfile::tempdir()?;
     let mut storage = fixture(root.path());
@@ -489,20 +489,21 @@ fn file_rename_keeps_source_and_migrates_plain_subnotes_without_overwriting_reco
     }];
     storage.set_subnotes("old.md", &notes)?;
     let renamed = storage.rename_note("old.md", "new")?;
+    let expected = source.replace("'Display title'", "\"new\"");
     assert_eq!(renamed, "new.md");
-    assert_eq!(fs::read_to_string(root.path().join(&renamed))?, source);
+    assert_eq!(fs::read_to_string(root.path().join(&renamed))?, expected);
     assert_eq!(storage.get_subnotes(&renamed)?.len(), 1);
     assert_eq!(storage.get_subnotes("old.md")?.len(), 0);
     assert!(!root.path().join("old.md").exists());
     storage.set_subnotes("collision.md", &notes)?;
     assert!(storage.rename_note(&renamed, "collision").is_err());
-    assert_eq!(fs::read_to_string(root.path().join(&renamed))?, source);
+    assert_eq!(fs::read_to_string(root.path().join(&renamed))?, expected);
     assert_eq!(storage.get_subnotes(&renamed)?.len(), 1);
     assert_eq!(storage.get_subnotes("collision.md")?.len(), 1);
     fs::write(storage.subnotes_db_path(), b"corrupt")?;
     assert!(storage.rename_note(&renamed, "other").is_err());
     assert!(storage.move_note(&renamed, "folder").is_err());
-    assert_eq!(fs::read_to_string(root.path().join(renamed))?, source);
+    assert_eq!(fs::read_to_string(root.path().join(renamed))?, expected);
     Ok(())
 }
 
