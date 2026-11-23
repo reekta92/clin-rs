@@ -1337,7 +1337,7 @@ pub fn draw_confirm_popup_frame(
 
 pub(crate) fn confirm_popup_layout(
     area: Rect,
-    label: &str,
+    confirm: &ConfirmPopup,
     literal_yes_no: bool,
 ) -> ([Rect; 4], [Rect; 2]) {
     let mut popup = centered_rect(PopupSize::Confirm, area);
@@ -1357,9 +1357,10 @@ pub(crate) fn confirm_popup_layout(
         ("Enter", "Esc")
     };
     let row = chunks[3];
-    let cancel_width = (format!(" Cancel ({cancel_key}) ").width() as u16).min(row.width);
+    let cancel_width =
+        (format!(" {} ({cancel_key}) ", confirm.secondary_label()).width() as u16).min(row.width);
     let gap = 3.min(row.width.saturating_sub(cancel_width));
-    let confirm_width = (format!(" {label} ({confirm_key}) ").width() as u16)
+    let confirm_width = (format!(" {} ({confirm_key}) ", confirm.confirm_label).width() as u16)
         .min(row.width.saturating_sub(cancel_width + gap));
     let x = row.x + row.width.saturating_sub(confirm_width + gap + cancel_width) / 2;
     (
@@ -1379,21 +1380,33 @@ pub fn draw_confirm_popup(
     literal_yes_no: bool,
     mouse_pos: Option<(u16, u16)>,
 ) {
+    let hints = if matches!(
+        popup.action,
+        crate::popups::ConfirmAction::RenameNote { .. }
+    ) {
+        [
+            ("y".into(), "update links"),
+            ("n".into(), "skip"),
+            ("Esc".into(), "cancel rename"),
+        ]
+    } else {
+        [
+            (if literal_yes_no { "y" } else { "Enter" }.into(), "confirm"),
+            (if literal_yes_no { "n" } else { "Esc" }.into(), "cancel"),
+            ("↑/↓".into(), "scroll"),
+        ]
+    };
     draw_confirm_popup_frame(
         frame,
         area,
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
-        Some(PopupHints::Keybinds(&[
-            (if literal_yes_no { "y" } else { "Enter" }.into(), "confirm"),
-            (if literal_yes_no { "n" } else { "Esc" }.into(), "cancel"),
-            ("↑/↓".into(), "scroll"),
-        ])),
+        Some(PopupHints::Keybinds(&hints)),
         theme,
     );
 
-    let (chunks, button_areas) = confirm_popup_layout(area, &popup.confirm_label, literal_yes_no);
+    let (chunks, button_areas) = confirm_popup_layout(area, popup, literal_yes_no);
 
     let text_area = Rect::new(
         chunks[0].x,
@@ -1472,7 +1485,7 @@ pub fn draw_confirm_popup(
         button_areas[0],
     );
     frame.render_widget(
-        Paragraph::new(format!(" Cancel ({cancel_key}) "))
+        Paragraph::new(format!(" {} ({cancel_key}) ", popup.secondary_label()))
             .style(cancel_style)
             .alignment(Alignment::Center),
         button_areas[1],

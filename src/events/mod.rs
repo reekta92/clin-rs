@@ -752,6 +752,7 @@ enum ConfirmKeyAction {
     ToggleSelection,
     ActivateSelection,
     Confirm,
+    Decline,
     Cancel,
     Unhandled,
 }
@@ -799,7 +800,7 @@ fn route_confirm_key(
     if literal_modifier && matches!(key.code, KeyCode::Char('y' | 'Y')) {
         ConfirmKeyAction::Confirm
     } else if literal_modifier && matches!(key.code, KeyCode::Char('n' | 'N')) {
-        ConfirmKeyAction::Cancel
+        ConfirmKeyAction::Decline
     } else if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
         ConfirmKeyAction::SelectConfirm
     } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
@@ -814,6 +815,30 @@ fn route_confirm_key(
         ConfirmKeyAction::Confirm
     } else {
         ConfirmKeyAction::Unhandled
+    }
+}
+
+fn handle_confirm_key(app: &mut App, key: &KeyEvent, text_input_context: bool) {
+    if key.code == KeyCode::Esc
+        && app.popups.confirm.as_ref().is_some_and(|popup| {
+            matches!(
+                popup.action,
+                crate::popups::ConfirmAction::RenameNote { .. }
+            )
+        })
+    {
+        app.cancel_confirm();
+        return;
+    }
+    match route_confirm_key(key, &app.keybinds, text_input_context) {
+        ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
+        ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
+        ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
+        ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
+        ConfirmKeyAction::Confirm => app.confirm_action(),
+        ConfirmKeyAction::Decline => app.decline_confirm(),
+        ConfirmKeyAction::Cancel => app.cancel_confirm(),
+        ConfirmKeyAction::Unhandled => {}
     }
 }
 
@@ -854,15 +879,7 @@ pub(crate) fn handle_open_palette_event(
                 if scroll_confirmation(app, key.code) {
                     return true;
                 }
-                match route_confirm_key(key, &app.keybinds, false) {
-                    ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
-                    ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
-                    ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
-                    ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
-                    ConfirmKeyAction::Confirm => app.confirm_action(),
-                    ConfirmKeyAction::Cancel => app.cancel_confirm(),
-                    ConfirmKeyAction::Unhandled => {}
-                }
+                handle_confirm_key(app, key, false);
             }
             crossterm::event::Event::Mouse(mouse) => {
                 popup_mouse::handle_global_popup_mouse(app, mouse, area);
@@ -1214,15 +1231,7 @@ pub fn handle_global_popups_and_palette(
     // Standalone confirm overlay (layers over group-B popups or nothing).
     if app.popups.confirm.is_some() {
         app.seq_matcher.clear();
-        match route_confirm_key(&key, &app.keybinds, false) {
-            ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
-            ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
-            ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
-            ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
-            ConfirmKeyAction::Confirm => app.confirm_action(),
-            ConfirmKeyAction::Cancel => app.cancel_confirm(),
-            ConfirmKeyAction::Unhandled => {}
-        }
+        handle_confirm_key(app, &key, false);
         return true;
     }
 
@@ -1254,15 +1263,7 @@ impl crate::popups::ActivePopup {
             ActivePopup::Tag(mut popup) => {
                 if app.popups.confirm.is_some() {
                     app.popups.active = Some(ActivePopup::Tag(popup));
-                    match route_confirm_key(&key, &app.keybinds, true) {
-                        ConfirmKeyAction::SelectConfirm => app.confirm_popup_select_confirm(),
-                        ConfirmKeyAction::SelectCancel => app.confirm_popup_select_cancel(),
-                        ConfirmKeyAction::ToggleSelection => app.confirm_popup_toggle_button(),
-                        ConfirmKeyAction::ActivateSelection => app.confirm_popup_activate(),
-                        ConfirmKeyAction::Confirm => app.confirm_action(),
-                        ConfirmKeyAction::Cancel => app.cancel_confirm(),
-                        ConfirmKeyAction::Unhandled => {}
-                    }
+                    handle_confirm_key(app, &key, true);
                     return true;
                 }
 
@@ -1510,12 +1511,8 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
-            ActivePopup::NoteRename(mut popup) => {
-                if key.code == KeyCode::Tab
-                    && key.modifiers.is_empty()
-                    && let Some(rewrite) = &mut popup.rewrite_links
-                {
-                    *rewrite = !*rewrite;
+            ActivePopup::NoteRename(popup) => {
+                if key.code == KeyCode::Tab && key.modifiers.is_empty() {
                     app.popups.active = Some(ActivePopup::NoteRename(popup));
                     return true;
                 }
@@ -2051,7 +2048,7 @@ impl crate::popups::ActivePopup {
                                 Some(confirm.selected_button == 0)
                             }
                             ConfirmKeyAction::Confirm => Some(true),
-                            ConfirmKeyAction::Cancel => Some(false),
+                            ConfirmKeyAction::Decline | ConfirmKeyAction::Cancel => Some(false),
                             ConfirmKeyAction::Unhandled => None,
                         }
                     };
@@ -2229,7 +2226,7 @@ mod tests {
         ] {
             assert_eq!(
                 route_confirm_key(&key(code, modifiers), &keybinds, false),
-                ConfirmKeyAction::Cancel
+                ConfirmKeyAction::Decline
             );
         }
         for modifier in [KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::META] {
@@ -2334,7 +2331,7 @@ mod tests {
                 &keybinds,
                 false
             ),
-            ConfirmKeyAction::Cancel
+            ConfirmKeyAction::Decline
         );
     }
 

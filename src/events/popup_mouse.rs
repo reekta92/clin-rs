@@ -164,12 +164,11 @@ fn handle_confirm_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: 
         return;
     };
     let literal_yes_no = !matches!(app.popups.active, Some(crate::popups::ActivePopup::Tag(_)));
-    let (_, buttons) =
-        crate::ui::confirm_popup_layout(terminal_area, &popup.confirm_label, literal_yes_no);
+    let (_, buttons) = crate::ui::confirm_popup_layout(terminal_area, popup, literal_yes_no);
     if contains_cell(buttons[0], mouse.column, mouse.row) {
         app.confirm_action();
     } else if contains_cell(buttons[1], mouse.column, mouse.row) {
-        app.cancel_confirm();
+        app.decline_confirm();
     }
 }
 

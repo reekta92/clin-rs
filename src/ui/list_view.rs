@@ -2399,8 +2399,38 @@ mod tests {
                     .collect();
                 let renamed = format!("{prefix}test (4).{ext}");
                 assert!(text.contains(&format!("Will rename to: {renamed}")));
-                assert!(text.contains("Update links? No"));
+                assert!(!text.contains("Update links"));
                 app.confirm_rename_note();
+                assert!(app.storage.note_path(&other).exists());
+                let frame = terminal
+                    .draw(|frame| crate::ui::draw_ui(frame, &mut app, crate::app::EditFocus::Body))
+                    .unwrap();
+                let text: String = frame
+                    .buffer
+                    .content
+                    .iter()
+                    .map(|cell| cell.symbol())
+                    .collect();
+                assert!(text.contains("Update links to this file?"));
+                assert!(text.contains("Update links (y)"));
+                assert!(text.contains("Skip (n)"));
+                let (_, buttons) = crate::ui::confirm_popup_layout(
+                    frame.area,
+                    app.popups.confirm.as_ref().unwrap(),
+                    true,
+                );
+                assert!(crate::events::handle_global_popup_mouse(
+                    &mut app,
+                    &crossterm::event::MouseEvent {
+                        kind: crossterm::event::MouseEventKind::Down(
+                            crossterm::event::MouseButton::Left
+                        ),
+                        column: buttons[1].x,
+                        row: buttons[1].y,
+                        modifiers: crossterm::event::KeyModifiers::NONE,
+                    },
+                    frame.area,
+                ));
                 assert!(!app.storage.note_path(&other).exists());
                 for name in ["test", "test (2)", "test (4)"] {
                     assert_eq!(

@@ -33,7 +33,7 @@ feature settings control Smart and Subnotes availability.
 - **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, and one folder per *Tag*. Control with `[features] smart_folders = true` (enabled by default). *This Week* means updated within the last seven days, not the calendar week. Custom rules live in `[list] custom_smart_folders`.
 - **Folder Pinning**: Pin folders to the top of the list for quick access by selecting a folder and pressing the pin key (`p`).
 - **Filenames**: Notes use their actual filenames without extensions, including suffixes such as `test (2)`. New-note prompts preview the filename that will be used, including a numbered suffix when the name already exists in that folder.
-- **Inline Rename**: Rename files and folders by pressing the rename key (`r`). The file prompt previews the resulting filename. Press `Enter` to commit, or `Esc` to cancel. File renames preserve contents and move attached subnotes; incoming links are not updated. To change a Markdown/text note's frontmatter title, edit Title in the editor.
+- **Inline Rename**: Press `r` to rename a file or folder. The file prompt previews the resulting filename. For Markdown and text notes, `Enter` opens an **Update links?** popup: press `y` to rename and update links and embeds in vault notes, `n` to rename without updating them, or `Esc` to cancel. Attached subnotes move with the file.
 - **Drag-to-Move**: Click and drag notes onto folders to move them. Alternatively, use the default `U` keyboard shortcut (`g u` in Helix/Vim presets) to move the selected note to its parent directory.
 ---
 
@@ -66,7 +66,6 @@ Disabled file-view features hide their creation choices.
 ## Core Interactions
 
 ### Organization
-- **Renaming**: Rename a note to update its filename and title property. Press Tab in the rename prompt to include links and embeds in other vault notes.
 - **Pinning**: Important notes can be pinned to appear at the top of the grid or in the "Pinned" tab.
 - **Sorting**: Sort your notes by title or last modified date, ascending or descending. Default: modified, descending.
 - **Folders**: Organize notes into nested directories. A gear badge marks folders containing their own `.clin-template.toml` (not inherited-only variables); it appears beside the tree folder label or in the grid tile corner alongside its pin badge. With templates enabled, the config appears inside its folder as a muted selectable item regardless of hidden-file settings. Enter/double-click opens the validated config editor; the preview shows TOML. Configs are not counted/indexed as notes or included in bulk note actions. See [Template System](TEMPLATES.md#folder-local-custom-variables).

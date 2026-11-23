@@ -56,6 +56,14 @@ fn key(app: &mut App, focus: &mut EditFocus, code: KeyCode, modifiers: KeyModifi
     crate::events::handle_edit_keys(app, KeyEvent::new(code, modifiers), focus);
 }
 
+fn rename_popup_key(app: &mut App, code: KeyCode) {
+    assert!(crate::events::handle_global_popups_and_palette(
+        app,
+        crossterm::event::Event::Key(KeyEvent::new(code, KeyModifiers::NONE)),
+        ratatui::layout::Rect::default(),
+    ));
+}
+
 #[test]
 fn list_rename_updates_title_and_preserves_other_properties_and_subnotes() {
     let (_guard, _root, mut app) = fixture();
@@ -95,12 +103,12 @@ fn list_rename_updates_title_and_preserves_other_properties_and_subnotes() {
             let name = format!("New name {pinned}");
             popup.input.select_all();
             popup.input.insert_str(&name);
-            assert!(crate::events::handle_global_popups_and_palette(
-                &mut app,
-                crossterm::event::Event::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
-                ratatui::layout::Rect::default(),
-            ));
+            rename_popup_key(&mut app, KeyCode::Enter);
             let renamed = format!("{name}.{ext}");
+            assert!(app.popups.confirm.is_some());
+            assert!(!app.storage.note_path(&renamed).exists());
+            rename_popup_key(&mut app, KeyCode::Char('n'));
+            assert!(app.popups.confirm.is_none());
             assert_eq!(
                 fs::read_to_string(app.storage.note_path(&renamed)).unwrap(),
                 source.replace("'Old title'", &format!("\"{name}\""))
@@ -150,16 +158,19 @@ fn rename_can_rewrite_wikilinks_embeds_and_markdown_destinations() {
         crate::popups::NoteRenamePopup {
             note_id: "notes/Old.md".into(),
             input,
-            rewrite_links: Some(false),
         },
     ));
-    for code in [KeyCode::Tab, KeyCode::Enter] {
-        assert!(crate::events::handle_global_popups_and_palette(
-            &mut app,
-            crossterm::event::Event::Key(KeyEvent::new(code, KeyModifiers::NONE)),
-            ratatui::layout::Rect::default(),
-        ));
-    }
+    rename_popup_key(&mut app, KeyCode::Tab);
+    assert!(app.popups.confirm.is_none());
+    let Some(crate::popups::ActivePopup::NoteRename(popup)) = &app.popups.active else {
+        panic!("Tab should leave the filename prompt open");
+    };
+    assert_eq!(popup.input.lines().join(""), "New name (draft)");
+    rename_popup_key(&mut app, KeyCode::Enter);
+    assert!(app.popups.confirm.is_some());
+    assert!(app.storage.note_path("notes/Old.md").exists());
+    rename_popup_key(&mut app, KeyCode::Char('y'));
+    assert!(app.popups.confirm.is_none());
 
     let vault = &app.storage.notes_dir;
     assert!(!vault.join("notes/Old.md").exists());
@@ -204,6 +215,27 @@ fn rename_can_rewrite_wikilinks_embeds_and_markdown_destinations() {
 }
 
 #[test]
+fn escaping_link_update_popup_cancels_the_rename() {
+    let (_guard, _root, mut app) = fixture();
+    let original = app.storage.note_path("Old.md");
+    fs::write(&original, "[[Old]]\n").unwrap();
+    let mut input = crate::ui::make_popup_textarea(&app.app_theme, "");
+    input.insert_str("New");
+    app.popups.active = Some(crate::popups::ActivePopup::NoteRename(
+        crate::popups::NoteRenamePopup {
+            note_id: "Old.md".into(),
+            input,
+        },
+    ));
+    rename_popup_key(&mut app, KeyCode::Enter);
+    assert!(app.popups.confirm.is_some());
+    rename_popup_key(&mut app, KeyCode::Esc);
+    assert!(app.popups.confirm.is_none());
+    assert_eq!(fs::read_to_string(original).unwrap(), "[[Old]]\n");
+    assert!(!app.storage.note_path("New.md").exists());
+}
+
+#[test]
 fn list_rename_other_file_types_preserves_source_bytes() {
     let (_guard, _root, mut app) = fixture();
     for (ext, source) in [
@@ -220,10 +252,10 @@ fn list_rename_other_file_types_preserves_source_bytes() {
             crate::popups::NoteRenamePopup {
                 note_id: id.clone(),
                 input,
-                rewrite_links: None,
             },
         ));
         app.confirm_rename_note();
+        assert!(app.popups.confirm.is_none());
         let renamed = format!("Renamed.{ext}");
         assert_eq!(
             fs::read(app.storage.notes_dir.join(&renamed)).unwrap(),

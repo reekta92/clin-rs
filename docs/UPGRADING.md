@@ -51,7 +51,7 @@ Loaded notes and public documents share raw-source baseline checks, read-only ch
 
 Drawing and Canvas engines use the same guarded storage path for eager saves and navigation saves. Canvas save failures remain visible and keep the unsaved model in memory instead of automatically reloading over it.
 
-Ordinary title/body saves retain the existing filename. New notes still derive an initial filename from their title. Explicit file rename is separate and warns that incoming links are not rewritten. Existing `rename_on_title_change` settings are retired.
+Ordinary title/body saves retain the existing filename. New notes still derive an initial filename from their title. Explicit rename of Markdown and text files offers a choice to update links and embeds. Existing `rename_on_title_change` settings are retired.
 
 The notes list shows filenames without their extensions, including numbered suffixes such as `test (2)`. Creation and rename prompts preview the resulting filename. Rename in the notes list changes the filename; edit Title in the editor to change the frontmatter title.
 

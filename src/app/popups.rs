@@ -424,6 +424,12 @@ template = """
                     false,
                 )
             }
+            ConfirmAction::RenameNote { .. } => (
+                "Update links to this file?".into(),
+                Some("Update links and embeds in vault notes to point to the new filename.".into()),
+                "Update links".into(),
+                false,
+            ),
             ConfirmAction::QuitApp => (
                 "Are you sure you want to quit?".into(),
                 None,
@@ -485,6 +491,9 @@ template = """
                 ConfirmAction::RemoveVault { path } => {
                     self.remove_vault_from_list(&path);
                 }
+                ConfirmAction::RenameNote { note_id, new_title } => {
+                    self.rename_note(&note_id, &new_title, true);
+                }
                 ConfirmAction::QuitApp => {
                     self.should_quit = true;
                 }
@@ -492,6 +501,16 @@ template = """
                     self.confirm_remove_all_tags();
                 }
             }
+        }
+    }
+
+    pub(crate) fn decline_confirm(&mut self) {
+        if let Some(ConfirmPopup {
+            action: ConfirmAction::RenameNote { note_id, new_title },
+            ..
+        }) = self.popups.confirm.take()
+        {
+            self.rename_note(&note_id, &new_title, false);
         }
     }
 
@@ -527,7 +546,7 @@ template = """
         if is_confirm {
             self.confirm_action();
         } else {
-            self.cancel_confirm();
+            self.decline_confirm();
         }
     }
 

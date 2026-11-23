@@ -728,7 +728,7 @@ fn confirmation_hover_and_clicks_match_only_the_visible_buttons() {
     let area = Rect::new(0, 0, 120, 32);
     app.show_confirm(crate::popups::ConfirmAction::QuitApp);
     let popup = app.popups.confirm.as_mut().unwrap();
-    let (chunks, buttons) = crate::ui::confirm_popup_layout(area, &popup.confirm_label, true);
+    let (chunks, buttons) = crate::ui::confirm_popup_layout(area, popup, true);
     let mut terminal = Terminal::new(TestBackend::new(area.width, area.height)).unwrap();
     terminal
         .draw(|frame| {

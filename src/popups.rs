@@ -26,6 +26,10 @@ pub enum ConfirmAction {
         note_ids: Vec<String>,
         folder_paths: Vec<String>,
     },
+    RenameNote {
+        note_id: String,
+        new_title: String,
+    },
     QuitApp,
     RemoveVault {
         path: String,
@@ -41,6 +45,15 @@ pub struct ConfirmPopup {
     pub is_destructive: bool,
     pub selected_button: usize,
     pub scroll_offset: u16,
+}
+
+impl ConfirmPopup {
+    pub(crate) fn secondary_label(&self) -> &'static str {
+        match self.action {
+            ConfirmAction::RenameNote { .. } => "Skip",
+            _ => "Cancel",
+        }
+    }
 }
 
 pub struct TemplatePopup {
@@ -169,7 +182,6 @@ pub struct FolderPicker {
 pub struct NoteRenamePopup {
     pub note_id: String,
     pub input: TextArea<'static>,
-    pub rewrite_links: Option<bool>,
 }
 
 pub struct VaultRenamePopup {
