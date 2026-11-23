@@ -2,12 +2,54 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.14.2] - 2026-11-23
+
+### Added
+
+- Confirmation popup for renaming links
+
+### Documentation
+
+- Simplify README and link detailed guides (#238)
+
+### Fixed
+
+- Update url to 2.5.9 (#292)
+- Sync titles and offer link updates on rename (#287)
+- Honor file extension overrides across vault updates (#288)
+- Collapse content matches from child rows (#289)
+- Reuse embedded Bases state during transforms (#290)
+- Migrate Clin off Chrono (#291)
+
+### Miscellaneous
+
+- ROADMAP update
+- ROADMAP update
+
+### Build
+
+- Bump clap from 4.6.7 to 4.6.8 (#286)
+- Bump rand from 0.10.3 to 0.10.4 (#285)
+- Bump uuid from 1.29.2 to 1.29.3 (#283)
+- Bump cachix/install-nix-action from 31.11.4 to 31.11.5 (#281)
+- Bump notify from 8.2.1 to 8.2.2 (#282)
+- Bump cachix/install-nix-action from 31.11.3 to 31.11.4 (#274)
+- Bump signal-hook from 0.4.5 to 0.4.6 (#275)
+- Bump trash from 5.2.9 to 5.3.0 (#276)
+- Bump ratatui-textarea from 0.9.3 to 0.9.4 (#277)
+- Bump uuid from 1.29.0 to 1.29.2 (#278)
+- Bump yaml-edit from 0.3.2 to 0.3.6 (#264)
+- Bump toml from 1.1.8+spec-1.1.0 to 1.2.0+spec-1.1.0 (#265)
 ## [0.14.1] - 2026-11-06
 
 ### Fixed
 
 - Use GitHub token for wiki sync (#260)
 - Set 60hz render limit (#259)
+
+### Release
+
+- V0.14.1
 ## [0.14.0] - 2026-11-06
 
 ### Added
