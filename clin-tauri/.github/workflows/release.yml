@@ -1,0 +1,388 @@
+name: Release
+
+# Triggered by version tags (e.g. v0.2.0, v1.0.0-rc.1)
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write  # needed to create the GitHub release and upload assets
+
+# ---------------------------------------------------------------------------
+# Shared env used across jobs
+# ---------------------------------------------------------------------------
+env:
+  APP_NAME: clin-tauri
+  TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+  TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: build-matrix
+  # Compile and package clin-tauri for every supported platform.
+  # -------------------------------------------------------------------------
+  build-matrix:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- Linux x86_64 ------------------------------------------------
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            arch: x86_64
+            produces_appimage: true
+            produces_deb: true
+            produces_rpm: false
+
+          # ---- Linux aarch64 -----------------------------------------------
+          - name: linux-aarch64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch: aarch64
+            produces_appimage: true
+            produces_deb: true
+            produces_rpm: false
+
+          # ---- macOS x86_64 ------------------------------------------------
+          - name: macos-x86_64
+            os: macos-13          # Intel runner
+            target: x86_64-apple-darwin
+            arch: x86_64
+            produces_appimage: false
+            produces_deb: false
+            produces_rpm: false
+
+          # ---- macOS aarch64 (Apple Silicon) --------------------------------
+          - name: macos-aarch64
+            os: macos-14          # Apple Silicon runner (M1/M2)
+            target: aarch64-apple-darwin
+            arch: aarch64
+            produces_appimage: false
+            produces_deb: false
+            produces_rpm: false
+
+          # ---- Windows x86_64 ----------------------------------------------
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            arch: x86_64
+            produces_appimage: false
+            produces_deb: false
+            produces_rpm: false
+
+          # ---- Windows aarch64 (ARM) ----------------------------------------
+          - name: windows-aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+            arch: aarch64
+            produces_appimage: false
+            produces_deb: false
+            produces_rpm: false
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # -----------------------------------------------------------------------
+      # Linux system dependencies required by Tauri (WebKit2GTK, etc.)
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            pkg-config \
+            file \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
+
+      # -----------------------------------------------------------------------
+      # Rust toolchain — stable + the cross-compile target
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # -----------------------------------------------------------------------
+      # Cache Cargo registry/build artefacts
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      # -----------------------------------------------------------------------
+      # Node.js + pnpm (or npm) for the frontend
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # -----------------------------------------------------------------------
+      # Build the Tauri application for the current matrix target
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.target }}
+
+      # -----------------------------------------------------------------------
+      # Rename artifacts to the canonical asset-name pattern so the
+      # create-release job and the install scripts can rely on them.
+      #
+      # Pattern:
+      #   Linux AppImage : clin-tauri_VERSION_linux-ARCH.AppImage
+      #   Linux .deb     : clin-tauri_VERSION_amd64.deb  or  _arm64.deb
+      #   macOS .dmg     : clin-tauri_VERSION_macos-ARCH.dmg
+      #   macOS .app.tar.gz (update feed): clin-tauri_VERSION_macos-ARCH.app.tar.gz
+      #   Windows .msi   : clin-tauri_VERSION_windows-ARCH.msi
+      #   Windows .exe   : clin-tauri_VERSION_windows-ARCH.exe
+      # -----------------------------------------------------------------------
+      - name: Rename artifacts (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.arch }}"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          # AppImage
+          if [ "${{ matrix.produces_appimage }}" = "true" ]; then
+            SRC=$(find "$BUNDLE_DIR/appimage" -name "*.AppImage" | head -1)
+            if [ -n "$SRC" ]; then
+              DEST="${{ env.APP_NAME }}_${VERSION}_linux-${ARCH}.AppImage"
+              cp "$SRC" "$DEST"
+              echo "APPIMAGE_ASSET=$DEST" >> "$GITHUB_ENV"
+            fi
+          fi
+
+          # .deb
+          if [ "${{ matrix.produces_deb }}" = "true" ]; then
+            SRC=$(find "$BUNDLE_DIR/deb" -name "*.deb" | head -1)
+            if [ -n "$SRC" ]; then
+              DEB_ARCH="amd64"
+              [ "$ARCH" = "aarch64" ] && DEB_ARCH="arm64"
+              DEST="${{ env.APP_NAME }}_${VERSION}_${DEB_ARCH}.deb"
+              cp "$SRC" "$DEST"
+              echo "DEB_ASSET=$DEST" >> "$GITHUB_ENV"
+            fi
+          fi
+
+      - name: Rename artifacts (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.arch }}"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          # .dmg
+          SRC=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
+          if [ -n "$SRC" ]; then
+            DEST="${{ env.APP_NAME }}_${VERSION}_macos-${ARCH}.dmg"
+            cp "$SRC" "$DEST"
+            echo "DMG_ASSET=$DEST" >> "$GITHUB_ENV"
+          fi
+
+          # .app.tar.gz (Tauri updater bundle)
+          SRC=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
+          if [ -n "$SRC" ]; then
+            DEST="${{ env.APP_NAME }}_${VERSION}_macos-${ARCH}.app.tar.gz"
+            cp "$SRC" "$DEST"
+            echo "APPTARGZ_ASSET=$DEST" >> "$GITHUB_ENV"
+          fi
+
+      - name: Rename artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $Version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $Arch    = "${{ matrix.arch }}"
+          $BundleDir = "src-tauri\target\${{ matrix.target }}\release\bundle"
+
+          # .msi
+          $msi = Get-ChildItem "$BundleDir\msi" -Filter "*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($msi) {
+            $dest = "${{ env.APP_NAME }}_${Version}_windows-${Arch}.msi"
+            Copy-Item $msi.FullName $dest
+            "MSI_ASSET=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+          # .exe (NSIS installer)
+          $exe = Get-ChildItem "$BundleDir\nsis" -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($exe) {
+            $dest = "${{ env.APP_NAME }}_${Version}_windows-${Arch}.exe"
+            Copy-Item $exe.FullName $dest
+            "EXE_ASSET=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+      # -----------------------------------------------------------------------
+      # Upload renamed assets as workflow artifacts so create-release can
+      # attach them to the GitHub release.
+      # -----------------------------------------------------------------------
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ matrix.name }}
+          # Glob picks up only files that were created by the rename step
+          path: |
+            ${{ env.APPIMAGE_ASSET }}
+            ${{ env.DEB_ASSET }}
+            ${{ env.DMG_ASSET }}
+            ${{ env.APPTARGZ_ASSET }}
+            ${{ env.MSI_ASSET }}
+            ${{ env.EXE_ASSET }}
+          if-no-files-found: warn
+          retention-days: 1
+
+  # -------------------------------------------------------------------------
+  # Job 2: create-release
+  # Collect all build artifacts and publish a GitHub release.
+  # -------------------------------------------------------------------------
+  create-release:
+    name: Create GitHub Release
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # -----------------------------------------------------------------------
+      # Download all artifacts produced by the matrix build
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          merge-multiple: true
+          path: dist/
+
+      - name: List collected artifacts
+        run: ls -lh dist/
+
+      # -----------------------------------------------------------------------
+      # Build the release notes from the tag and artifact listing
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          # Build a markdown table row for every artifact that was actually produced
+          TABLE_ROWS=""
+          for f in dist/*; do
+            fname="$(basename "$f")"
+            url="https://github.com/${{ github.repository }}/releases/download/${TAG}/${fname}"
+            case "$fname" in
+              *linux-x86_64.AppImage) TABLE_ROWS="${TABLE_ROWS}| Linux   | x86_64  | AppImage | [${fname}](${url}) |\n" ;;
+              *amd64.deb)             TABLE_ROWS="${TABLE_ROWS}| Linux   | x86_64  | .deb     | [${fname}](${url}) |\n" ;;
+              *linux-aarch64.AppImage)TABLE_ROWS="${TABLE_ROWS}| Linux   | aarch64 | AppImage | [${fname}](${url}) |\n" ;;
+              *arm64.deb)             TABLE_ROWS="${TABLE_ROWS}| Linux   | aarch64 | .deb     | [${fname}](${url}) |\n" ;;
+              *macos-x86_64.dmg)      TABLE_ROWS="${TABLE_ROWS}| macOS   | x86_64  | .dmg     | [${fname}](${url}) |\n" ;;
+              *macos-aarch64.dmg)     TABLE_ROWS="${TABLE_ROWS}| macOS   | aarch64 | .dmg     | [${fname}](${url}) |\n" ;;
+              *windows-x86_64.msi)    TABLE_ROWS="${TABLE_ROWS}| Windows | x86_64  | .msi     | [${fname}](${url}) |\n" ;;
+              *windows-x86_64.exe)    TABLE_ROWS="${TABLE_ROWS}| Windows | x86_64  | .exe     | [${fname}](${url}) |\n" ;;
+              *windows-aarch64.msi)   TABLE_ROWS="${TABLE_ROWS}| Windows | aarch64 | .msi     | [${fname}](${url}) |\n" ;;
+              *windows-aarch64.exe)   TABLE_ROWS="${TABLE_ROWS}| Windows | aarch64 | .exe     | [${fname}](${url}) |\n" ;;
+            esac
+          done
+
+          cat > release_notes.md <<NOTES
+          ## clin desktop companion v${VERSION}
+
+          A Tauri-based desktop companion for [clin-rs](https://github.com/${{ github.repository }}), the fast terminal note manager.
+
+          ### Install
+
+          **Linux / macOS** — one-liner:
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+          \`\`\`
+
+          Linux users who prefer a .deb package:
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash -s -- --deb
+          \`\`\`
+
+          **Windows (PowerShell)**:
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+          \`\`\`
+
+          Or download the installer below and run it directly.
+
+          ---
+
+          ### Downloads
+
+          | Platform | Arch    | Format   | File |
+          |----------|---------|----------|------|
+          $(printf "%b" "$TABLE_ROWS")
+
+          ---
+
+          ### What's new
+
+          <!-- filled in automatically from CHANGELOG or git log -->
+          $(git log "$(git describe --tags --abbrev=0 HEAD^)..HEAD" --pretty="format:- %s" 2>/dev/null || echo "- See commit history for changes.")
+          NOTES
+
+          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # Create the GitHub release and upload all assets
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "clin-tauri ${{ github.ref_name }}"
+          body_path: ${{ steps.notes.outputs.notes_file }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: false
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        shell: bash
+        run: |
+          echo "### Release published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Tag:** ${{ github.ref_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Assets uploaded:**" >> "$GITHUB_STEP_SUMMARY"
+          for f in dist/*; do
+            echo "- $(basename "$f")" >> "$GITHUB_STEP_SUMMARY"
+          done

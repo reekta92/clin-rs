@@ -1,0 +1,265 @@
+name: Build clin Tauri app
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+# Cancel any in-flight run for the same ref so we don't waste CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- Linux x86_64 ------------------------------------------------
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+            cross: false
+
+          # ---- Linux aarch64 (cross-compiled on x86_64 runner) -------------
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            label: linux-aarch64
+            cross: true
+
+          # ---- Windows x86_64 ----------------------------------------------
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+            cross: false
+
+          # ---- Windows aarch64 ---------------------------------------------
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            label: windows-aarch64
+            cross: false   # MSVC cross-compile is handled natively on the runner
+
+          # ---- macOS x86_64 ------------------------------------------------
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x86_64
+            cross: false
+
+          # ---- macOS aarch64 (Apple Silicon) --------------------------------
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-aarch64
+            cross: false   # GitHub's macos-latest runner can target both arches
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Source checkout
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Node.js setup (for Vite + npm install)
+      # -----------------------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # -----------------------------------------------------------------------
+      # 3. Rust toolchain
+      # -----------------------------------------------------------------------
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Cache Cargo registry and build artefacts to speed up subsequent runs.
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          key: ${{ matrix.label }}
+
+      # -----------------------------------------------------------------------
+      # 4. Linux system dependencies (WebKit2GTK + other GTK libs)
+      # -----------------------------------------------------------------------
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            libglib2.0-dev \
+            pkg-config \
+            curl \
+            wget \
+            file
+
+      # -----------------------------------------------------------------------
+      # 5. Cross-compile toolchain for Linux aarch64
+      # -----------------------------------------------------------------------
+      - name: Install aarch64 cross-compile toolchain (Linux)
+        if: matrix.cross == true && runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libwebkit2gtk-4.1-dev:arm64 || true
+          # Tell Cargo to use the cross linker for this target
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+
+      # -----------------------------------------------------------------------
+      # 6. Install @tauri-apps/cli globally (Tauri v2 CLI)
+      # -----------------------------------------------------------------------
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@^2
+
+      # -----------------------------------------------------------------------
+      # 7. Install npm dependencies
+      # -----------------------------------------------------------------------
+      - name: Install npm dependencies
+        run: |
+          npm ci
+          npm install-scripts approve esbuild
+
+      # -----------------------------------------------------------------------
+      # 8. Build Tauri app for the matrix target
+      # -----------------------------------------------------------------------
+      - name: Build Tauri app
+        env:
+          # Suppress interactive update prompts
+          TAURI_SKIP_DEVSERVER_CHECK: "true"
+          # On Linux cross-compile runs, point pkg-config at the sysroot
+          PKG_CONFIG_SYSROOT_DIR: ${{ matrix.cross == 'true' && '/usr/aarch64-linux-gnu' || '' }}
+          PKG_CONFIG_PATH: ${{ matrix.cross == 'true' && '/usr/lib/aarch64-linux-gnu/pkgconfig' || '' }}
+        run: |
+          npx tauri build --target ${{ matrix.target }}
+
+      # -----------------------------------------------------------------------
+      # 9. Collect built artefacts into a consistent staging directory
+      # -----------------------------------------------------------------------
+      - name: Collect artefacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p artifacts
+          find src-tauri/target/${{ matrix.target }}/release/bundle \
+            \( -name "*.deb" -o -name "*.AppImage" -o -name "*.rpm" \) \
+            -exec cp {} artifacts/ \; 2>/dev/null || true
+          # Also include the raw binary
+          cp src-tauri/target/${{ matrix.target }}/release/clin-tauri \
+            artifacts/clin-tauri-${{ matrix.label }} 2>/dev/null || true
+
+      - name: Collect artefacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p artifacts
+          find src-tauri/target/${{ matrix.target }}/release/bundle \
+            \( -name "*.dmg" -o -name "*.app.tar.gz" \) \
+            -exec cp {} artifacts/ \; 2>/dev/null || true
+
+      - name: Collect artefacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Get-ChildItem -Recurse `
+            -Path "src-tauri\target\${{ matrix.target }}\release\bundle" `
+            -Include "*.msi","*.exe","*.nsis" `
+            | Copy-Item -Destination artifacts\ -ErrorAction SilentlyContinue
+
+      # -----------------------------------------------------------------------
+      # 10. Upload per-matrix artefacts
+      # -----------------------------------------------------------------------
+      - name: Upload build artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clin-${{ matrix.label }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Release job — runs only on version tags (v*) pushed to main
+  # Collects all matrix artefacts and publishes a GitHub Release.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Download every artefact uploaded by the matrix builds
+      - name: Download all build artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets/
+          # Download all artifacts into subdirectories named after the
+          # artifact (clin-linux-x86_64, clin-windows-x86_64, etc.)
+
+      # Flatten the nested directory tree so gh release sees a flat list
+      - name: Flatten artefacts
+        run: |
+          mkdir -p flat
+          find release-assets/ -type f -exec mv {} flat/ \;
+          ls -lh flat/
+
+      # Create the release and attach every file in flat/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "clin ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: flat/**
+          body: |
+            ## clin desktop companion ${{ github.ref_name }}
+
+            Native desktop builds for all supported platforms.
+
+            | Platform | Architecture | Download |
+            |----------|-------------|---------|
+            | Linux    | x86_64      | `clin-linux-x86_64` |
+            | Linux    | aarch64     | `clin-linux-aarch64` |
+            | Windows  | x86_64      | `clin-windows-x86_64` |
+            | Windows  | aarch64     | `clin-windows-aarch64` |
+            | macOS    | x86_64      | `clin-macos-x86_64` |
+            | macOS    | Apple Silicon | `clin-macos-aarch64` |
+
+            ### Installation
+            - **Linux**: install the `.deb` / `.AppImage` / `.rpm` package, or run the binary directly
+            - **macOS**: open the `.dmg` installer
+            - **Windows**: run the `.msi` installer
+
+            ### First run
+            Set the `CLIN_VAULT` environment variable to your vault directory, or use
+            **Settings → Switch Vault** in the app.
